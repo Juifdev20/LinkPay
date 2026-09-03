@@ -21,6 +21,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { RiskModule } from './risk/risk.module';
 import { AdminModule } from './admin/admin.module';
 import { AuditModule } from './audit/audit.module';
+import { HealthModule } from './health/health.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 
 @Module({
@@ -52,6 +53,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     RiskModule,
     AdminModule,
     AuditModule,
+    HealthModule,
   ],
   providers: [
     {
