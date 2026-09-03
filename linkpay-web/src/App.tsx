@@ -27,6 +27,7 @@ import AdminSettlementsPage from '@/pages/admin/Settlements';
 import AdminCommissionsPage from '@/pages/admin/Commissions';
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
 import SettingsPage from '@/pages/Settings';
+import InstallPrompt from '@/components/InstallPrompt';
 
 function DashboardIndex() {
   const user = useAuthStore((s) => s.user);
@@ -66,7 +67,9 @@ export default function App() {
   }, [fetchProfile, isAuthenticated]);
 
   return (
-    <Routes>
+    <>
+      <InstallPrompt />
+      <Routes>
       <Route path="/" element={<LandingPage />} />
 
       <Route path="/login" element={<LoginPage />} />
@@ -151,5 +154,6 @@ export default function App() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }
