@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -7,28 +7,35 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { PinInput } from '@/components/PinInput';
+import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicker';
+import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
 import { formatCurrency } from '@/lib/utils';
-import { Loader2, Check, Search, ArrowLeft, ScanLine, Store } from 'lucide-react';
+import { Loader2, Check, Search, ArrowLeft, ScanLine, Store, Wallet as WalletIcon, Smartphone } from 'lucide-react';
 
-type Step = 'reference' | 'confirm' | 'pin' | 'processing' | 'success';
+type Step = 'reference' | 'confirm' | 'method' | 'pin' | 'processing' | 'success';
+type Source = 'wallet' | 'mobile_money';
 
 export default function PayInvoicePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState<Step>('reference');
-  const [reference, setReference] = useState('');
+  const [reference, setReference] = useState(searchParams.get('ref') || '');
   const [invoice, setInvoice] = useState<any>(null);
+  const [source, setSource] = useState<Source>('wallet');
+  const [operator, setOperator] = useState(MOBILE_MONEY_OPERATORS[0].value);
+  const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [looking, setLooking] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const autoLookedUp = useRef(false);
 
-  const handleLookup = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const lookup = async (ref: string) => {
     setError('');
     setLooking(true);
     try {
-      const { data } = await api.get(`/payment-requests/reference/${encodeURIComponent(reference.trim())}`);
+      const { data } = await api.get(`/payment-requests/reference/${encodeURIComponent(ref.trim())}`);
       setInvoice(data);
       setStep('confirm');
     } catch (err: any) {
@@ -36,6 +43,22 @@ export default function PayInvoicePage() {
     } finally {
       setLooking(false);
     }
+  };
+
+  // Arriving via a shared link with ?ref= (after login/register, or copy-
+  // pasted straight in) — skip retyping the reference, search immediately.
+  useEffect(() => {
+    const ref = searchParams.get('ref');
+    if (ref && !autoLookedUp.current) {
+      autoLookedUp.current = true;
+      lookup(ref);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleLookup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    lookup(reference);
   };
 
   const handlePinComplete = async (val: string) => {
@@ -56,6 +79,37 @@ export default function PayInvoicePage() {
       setError(err.response?.data?.message || 'Le paiement a échoué');
       setPin('');
       setStep('pin');
+    }
+  };
+
+  const handleMobileMoneyPay = async () => {
+    setError('');
+    if (!phone.trim()) {
+      setError('Numéro Mobile Money requis');
+      return;
+    }
+    setStep('processing');
+    try {
+      const { data } = await api.post(
+        '/payments',
+        {
+          link_token: invoice.link_token,
+          customer_phone: phone,
+          payment_method: 'mobile_money',
+          mobile_money_operator: operator,
+        },
+        { headers: { 'Idempotency-Key': crypto.randomUUID() } },
+      );
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url;
+        return;
+      }
+      setResult(data);
+      queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      setStep('success');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Le paiement a échoué');
+      setStep('method');
     }
   };
 
@@ -82,7 +136,9 @@ export default function PayInvoicePage() {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Moyen de paiement</span>
-                <span className="text-foreground">Solde LinkPay</span>
+                <span className="text-foreground">
+                  {source === 'wallet' ? 'Solde LinkPay' : `${MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label} — ${phone}`}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Statut</span>
@@ -99,6 +155,29 @@ export default function PayInvoicePage() {
   }
 
   if (step === 'processing') {
+    if (source === 'mobile_money') {
+      const operatorLabel = MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label;
+      return (
+        <div className="p-6 max-w-md mx-auto">
+          <Card>
+            <CardContent className="pt-6 text-center py-10">
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                <Smartphone className="w-8 h-8 text-primary animate-pulse" />
+              </div>
+              <h2 className="text-lg font-bold text-foreground mb-2">Confirmez sur votre téléphone</h2>
+              <p className="text-muted-foreground text-sm mb-1">
+                Une demande {operatorLabel} a été envoyée au {phone}.
+              </p>
+              <p className="text-muted-foreground text-sm mb-6">
+                Ouvrez l'application et entrez votre code PIN Mobile Money pour confirmer le paiement de{' '}
+                {formatCurrency(invoice?.total_cents, invoice?.currency)}.
+              </p>
+              <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" />
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
     return (
       <div className="p-6 max-w-md mx-auto">
         <Card>
@@ -116,7 +195,7 @@ export default function PayInvoicePage() {
       <div className="p-6 max-w-md mx-auto">
         <Card>
           <CardContent className="pt-6 text-center">
-            <button onClick={() => setStep('confirm')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4 float-left">
+            <button onClick={() => setStep('method')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4 float-left">
               <ArrowLeft className="w-4 h-4" /> Retour
             </button>
             {error && (
@@ -129,6 +208,73 @@ export default function PayInvoicePage() {
               Confirmez le paiement de {formatCurrency(invoice?.total_cents, invoice?.currency)}
             </p>
             <PinInput value={pin} onChange={handlePinComplete} length={4} autoFocus />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (step === 'method') {
+    return (
+      <div className="p-6 max-w-md mx-auto">
+        <Card>
+          <CardContent className="pt-6">
+            <button onClick={() => setStep('confirm')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4">
+              <ArrowLeft className="w-4 h-4" /> Modifier
+            </button>
+            {error && (
+              <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium mb-4">
+                {error}
+              </div>
+            )}
+            <p className="text-sm text-muted-foreground mb-4">
+              Payer {formatCurrency(invoice?.total_cents, invoice?.currency)} à {invoice?.merchant?.name}
+            </p>
+            <div className="space-y-2 mb-4">
+              <Label className="font-semibold">Moyen de paiement</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSource('wallet')}
+                  className={`flex flex-col items-center gap-1.5 rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-colors ${source === 'wallet' ? 'border-primary bg-primary/5 text-primary' : 'border-input text-muted-foreground hover:bg-accent'}`}
+                >
+                  <WalletIcon className="w-5 h-5" />
+                  Solde LinkPay
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSource('mobile_money')}
+                  className={`flex flex-col items-center gap-1.5 rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-colors ${source === 'mobile_money' ? 'border-primary bg-primary/5 text-primary' : 'border-input text-muted-foreground hover:bg-accent'}`}
+                >
+                  <Smartphone className="w-5 h-5" />
+                  Mobile Money
+                </button>
+              </div>
+            </div>
+
+            {source === 'wallet' ? (
+              <Button className="w-full" size="lg" onClick={() => setStep('pin')}>
+                Continuer
+              </Button>
+            ) : (
+              <div className="space-y-4">
+                <MobileMoneyOperatorPicker value={operator} onChange={setOperator} />
+                <div className="space-y-2">
+                  <Label htmlFor="mm_phone" className="font-semibold">
+                    Numéro {MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label}
+                  </Label>
+                  <Input
+                    id="mm_phone"
+                    placeholder="+243 8XX XXX XXX"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                </div>
+                <Button className="w-full" size="lg" disabled={!phone.trim()} onClick={handleMobileMoneyPay}>
+                  Payer {formatCurrency(invoice?.total_cents, invoice?.currency)}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -176,12 +322,12 @@ export default function PayInvoicePage() {
                 </div>
               )}
               <div className="flex justify-between text-sm font-bold pt-2 border-t border-border">
-                <span className="text-foreground">Total débité (solde LinkPay)</span>
+                <span className="text-foreground">Total</span>
                 <span className="text-foreground">{formatCurrency(invoice?.total_cents, invoice?.currency)}</span>
               </div>
             </div>
-            <Button className="w-full" size="lg" onClick={() => setStep('pin')}>
-              Payer {formatCurrency(invoice?.total_cents, invoice?.currency)}
+            <Button className="w-full" size="lg" onClick={() => setStep('method')}>
+              Continuer
             </Button>
           </CardContent>
         </Card>

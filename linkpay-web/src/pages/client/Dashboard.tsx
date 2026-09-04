@@ -80,8 +80,8 @@ export default function ClientDashboard() {
       </div>
 
       <div className="flex justify-around py-2">
-        <QuickAction icon={QrCode} label="Scanner QR" onClick={() => navigate('/dashboard/payment-requests/new')} />
-        <QuickAction icon={ArrowUpRight} label="Payer" onClick={() => navigate('/dashboard/payment-requests/new')} />
+        <QuickAction icon={QrCode} label="Scanner QR" onClick={() => navigate('/dashboard/wallet/pay')} />
+        <QuickAction icon={ArrowUpRight} label="Payer" onClick={() => navigate('/dashboard/wallet/pay')} />
         <QuickAction icon={ArrowDownLeft} label="Recevoir" />
         <QuickAction icon={History} label="Historique" onClick={() => navigate('/dashboard/client/transactions')} />
       </div>

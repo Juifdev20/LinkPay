@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '@/lib/api';
+import { useAuthStore } from '@/lib/auth-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,11 +11,12 @@ import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
 import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicker';
 import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Loader2, CheckCircle, AlertCircle, Lock, User, Phone, Smartphone } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, Lock, User, Phone, Smartphone, Wallet as WalletIcon, Sparkles } from 'lucide-react';
 
 export default function PaymentLinkPage() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const [request, setRequest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
@@ -181,6 +183,51 @@ export default function PaymentLinkPage() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Expire le</span>
                 <span className="text-foreground">{request.expires_at ? formatDate(request.expires_at) : '—'}</span>
+              </div>
+            </div>
+
+            {isAuthenticated ? (
+              <Button
+                asChild
+                variant="outline"
+                className="w-full mb-6 border-primary/30 text-primary hover:bg-primary/5"
+                size="lg"
+              >
+                <Link to={`/dashboard/wallet/pay?ref=${encodeURIComponent(request.reference)}`}>
+                  <WalletIcon className="mr-2 w-4 h-4" />
+                  Payer avec mon solde LinkPay
+                </Link>
+              </Button>
+            ) : (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 mb-6">
+                <div className="flex items-center gap-2 mb-1">
+                  <Sparkles className="w-4 h-4 text-primary flex-shrink-0" />
+                  <p className="text-sm font-semibold text-foreground">Payer avec votre solde LinkPay ?</p>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Créez votre compte en quelques secondes et profitez de toutes les fonctionnalités LinkPay.
+                </p>
+                <div className="flex gap-2">
+                  <Button asChild size="sm" className="flex-1">
+                    <Link to={`/register?redirect=${encodeURIComponent(`/dashboard/wallet/pay?ref=${request.reference}`)}`}>
+                      S'inscrire
+                    </Link>
+                  </Button>
+                  <Button asChild size="sm" variant="outline" className="flex-1">
+                    <Link to={`/login?redirect=${encodeURIComponent(`/dashboard/wallet/pay?ref=${request.reference}`)}`}>
+                      J'ai déjà un compte
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="relative mb-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-border" />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-card px-2 text-muted-foreground">ou payer par Mobile Money (sans compte)</span>
               </div>
             </div>
 

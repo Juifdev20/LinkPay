@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/lib/auth-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,10 +7,11 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Logo } from '@/components/Logo';
 import { Loader2, User, Mail, Phone, Lock, Store } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, safeRedirect } from '@/lib/utils';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const register = useAuthStore((s) => s.register);
   const [accountType, setAccountType] = useState<'client' | 'merchant'>('client');
   const [businessName, setBusinessName] = useState('');
@@ -28,7 +29,7 @@ export default function RegisterPage() {
         account_type: accountType,
         ...(accountType === 'merchant' ? { business_name: businessName } : {}),
       });
-      navigate('/dashboard');
+      navigate(safeRedirect(searchParams.get('redirect')));
     } catch (err: any) {
       setError(err.response?.data?.message || "Échec de l'inscription");
     } finally {
@@ -173,7 +174,10 @@ export default function RegisterPage() {
           <CardFooter className="flex justify-center">
             <p className="text-sm text-muted-foreground text-center">
               Déjà un compte ?{' '}
-              <Link to="/login" className="text-primary font-semibold hover:underline">
+              <Link
+                to={searchParams.get('redirect') ? `/login?redirect=${encodeURIComponent(searchParams.get('redirect')!)}` : '/login'}
+                className="text-primary font-semibold hover:underline"
+              >
                 Se connecter
               </Link>
             </p>

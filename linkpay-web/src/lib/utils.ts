@@ -32,3 +32,18 @@ export function formatShortDate(date: string | Date): string {
     year: 'numeric',
   }).format(new Date(date));
 }
+
+/**
+ * Validates a post-login/register `?redirect=` target before navigating to
+ * it — never follow it if it isn't a same-app internal path, or an
+ * attacker-crafted link (e.g. `?redirect=//evil.com` or
+ * `?redirect=https://evil.com`) could send a freshly authenticated user
+ * somewhere else entirely. Falls back to `/dashboard`.
+ */
+export function safeRedirect(target: string | null): string {
+  if (!target) return '/dashboard';
+  if (!target.startsWith('/') || target.startsWith('//') || target.includes('://')) {
+    return '/dashboard';
+  }
+  return target;
+}
