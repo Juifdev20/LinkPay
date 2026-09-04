@@ -1,9 +1,12 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import { SupabaseService } from '../supabase/supabase.service';
 import { PspFactory } from '../payments/psp/psp.factory';
 import { NotificationsService } from '../notifications/notifications.service';
+import { WalletPinService } from './wallet-pin.service';
+import { WalletLimitsService } from './wallet-limits.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class WalletsService {
@@ -14,6 +17,9 @@ export class WalletsService {
     private pspFactory: PspFactory,
     private notificationsService: NotificationsService,
     private configService: ConfigService,
+    private walletPinService: WalletPinService,
+    private walletLimitsService: WalletLimitsService,
+    private auditService: AuditService,
   ) {}
 
   async getWalletByUserId(userId: string) {
@@ -212,4 +218,422 @@ export class WalletsService {
       .single();
     return data;
   }
+
+  // ==========================================================================
+  // PIN
+  // ==========================================================================
+
+  /**
+   * Fee/limit preview — lets the frontend show "montant + frais = total"
+   * before the user confirms anything (§54: never hide fees), without
+   * executing or reserving anything.
+   */
+  async previewFee(opType: 'TRANSFER' | 'WITHDRAWAL' | 'WALLET_PAYMENT', amountCents: number) {
+    const rule = await this.walletLimitsService.getRule(opType);
+    return this.walletLimitsService.quoteFee(amountCents, rule);
+  }
+
+  async getPinStatus(userId: string) {
+    return { has_pin: await this.walletPinService.hasPinSet(userId) };
+  }
+
+  async setPin(userId: string, newPin: string, currentPin?: string) {
+    await this.walletPinService.setPin(userId, newPin, currentPin);
+    await this.auditService.log({
+      user_id: userId,
+      action: 'wallet_pin_set',
+      entity_type: 'profile',
+      entity_id: userId,
+    });
+    return { success: true };
+  }
+
+  // ==========================================================================
+  // Lookup — search a recipient/merchant by LinkPay number. Only the minimum
+  // needed to confirm "who am I sending to" is returned (masked display
+  // name) — never email/phone/full profile, and knowing a number never
+  // allows modifying that account (read-only, no mutation endpoint takes a
+  // bare wallet_number for anything but this lookup + being a transfer target).
+  // ==========================================================================
+
+  async lookupWallet(walletNumber: string) {
+    const { data: wallet, error } = await this.supabaseService.getClient()
+      .from('wallets')
+      .select('id, user_id, wallet_number, status')
+      .eq('wallet_number', walletNumber.trim().toUpperCase())
+      .single();
+
+    if (error || !wallet) {
+      throw new NotFoundException('Numéro LinkPay introuvable');
+    }
+    if (wallet.status !== 'ACTIVE') {
+      throw new BadRequestException('Ce compte LinkPay n\'est pas actif');
+    }
+
+    const isMerchant = wallet.wallet_number.startsWith('LP-MER-');
+
+    if (isMerchant) {
+      const { data: merchant } = await this.supabaseService.getClient()
+        .from('merchants')
+        .select('name, logo_url')
+        .eq('owner_id', wallet.user_id)
+        .maybeSingle();
+
+      return {
+        wallet_number: wallet.wallet_number,
+        is_merchant: true,
+        display_name: merchant?.name || 'Marchand LinkPay',
+        logo_url: merchant?.logo_url || null,
+      };
+    }
+
+    const { data: profile } = await this.supabaseService.getClient()
+      .from('profiles')
+      .select('full_name')
+      .eq('id', wallet.user_id)
+      .maybeSingle();
+
+    return {
+      wallet_number: wallet.wallet_number,
+      is_merchant: false,
+      display_name: maskName(profile?.full_name),
+      logo_url: null,
+    };
+  }
+
+  // ==========================================================================
+  // Transfer — user-to-user, by LinkPay number. Atomic via the transfer_wallet
+  // RPC (see 007_wallet_phase2.sql): both ledger entries are written in one
+  // Postgres transaction, so a transfer is never half-applied.
+  // ==========================================================================
+
+  async transfer(
+    userId: string,
+    dto: { recipient_wallet_number: string; amount_cents: number; description?: string; pin: string },
+    idempotencyKey: string,
+  ) {
+    if (!dto.amount_cents || dto.amount_cents < 1) {
+      throw new BadRequestException('Montant invalide');
+    }
+
+    const { data: existing } = await this.supabaseService.getClient()
+      .from('transfers')
+      .select('*')
+      .eq('idempotency_key', idempotencyKey)
+      .single();
+
+    if (existing) {
+      // A row stuck PENDING here would mean the process crashed between
+      // creating it and calling transfer_wallet() below — this flow is
+      // otherwise fully synchronous, so PENDING never means "still being
+      // processed elsewhere". Extremely rare in practice; not auto-retried
+      // here to avoid a duplicate-idempotency-key insert below, but it's
+      // exactly the kind of row an admin/ops query should watch for.
+      return { transfer: existing, message: 'Transfer already exists (idempotent)' };
+    }
+
+    const senderWallet = await this.getWalletByUserId(userId);
+    if (senderWallet.status !== 'ACTIVE') {
+      throw new BadRequestException(`Votre wallet est ${senderWallet.status}, transfert impossible`);
+    }
+
+    const recipient = await this.lookupWallet(dto.recipient_wallet_number);
+    const { data: recipientWallet, error: recipientError } = await this.supabaseService.getClient()
+      .from('wallets')
+      .select('id, user_id')
+      .eq('wallet_number', recipient.wallet_number)
+      .single();
+
+    if (recipientError || !recipientWallet) {
+      throw new NotFoundException('Destinataire introuvable');
+    }
+
+    if (recipientWallet.id === senderWallet.id) {
+      throw new BadRequestException('Vous ne pouvez pas vous transférer de l\'argent à vous-même');
+    }
+
+    // PIN verified only after the cheap checks above, but always before any
+    // money moves — never trust the frontend's "user confirmed" state.
+    await this.walletPinService.verifyPin(userId, dto.pin);
+
+    const rule = await this.walletLimitsService.getRule('TRANSFER');
+    const fee = this.walletLimitsService.quoteFee(dto.amount_cents, rule);
+    await this.walletLimitsService.assertWithinLimits(senderWallet.id, 'TRANSFER', fee.total_cents, rule);
+
+    const { data: transferRow, error: insertError } = await this.supabaseService.getClient()
+      .from('transfers')
+      .insert({
+        sender_wallet_id: senderWallet.id,
+        recipient_wallet_id: recipientWallet.id,
+        amount_cents: dto.amount_cents,
+        fee_cents: fee.fee_cents,
+        currency: senderWallet.currency,
+        status: 'PENDING',
+        description: dto.description,
+        idempotency_key: idempotencyKey,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      throw new Error(`Failed to create transfer: ${insertError.message}`);
+    }
+
+    const { data: result, error: rpcError } = await this.supabaseService.getClient()
+      .rpc('transfer_wallet', { p_transfer_id: transferRow.id })
+      .single();
+
+    if (rpcError) {
+      // A raised exception inside transfer_wallet() rolls back everything
+      // that RPC call did in its own transaction — including any status
+      // update it might have attempted — so this row is still PENDING at
+      // this point. Mark it FAILED here, from the caller, or a retry with
+      // the same Idempotency-Key would keep finding a stale PENDING row
+      // forever instead of a clear terminal failure.
+      await this.supabaseService.getClient()
+        .from('transfers')
+        .update({ status: 'FAILED', failure_reason: this.classifyTransferFailure(rpcError.message), updated_at: new Date().toISOString() })
+        .eq('id', transferRow.id);
+      throw new BadRequestException(this.explainTransferFailure(rpcError.message));
+    }
+
+    // The money has already moved at this point (transfer_wallet succeeded)
+    // — everything below is best-effort bookkeeping. None of it should be
+    // able to make this call report "failed, nothing was debited" when the
+    // debit in fact already happened, so failures here are logged, not
+    // thrown.
+    const { data: finalTransfer } = await this.supabaseService.getClient()
+      .from('transfers')
+      .select('*')
+      .eq('id', transferRow.id)
+      .single();
+
+    await this.auditService.log({
+      user_id: userId,
+      action: 'wallet_transfer',
+      entity_type: 'transfer',
+      entity_id: transferRow.id,
+      changes: { amount_cents: dto.amount_cents, recipient_wallet_number: recipient.wallet_number },
+    }).catch((err: any) => this.logger.warn(`Audit log failed for transfer ${transferRow.id}: ${err.message}`));
+
+    await this.notificationsService.create({
+      user_id: userId,
+      type: 'transfer_sent',
+      title: 'Transfert envoyé',
+      body: `Votre transfert de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${senderWallet.currency} à ${recipient.display_name} a été effectué.`,
+      data: { transfer_id: transferRow.id },
+    }).catch(() => null);
+
+    if (recipientWallet.user_id) {
+      await this.notificationsService.create({
+        user_id: recipientWallet.user_id,
+        type: 'transfer_received',
+        title: 'Transfert reçu',
+        body: `Vous avez reçu ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${senderWallet.currency}.`,
+        data: { transfer_id: transferRow.id },
+      }).catch(() => null);
+    }
+
+    return {
+      transfer: finalTransfer || { ...transferRow, status: 'SUCCESS' },
+      recipient: { wallet_number: recipient.wallet_number, display_name: recipient.display_name },
+      sender_balance: (result as any)?.sender_balance,
+    };
+  }
+
+  private classifyTransferFailure(message: string): string {
+    if (message?.includes('INSUFFICIENT_BALANCE')) return 'INSUFFICIENT_BALANCE';
+    if (message?.includes('SENDER_WALLET_')) return message.match(/SENDER_WALLET_\w+/)?.[0] || 'SENDER_WALLET_INACTIVE';
+    if (message?.includes('RECIPIENT_WALLET_')) return message.match(/RECIPIENT_WALLET_\w+/)?.[0] || 'RECIPIENT_WALLET_INACTIVE';
+    return 'UNKNOWN';
+  }
+
+  private explainTransferFailure(message: string): string {
+    if (message?.includes('INSUFFICIENT_BALANCE')) return 'Solde LinkPay insuffisant pour ce transfert.';
+    if (message?.includes('not PENDING')) return 'Ce transfert a déjà été traité.';
+    if (message?.includes('WALLET_')) return 'Le compte du destinataire ou de l\'expéditeur n\'est pas actif.';
+    return 'Le transfert a échoué. Aucun montant n\'a été débité.';
+  }
+
+  async getMyTransfers(userId: string, filters?: { page?: number; limit?: number }) {
+    const wallet = await this.getWalletByUserId(userId);
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 20;
+
+    const { data, error, count } = await this.supabaseService.getClient()
+      .from('transfers')
+      .select('*', { count: 'exact' })
+      .or(`sender_wallet_id.eq.${wallet.id},recipient_wallet_id.eq.${wallet.id}`)
+      .order('created_at', { ascending: false })
+      .range((page - 1) * limit, page * limit - 1);
+
+    if (error) throw new Error(`Failed to fetch transfers: ${error.message}`);
+    return { data: (data || []).map((t: any) => ({ ...t, direction: t.sender_wallet_id === wallet.id ? 'out' : 'in' })), total: count || 0, page, limit };
+  }
+
+  // ==========================================================================
+  // Withdrawal — reserves funds immediately (debit_wallet), then settles.
+  // No real Mobile Money/bank payout PSP is integrated yet — the mock
+  // provider settles automatically after a short delay, same honesty
+  // constraint as wallet top-ups (README already documents "mock: succès
+  // automatique"). A real payout integration would replace only the
+  // settlement step below; the reservation/restitution mechanics stay.
+  // ==========================================================================
+
+  async requestWithdrawal(
+    userId: string,
+    dto: { amount_cents: number; channel: 'mobile_money' | 'bank'; destination: Record<string, any>; pin: string },
+    idempotencyKey: string,
+  ) {
+    if (!dto.amount_cents || dto.amount_cents < 1) {
+      throw new BadRequestException('Montant invalide');
+    }
+    if (!dto.destination || Object.keys(dto.destination).length === 0) {
+      throw new BadRequestException('Compte de destination requis');
+    }
+
+    const { data: existing } = await this.supabaseService.getClient()
+      .from('withdrawals')
+      .select('*')
+      .eq('idempotency_key', idempotencyKey)
+      .single();
+
+    if (existing) {
+      return { withdrawal: existing, message: 'Withdrawal already exists (idempotent)' };
+    }
+
+    const wallet = await this.getWalletByUserId(userId);
+    if (wallet.status !== 'ACTIVE') {
+      throw new BadRequestException(`Votre wallet est ${wallet.status}, retrait impossible`);
+    }
+
+    await this.walletPinService.verifyPin(userId, dto.pin);
+
+    const rule = await this.walletLimitsService.getRule('WITHDRAWAL');
+    const fee = this.walletLimitsService.quoteFee(dto.amount_cents, rule);
+    await this.walletLimitsService.assertWithinLimits(wallet.id, 'WITHDRAWAL', fee.total_cents, rule);
+
+    const { data: withdrawal, error: insertError } = await this.supabaseService.getClient()
+      .from('withdrawals')
+      .insert({
+        wallet_id: wallet.id,
+        amount_cents: dto.amount_cents,
+        fee_cents: fee.fee_cents,
+        currency: wallet.currency,
+        channel: dto.channel,
+        destination: dto.destination,
+        status: 'PENDING',
+        psp_provider: 'mock',
+        idempotency_key: idempotencyKey,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      throw new Error(`Failed to create withdrawal: ${insertError.message}`);
+    }
+
+    // Reserve the funds immediately — debit_wallet raises on insufficient
+    // balance, which we surface as a clean error and mark the request FAILED
+    // rather than leaving it dangling PENDING with no funds reserved.
+    const { error: debitError } = await this.supabaseService.getClient().rpc('debit_wallet', {
+      p_wallet_id: wallet.id,
+      p_amount_cents: fee.total_cents,
+      p_entry_type: 'WITHDRAWAL',
+      p_reference: `WITHDRAWAL-${withdrawal.id}`,
+      p_metadata: { withdrawal_id: withdrawal.id, channel: dto.channel },
+    });
+
+    if (debitError) {
+      await this.supabaseService.getClient()
+        .from('withdrawals')
+        .update({ status: 'FAILED', failure_reason: 'INSUFFICIENT_BALANCE', updated_at: new Date().toISOString() })
+        .eq('id', withdrawal.id);
+      throw new BadRequestException('Solde LinkPay insuffisant pour ce retrait.');
+    }
+
+    await this.auditService.log({
+      user_id: userId,
+      action: 'wallet_withdrawal_requested',
+      entity_type: 'withdrawal',
+      entity_id: withdrawal.id,
+      changes: { amount_cents: dto.amount_cents, channel: dto.channel },
+    });
+
+    await this.notificationsService.create({
+      user_id: userId,
+      type: 'withdrawal_processing',
+      title: 'Retrait en cours',
+      body: `Votre retrait de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${wallet.currency} est en cours.`,
+      data: { withdrawal_id: withdrawal.id },
+    }).catch(() => null);
+
+    // Mock settlement only — see module comment above. Real payout would
+    // move this into a webhook-driven confirmation exactly like top-ups.
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const { data: settled } = await this.supabaseService.getClient()
+      .from('withdrawals')
+      .update({ status: 'SUCCESS', psp_reference: `mock_wd_${uuidv4().slice(0, 12)}`, updated_at: new Date().toISOString() })
+      .eq('id', withdrawal.id)
+      .select()
+      .single();
+
+    await this.notificationsService.create({
+      user_id: userId,
+      type: 'withdrawal_success',
+      title: 'Retrait effectué',
+      body: `Votre retrait de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${wallet.currency} a été effectué.`,
+      data: { withdrawal_id: withdrawal.id },
+    }).catch(() => null);
+
+    return { withdrawal: settled };
+  }
+
+  /** Restitution: credits back a reserved withdrawal that ultimately failed after reservation (e.g. a real payout PSP rejecting it later via webhook). Not currently wired to any caller — the mock provider never fails post-reservation — but kept ready for when a real payout integration replaces the settlement step. */
+  async reverseFailedWithdrawal(withdrawalId: string, reason: string) {
+    const { data: withdrawal } = await this.supabaseService.getClient()
+      .from('withdrawals')
+      .select('*')
+      .eq('id', withdrawalId)
+      .single();
+
+    if (!withdrawal || withdrawal.status === 'REVERSED' || withdrawal.status === 'SUCCESS') return;
+
+    await this.supabaseService.getClient().rpc('credit_wallet', {
+      p_wallet_id: withdrawal.wallet_id,
+      p_amount_cents: withdrawal.amount_cents + withdrawal.fee_cents,
+      p_entry_type: 'ADJUSTMENT',
+      p_reference: `WITHDRAWAL-REVERSAL-${withdrawal.id}`,
+      p_metadata: { withdrawal_id: withdrawal.id, reason },
+    });
+
+    await this.supabaseService.getClient()
+      .from('withdrawals')
+      .update({ status: 'REVERSED', failure_reason: reason, updated_at: new Date().toISOString() })
+      .eq('id', withdrawalId);
+  }
+
+  async getMyWithdrawals(userId: string, filters?: { page?: number; limit?: number }) {
+    const wallet = await this.getWalletByUserId(userId);
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 20;
+
+    const { data, error, count } = await this.supabaseService.getClient()
+      .from('withdrawals')
+      .select('*', { count: 'exact' })
+      .eq('wallet_id', wallet.id)
+      .order('created_at', { ascending: false })
+      .range((page - 1) * limit, page * limit - 1);
+
+    if (error) throw new Error(`Failed to fetch withdrawals: ${error.message}`);
+    return { data, total: count || 0, page, limit };
+  }
+}
+
+/** "Jean Kambale" -> "Jean K." — never expose a recipient's full name from a bare number lookup. */
+function maskName(fullName?: string | null): string {
+  if (!fullName) return 'Utilisateur LinkPay';
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1][0]}.`;
 }

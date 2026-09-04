@@ -146,18 +146,53 @@ export class PaymentRequestsService {
     };
   }
 
+  /**
+   * Authenticated counterpart to getByLinkToken() — used by the in-app "Payer
+   * une facture" flow (§39: the client types the invoice reference, not the
+   * long link_token from a QR code/URL). Same enriched shape (merchant info
+   * + live fee preview) and the same status guards, just keyed by the
+   * human-readable reference instead.
+   */
   async getByReference(reference: string) {
-    const { data, error } = await this.supabaseService.getClient()
+    const { data: request, error } = await this.supabaseService.getClient()
       .from('payment_requests')
-      .select('*')
-      .eq('reference', reference)
+      .select(`*, merchant:merchants(id, name, phone, email, address, city, logo_url)`)
+      .eq('reference', reference.trim().toUpperCase())
       .single();
 
-    if (error || !data) {
-      throw new NotFoundException('Payment request not found');
+    if (error || !request) {
+      throw new NotFoundException('Facture introuvable');
     }
 
-    return data;
+    if (request.status === 'EXPIRED' || (request.expires_at && new Date(request.expires_at) < new Date())) {
+      await this.markExpired(request.id);
+      throw new BadRequestException('Cette facture a expiré');
+    }
+    if (request.status === 'PAID') {
+      throw new BadRequestException('Cette facture a déjà été payée');
+    }
+    if (request.status === 'CANCELLED') {
+      throw new BadRequestException('Cette facture a été annulée');
+    }
+
+    const fees = await this.commissionsService.calculateFeesPreview(
+      request.amount_cents,
+      request.currency,
+      request.merchant_id,
+      request.commission_model,
+    );
+
+    return {
+      link_token: request.link_token,
+      reference: request.reference,
+      amount_cents: request.amount_cents,
+      currency: request.currency,
+      description: request.description,
+      merchant: request.merchant,
+      commission_model: request.commission_model,
+      fees,
+      total_cents: fees.total_cents,
+    };
   }
 
   async getMerchantRequests(merchantId: string, filters?: {

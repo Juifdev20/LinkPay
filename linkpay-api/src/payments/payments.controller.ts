@@ -38,6 +38,16 @@ class CreatePaymentDto {
   mobile_money_operator?: string;
 }
 
+class PayWithWalletDto {
+  @ApiProperty({ description: 'Payment request link token' })
+  @IsString()
+  link_token!: string;
+
+  @ApiProperty({ description: 'Transaction PIN' })
+  @IsString()
+  pin!: string;
+}
+
 @ApiTags('Payments')
 @Controller('payments')
 export class PaymentsController {
@@ -68,6 +78,20 @@ export class PaymentsController {
         name: dto.customer_name,
       },
     });
+  }
+
+  @Post('wallet')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Pay an existing payment request (invoice) from the LinkPay wallet — authenticated users only' })
+  async payWithWallet(
+    @CurrentUser('id') userId: string,
+    @Body() dto: PayWithWalletDto,
+    @Headers('idempotency-key') idempotencyKey: string,
+  ) {
+    if (!idempotencyKey) {
+      throw new BadRequestException('Idempotency-Key header is required');
+    }
+    return this.paymentsService.payWithWallet(userId, dto.link_token, dto.pin, idempotencyKey);
   }
 
   @Public()

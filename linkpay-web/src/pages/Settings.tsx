@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Logo } from '@/components/Logo';
 import { PageHeader } from '@/components/PageHeader';
-import { Wallet, ShieldCheck, Users, UserCog, Percent, Building2, UsersRound, Receipt, LogOut, User, HelpCircle, FileText, ChevronRight, Store, Loader2 } from 'lucide-react';
+import { Wallet, ShieldCheck, Users, UserCog, Percent, Building2, UsersRound, Receipt, LogOut, User, HelpCircle, FileText, ChevronRight, Store, Loader2, KeyRound, ArrowLeftRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function SettingsPage() {
@@ -60,7 +60,11 @@ export default function SettingsPage() {
     },
   });
 
+  const walletRoles = ['merchant', 'cashier', 'enterprise', 'client'];
+
   const secondaryLinks = [
+    { to: '/dashboard/wallet/transactions', label: 'Mes transactions LinkPay', icon: ArrowLeftRight, roles: walletRoles },
+    { to: '/dashboard/wallet/pin', label: 'Code PIN de transaction', icon: KeyRound, roles: walletRoles },
     { to: '/dashboard/settlements', label: 'Règlements', icon: Wallet, roles: ['merchant', 'enterprise'] },
     { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: ShieldCheck, roles: ['merchant', 'cashier', 'enterprise'] },
     { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'] },
