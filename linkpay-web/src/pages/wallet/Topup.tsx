@@ -1,23 +1,32 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
+import { CurrencySelector } from '@/components/CurrencySelector';
+import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
+import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicker';
 import { formatCurrency } from '@/lib/utils';
 import { Loader2, Check, DollarSign, ArrowLeft, Wallet as WalletIcon } from 'lucide-react';
 
 const PRESETS = [5000, 10000, 25000, 50000];
 
-type Step = 'amount' | 'confirm' | 'processing' | 'success';
+type Step = 'amount' | 'method' | 'confirm' | 'processing' | 'success';
 
 export default function TopupPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState<Step>('amount');
   const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState<'CDF' | 'USD'>(
+    searchParams.get('currency') === 'USD' ? 'USD' : 'CDF',
+  );
+  const [paymentMethod, setPaymentMethod] = useState<'mobile_money' | 'card'>('mobile_money');
+  const [operator, setOperator] = useState('airtel');
   const [error, setError] = useState('');
   const [result, setResult] = useState<any>(null);
 
@@ -31,14 +40,14 @@ export default function TopupPage() {
 
   const amountCents = Math.round((parseFloat(amount) || 0) * 100);
 
-  const goToConfirm = (e: React.FormEvent) => {
+  const goToMethod = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (!amountCents || amountCents < 100) {
-      setError('Montant minimum : 1 CDF');
+      setError('Montant minimum : 1');
       return;
     }
-    setStep('confirm');
+    setStep('method');
   };
 
   const confirmTopup = async () => {
@@ -47,7 +56,12 @@ export default function TopupPage() {
     try {
       const { data } = await api.post(
         '/wallet/topups',
-        { amount_cents: amountCents },
+        {
+          amount_cents: amountCents,
+          currency,
+          payment_method: paymentMethod,
+          mobile_money_operator: paymentMethod === 'mobile_money' ? operator : undefined,
+        },
         { headers: { 'Idempotency-Key': crypto.randomUUID() } },
       );
 
@@ -79,12 +93,12 @@ export default function TopupPage() {
             </div>
             <h2 className="text-xl font-bold text-foreground mb-1">Recharge réussie !</h2>
             <p className="text-sm text-muted-foreground mb-6">
-              {formatCurrency(amountCents)} ajouté(s) à votre compte LinkPay
+              {formatCurrency(amountCents, currency)} ajouté(s) à votre compte LinkPay
             </p>
             <div className="rounded-xl bg-secondary p-4 text-left space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Montant</span>
-                <span className="font-semibold text-foreground">{formatCurrency(amountCents)}</span>
+                <span className="font-semibold text-foreground">{formatCurrency(amountCents, currency)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Statut</span>
@@ -126,7 +140,7 @@ export default function TopupPage() {
         <Card>
           <CardContent className="pt-6">
             <button
-              onClick={() => setStep('amount')}
+              onClick={() => setStep('method')}
               className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"
             >
               <ArrowLeft className="w-4 h-4" /> Modifier
@@ -141,14 +155,44 @@ export default function TopupPage() {
                 <WalletIcon className="w-7 h-7 text-primary" />
               </div>
               <p className="text-sm text-muted-foreground">Confirmer la recharge de</p>
-              <p className="text-3xl font-bold text-foreground mt-1">{formatCurrency(amountCents)}</p>
-              {wallet?.wallet_number && (
-                <p className="text-xs text-muted-foreground mt-1">vers {wallet.wallet_number}</p>
-              )}
+              <p className="text-3xl font-bold text-foreground mt-1">{formatCurrency(amountCents, currency)}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {paymentMethod === 'mobile_money' ? `via Mobile Money (${operator})` : 'via carte bancaire'}
+                {wallet?.wallet_number ? ` — vers ${wallet.wallet_number}` : ''}
+              </p>
             </div>
             <Button className="w-full" size="lg" onClick={confirmTopup}>
               Confirmer
             </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (step === 'method') {
+    return (
+      <div className="p-6 max-w-lg mx-auto">
+        <Card>
+          <CardContent className="pt-6">
+            <button
+              onClick={() => setStep('amount')}
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"
+            >
+              <ArrowLeft className="w-4 h-4" /> Modifier le montant
+            </button>
+            <p className="text-sm text-muted-foreground mb-4">
+              Recharger de {formatCurrency(amountCents, currency)}
+            </p>
+            <div className="space-y-4">
+              <PaymentMethodSelector value={paymentMethod} onChange={setPaymentMethod} />
+              {paymentMethod === 'mobile_money' && (
+                <MobileMoneyOperatorPicker value={operator} onChange={setOperator} />
+              )}
+              <Button className="w-full" size="lg" onClick={() => setStep('confirm')}>
+                Continuer
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -163,14 +207,18 @@ export default function TopupPage() {
           <p className="text-sm text-muted-foreground mb-6">
             {wallet?.wallet_number ? `Compte ${wallet.wallet_number}` : 'Ajoutez des fonds à votre solde LinkPay'}
           </p>
-          <form onSubmit={goToConfirm} className="space-y-4">
+          <form onSubmit={goToMethod} className="space-y-4">
             {error && (
               <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
                 {error}
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="amount" className="font-semibold">Montant (CDF)</Label>
+              <Label className="font-semibold">Devise</Label>
+              <CurrencySelector value={currency} onChange={setCurrency} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="amount" className="font-semibold">Montant ({currency})</Label>
               <div className="relative">
                 <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input

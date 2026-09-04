@@ -229,7 +229,7 @@ export class PaymentsService {
       request.commission_model,
     );
 
-    const rule = await this.walletLimitsService.getRule('WALLET_PAYMENT');
+    const rule = await this.walletLimitsService.getRule('WALLET_PAYMENT', request.currency);
     await this.walletLimitsService.assertWithinLimits(payerWallet.id, 'WALLET_PAYMENT', fees.total_cents, rule);
 
     const pspIntentId = `WALLET-${uuidv4()}`;
@@ -266,6 +266,7 @@ export class PaymentsService {
       p_amount_cents: fees.total_cents,
       p_entry_type: 'PAYMENT',
       p_reference: request.reference,
+      p_currency: request.currency,
       p_metadata: { payment_request_id: request.id, payment_intent_id: intent.id },
     });
 
@@ -297,6 +298,7 @@ export class PaymentsService {
         p_amount_cents: fees.total_cents,
         p_entry_type: 'ADJUSTMENT',
         p_reference: `REVERSAL-${request.reference}`,
+        p_currency: request.currency,
         p_metadata: { payment_intent_id: intent.id, reason: 'finalize_failed' },
       });
       await this.supabaseService.getClient().from('payment_intents').update({ status: 'FAILED', updated_at: new Date().toISOString() }).eq('id', intent.id);
@@ -507,6 +509,7 @@ export class PaymentsService {
           p_amount_cents: topup.amount_cents,
           p_entry_type: 'TOPUP',
           p_reference: `TOPUP-${topup.id}`,
+          p_currency: topup.currency,
           p_metadata: { wallet_topup_id: topup.id, psp_intent_id: pspIntentId },
         });
 
@@ -522,7 +525,7 @@ export class PaymentsService {
 
         const { data: wallet } = await this.supabaseService.getClient()
           .from('wallets')
-          .select('user_id, currency')
+          .select('user_id')
           .eq('id', topup.wallet_id)
           .single();
 
@@ -531,7 +534,7 @@ export class PaymentsService {
             user_id: wallet.user_id,
             type: 'wallet_topup_success',
             title: 'Portefeuille rechargé',
-            body: `Votre compte LinkPay a été crédité de ${(topup.amount_cents / 100).toLocaleString('fr-FR')} ${wallet.currency}.`,
+            body: `Votre compte LinkPay a été crédité de ${(topup.amount_cents / 100).toLocaleString('fr-FR')} ${topup.currency}.`,
             data: { wallet_topup_id: topup.id },
           }).catch(() => null);
         }

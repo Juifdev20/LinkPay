@@ -16,11 +16,13 @@ export class MerchantsService {
     email?: string;
     address?: string;
     city?: string;
+    default_currency?: string;
   }) {
     const { data: merchant, error } = await this.supabaseService.getClient()
       .from('merchants')
       .insert({
         ...data,
+        default_currency: data.default_currency || 'CDF',
         owner_id: ownerId,
         status: 'pending',
         country: 'CD',
@@ -96,7 +98,7 @@ export class MerchantsService {
   async updateMerchant(id: string, updates: Record<string, any>) {
     const allowedFields = [
       'name', 'legal_name', 'phone', 'email', 'address', 'city',
-      'settlement_account', 'limits', 'status', 'commission_rule_id',
+      'settlement_account', 'limits', 'status', 'commission_rule_id', 'default_currency',
     ];
     const filtered: Record<string, any> = {};
 

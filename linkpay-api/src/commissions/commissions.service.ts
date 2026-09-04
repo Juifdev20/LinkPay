@@ -24,7 +24,7 @@ export class CommissionsService {
     merchantId: string,
     commissionModel: string,
   ): Promise<CommissionResult> {
-    const rule = await this.getActiveRule(merchantId);
+    const rule = await this.getActiveRule(merchantId, currency);
 
     const pspFeeCents = this.estimatePspFee(amountCents);
     const platformFeeCents = this.calculateCommission(amountCents, rule);
@@ -93,7 +93,7 @@ export class CommissionsService {
     return Math.floor(amountCents * 0.015);
   }
 
-  private async getActiveRule(merchantId: string): Promise<any> {
+  private async getActiveRule(merchantId: string, currency: string): Promise<any> {
     const { data: merchant } = await this.supabaseService.getClient()
       .from('merchants')
       .select('commission_rule_id')
@@ -105,15 +105,22 @@ export class CommissionsService {
         .from('commission_rules')
         .select('*')
         .eq('id', merchant.commission_rule_id)
+        .eq('currency', currency)
         .eq('is_active', true)
         .single();
       if (rule) return rule;
     }
 
+    // A merchant's pinned rule (commission_rule_id) is currency-agnostic by
+    // design (one merchant, one preferred rule) — if it doesn't match the
+    // currency being charged (e.g. pinned to a CDF rule but this payment is
+    // in USD), fall through to the global rule for that currency below,
+    // same as a merchant with no pinned rule at all.
     const { data: globalRule } = await this.supabaseService.getClient()
       .from('commission_rules')
       .select('*')
       .eq('applies_to', 'all')
+      .eq('currency', currency)
       .eq('is_active', true)
       .order('valid_from', { ascending: false })
       .limit(1)
@@ -138,6 +145,7 @@ export class CommissionsService {
       .select('version')
       .eq('applies_to', data.applies_to || 'all')
       .eq('target_id', data.target_id || null)
+      .eq('currency', data.currency || 'CDF')
       .order('version', { ascending: false })
       .limit(1);
 

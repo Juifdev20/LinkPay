@@ -27,12 +27,13 @@ export interface FeeQuote {
 export class WalletLimitsService {
   constructor(private supabaseService: SupabaseService) {}
 
-  async getRule(opType: WalletOpType) {
+  async getRule(opType: WalletOpType, currency: string) {
     const { data } = await this.supabaseService.getClient()
       .from('wallet_limits')
       .select('*')
       .eq('op_type', opType)
       .eq('applies_to', 'all')
+      .eq('currency', currency)
       .eq('is_active', true)
       .single();
     return data;

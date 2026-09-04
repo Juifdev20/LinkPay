@@ -11,6 +11,11 @@ export class SettlementsService {
     private ledgerService: LedgerService,
   ) {}
 
+  /**
+   * Groups unsettled transactions by their actual currency and creates one
+   * settlement row per currency present in the period — never a single row
+   * mixing CDF and USD revenue together under a hardcoded currency.
+   */
   async createSettlement(merchantId: string, data?: {
     period_start?: string;
     period_end?: string;
@@ -33,70 +38,87 @@ export class SettlementsService {
       throw new NotFoundException('No unsettled transactions found for this period');
     }
 
-    const grossCents = transactions.reduce((sum: number, t: any) => sum + t.amount_cents, 0);
-    const pspFees = transactions.reduce((sum: number, t: any) => sum + t.psp_fee_cents, 0);
-    const platformFees = transactions.reduce((sum: number, t: any) => sum + t.platform_fee_cents, 0);
-    const netCents = transactions.reduce((sum: number, t: any) => sum + t.net_cents, 0);
-
-    const reference = `STL-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-
-    const { data: settlement, error: settlementError } = await this.supabaseService.getClient()
-      .from('settlements')
-      .insert({
-        merchant_id: merchantId,
-        period_start: periodStart,
-        period_end: periodEnd,
-        gross_cents: grossCents,
-        psp_fees_cents: pspFees,
-        platform_fees_cents: platformFees,
-        net_cents: netCents,
-        currency: 'CDF',
-        status: 'PENDING',
-        reference,
-        transaction_count: transactions.length,
-      })
-      .select()
-      .single();
-
-    if (settlementError) {
-      throw new Error(`Failed to create settlement: ${settlementError.message}`);
+    const byCurrency = new Map<string, any[]>();
+    for (const t of transactions) {
+      const key = t.currency || 'CDF';
+      if (!byCurrency.has(key)) byCurrency.set(key, []);
+      byCurrency.get(key)!.push(t);
     }
 
-    const txIds = transactions.map((t: any) => t.id);
-    await this.supabaseService.getClient()
-      .from('transactions')
-      .update({ settlement_id: settlement.id })
-      .in('id', txIds);
+    const settlements: any[] = [];
 
-    await this.ledgerService.writeSettlementEntry(settlement);
+    for (const [currency, txs] of byCurrency) {
+      const grossCents = txs.reduce((sum: number, t: any) => sum + t.amount_cents, 0);
+      const pspFees = txs.reduce((sum: number, t: any) => sum + t.psp_fee_cents, 0);
+      const platformFees = txs.reduce((sum: number, t: any) => sum + t.platform_fee_cents, 0);
+      const netCents = txs.reduce((sum: number, t: any) => sum + t.net_cents, 0);
 
-    this.logger.log(`Settlement created: ${reference} for ${transactions.length} transactions, net=${netCents}`);
-    return settlement;
+      const reference = `STL-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+      const { data: settlement, error: settlementError } = await this.supabaseService.getClient()
+        .from('settlements')
+        .insert({
+          merchant_id: merchantId,
+          period_start: periodStart,
+          period_end: periodEnd,
+          gross_cents: grossCents,
+          psp_fees_cents: pspFees,
+          platform_fees_cents: platformFees,
+          net_cents: netCents,
+          currency,
+          status: 'PENDING',
+          reference,
+          transaction_count: txs.length,
+        })
+        .select()
+        .single();
+
+      if (settlementError) {
+        throw new Error(`Failed to create settlement: ${settlementError.message}`);
+      }
+
+      const txIds = txs.map((t: any) => t.id);
+      await this.supabaseService.getClient()
+        .from('transactions')
+        .update({ settlement_id: settlement.id })
+        .in('id', txIds);
+
+      await this.ledgerService.writeSettlementEntry(settlement);
+
+      this.logger.log(`Settlement created: ${reference} for ${txs.length} transactions, net=${netCents} ${currency}`);
+      settlements.push(settlement);
+    }
+
+    return settlements;
   }
 
   async getMerchantBalance(merchantId: string) {
     const { data: unsettled } = await this.supabaseService.getClient()
       .from('transactions')
-      .select('net_cents')
+      .select('net_cents, currency')
       .eq('merchant_id', merchantId)
       .eq('status', 'SUCCESS')
       .is('settlement_id', null);
 
-    const availableCents = unsettled?.reduce((sum: number, t: any) => sum + (t.net_cents || 0), 0) || 0;
+    const available = { CDF: 0, USD: 0 };
+    for (const t of unsettled || []) {
+      const key = t.currency === 'USD' ? 'USD' : 'CDF';
+      available[key] += t.net_cents || 0;
+    }
 
     const { data: pendingSettlements } = await this.supabaseService.getClient()
       .from('settlements')
-      .select('net_cents')
+      .select('net_cents, currency')
       .eq('merchant_id', merchantId)
       .in('status', ['PENDING', 'PROCESSING']);
 
-    const pendingCents = pendingSettlements?.reduce((sum: number, s: any) => sum + (s.net_cents || 0), 0) || 0;
+    const pending = { CDF: 0, USD: 0 };
+    for (const s of pendingSettlements || []) {
+      const key = s.currency === 'USD' ? 'USD' : 'CDF';
+      pending[key] += s.net_cents || 0;
+    }
 
-    return {
-      available_cents: availableCents,
-      pending_cents: pendingCents,
-      currency: 'CDF',
-    };
+    return { available, pending };
   }
 
   async getSettlementById(id: string) {

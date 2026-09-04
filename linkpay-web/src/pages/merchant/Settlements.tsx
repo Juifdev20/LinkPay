@@ -46,11 +46,12 @@ export default function SettlementsPage() {
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-3">
               <Wallet className="w-5 h-5 text-primary" />
             </div>
-            <p className="text-2xl font-bold text-foreground">{formatCurrency(balance?.available_cents || 0)}</p>
+            <p className="text-xl font-bold text-foreground">{formatCurrency(balance?.available?.CDF || 0, 'CDF')}</p>
+            <p className="text-xl font-bold text-foreground">{formatCurrency(balance?.available?.USD || 0, 'USD')}</p>
             <p className="text-sm text-muted-foreground">Solde disponible</p>
             <Button
               className="w-full mt-4"
-              disabled={!balance?.available_cents || requestMutation.isPending}
+              disabled={(!balance?.available?.CDF && !balance?.available?.USD) || requestMutation.isPending}
               onClick={() => requestMutation.mutate()}
             >
               {requestMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
@@ -63,7 +64,8 @@ export default function SettlementsPage() {
             <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center mb-3">
               <Wallet className="w-5 h-5 text-muted-foreground" />
             </div>
-            <p className="text-2xl font-bold text-foreground">{formatCurrency(balance?.pending_cents || 0)}</p>
+            <p className="text-xl font-bold text-foreground">{formatCurrency(balance?.pending?.CDF || 0, 'CDF')}</p>
+            <p className="text-xl font-bold text-foreground">{formatCurrency(balance?.pending?.USD || 0, 'USD')}</p>
             <p className="text-sm text-muted-foreground">En attente</p>
           </CardContent>
         </Card>

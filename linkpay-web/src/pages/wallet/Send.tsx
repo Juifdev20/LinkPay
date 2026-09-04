@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { PinInput } from '@/components/PinInput';
+import { CurrencySelector } from '@/components/CurrencySelector';
 import { formatCurrency } from '@/lib/utils';
 import { Loader2, Check, Search, ArrowLeft, Send as SendIcon, User, Store } from 'lucide-react';
 
@@ -15,10 +16,14 @@ type Step = 'number' | 'amount' | 'confirm' | 'pin' | 'processing' | 'success';
 export default function SendPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState<Step>('number');
   const [recipientNumber, setRecipientNumber] = useState('');
   const [recipient, setRecipient] = useState<any>(null);
   const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState<'CDF' | 'USD'>(
+    searchParams.get('currency') === 'USD' ? 'USD' : 'CDF',
+  );
   const [description, setDescription] = useState('');
   const [fee, setFee] = useState<any>(null);
   const [pin, setPin] = useState('');
@@ -56,7 +61,7 @@ export default function SendPage() {
       return;
     }
     try {
-      const { data } = await api.get(`/wallet/fees/TRANSFER?amount_cents=${amountCents}`);
+      const { data } = await api.get(`/wallet/fees/TRANSFER?amount_cents=${amountCents}&currency=${currency}`);
       setFee(data);
       setStep('confirm');
     } catch {
@@ -73,7 +78,7 @@ export default function SendPage() {
     try {
       const { data } = await api.post(
         '/wallet/transfers',
-        { recipient_wallet_number: recipient.wallet_number, amount_cents: amountCents, description, pin: val },
+        { recipient_wallet_number: recipient.wallet_number, amount_cents: amountCents, currency, description, pin: val },
         { headers: { 'Idempotency-Key': crypto.randomUUID() } },
       );
       setResult(data);
@@ -96,7 +101,7 @@ export default function SendPage() {
             </div>
             <h2 className="text-xl font-bold text-foreground mb-1">Transfert envoyé !</h2>
             <p className="text-sm text-muted-foreground mb-6">
-              {formatCurrency(amountCents)} envoyé(s) à {recipient?.display_name}
+              {formatCurrency(amountCents, currency)} envoyé(s) à {recipient?.display_name}
             </p>
             <div className="rounded-xl bg-secondary p-4 text-left space-y-2">
               <div className="flex justify-between text-sm">
@@ -109,12 +114,12 @@ export default function SendPage() {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Montant</span>
-                <span className="font-semibold text-foreground">{formatCurrency(amountCents)}</span>
+                <span className="font-semibold text-foreground">{formatCurrency(amountCents, currency)}</span>
               </div>
               {fee?.fee_cents > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Frais</span>
-                  <span className="text-foreground">{formatCurrency(fee.fee_cents)}</span>
+                  <span className="text-foreground">{formatCurrency(fee.fee_cents, currency)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm">
@@ -159,7 +164,7 @@ export default function SendPage() {
             )}
             <h2 className="text-lg font-bold text-foreground mb-1 mt-10 clear-left">Code PIN</h2>
             <p className="text-sm text-muted-foreground mb-6">
-              Confirmez l'envoi de {formatCurrency(amountCents)} à {recipient?.display_name}
+              Confirmez l'envoi de {formatCurrency(amountCents, currency)} à {recipient?.display_name}
             </p>
             <PinInput value={pin} onChange={handlePinComplete} length={4} autoFocus />
           </CardContent>
@@ -191,15 +196,15 @@ export default function SendPage() {
             <div className="rounded-xl bg-secondary p-4 space-y-2 mb-6">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Montant</span>
-                <span className="font-semibold text-foreground">{formatCurrency(amountCents)}</span>
+                <span className="font-semibold text-foreground">{formatCurrency(amountCents, currency)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Frais</span>
-                <span className="text-foreground">{fee?.fee_cents ? formatCurrency(fee.fee_cents) : 'Aucun'}</span>
+                <span className="text-foreground">{fee?.fee_cents ? formatCurrency(fee.fee_cents, currency) : 'Aucun'}</span>
               </div>
               <div className="flex justify-between text-sm font-bold pt-2 border-t border-border">
                 <span className="text-foreground">Total débité</span>
-                <span className="text-foreground">{formatCurrency(fee?.total_cents ?? amountCents)}</span>
+                <span className="text-foreground">{formatCurrency(fee?.total_cents ?? amountCents, currency)}</span>
               </div>
             </div>
             <Button className="w-full" size="lg" onClick={() => setStep('pin')}>
@@ -235,9 +240,13 @@ export default function SendPage() {
                 </div>
               )}
               <div className="space-y-2">
-                <Label htmlFor="amount" className="font-semibold">Montant (CDF)</Label>
+                <Label className="font-semibold">Devise</Label>
+                <CurrencySelector value={currency} onChange={setCurrency} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="amount" className="font-semibold">Montant ({currency})</Label>
                 <Input id="amount" type="number" step="0.01" placeholder="10000" value={amount} onChange={(e) => setAmount(e.target.value)} required autoFocus />
-                {wallet && <p className="text-xs text-muted-foreground">Solde disponible : {formatCurrency(wallet.balance_cents)}</p>}
+                {wallet && <p className="text-xs text-muted-foreground">Solde disponible : {formatCurrency(wallet.balances?.[currency] || 0, currency)}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="description" className="font-semibold">Note (optionnel)</Label>

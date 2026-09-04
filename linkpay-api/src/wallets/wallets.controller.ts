@@ -9,6 +9,20 @@ class CreateTopupDto {
   @IsNumber()
   @Min(100)
   amount_cents!: number;
+
+  @ApiProperty({ enum: ['CDF', 'USD'] })
+  @IsIn(['CDF', 'USD'])
+  currency!: string;
+
+  @ApiPropertyOptional({ enum: ['mobile_money', 'card'] })
+  @IsOptional()
+  @IsIn(['mobile_money', 'card'])
+  payment_method?: string;
+
+  @ApiPropertyOptional({ example: 'airtel' })
+  @IsOptional()
+  @IsString()
+  mobile_money_operator?: string;
 }
 
 class SetPinDto {
@@ -33,6 +47,10 @@ class TransferDto {
   @Min(1)
   amount_cents!: number;
 
+  @ApiProperty({ enum: ['CDF', 'USD'] })
+  @IsIn(['CDF', 'USD'])
+  currency!: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -48,6 +66,10 @@ class WithdrawalDto {
   @IsNumber()
   @Min(1)
   amount_cents!: number;
+
+  @ApiProperty({ enum: ['CDF', 'USD'] })
+  @IsIn(['CDF', 'USD'])
+  currency!: string;
 
   @ApiProperty({ enum: ['mobile_money', 'bank'] })
   @IsIn(['mobile_money', 'bank'])
@@ -97,17 +119,31 @@ export class WalletsController {
     if (!idempotencyKey) {
       throw new BadRequestException('Idempotency-Key header is required');
     }
-    return this.walletsService.initiateTopup(userId, dto.amount_cents, idempotencyKey);
+    return this.walletsService.initiateTopup(
+      userId,
+      dto.amount_cents,
+      dto.currency,
+      idempotencyKey,
+      dto.payment_method,
+      dto.mobile_money_operator,
+    );
   }
 
   @Get('fees/:opType')
   @ApiOperation({ summary: 'Preview the fee for an operation before confirming (never hidden from the user)' })
-  async previewFee(@Param('opType') opType: string, @Query('amount_cents') amountCents: string) {
+  async previewFee(
+    @Param('opType') opType: string,
+    @Query('amount_cents') amountCents: string,
+    @Query('currency') currency: string,
+  ) {
     const amount = parseInt(amountCents, 10) || 0;
     if (!['TRANSFER', 'WITHDRAWAL', 'WALLET_PAYMENT'].includes(opType)) {
       throw new BadRequestException('Invalid operation type');
     }
-    return this.walletsService.previewFee(opType as any, amount);
+    if (!['CDF', 'USD'].includes(currency)) {
+      throw new BadRequestException('Invalid currency');
+    }
+    return this.walletsService.previewFee(opType as any, amount, currency);
   }
 
   @Get('pin/status')

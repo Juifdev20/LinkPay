@@ -69,7 +69,7 @@ export default function PayInvoicePage() {
             </div>
             <h2 className="text-xl font-bold text-foreground mb-1">Paiement réussi !</h2>
             <p className="text-sm text-muted-foreground mb-6">
-              {formatCurrency(invoice?.total_cents)} payé à {invoice?.merchant?.name}
+              {formatCurrency(invoice?.total_cents, invoice?.currency)} payé à {invoice?.merchant?.name}
             </p>
             <div className="rounded-xl bg-secondary p-4 text-left space-y-2">
               <div className="flex justify-between text-sm">
@@ -126,7 +126,7 @@ export default function PayInvoicePage() {
             )}
             <h2 className="text-lg font-bold text-foreground mb-1 mt-10 clear-left">Code PIN</h2>
             <p className="text-sm text-muted-foreground mb-6">
-              Confirmez le paiement de {formatCurrency(invoice?.total_cents)}
+              Confirmez le paiement de {formatCurrency(invoice?.total_cents, invoice?.currency)}
             </p>
             <PinInput value={pin} onChange={handlePinComplete} length={4} autoFocus />
           </CardContent>
@@ -158,6 +158,7 @@ export default function PayInvoicePage() {
               </div>
               <p className="font-bold text-foreground text-lg">{invoice?.merchant?.name}</p>
               <p className="text-sm text-muted-foreground">{invoice?.description}</p>
+              <p className="text-xs text-muted-foreground mt-1">Facture en {invoice?.currency}</p>
             </div>
             <div className="rounded-xl bg-secondary p-4 space-y-2 mb-6">
               <div className="flex justify-between text-sm">
@@ -166,21 +167,21 @@ export default function PayInvoicePage() {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Montant</span>
-                <span className="font-semibold text-foreground">{formatCurrency(invoice?.amount_cents)}</span>
+                <span className="font-semibold text-foreground">{formatCurrency(invoice?.amount_cents, invoice?.currency)}</span>
               </div>
               {invoice?.fees?.total_fees_cents > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Frais</span>
-                  <span className="text-foreground">{formatCurrency(invoice.fees.total_fees_cents)}</span>
+                  <span className="text-foreground">{formatCurrency(invoice.fees.total_fees_cents, invoice?.currency)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm font-bold pt-2 border-t border-border">
                 <span className="text-foreground">Total débité (solde LinkPay)</span>
-                <span className="text-foreground">{formatCurrency(invoice?.total_cents)}</span>
+                <span className="text-foreground">{formatCurrency(invoice?.total_cents, invoice?.currency)}</span>
               </div>
             </div>
             <Button className="w-full" size="lg" onClick={() => setStep('pin')}>
-              Payer {formatCurrency(invoice?.total_cents)}
+              Payer {formatCurrency(invoice?.total_cents, invoice?.currency)}
             </Button>
           </CardContent>
         </Card>

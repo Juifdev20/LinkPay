@@ -6,15 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Logo } from '@/components/Logo';
+import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
+import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicker';
+import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { cn } from '@/lib/utils';
-import { Loader2, CheckCircle, AlertCircle, Lock, User, Phone, Smartphone, CreditCard } from 'lucide-react';
-
-const OPERATORS = [
-  { value: 'airtel', label: 'Airtel Money' },
-  { value: 'orange', label: 'Orange Money' },
-  { value: 'vodacom', label: 'M-Pesa (Vodacom)' },
-];
+import { Loader2, CheckCircle, AlertCircle, Lock, User, Phone, Smartphone } from 'lucide-react';
 
 export default function PaymentLinkPage() {
   const { token } = useParams<{ token: string }>();
@@ -26,7 +22,7 @@ export default function PaymentLinkPage() {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'mobile_money' | 'card'>('mobile_money');
-  const [operator, setOperator] = useState(OPERATORS[0].value);
+  const [operator, setOperator] = useState(MOBILE_MONEY_OPERATORS[0].value);
 
   useEffect(() => {
     api.get(`/payment-requests/link/${token}`)
@@ -137,7 +133,7 @@ export default function PaymentLinkPage() {
   // real mobile money STK/USSD push, where LinkPay never sees the PIN and the
   // confirmation happens entirely on the customer's device.
   if (paying) {
-    const operatorLabel = OPERATORS.find((o) => o.value === operator)?.label;
+    const operatorLabel = MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label;
     return (
       <div className="min-h-screen flex items-center justify-center px-4 bg-background">
         <div className="w-full max-w-md">
@@ -188,59 +184,11 @@ export default function PaymentLinkPage() {
               </div>
             </div>
 
-            <div className="space-y-2 mb-4">
-              <Label className="font-semibold">Mode de paiement</Label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('mobile_money')}
-                  className={cn(
-                    'flex flex-col items-center gap-1.5 rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-colors',
-                    paymentMethod === 'mobile_money'
-                      ? 'border-primary bg-primary/5 text-primary'
-                      : 'border-input text-muted-foreground hover:bg-accent',
-                  )}
-                >
-                  <Smartphone className="w-5 h-5" />
-                  Mobile Money
-                </button>
-                <button
-                  type="button"
-                  disabled
-                  title="Bientôt disponible"
-                  className="flex flex-col items-center gap-1.5 rounded-xl border-2 border-input px-4 py-3 text-sm font-semibold text-muted-foreground/50 cursor-not-allowed relative"
-                >
-                  <CreditCard className="w-5 h-5" />
-                  Carte bancaire
-                  <span className="absolute -top-2 right-2 text-[10px] font-bold bg-secondary text-muted-foreground px-1.5 py-0.5 rounded-full">
-                    Bientôt
-                  </span>
-                </button>
-              </div>
-            </div>
+            <PaymentMethodSelector value={paymentMethod} onChange={setPaymentMethod} className="mb-4" />
 
             <div className="space-y-4">
               {paymentMethod === 'mobile_money' && (
-                <div className="space-y-2">
-                  <Label className="font-semibold">Opérateur</Label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {OPERATORS.map((op) => (
-                      <button
-                        key={op.value}
-                        type="button"
-                        onClick={() => setOperator(op.value)}
-                        className={cn(
-                          'rounded-lg border px-2 py-2 text-xs font-medium transition-colors',
-                          operator === op.value
-                            ? 'border-primary bg-primary/5 text-primary'
-                            : 'border-input text-muted-foreground hover:bg-accent',
-                        )}
-                      >
-                        {op.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <MobileMoneyOperatorPicker value={operator} onChange={setOperator} />
               )}
               <div className="space-y-2">
                 <Label htmlFor="name" className="font-semibold">Votre nom</Label>

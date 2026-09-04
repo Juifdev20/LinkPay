@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 
 export default function ClientDashboard() {
   const navigate = useNavigate();
+  const [walletCurrency, setWalletCurrency] = useState<'CDF' | 'USD'>('CDF');
   const { data: stats } = useQuery({
     queryKey: ['client-stats'],
     queryFn: async () => {
@@ -48,11 +50,12 @@ export default function ClientDashboard() {
       <PageHeader title="Mon compte" />
 
       <BalanceCard
-        balanceCents={wallet?.balance_cents || 0}
+        balances={wallet?.balances || { CDF: 0, USD: 0 }}
         label="Solde LinkPay"
         subtitle={wallet?.wallet_number}
         maskable
-        actions={<WalletActions />}
+        onCurrencyChange={setWalletCurrency}
+        actions={<WalletActions currency={walletCurrency} />}
       />
 
       <div className="grid grid-cols-2 gap-4">

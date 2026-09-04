@@ -25,7 +25,7 @@ export class PaymentRequestsService {
   }) {
     const reference = this.generateReference();
     const linkToken = uuidv4().replace(/-/g, '');
-    const currency = data.currency || 'CDF';
+    const currency = data.currency || (await this.getMerchantDefaultCurrency(merchantId));
     const commissionModel = data.commission_model || 'MERCHANT_PAID';
 
     const expiresAt = new Date();
@@ -266,6 +266,15 @@ export class PaymentRequestsService {
         updated_at: new Date().toISOString(),
       })
       .eq('id', requestId);
+  }
+
+  private async getMerchantDefaultCurrency(merchantId: string): Promise<string> {
+    const { data } = await this.supabaseService.getClient()
+      .from('merchants')
+      .select('default_currency')
+      .eq('id', merchantId)
+      .single();
+    return data?.default_currency || 'CDF';
   }
 
   private generateReference(): string {

@@ -4,7 +4,7 @@ import { MerchantsService } from './merchants.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { IsString, IsOptional, MaxLength, IsEmail } from 'class-validator';
+import { IsString, IsOptional, MaxLength, IsEmail, IsIn } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 class AddMerchantUserDto {
@@ -43,6 +43,11 @@ class CreateMerchantDto {
   @IsOptional()
   @IsString()
   city?: string;
+
+  @ApiPropertyOptional({ default: 'CDF', enum: ['CDF', 'USD'], description: 'Default currency for new payment links from this shop' })
+  @IsOptional()
+  @IsIn(['CDF', 'USD'])
+  default_currency?: string;
 }
 
 @ApiTags('Merchants')

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -7,24 +7,25 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { PinInput } from '@/components/PinInput';
+import { CurrencySelector } from '@/components/CurrencySelector';
+import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicker';
+import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
 import { formatCurrency, cn } from '@/lib/utils';
 import { Loader2, Check, ArrowLeft, ArrowUpFromLine, Smartphone, Landmark } from 'lucide-react';
 
 type Step = 'amount' | 'destination' | 'confirm' | 'pin' | 'processing' | 'success';
 
-const OPERATORS = [
-  { value: 'airtel', label: 'Airtel Money' },
-  { value: 'orange', label: 'Orange Money' },
-  { value: 'vodacom', label: 'M-Pesa (Vodacom)' },
-];
-
 export default function WithdrawPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState<Step>('amount');
   const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState<'CDF' | 'USD'>(
+    searchParams.get('currency') === 'USD' ? 'USD' : 'CDF',
+  );
   const [channel, setChannel] = useState<'mobile_money' | 'bank'>('mobile_money');
-  const [operator, setOperator] = useState(OPERATORS[0].value);
+  const [operator, setOperator] = useState(MOBILE_MONEY_OPERATORS[0].value);
   const [phone, setPhone] = useState('');
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
@@ -63,7 +64,7 @@ export default function WithdrawPage() {
       return;
     }
     try {
-      const { data } = await api.get(`/wallet/fees/WITHDRAWAL?amount_cents=${amountCents}`);
+      const { data } = await api.get(`/wallet/fees/WITHDRAWAL?amount_cents=${amountCents}&currency=${currency}`);
       setFee(data);
     } catch {
       setFee({ fee_cents: 0, amount_cents: amountCents, total_cents: amountCents });
@@ -82,7 +83,7 @@ export default function WithdrawPage() {
     try {
       const { data } = await api.post(
         '/wallet/withdrawals',
-        { amount_cents: amountCents, channel, destination, pin: val },
+        { amount_cents: amountCents, currency, channel, destination, pin: val },
         { headers: { 'Idempotency-Key': crypto.randomUUID() } },
       );
       setResult(data);
@@ -106,17 +107,17 @@ export default function WithdrawPage() {
             </div>
             <h2 className="text-xl font-bold text-foreground mb-1">Retrait effectué !</h2>
             <p className="text-sm text-muted-foreground mb-6">
-              {formatCurrency(amountCents)} vers {channel === 'mobile_money' ? OPERATORS.find((o) => o.value === operator)?.label : bankName}
+              {formatCurrency(amountCents, currency)} vers {channel === 'mobile_money' ? MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label : bankName}
             </p>
             <div className="rounded-xl bg-secondary p-4 text-left space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Montant</span>
-                <span className="font-semibold text-foreground">{formatCurrency(amountCents)}</span>
+                <span className="font-semibold text-foreground">{formatCurrency(amountCents, currency)}</span>
               </div>
               {fee?.fee_cents > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Frais</span>
-                  <span className="text-foreground">{formatCurrency(fee.fee_cents)}</span>
+                  <span className="text-foreground">{formatCurrency(fee.fee_cents, currency)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm">
@@ -161,7 +162,7 @@ export default function WithdrawPage() {
               </div>
             )}
             <h2 className="text-lg font-bold text-foreground mb-1 mt-10 clear-left">Code PIN</h2>
-            <p className="text-sm text-muted-foreground mb-6">Confirmez le retrait de {formatCurrency(amountCents)}</p>
+            <p className="text-sm text-muted-foreground mb-6">Confirmez le retrait de {formatCurrency(amountCents, currency)}</p>
             <PinInput value={pin} onChange={handlePinComplete} length={4} autoFocus />
           </CardContent>
         </Card>
@@ -186,20 +187,20 @@ export default function WithdrawPage() {
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Destination</span>
                 <span className="font-semibold text-foreground text-right">
-                  {channel === 'mobile_money' ? `${OPERATORS.find((o) => o.value === operator)?.label} — ${phone}` : `${bankName} — ${accountNumber}`}
+                  {channel === 'mobile_money' ? `${MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label} — ${phone}` : `${bankName} — ${accountNumber}`}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Montant</span>
-                <span className="font-semibold text-foreground">{formatCurrency(amountCents)}</span>
+                <span className="font-semibold text-foreground">{formatCurrency(amountCents, currency)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Frais</span>
-                <span className="text-foreground">{fee?.fee_cents ? formatCurrency(fee.fee_cents) : 'Aucun'}</span>
+                <span className="text-foreground">{fee?.fee_cents ? formatCurrency(fee.fee_cents, currency) : 'Aucun'}</span>
               </div>
               <div className="flex justify-between text-sm font-bold pt-2 border-t border-border">
                 <span className="text-foreground">Total débité</span>
-                <span className="text-foreground">{formatCurrency(fee?.total_cents ?? amountCents)}</span>
+                <span className="text-foreground">{formatCurrency(fee?.total_cents ?? amountCents, currency)}</span>
               </div>
             </div>
             <Button className="w-full" size="lg" onClick={() => setStep('pin')}>Continuer</Button>
@@ -237,16 +238,7 @@ export default function WithdrawPage() {
 
               {channel === 'mobile_money' ? (
                 <>
-                  <div className="space-y-2">
-                    <Label className="font-semibold">Opérateur</Label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {OPERATORS.map((op) => (
-                        <button key={op.value} type="button" onClick={() => setOperator(op.value)} className={cn('rounded-lg border px-2 py-2 text-xs font-medium transition-colors', operator === op.value ? 'border-primary bg-primary/5 text-primary' : 'border-input text-muted-foreground hover:bg-accent')}>
-                          {op.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  <MobileMoneyOperatorPicker value={operator} onChange={setOperator} />
                   <div className="space-y-2">
                     <Label htmlFor="phone" className="font-semibold">Numéro Mobile Money</Label>
                     <Input id="phone" placeholder="+243 8XX XXX XXX" value={phone} onChange={(e) => setPhone(e.target.value)} autoFocus />
@@ -285,7 +277,7 @@ export default function WithdrawPage() {
           </div>
           <h2 className="text-xl font-bold text-foreground mb-1 text-center">Retirer de l'argent</h2>
           <p className="text-sm text-muted-foreground mb-6 text-center">
-            {wallet ? `Solde disponible : ${formatCurrency(wallet.balance_cents)}` : 'Vers Mobile Money ou compte bancaire'}
+            {wallet ? `Solde disponible : ${formatCurrency(wallet.balances?.[currency] || 0, currency)}` : 'Vers Mobile Money ou compte bancaire'}
           </p>
           <form onSubmit={handleAmountContinue} className="space-y-4">
             {error && (
@@ -294,7 +286,11 @@ export default function WithdrawPage() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="amount" className="font-semibold">Montant (CDF)</Label>
+              <Label className="font-semibold">Devise</Label>
+              <CurrencySelector value={currency} onChange={setCurrency} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="amount" className="font-semibold">Montant ({currency})</Label>
               <Input id="amount" type="number" step="0.01" placeholder="50000" value={amount} onChange={(e) => setAmount(e.target.value)} required autoFocus />
             </div>
             <Button type="submit" className="w-full" size="lg">Continuer</Button>

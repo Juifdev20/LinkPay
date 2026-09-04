@@ -36,26 +36,35 @@ export class WalletsService {
     return data;
   }
 
-  async getBalance(walletId: string): Promise<number> {
+  /**
+   * Balances are fully independent per currency — no automatic conversion
+   * anywhere. One query over ledger_entries (which already carries its own
+   * `currency` per row), reduced client-side into {CDF, USD} — no separate
+   * wallet_balances table needed.
+   */
+  async getBalances(walletId: string): Promise<{ CDF: number; USD: number }> {
     const { data, error } = await this.supabaseService.getClient()
       .from('ledger_entries')
-      .select('amount_cents, direction')
+      .select('amount_cents, direction, currency')
       .eq('wallet_id', walletId);
 
     if (error) {
       throw new Error(`Failed to compute wallet balance: ${error.message}`);
     }
 
-    return (data || []).reduce(
-      (sum: number, e: any) => sum + (e.direction === 'credit' ? e.amount_cents : -e.amount_cents),
-      0,
-    );
+    const balances = { CDF: 0, USD: 0 };
+    for (const e of data || []) {
+      const delta = e.direction === 'credit' ? e.amount_cents : -e.amount_cents;
+      if (e.currency === 'USD') balances.USD += delta;
+      else balances.CDF += delta;
+    }
+    return balances;
   }
 
   async getMyWallet(userId: string) {
     const wallet = await this.getWalletByUserId(userId);
-    const balanceCents = await this.getBalance(wallet.id);
-    return { ...wallet, balance_cents: balanceCents };
+    const balances = await this.getBalances(wallet.id);
+    return { ...wallet, balances };
   }
 
   async getMyLedger(userId: string, filters?: { page?: number; limit?: number }) {
@@ -77,7 +86,14 @@ export class WalletsService {
     return { data, total: count || 0, page, limit };
   }
 
-  async initiateTopup(userId: string, amountCents: number, idempotencyKey: string) {
+  async initiateTopup(
+    userId: string,
+    amountCents: number,
+    currency: string,
+    idempotencyKey: string,
+    paymentMethod?: string,
+    mobileMoneyOperator?: string,
+  ) {
     if (!amountCents || amountCents < 100) {
       throw new BadRequestException('Minimum top-up amount is 100 cents');
     }
@@ -95,8 +111,8 @@ export class WalletsService {
       .single();
 
     if (existing) {
-      const balance = await this.getBalance(wallet.id);
-      return { topup: existing, balance_cents: balance, message: 'Top-up already exists (idempotent)' };
+      const balances = await this.getBalances(wallet.id);
+      return { topup: existing, balances, message: 'Top-up already exists (idempotent)' };
     }
 
     const { data: profile } = await this.supabaseService.getClient()
@@ -114,12 +130,17 @@ export class WalletsService {
 
     const pspResult = await adapter.createPaymentIntent({
       amount_cents: amountCents,
-      currency: wallet.currency,
+      currency,
       reference,
       customer: { email: profile?.email, phone: profile?.phone, name: profile?.full_name },
       redirect_url: `${frontendUrl}/dashboard/wallet/topup/result?ref=${reference}`,
       webhook_url: `${backendUrl}/api/v1/payments/webhooks/${provider}`,
-      metadata: { kind: 'wallet_topup', wallet_id: wallet.id },
+      metadata: {
+        kind: 'wallet_topup',
+        wallet_id: wallet.id,
+        payment_method: paymentMethod,
+        mobile_money_operator: mobileMoneyOperator,
+      },
     });
 
     const { data: topup, error } = await this.supabaseService.getClient()
@@ -127,7 +148,7 @@ export class WalletsService {
       .insert({
         wallet_id: wallet.id,
         amount_cents: amountCents,
-        currency: wallet.currency,
+        currency,
         status: 'PENDING',
         psp_provider: provider,
         psp_intent_id: pspResult.psp_intent_id,
@@ -145,8 +166,9 @@ export class WalletsService {
     // then credit immediately (see payments.service.ts for the sibling flow).
     if (provider === 'mock') {
       await new Promise((resolve) => setTimeout(resolve, 2500));
-      const newBalance = await this.completeTopup(topup.id, pspResult.psp_intent_id);
-      return { topup: { ...topup, status: 'SUCCESS' }, balance_cents: newBalance };
+      await this.completeTopup(topup.id, pspResult.psp_intent_id);
+      const balances = await this.getBalances(wallet.id);
+      return { topup: { ...topup, status: 'SUCCESS' }, balances };
     }
 
     return { topup, checkout_url: pspResult.checkout_url };
@@ -157,7 +179,7 @@ export class WalletsService {
    * provider) or from payments.service.ts's webhook dispatcher once a real
    * PSP confirms payment. Idempotent: a top-up already SUCCESS is a no-op.
    */
-  async completeTopup(topupId: string, pspIntentId?: string): Promise<number> {
+  async completeTopup(topupId: string, pspIntentId?: string): Promise<void> {
     const { data: topup } = await this.supabaseService.getClient()
       .from('wallet_topups')
       .select('*')
@@ -169,14 +191,15 @@ export class WalletsService {
     }
 
     if (topup.status === 'SUCCESS') {
-      return this.getBalance(topup.wallet_id);
+      return;
     }
 
-    const { data: newBalance, error: rpcError } = await this.supabaseService.getClient().rpc('credit_wallet', {
+    const { error: rpcError } = await this.supabaseService.getClient().rpc('credit_wallet', {
       p_wallet_id: topup.wallet_id,
       p_amount_cents: topup.amount_cents,
       p_entry_type: 'TOPUP',
       p_reference: `TOPUP-${topup.id}`,
+      p_currency: topup.currency,
       p_metadata: { wallet_topup_id: topup.id, psp_intent_id: pspIntentId },
     });
 
@@ -191,7 +214,7 @@ export class WalletsService {
 
     const { data: wallet } = await this.supabaseService.getClient()
       .from('wallets')
-      .select('user_id, currency')
+      .select('user_id')
       .eq('id', topup.wallet_id)
       .single();
 
@@ -200,13 +223,12 @@ export class WalletsService {
         user_id: wallet.user_id,
         type: 'wallet_topup_success',
         title: 'Portefeuille rechargé',
-        body: `Votre compte LinkPay a été crédité de ${(topup.amount_cents / 100).toLocaleString('fr-FR')} ${wallet.currency}.`,
+        body: `Votre compte LinkPay a été crédité de ${(topup.amount_cents / 100).toLocaleString('fr-FR')} ${topup.currency}.`,
         data: { wallet_topup_id: topup.id },
       }).catch(() => null);
     }
 
-    this.logger.log(`Wallet top-up ${topup.id} completed, wallet ${topup.wallet_id} credited ${topup.amount_cents} cents`);
-    return newBalance as number;
+    this.logger.log(`Wallet top-up ${topup.id} completed, wallet ${topup.wallet_id} credited ${topup.amount_cents} ${topup.currency} cents`);
   }
 
   /** Used by payments.service.ts's webhook dispatcher to find a wallet_topups row by psp_intent_id. */
@@ -228,8 +250,8 @@ export class WalletsService {
    * before the user confirms anything (§54: never hide fees), without
    * executing or reserving anything.
    */
-  async previewFee(opType: 'TRANSFER' | 'WITHDRAWAL' | 'WALLET_PAYMENT', amountCents: number) {
-    const rule = await this.walletLimitsService.getRule(opType);
+  async previewFee(opType: 'TRANSFER' | 'WITHDRAWAL' | 'WALLET_PAYMENT', amountCents: number, currency: string) {
+    const rule = await this.walletLimitsService.getRule(opType, currency);
     return this.walletLimitsService.quoteFee(amountCents, rule);
   }
 
@@ -309,7 +331,7 @@ export class WalletsService {
 
   async transfer(
     userId: string,
-    dto: { recipient_wallet_number: string; amount_cents: number; description?: string; pin: string },
+    dto: { recipient_wallet_number: string; amount_cents: number; currency: string; description?: string; pin: string },
     idempotencyKey: string,
   ) {
     if (!dto.amount_cents || dto.amount_cents < 1) {
@@ -356,7 +378,7 @@ export class WalletsService {
     // money moves — never trust the frontend's "user confirmed" state.
     await this.walletPinService.verifyPin(userId, dto.pin);
 
-    const rule = await this.walletLimitsService.getRule('TRANSFER');
+    const rule = await this.walletLimitsService.getRule('TRANSFER', dto.currency);
     const fee = this.walletLimitsService.quoteFee(dto.amount_cents, rule);
     await this.walletLimitsService.assertWithinLimits(senderWallet.id, 'TRANSFER', fee.total_cents, rule);
 
@@ -367,7 +389,7 @@ export class WalletsService {
         recipient_wallet_id: recipientWallet.id,
         amount_cents: dto.amount_cents,
         fee_cents: fee.fee_cents,
-        currency: senderWallet.currency,
+        currency: dto.currency,
         status: 'PENDING',
         description: dto.description,
         idempotency_key: idempotencyKey,
@@ -420,7 +442,7 @@ export class WalletsService {
       user_id: userId,
       type: 'transfer_sent',
       title: 'Transfert envoyé',
-      body: `Votre transfert de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${senderWallet.currency} à ${recipient.display_name} a été effectué.`,
+      body: `Votre transfert de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${dto.currency} à ${recipient.display_name} a été effectué.`,
       data: { transfer_id: transferRow.id },
     }).catch(() => null);
 
@@ -429,7 +451,7 @@ export class WalletsService {
         user_id: recipientWallet.user_id,
         type: 'transfer_received',
         title: 'Transfert reçu',
-        body: `Vous avez reçu ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${senderWallet.currency}.`,
+        body: `Vous avez reçu ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${dto.currency}.`,
         data: { transfer_id: transferRow.id },
       }).catch(() => null);
     }
@@ -482,7 +504,7 @@ export class WalletsService {
 
   async requestWithdrawal(
     userId: string,
-    dto: { amount_cents: number; channel: 'mobile_money' | 'bank'; destination: Record<string, any>; pin: string },
+    dto: { amount_cents: number; currency: string; channel: 'mobile_money' | 'bank'; destination: Record<string, any>; pin: string },
     idempotencyKey: string,
   ) {
     if (!dto.amount_cents || dto.amount_cents < 1) {
@@ -509,7 +531,7 @@ export class WalletsService {
 
     await this.walletPinService.verifyPin(userId, dto.pin);
 
-    const rule = await this.walletLimitsService.getRule('WITHDRAWAL');
+    const rule = await this.walletLimitsService.getRule('WITHDRAWAL', dto.currency);
     const fee = this.walletLimitsService.quoteFee(dto.amount_cents, rule);
     await this.walletLimitsService.assertWithinLimits(wallet.id, 'WITHDRAWAL', fee.total_cents, rule);
 
@@ -519,7 +541,7 @@ export class WalletsService {
         wallet_id: wallet.id,
         amount_cents: dto.amount_cents,
         fee_cents: fee.fee_cents,
-        currency: wallet.currency,
+        currency: dto.currency,
         channel: dto.channel,
         destination: dto.destination,
         status: 'PENDING',
@@ -541,6 +563,7 @@ export class WalletsService {
       p_amount_cents: fee.total_cents,
       p_entry_type: 'WITHDRAWAL',
       p_reference: `WITHDRAWAL-${withdrawal.id}`,
+      p_currency: dto.currency,
       p_metadata: { withdrawal_id: withdrawal.id, channel: dto.channel },
     });
 
@@ -564,7 +587,7 @@ export class WalletsService {
       user_id: userId,
       type: 'withdrawal_processing',
       title: 'Retrait en cours',
-      body: `Votre retrait de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${wallet.currency} est en cours.`,
+      body: `Votre retrait de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${dto.currency} est en cours.`,
       data: { withdrawal_id: withdrawal.id },
     }).catch(() => null);
 
@@ -582,7 +605,7 @@ export class WalletsService {
       user_id: userId,
       type: 'withdrawal_success',
       title: 'Retrait effectué',
-      body: `Votre retrait de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${wallet.currency} a été effectué.`,
+      body: `Votre retrait de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${dto.currency} a été effectué.`,
       data: { withdrawal_id: withdrawal.id },
     }).catch(() => null);
 
@@ -604,6 +627,7 @@ export class WalletsService {
       p_amount_cents: withdrawal.amount_cents + withdrawal.fee_cents,
       p_entry_type: 'ADJUSTMENT',
       p_reference: `WITHDRAWAL-REVERSAL-${withdrawal.id}`,
+      p_currency: withdrawal.currency,
       p_metadata: { withdrawal_id: withdrawal.id, reason },
     });
 

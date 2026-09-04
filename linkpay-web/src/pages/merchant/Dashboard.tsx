@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
@@ -12,6 +13,7 @@ import { Plus, TrendingUp, Receipt, Wallet, QrCode } from 'lucide-react';
 
 export default function MerchantDashboard() {
   const merchantId = useAuthStore((s) => s.user?.merchant_id);
+  const [walletCurrency, setWalletCurrency] = useState<'CDF' | 'USD'>('CDF');
 
   const { data: stats } = useQuery({
     queryKey: ['merchant-stats'],
@@ -66,11 +68,12 @@ export default function MerchantDashboard() {
       />
 
       <BalanceCard
-        balanceCents={wallet?.balance_cents || 0}
+        balances={wallet?.balances || { CDF: 0, USD: 0 }}
         label="Solde LinkPay"
         subtitle={wallet?.wallet_number}
         maskable
-        actions={<WalletActions />}
+        onCurrencyChange={setWalletCurrency}
+        actions={<WalletActions currency={walletCurrency} />}
       />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { CurrencySelector } from '@/components/CurrencySelector';
 import { Loader2, Plus, X } from 'lucide-react';
 
 const emptyForm = {
@@ -17,7 +18,7 @@ const emptyForm = {
   min_cents: '',
   max_cents: '',
   applies_to: 'all',
-  currency: 'CDF',
+  currency: 'CDF' as 'CDF' | 'USD',
 };
 
 export default function AdminCommissionsPage() {
@@ -136,6 +137,10 @@ export default function AdminCommissionsPage() {
                 <Label htmlFor="rule_max">Maximum (centimes)</Label>
                 <Input id="rule_max" type="number" value={form.max_cents} onChange={(e) => setForm({ ...form, max_cents: e.target.value })} />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Devise</Label>
+              <CurrencySelector value={form.currency} onChange={(c) => setForm({ ...form, currency: c })} />
             </div>
           </div>
           <DialogFooter>

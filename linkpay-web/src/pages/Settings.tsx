@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Logo } from '@/components/Logo';
 import { PageHeader } from '@/components/PageHeader';
+import { CurrencySelector } from '@/components/CurrencySelector';
 import { Wallet, ShieldCheck, Users, UserCog, Percent, Building2, UsersRound, Receipt, LogOut, User, HelpCircle, FileText, ChevronRight, Store, Loader2, KeyRound, ArrowLeftRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -22,7 +23,7 @@ export default function SettingsPage() {
   const [showOrgForm, setShowOrgForm] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
-  const [store, setStore] = useState({ name: '', phone: '', city: '' });
+  const [store, setStore] = useState({ name: '', phone: '', city: '', default_currency: 'CDF' as 'CDF' | 'USD' });
   const [orgForm, setOrgForm] = useState({ name: '', legal_name: '' });
   const [upgradeError, setUpgradeError] = useState('');
   const [orgError, setOrgError] = useState('');
@@ -153,6 +154,10 @@ export default function SettingsPage() {
                     value={store.city}
                     onChange={(e) => setStore({ ...store, city: e.target.value })}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label>Devise par défaut</Label>
+                  <CurrencySelector value={store.default_currency} onChange={(c) => setStore({ ...store, default_currency: c })} />
                 </div>
                 <Button
                   className="w-full"
