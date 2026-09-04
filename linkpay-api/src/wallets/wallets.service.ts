@@ -93,9 +93,17 @@ export class WalletsService {
     idempotencyKey: string,
     paymentMethod?: string,
     mobileMoneyOperator?: string,
+    mobileMoneyPhone?: string,
   ) {
     if (!amountCents || amountCents < 100) {
       throw new BadRequestException('Minimum top-up amount is 100 cents');
+    }
+    // The Mobile Money withdrawal prompt (STK/USSD push) has to go to a real
+    // phone number — never silently fall back to the account's registered
+    // profile phone, which may not even be a Mobile Money line, let alone
+    // the one the user wants to pull from for this specific top-up.
+    if (paymentMethod === 'mobile_money' && !mobileMoneyPhone) {
+      throw new BadRequestException('Numéro Mobile Money requis pour cette méthode de paiement');
     }
 
     const wallet = await this.getWalletByUserId(userId);
@@ -132,7 +140,10 @@ export class WalletsService {
       amount_cents: amountCents,
       currency,
       reference,
-      customer: { email: profile?.email, phone: profile?.phone, name: profile?.full_name },
+      // The Mobile Money number entered for THIS top-up takes priority over
+      // the account's registered profile phone — someone may be recharging
+      // from a line that isn't the one they signed up with.
+      customer: { email: profile?.email, phone: mobileMoneyPhone || profile?.phone, name: profile?.full_name },
       redirect_url: `${frontendUrl}/dashboard/wallet/topup/result?ref=${reference}`,
       webhook_url: `${backendUrl}/api/v1/payments/webhooks/${provider}`,
       metadata: {
@@ -140,6 +151,7 @@ export class WalletsService {
         wallet_id: wallet.id,
         payment_method: paymentMethod,
         mobile_money_operator: mobileMoneyOperator,
+        mobile_money_phone: mobileMoneyPhone,
       },
     });
 

@@ -9,8 +9,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
 import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicker';
+import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
 import { formatCurrency } from '@/lib/utils';
-import { Loader2, Check, DollarSign, ArrowLeft, Wallet as WalletIcon } from 'lucide-react';
+import { Loader2, Check, DollarSign, ArrowLeft, Wallet as WalletIcon, Smartphone, Phone } from 'lucide-react';
 
 const PRESETS = [5000, 10000, 25000, 50000];
 
@@ -27,6 +28,7 @@ export default function TopupPage() {
   );
   const [paymentMethod, setPaymentMethod] = useState<'mobile_money' | 'card'>('mobile_money');
   const [operator, setOperator] = useState('airtel');
+  const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [result, setResult] = useState<any>(null);
 
@@ -61,6 +63,7 @@ export default function TopupPage() {
           currency,
           payment_method: paymentMethod,
           mobile_money_operator: paymentMethod === 'mobile_money' ? operator : undefined,
+          mobile_money_phone: paymentMethod === 'mobile_money' ? phone : undefined,
         },
         { headers: { 'Idempotency-Key': crypto.randomUUID() } },
       );
@@ -100,6 +103,12 @@ export default function TopupPage() {
                 <span className="text-muted-foreground">Montant</span>
                 <span className="font-semibold text-foreground">{formatCurrency(amountCents, currency)}</span>
               </div>
+              {paymentMethod === 'mobile_money' && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Moyen de paiement</span>
+                  <span className="text-foreground">{MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label} — {phone}</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Statut</span>
                 <span className="font-semibold text-success">{result?.status || 'Confirmé'}</span>
@@ -121,6 +130,32 @@ export default function TopupPage() {
   }
 
   if (step === 'processing') {
+    // Mirrors the same real-world Mobile Money STK/USSD push flow shown to
+    // payers on the public payment page: LinkPay never sees the PIN, the
+    // confirmation happens entirely on the user's own phone.
+    if (paymentMethod === 'mobile_money') {
+      const operatorLabel = MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label;
+      return (
+        <div className="p-6 max-w-lg mx-auto">
+          <Card>
+            <CardContent className="pt-6 text-center py-10">
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                <Smartphone className="w-8 h-8 text-primary animate-pulse" />
+              </div>
+              <h2 className="text-lg font-bold text-foreground mb-2">Confirmez sur votre téléphone</h2>
+              <p className="text-muted-foreground text-sm mb-1">
+                Une demande {operatorLabel} a été envoyée au {phone}.
+              </p>
+              <p className="text-muted-foreground text-sm mb-6">
+                Ouvrez l'application et entrez votre code PIN Mobile Money pour confirmer le retrait de{' '}
+                {formatCurrency(amountCents, currency)}.
+              </p>
+              <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" />
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
     return (
       <div className="p-6 max-w-lg mx-auto">
         <Card>
@@ -157,9 +192,13 @@ export default function TopupPage() {
               <p className="text-sm text-muted-foreground">Confirmer la recharge de</p>
               <p className="text-3xl font-bold text-foreground mt-1">{formatCurrency(amountCents, currency)}</p>
               <p className="text-xs text-muted-foreground mt-1">
-                {paymentMethod === 'mobile_money' ? `via Mobile Money (${operator})` : 'via carte bancaire'}
-                {wallet?.wallet_number ? ` — vers ${wallet.wallet_number}` : ''}
+                {paymentMethod === 'mobile_money'
+                  ? `via ${MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label} — ${phone}`
+                  : 'via carte bancaire'}
               </p>
+              {wallet?.wallet_number && (
+                <p className="text-xs text-muted-foreground">vers {wallet.wallet_number}</p>
+              )}
             </div>
             <Button className="w-full" size="lg" onClick={confirmTopup}>
               Confirmer
@@ -171,6 +210,7 @@ export default function TopupPage() {
   }
 
   if (step === 'method') {
+    const canContinue = paymentMethod !== 'mobile_money' || phone.trim().length >= 9;
     return (
       <div className="p-6 max-w-lg mx-auto">
         <Card>
@@ -181,15 +221,53 @@ export default function TopupPage() {
             >
               <ArrowLeft className="w-4 h-4" /> Modifier le montant
             </button>
+            {error && (
+              <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium mb-4">
+                {error}
+              </div>
+            )}
             <p className="text-sm text-muted-foreground mb-4">
               Recharger de {formatCurrency(amountCents, currency)}
             </p>
             <div className="space-y-4">
               <PaymentMethodSelector value={paymentMethod} onChange={setPaymentMethod} />
               {paymentMethod === 'mobile_money' && (
-                <MobileMoneyOperatorPicker value={operator} onChange={setOperator} />
+                <>
+                  <MobileMoneyOperatorPicker value={operator} onChange={setOperator} />
+                  <div className="space-y-2">
+                    <Label htmlFor="mm_phone" className="font-semibold">
+                      Numéro {MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label}
+                    </Label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        id="mm_phone"
+                        placeholder="+243 8XX XXX XXX"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        className="pl-10"
+                        autoFocus
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Une demande de paiement sera envoyée à ce numéro pour confirmer le retrait.
+                    </p>
+                  </div>
+                </>
               )}
-              <Button className="w-full" size="lg" onClick={() => setStep('confirm')}>
+              <Button
+                className="w-full"
+                size="lg"
+                disabled={!canContinue}
+                onClick={() => {
+                  setError('');
+                  if (!canContinue) {
+                    setError('Numéro Mobile Money requis');
+                    return;
+                  }
+                  setStep('confirm');
+                }}
+              >
                 Continuer
               </Button>
             </div>

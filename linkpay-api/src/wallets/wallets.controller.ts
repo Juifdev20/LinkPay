@@ -23,6 +23,11 @@ class CreateTopupDto {
   @IsOptional()
   @IsString()
   mobile_money_operator?: string;
+
+  @ApiPropertyOptional({ example: '+243900000000', description: 'Mobile Money number to push the withdrawal request to — required when payment_method is mobile_money' })
+  @IsOptional()
+  @IsString()
+  mobile_money_phone?: string;
 }
 
 class SetPinDto {
@@ -126,6 +131,7 @@ export class WalletsController {
       idempotencyKey,
       dto.payment_method,
       dto.mobile_money_operator,
+      dto.mobile_money_phone,
     );
   }
 
