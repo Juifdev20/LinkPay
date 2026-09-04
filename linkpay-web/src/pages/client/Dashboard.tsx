@@ -7,8 +7,8 @@ import { BalanceCard } from '@/components/BalanceCard';
 import { QuickAction } from '@/components/QuickAction';
 import { TransactionItem } from '@/components/TransactionItem';
 import { WalletActions } from '@/components/WalletActions';
+import { DualCurrencyStat } from '@/components/DualCurrencyStat';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
-import { formatCurrency } from '@/lib/utils';
 import { Receipt, TrendingUp, QrCode, ArrowUpRight, ArrowDownLeft, History } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -64,7 +64,7 @@ export default function ClientDashboard() {
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-3">
               <TrendingUp className="w-5 h-5 text-primary" />
             </div>
-            <p className="text-xl font-bold text-foreground">{formatCurrency(stats?.total_spent_cents || 0)}</p>
+            <DualCurrencyStat amounts={stats?.spent || { CDF: 0, USD: 0 }} />
             <p className="text-sm text-muted-foreground">Total dépensé</p>
           </CardContent>
         </Card>

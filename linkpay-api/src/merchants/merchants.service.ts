@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { AuthService } from '../auth/auth.service';
+import { sumByCurrency } from '../common/utils/currency';
 
 @Injectable()
 export class MerchantsService {
@@ -249,20 +250,15 @@ export class MerchantsService {
 
     const { data: volumeData } = await this.supabaseService.getClient()
       .from('transactions')
-      .select('amount_cents, net_cents')
+      .select('amount_cents, net_cents, currency')
       .eq('merchant_id', merchantId)
       .eq('status', 'SUCCESS');
 
-    const totalVolume = volumeData?.reduce((sum: number, t: any) => sum + (t.amount_cents || 0), 0) || 0;
-    const totalNet = volumeData?.reduce((sum: number, t: any) => sum + (t.net_cents || 0), 0) || 0;
-
     const { data: pendingData, count: pendingCount } = await this.supabaseService.getClient()
       .from('transactions')
-      .select('amount_cents', { count: 'exact' })
+      .select('amount_cents, currency', { count: 'exact' })
       .eq('merchant_id', merchantId)
       .in('status', ['PENDING', 'PROCESSING']);
-
-    const pendingCents = pendingData?.reduce((sum: number, t: any) => sum + (t.amount_cents || 0), 0) || 0;
 
     const { count: failedCount } = await this.supabaseService.getClient()
       .from('transactions')
@@ -273,10 +269,12 @@ export class MerchantsService {
     return {
       total_transactions: totalTransactions || 0,
       today_transactions: todayTransactions || 0,
-      total_volume_cents: totalVolume,
-      total_net_cents: totalNet,
+      // Independent per-currency figures — never summed together (a CDF
+      // volume and a USD volume added as raw cents is a meaningless number).
+      volume: sumByCurrency(volumeData, 'amount_cents'),
+      net: sumByCurrency(volumeData, 'net_cents'),
+      pending: sumByCurrency(pendingData, 'amount_cents'),
       pending_count: pendingCount || 0,
-      pending_cents: pendingCents,
       failed_count: failedCount || 0,
     };
   }

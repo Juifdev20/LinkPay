@@ -8,7 +8,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { BalanceCard } from '@/components/BalanceCard';
 import { WalletActions } from '@/components/WalletActions';
 import { TransactionItem } from '@/components/TransactionItem';
-import { formatCurrency } from '@/lib/utils';
+import { DualCurrencyStat } from '@/components/DualCurrencyStat';
 import { Plus, TrendingUp, Receipt, Wallet, QrCode } from 'lucide-react';
 
 export default function MerchantDashboard() {
@@ -53,10 +53,10 @@ export default function MerchantDashboard() {
   useRealtimeInvalidate('transfers', wallet ? `recipient_wallet_id=eq.${wallet.id}` : undefined, walletQueryKeys, !!wallet);
 
   const cards = [
-    { label: 'Volume total', value: formatCurrency(stats?.total_volume_cents || 0), icon: TrendingUp },
+    { label: 'Volume total', money: stats?.volume, icon: TrendingUp },
     { label: 'Transactions', value: String(stats?.total_transactions || 0), icon: Receipt },
     { label: "Aujourd'hui", value: String(stats?.today_transactions || 0), icon: QrCode },
-    { label: 'En attente', value: formatCurrency(stats?.pending_cents || 0), icon: Wallet },
+    { label: 'En attente', money: stats?.pending, icon: Wallet },
   ];
 
   // Extra bottom padding on mobile clears PageHeader's floating action button
@@ -83,7 +83,11 @@ export default function MerchantDashboard() {
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-3">
                 <c.icon className="w-5 h-5 text-primary" />
               </div>
-              <p className="text-xl font-bold text-foreground">{c.value}</p>
+              {c.money ? (
+                <DualCurrencyStat amounts={c.money} />
+              ) : (
+                <p className="text-xl font-bold text-foreground">{c.value}</p>
+              )}
               <p className="text-sm text-muted-foreground">{c.label}</p>
             </CardContent>
           </Card>
