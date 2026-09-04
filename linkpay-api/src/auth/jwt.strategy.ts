@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
+import { SESSION_TRACKING_EXEMPT_ROLES } from './constants';
 
 export interface JwtPayload {
   sub: string;
@@ -32,8 +33,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     // Single-active-session enforcement: if another device has since taken
     // over (or an admin reset the session), this token is stale even though
-    // it hasn't technically expired yet — reject immediately.
-    if (payload.session_id) {
+    // it hasn't technically expired yet — reject immediately. Admins/super
+    // admins are exempt (unlimited concurrent devices) — checked via the
+    // role already embedded in this token, so it takes effect immediately
+    // even for a token minted before this exemption existed, not just new
+    // logins.
+    if (payload.session_id && !SESSION_TRACKING_EXEMPT_ROLES.includes(payload.role)) {
       const { data: profile } = await this.supabaseService.getClient()
         .from('profiles')
         .select('active_session_id')

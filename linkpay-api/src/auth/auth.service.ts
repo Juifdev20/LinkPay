@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import { SupabaseService } from '../supabase/supabase.service';
 import { RegisterDto, LoginDto } from './dto';
+import { SESSION_TRACKING_EXEMPT_ROLES } from './constants';
 
 export interface JwtPayload {
   sub: string;
@@ -101,7 +102,7 @@ export class AuthService {
       this.logger.warn(`Wallet creation failed for ${userId}: ${walletError.message}`);
     }
 
-    const sessionId = await this.claimSession(userId);
+    const sessionId = await this.claimSession(userId, roleSlug);
     const token = await this.generateToken(userId, email, roleSlug, merchantId, sessionId);
     const refreshToken = await this.generateRefreshToken(userId, email, sessionId);
     const supabaseSession = await this.mintSupabaseSession(email, password);
@@ -144,7 +145,7 @@ export class AuthService {
       .eq('id', userId)
       .single();
 
-    const sessionId = await this.claimSession(userId);
+    const sessionId = await this.claimSession(userId, role);
     const token = await this.generateToken(userId, email, role, merchantId, sessionId);
     const refreshToken = await this.generateRefreshToken(userId, email, sessionId);
 
@@ -181,16 +182,6 @@ export class AuthService {
       throw new UnauthorizedException('Invalid token type');
     }
 
-    const { data: profile } = await this.supabaseService.getClient()
-      .from('profiles')
-      .select('active_session_id')
-      .eq('id', payload.sub)
-      .single();
-
-    if (!profile || profile.active_session_id !== payload.session_id) {
-      throw new UnauthorizedException('Session no longer active — please log in again');
-    }
-
     const { data: roleData } = await this.supabaseService.getClient()
       .from('user_roles')
       .select('role:roles(slug), merchant_id')
@@ -200,9 +191,24 @@ export class AuthService {
     const role = (roleData?.role as any)?.slug || 'client';
     const merchantId = roleData?.merchant_id || undefined;
 
+    // Admins/super admins are exempt from single-session tracking — skip the
+    // check even if this refresh token still carries a session_id minted
+    // before that exemption existed.
+    if (!SESSION_TRACKING_EXEMPT_ROLES.includes(role)) {
+      const { data: profile } = await this.supabaseService.getClient()
+        .from('profiles')
+        .select('active_session_id')
+        .eq('id', payload.sub)
+        .single();
+
+      if (!profile || profile.active_session_id !== payload.session_id) {
+        throw new UnauthorizedException('Session no longer active — please log in again');
+      }
+    }
+
     return {
       access_token: await this.generateToken(payload.sub, payload.email, role, merchantId, payload.session_id),
-      refresh_token: await this.generateRefreshToken(payload.sub, payload.email, payload.session_id!),
+      refresh_token: await this.generateRefreshToken(payload.sub, payload.email, payload.session_id),
     };
   }
 
@@ -217,8 +223,16 @@ export class AuthService {
    * Enforces a single active session per account. Throws if another device
    * currently holds the session — only an explicit logout or an admin reset
    * (admin.service.ts resetUserSession) frees it, no automatic takeover.
+   * Admins/super admins are exempt (see SESSION_TRACKING_EXEMPT_ROLES) —
+   * unlimited concurrent devices, active_session_id never touched for them,
+   * so the returned session_id is undefined and no per-request check ever
+   * runs for their tokens (see JwtStrategy.validate).
    */
-  private async claimSession(userId: string): Promise<string> {
+  private async claimSession(userId: string, role: string): Promise<string | undefined> {
+    if (SESSION_TRACKING_EXEMPT_ROLES.includes(role)) {
+      return undefined;
+    }
+
     const { data: profile } = await this.supabaseService.getClient()
       .from('profiles')
       .select('active_session_id')
@@ -273,9 +287,9 @@ export class AuthService {
     return this.jwtService.sign(payload);
   }
 
-  private async generateRefreshToken(userId: string, email: string, sessionId: string): Promise<string> {
+  private async generateRefreshToken(userId: string, email: string, sessionId?: string): Promise<string> {
     return this.jwtService.sign(
-      { sub: userId, email, type: 'refresh', session_id: sessionId },
+      { sub: userId, email, type: 'refresh', ...(sessionId ? { session_id: sessionId } : {}) },
       // Long-lived by design ("remember me" — stay logged in like Facebook,
       // never a silent timeout): the actual security boundary is
       // active_session_id, re-checked on every refresh() and every request
