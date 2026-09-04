@@ -276,7 +276,13 @@ export class AuthService {
   private async generateRefreshToken(userId: string, email: string, sessionId: string): Promise<string> {
     return this.jwtService.sign(
       { sub: userId, email, type: 'refresh', session_id: sessionId },
-      { expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d') },
+      // Long-lived by design ("remember me" — stay logged in like Facebook,
+      // never a silent timeout): the actual security boundary is
+      // active_session_id, re-checked on every refresh() and every request
+      // via JwtStrategy, not this expiry. Only an explicit logout or an
+      // admin session reset can end a session; this default just keeps the
+      // refresh token from being the thing that logs someone out first.
+      { expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '365d') },
     );
   }
 
