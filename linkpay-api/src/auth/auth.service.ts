@@ -102,7 +102,7 @@ export class AuthService {
       this.logger.warn(`Wallet creation failed for ${userId}: ${walletError.message}`);
     }
 
-    const sessionId = await this.claimSession(userId, roleSlug);
+    const sessionId = await this.claimSession(userId, roleSlug, dto.device_id);
     const token = await this.generateToken(userId, email, roleSlug, merchantId, sessionId);
     const refreshToken = await this.generateRefreshToken(userId, email, sessionId);
     const supabaseSession = await this.mintSupabaseSession(email, password);
@@ -116,7 +116,7 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const { email, password } = dto;
+    const { email, password, device_id } = dto;
 
     const { data, error } = await this.supabaseService.getAuthClient().auth.signInWithPassword({
       email,
@@ -145,7 +145,7 @@ export class AuthService {
       .eq('id', userId)
       .single();
 
-    const sessionId = await this.claimSession(userId, role);
+    const sessionId = await this.claimSession(userId, role, device_id);
     const token = await this.generateToken(userId, email, role, merchantId, sessionId);
     const refreshToken = await this.generateRefreshToken(userId, email, sessionId);
 
@@ -220,26 +220,33 @@ export class AuthService {
   }
 
   /**
-   * Enforces a single active session per account. Throws if another device
-   * currently holds the session — only an explicit logout or an admin reset
-   * (admin.service.ts resetUserSession) frees it, no automatic takeover.
-   * Admins/super admins are exempt (see SESSION_TRACKING_EXEMPT_ROLES) —
-   * unlimited concurrent devices, active_session_id never touched for them,
-   * so the returned session_id is undefined and no per-request check ever
-   * runs for their tokens (see JwtStrategy.validate).
+   * Enforces a single active session per account — but a device that
+   * already holds it can always silently reclaim it (e.g. its stored
+   * tokens were lost to a network blip rather than an explicit logout; see
+   * lib/api.ts on the frontend for the matching fix to stop that from
+   * happening unnecessarily). Only a genuinely *different* device_id is
+   * blocked, requiring an explicit logout or an admin reset
+   * (admin.service.ts resetUserSession) to free the slot — no automatic
+   * takeover of someone else's session. Admins/super admins are exempt
+   * entirely (see SESSION_TRACKING_EXEMPT_ROLES) — unlimited concurrent
+   * devices, active_session_id never touched for them, so the returned
+   * session_id is undefined and no per-request check ever runs for their
+   * tokens (see JwtStrategy.validate).
    */
-  private async claimSession(userId: string, role: string): Promise<string | undefined> {
+  private async claimSession(userId: string, role: string, deviceId?: string): Promise<string | undefined> {
     if (SESSION_TRACKING_EXEMPT_ROLES.includes(role)) {
       return undefined;
     }
 
     const { data: profile } = await this.supabaseService.getClient()
       .from('profiles')
-      .select('active_session_id')
+      .select('active_session_id, active_device_id')
       .eq('id', userId)
       .single();
 
-    if (profile?.active_session_id) {
+    const sameDeviceReclaiming = !!profile?.active_session_id && !!deviceId && profile.active_device_id === deviceId;
+
+    if (profile?.active_session_id && !sameDeviceReclaiming) {
       throw new ConflictException(
         'Ce compte est déjà connecté sur un autre appareil. Contactez un administrateur pour réinitialiser votre session.',
       );
@@ -248,7 +255,7 @@ export class AuthService {
     const sessionId = uuidv4();
     await this.supabaseService.getClient()
       .from('profiles')
-      .update({ active_session_id: sessionId })
+      .update({ active_session_id: sessionId, active_device_id: deviceId || null })
       .eq('id', userId);
 
     return sessionId;

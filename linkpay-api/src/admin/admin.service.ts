@@ -113,7 +113,10 @@ export class AdminService {
   async resetUserSession(userId: string) {
     const { error } = await this.supabaseService.getClient()
       .from('profiles')
-      .update({ active_session_id: null })
+      // Clear the device binding too — otherwise the freed session slot
+      // would still silently "belong" to the old device_id, defeating the
+      // point of a reset for a genuinely lost/stolen device.
+      .update({ active_session_id: null, active_device_id: null })
       .eq('id', userId);
 
     if (error) {
