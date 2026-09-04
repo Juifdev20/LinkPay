@@ -5,6 +5,8 @@ import { PageHeader } from '@/components/PageHeader';
 import { BalanceCard } from '@/components/BalanceCard';
 import { QuickAction } from '@/components/QuickAction';
 import { TransactionItem } from '@/components/TransactionItem';
+import { WalletActions } from '@/components/WalletActions';
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { formatCurrency } from '@/lib/utils';
 import { Receipt, TrendingUp, QrCode, ArrowUpRight, ArrowDownLeft, History } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -19,6 +21,14 @@ export default function ClientDashboard() {
     },
   });
 
+  const { data: wallet } = useQuery({
+    queryKey: ['wallet'],
+    queryFn: async () => {
+      const { data } = await api.get('/wallet');
+      return data;
+    },
+  });
+
   const { data: recentTx } = useQuery({
     queryKey: ['client-transactions'],
     queryFn: async () => {
@@ -27,18 +37,18 @@ export default function ClientDashboard() {
     },
   });
 
+  useRealtimeInvalidate('wallet_topups', wallet ? `wallet_id=eq.${wallet.id}` : undefined, [['wallet']], !!wallet);
+
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
       <PageHeader title="Mon compte" />
 
       <BalanceCard
-        balanceCents={stats?.total_spent_cents || 0}
-        label="Total dépensé"
-        actions={
-          <button className="flex-1 bg-white/20 hover:bg-white/30 rounded-xl py-2.5 px-4 text-sm font-semibold transition-colors">
-            Voir l'historique
-          </button>
-        }
+        balanceCents={wallet?.balance_cents || 0}
+        label="Solde LinkPay"
+        subtitle={wallet?.wallet_number}
+        maskable
+        actions={<WalletActions />}
       />
 
       <div className="grid grid-cols-2 gap-4">

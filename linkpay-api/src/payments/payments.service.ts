@@ -195,6 +195,16 @@ export class PaymentsService {
       .single();
 
     if (!intent) {
+      // Not a merchant payment webhook — could be a wallet top-up instead.
+      // Kept as a direct table lookup here (rather than injecting
+      // WalletsService) to avoid a circular module dependency, since
+      // WalletsModule already depends on PaymentsModule for PspFactory.
+      const handledAsTopup = await this.tryHandleTopupWebhook(event.psp_intent_id, event.status);
+      if (handledAsTopup) {
+        await this.markWebhookProcessed(dedupHash);
+        return { status: 'processed', event_type: event.event_type };
+      }
+
       this.logger.warn(`No payment intent found for psp_intent_id: ${event.psp_intent_id}`);
       await this.markWebhookProcessed(dedupHash, 'no_intent_found');
       return { status: 'no_intent' };
@@ -322,6 +332,66 @@ export class PaymentsService {
     }
 
     this.logger.log(`Payment failed for intent ${intent.id}`);
+  }
+
+  /** Returns true if a wallet_topups row was found for this psp_intent_id (handled either way). */
+  private async tryHandleTopupWebhook(pspIntentId: string, status: string): Promise<boolean> {
+    const { data: topup } = await this.supabaseService.getClient()
+      .from('wallet_topups')
+      .select('*')
+      .eq('psp_intent_id', pspIntentId)
+      .single();
+
+    if (!topup) {
+      return false;
+    }
+
+    if (status === 'SUCCESS') {
+      if (topup.status !== 'SUCCESS') {
+        const { error: rpcError } = await this.supabaseService.getClient().rpc('credit_wallet', {
+          p_wallet_id: topup.wallet_id,
+          p_amount_cents: topup.amount_cents,
+          p_entry_type: 'TOPUP',
+          p_reference: `TOPUP-${topup.id}`,
+          p_metadata: { wallet_topup_id: topup.id, psp_intent_id: pspIntentId },
+        });
+
+        if (rpcError) {
+          this.logger.error(`Failed to credit wallet for top-up ${topup.id}: ${rpcError.message}`);
+          return true;
+        }
+
+        await this.supabaseService.getClient()
+          .from('wallet_topups')
+          .update({ status: 'SUCCESS', updated_at: new Date().toISOString() })
+          .eq('id', topup.id);
+
+        const { data: wallet } = await this.supabaseService.getClient()
+          .from('wallets')
+          .select('user_id, currency')
+          .eq('id', topup.wallet_id)
+          .single();
+
+        if (wallet?.user_id) {
+          await this.notificationsService.create({
+            user_id: wallet.user_id,
+            type: 'wallet_topup_success',
+            title: 'Portefeuille rechargé',
+            body: `Votre compte LinkPay a été crédité de ${(topup.amount_cents / 100).toLocaleString('fr-FR')} ${wallet.currency}.`,
+            data: { wallet_topup_id: topup.id },
+          }).catch(() => null);
+        }
+
+        this.logger.log(`Wallet top-up ${topup.id} confirmed via webhook, wallet ${topup.wallet_id} credited`);
+      }
+    } else if (status === 'FAILED') {
+      await this.supabaseService.getClient()
+        .from('wallet_topups')
+        .update({ status: 'FAILED', updated_at: new Date().toISOString() })
+        .eq('id', topup.id);
+    }
+
+    return true;
   }
 
   private async generateReceipt(transaction: any, merchant: any) {

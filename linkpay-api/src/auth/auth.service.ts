@@ -91,6 +91,16 @@ export class AuthService {
       this.logger.warn(`Role insert failed for ${userId}: ${roleError.message}`);
     }
 
+    // Every self-registered account (client or merchant) gets a wallet — the
+    // wallet_number is filled server-side by a DB trigger (LP-MER-xxxxxx if
+    // this account owns a merchant, created just above; LP-xxxxxxxx
+    // otherwise). Never blocking: registration must still succeed even if
+    // this fails, same tolerance as the other best-effort steps above.
+    const { error: walletError } = await this.supabaseService.getClient().from('wallets').insert({ user_id: userId });
+    if (walletError) {
+      this.logger.warn(`Wallet creation failed for ${userId}: ${walletError.message}`);
+    }
+
     const sessionId = await this.claimSession(userId);
     const token = await this.generateToken(userId, email, roleSlug, merchantId, sessionId);
     const refreshToken = await this.generateRefreshToken(userId, email, sessionId);

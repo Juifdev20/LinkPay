@@ -4,6 +4,8 @@ import { useAuthStore } from '@/lib/auth-store';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/PageHeader';
+import { BalanceCard } from '@/components/BalanceCard';
+import { WalletActions } from '@/components/WalletActions';
 import { TransactionItem } from '@/components/TransactionItem';
 import { formatCurrency } from '@/lib/utils';
 import { Plus, TrendingUp, Receipt, Wallet, QrCode } from 'lucide-react';
@@ -15,6 +17,14 @@ export default function MerchantDashboard() {
     queryKey: ['merchant-stats'],
     queryFn: async () => {
       const { data } = await api.get('/merchants/me/stats');
+      return data;
+    },
+  });
+
+  const { data: wallet } = useQuery({
+    queryKey: ['wallet'],
+    queryFn: async () => {
+      const { data } = await api.get('/wallet');
       return data;
     },
   });
@@ -34,6 +44,8 @@ export default function MerchantDashboard() {
     !!merchantId,
   );
 
+  useRealtimeInvalidate('wallet_topups', wallet ? `wallet_id=eq.${wallet.id}` : undefined, [['wallet']], !!wallet);
+
   const cards = [
     { label: 'Volume total', value: formatCurrency(stats?.total_volume_cents || 0), icon: TrendingUp },
     { label: 'Transactions', value: String(stats?.total_transactions || 0), icon: Receipt },
@@ -47,6 +59,14 @@ export default function MerchantDashboard() {
       <PageHeader
         title="Tableau de bord"
         action={{ label: 'Nouvelle demande', icon: Plus, to: '/dashboard/payment-requests/new' }}
+      />
+
+      <BalanceCard
+        balanceCents={wallet?.balance_cents || 0}
+        label="Solde LinkPay"
+        subtitle={wallet?.wallet_number}
+        maskable
+        actions={<WalletActions />}
       />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
