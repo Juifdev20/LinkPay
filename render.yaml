@@ -6,7 +6,7 @@ services:
     region: frankfurt
     plan: starter
     rootDir: linkpay-api
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm run start:prod
     healthCheckPath: /health
     envVars:
