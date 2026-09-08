@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac } from 'crypto';
+import { CinetPayClient, parseNotification, Currency } from 'cinetpay-js';
 import {
   PspAdapter,
   CreatePaymentIntentParams,
@@ -16,134 +16,105 @@ import {
 // mobile money rails do not (Flutterwave's Francophone mobile money endpoint is
 // CFA-zone only: Cameroon, Côte d'Ivoire, Mali, Senegal, Burkina Faso).
 //
-// NOTE: built from CinetPay's public documentation and SDK samples without a
-// live sandbox account to test against. Field names/response shape should be
-// re-verified against a real CinetPay sandbox response once credentials are
-// available (see the "Vérification" section of the integration plan) —
-// treat this as a first pass, not a confirmed-working integration yet.
-const CINETPAY_BASE_URL = 'https://api-checkout.cinetpay.com/v2';
+// Uses the official `cinetpay-js` SDK against CinetPay's newer account_key /
+// account_password API (sk_test_/sk_live_ prefixed keys, api.cinetpay.net /
+// api.cinetpay.co) — the older apikey/site_id Checkout v2 API is being
+// migrated away from new merchant accounts, which no longer expose a site_id.
+// Country is hardcoded to CD (DR Congo) since LinkPay only operates there.
+const COUNTRY = 'CD';
 
+// The new API's webhook only pings that a transaction reached a final state
+// (no status field in the notify body) — the real status must always be
+// fetched back from CinetPay via getStatus(), which is what
+// parseWebhookEvent() does below. This is CinetPay's own recommended
+// pattern, and incidentally means an attacker replaying/forging a webhook
+// body cannot lie about the outcome: we only trust what our own
+// authenticated call to CinetPay returns.
 @Injectable()
 export class CinetPayAdapter implements PspAdapter {
   readonly provider = 'cinetpay';
   private readonly logger = new Logger(CinetPayAdapter.name);
+  private client: CinetPayClient;
 
-  constructor(private configService: ConfigService) {}
+  constructor(private configService: ConfigService) {
+    const apiKey = this.configService.get<string>('CINETPAY_API_KEY_CD', '');
+    const apiPassword = this.configService.get<string>('CINETPAY_API_PASSWORD_CD', '');
 
-  private get apiKey(): string {
-    return this.configService.get<string>('CINETPAY_API_KEY', '');
-  }
-
-  private get siteId(): string {
-    return this.configService.get<string>('CINETPAY_SITE_ID', '');
-  }
-
-  private get webhookSecret(): string {
-    return this.configService.get<string>('PSP_WEBHOOK_SECRET', '');
+    this.client = new CinetPayClient({
+      credentials: {
+        [COUNTRY]: { apiKey, apiPassword },
+      },
+    });
   }
 
   async createPaymentIntent(params: CreatePaymentIntentParams): Promise<PaymentIntentResult> {
-    if (!this.apiKey || !this.siteId) {
-      throw new Error('CINETPAY_API_KEY / CINETPAY_SITE_ID are not configured');
-    }
-
     // CinetPay amounts are whole currency units (e.g. 1500 = 1500 CDF), not
     // the cents/centimes LinkPay uses internally everywhere else.
     const amount = Math.round(params.amount_cents / 100);
+    const [firstName, ...rest] = (params.customer?.name || 'Client').split(' ');
 
-    const body = {
-      apikey: this.apiKey,
-      site_id: this.siteId,
-      transaction_id: params.reference,
-      amount,
-      currency: params.currency,
-      description: `LinkPay - ${params.reference}`,
-      notify_url: params.webhook_url,
-      return_url: params.redirect_url,
-      channels: 'ALL', // CinetPay's own hosted page lets the customer pick Mobile Money / card
-      customer_name: params.customer?.name || 'Client',
-      customer_surname: '-',
-      customer_email: params.customer?.email || 'client@linkpay.cd',
-      customer_phone_number: params.customer?.phone || '',
-      customer_address: '-',
-      customer_city: 'Kinshasa',
-      customer_country: 'CD',
-      customer_state: 'CD',
-      customer_zip_code: '00000',
-      metadata: JSON.stringify(params.metadata || {}),
-    };
-
-    const response = await fetch(`${CINETPAY_BASE_URL}/payment`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    const result: any = await response.json();
-
-    if (!response.ok || result.code !== '201' || !result.data?.payment_url) {
-      this.logger.error(`CinetPay payment initiation failed: ${JSON.stringify(result)}`);
-      throw new Error(result.description || result.message || 'CinetPay payment initiation failed');
-    }
+    const payment = await this.client.payment.initialize(
+      {
+        currency: params.currency as Currency,
+        merchantTransactionId: params.reference,
+        amount,
+        lang: 'fr',
+        designation: `LinkPay - ${params.reference}`,
+        clientEmail: params.customer?.email || 'client@linkpay.cd',
+        clientFirstName: firstName || 'Client',
+        clientLastName: rest.join(' ') || '-',
+        clientPhoneNumber: params.customer?.phone || '',
+        successUrl: params.redirect_url,
+        failedUrl: params.redirect_url,
+        notifyUrl: params.webhook_url,
+        channel: 'PUSH',
+      },
+      COUNTRY,
+    );
 
     return {
       psp_intent_id: params.reference,
-      checkout_url: result.data.payment_url,
+      checkout_url: payment.paymentUrl,
       status: 'PENDING',
     };
   }
 
   verifyWebhook(payload: Buffer, signature: string, headers: Record<string, string>): boolean {
-    const token = headers['x-token'] || signature;
-    if (!token || !this.webhookSecret) {
-      return false;
-    }
-
-    let body: Record<string, any>;
     try {
-      body = JSON.parse(payload.toString());
+      const notification = parseNotification(JSON.parse(payload.toString()));
+      return Boolean(notification.transactionId && notification.merchantTransactionId);
     } catch {
       return false;
     }
-
-    // Order documented by CinetPay for the notify HMAC-SHA256 signature.
-    const fields = [
-      'cpm_site_id', 'cpm_trans_id', 'cpm_trans_date', 'cpm_amount', 'cpm_currency',
-      'signature', 'payment_method', 'cel_phone', 'cpm_phone_prefixe', 'cpm_language',
-      'cpm_version', 'cpm_payment_config', 'cpm_page_action', 'cpm_custom',
-      'cpm_designation', 'cpm_error_message',
-    ];
-    const concatenated = fields.map((f) => body[f] ?? '').join('');
-    const expected = createHmac('sha256', this.webhookSecret).update(concatenated).digest('hex');
-
-    return expected === token;
   }
 
-  parseWebhookEvent(payload: Buffer, headers: Record<string, string>): WebhookEventResult {
+  async parseWebhookEvent(payload: Buffer, headers: Record<string, string>): Promise<WebhookEventResult> {
     const body = JSON.parse(payload.toString());
+    const notification = parseNotification(body);
 
-    // CinetPay doesn't include an explicit boolean success flag in the
-    // notify payload documented so far — an empty cpm_error_message is
-    // treated as success. Re-verify against a real payload once available;
-    // calling getTransactionStatus() before trusting this is the safer bet.
-    const status: 'SUCCESS' | 'FAILED' = body.cpm_error_message ? 'FAILED' : 'SUCCESS';
+    // Always re-confirm with CinetPay directly rather than trusting the
+    // webhook body — see the note above the class.
+    const statusResult = await this.client.payment.getStatus(notification.transactionId, COUNTRY);
+    const status: 'SUCCESS' | 'FAILED' | 'PENDING' =
+      statusResult.status === 'SUCCESS' ? 'SUCCESS' : statusResult.status === 'FAILED' ? 'FAILED' : 'PENDING';
 
     return {
-      event_id: `${body.cpm_trans_id}_${body.cpm_trans_date}`,
-      event_type: status === 'SUCCESS' ? 'payment.succeeded' : 'payment.failed',
-      psp_intent_id: body.cpm_trans_id,
+      event_id: notification.transactionId,
+      event_type: status === 'SUCCESS' ? 'payment.succeeded' : status === 'FAILED' ? 'payment.failed' : 'payment.pending',
+      psp_intent_id: notification.merchantTransactionId,
       status,
-      amount_cents: Math.round(parseFloat(body.cpm_amount || '0') * 100),
-      currency: body.cpm_currency || 'CDF',
-      reference: body.cpm_trans_id,
+      amount_cents: Math.round(Number((statusResult as any).amount || 0) * 100),
+      currency: (statusResult as any).currency || 'CDF',
+      reference: notification.merchantTransactionId,
       raw: body,
     };
   }
 
   async refund(params: RefundParams): Promise<RefundResult> {
-    // CinetPay's public API does not document a programmatic refund
-    // endpoint — refunds are processed manually from the CinetPay merchant
-    // dashboard. Failing loudly here beats silently pretending it worked.
+    // CinetPay's API does not expose a programmatic refund endpoint tied to
+    // an original transaction — refunds are processed manually from the
+    // CinetPay merchant dashboard. Failing loudly here beats silently
+    // pretending it worked.
     this.logger.warn(`CinetPay refund requested for ${params.psp_intent_id} — no refund API available, must be done manually in the CinetPay dashboard`);
     throw new BadRequestException(
       'Le remboursement automatique n\'est pas disponible pour CinetPay — traitez-le manuellement depuis le tableau de bord CinetPay.',
@@ -151,29 +122,13 @@ export class CinetPayAdapter implements PspAdapter {
   }
 
   async getTransactionStatus(psp_intent_id: string): Promise<TransactionStatusResult> {
-    const response = await fetch(`${CINETPAY_BASE_URL}/payment/check`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        apikey: this.apiKey,
-        site_id: this.siteId,
-        transaction_id: psp_intent_id,
-      }),
-    });
-
-    const result: any = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.description || result.message || 'CinetPay status check failed');
-    }
-
-    const cinetpayStatus = result.data?.status;
-    const status = cinetpayStatus === 'ACCEPTED' ? 'SUCCESS' : cinetpayStatus === 'REFUSED' ? 'FAILED' : 'PENDING';
+    const statusResult = await this.client.payment.getStatus(psp_intent_id, COUNTRY);
+    const status = statusResult.status === 'SUCCESS' ? 'SUCCESS' : statusResult.status === 'FAILED' ? 'FAILED' : 'PENDING';
 
     return {
       status,
-      amount_cents: Math.round(parseFloat(result.data?.amount || '0') * 100),
-      currency: result.data?.currency || 'CDF',
+      amount_cents: Math.round(Number((statusResult as any).amount || 0) * 100),
+      currency: (statusResult as any).currency || 'CDF',
     };
   }
 }

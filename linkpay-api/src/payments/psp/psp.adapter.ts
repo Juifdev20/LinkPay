@@ -52,7 +52,7 @@ export interface PspAdapter {
 
   createPaymentIntent(params: CreatePaymentIntentParams): Promise<PaymentIntentResult>;
   verifyWebhook(payload: Buffer, signature: string, headers: Record<string, string>): boolean;
-  parseWebhookEvent(payload: Buffer, headers: Record<string, string>): WebhookEventResult;
+  parseWebhookEvent(payload: Buffer, headers: Record<string, string>): Promise<WebhookEventResult>;
   refund(params: RefundParams): Promise<RefundResult>;
   getTransactionStatus(psp_intent_id: string): Promise<TransactionStatusResult>;
 }

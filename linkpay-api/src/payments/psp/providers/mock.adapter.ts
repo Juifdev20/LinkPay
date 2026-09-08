@@ -28,7 +28,7 @@ export class MockPspAdapter implements PspAdapter {
     return true;
   }
 
-  parseWebhookEvent(payload: Buffer, headers: Record<string, string>): WebhookEventResult {
+  async parseWebhookEvent(payload: Buffer, headers: Record<string, string>): Promise<WebhookEventResult> {
     const body = JSON.parse(payload.toString());
     return {
       event_id: body.event_id || `evt_${uuidv4()}`,

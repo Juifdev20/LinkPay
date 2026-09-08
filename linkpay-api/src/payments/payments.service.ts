@@ -314,7 +314,7 @@ export class PaymentsService {
       throw new BadRequestException('Invalid webhook signature');
     }
 
-    const event = adapter.parseWebhookEvent(payload, headers);
+    const event = await adapter.parseWebhookEvent(payload, headers);
     const dedupHash = this.computeDedupHash(provider, event.event_id, event.psp_intent_id);
 
     const { data: existingEvent } = await this.supabaseService.getClient()
