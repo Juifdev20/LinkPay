@@ -29,7 +29,11 @@ services:
       - key: JWT_REFRESH_EXPIRES_IN
         value: 7d
       - key: PSP_PROVIDER
-        value: mock
+        value: cinetpay
+      - key: CINETPAY_API_KEY_CD
+        sync: false
+      - key: CINETPAY_API_PASSWORD_CD
+        sync: false
 
   # ── Frontend: React PWA (static) ──
   - type: web
