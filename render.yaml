@@ -34,6 +34,8 @@ services:
         sync: false
       - key: CINETPAY_API_PASSWORD_CD
         sync: false
+      - key: PROXY_URL
+        sync: false
 
   # ── Frontend: React PWA (static) ──
   - type: web

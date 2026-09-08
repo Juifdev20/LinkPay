@@ -1,3 +1,4 @@
+import { ProxyAgent, setGlobalDispatcher } from 'undici';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -7,6 +8,13 @@ import * as express from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  // Route outbound HTTP requests through a fixed-IP proxy when PROXY_URL is set.
+  // Needed on Render (shared outbound IPs) for CinetPay IP whitelisting —
+  // set PROXY_URL to your QuotaGuard/Fixie proxy URL in Render env vars.
+  if (process.env.PROXY_URL) {
+    setGlobalDispatcher(new ProxyAgent(process.env.PROXY_URL));
+  }
+
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
     // Body parsing is wired manually below so PSP webhook handlers can access
