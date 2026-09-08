@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -136,24 +136,36 @@ export class WalletsService {
     const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:5173');
     const backendUrl = `http://localhost:${this.configService.get<number>('PORT', 3000)}`;
 
-    const pspResult = await adapter.createPaymentIntent({
-      amount_cents: amountCents,
-      currency,
-      reference,
-      // The Mobile Money number entered for THIS top-up takes priority over
-      // the account's registered profile phone — someone may be recharging
-      // from a line that isn't the one they signed up with.
-      customer: { email: profile?.email, phone: mobileMoneyPhone || profile?.phone, name: profile?.full_name },
-      redirect_url: `${frontendUrl}/dashboard/wallet/topup/result?ref=${reference}`,
-      webhook_url: `${backendUrl}/api/v1/payments/webhooks/${provider}`,
-      metadata: {
-        kind: 'wallet_topup',
-        wallet_id: wallet.id,
-        payment_method: paymentMethod,
-        mobile_money_operator: mobileMoneyOperator,
-        mobile_money_phone: mobileMoneyPhone,
-      },
-    });
+    let pspResult;
+    try {
+      pspResult = await adapter.createPaymentIntent({
+        amount_cents: amountCents,
+        currency,
+        reference,
+        // The Mobile Money number entered for THIS top-up takes priority over
+        // the account's registered profile phone — someone may be recharging
+        // from a line that isn't the one they signed up with.
+        customer: { email: profile?.email, phone: mobileMoneyPhone || profile?.phone, name: profile?.full_name },
+        redirect_url: `${frontendUrl}/dashboard/wallet/topup/result?ref=${reference}`,
+        webhook_url: `${backendUrl}/api/v1/payments/webhooks/${provider}`,
+        metadata: {
+          kind: 'wallet_topup',
+          wallet_id: wallet.id,
+          payment_method: paymentMethod,
+          mobile_money_operator: mobileMoneyOperator,
+          mobile_money_phone: mobileMoneyPhone,
+        },
+      });
+    } catch (err: any) {
+      this.logger.error(`CinetPay payment init failed: ${err.message}`, err.stack);
+      if (err.message?.includes('not withlisted') || err.message?.includes('Authentication failed')) {
+        throw new ServiceUnavailableException('Le service de paiement est temporairement indisponible. Veuillez réessayer plus tard.');
+      }
+      if (err.message?.includes('phone') || err.message?.includes('PhoneNumber') || err.message?.includes('international format')) {
+        throw new BadRequestException('Numéro de téléphone invalide. Utilisez le format international (ex: +243XXXXXXXXX).');
+      }
+      throw new ServiceUnavailableException('Impossible d\'initialiser le paiement. Veuillez réessayer ou contacter le support.');
+    }
 
     const { data: topup, error } = await this.supabaseService.getClient()
       .from('wallet_topups')

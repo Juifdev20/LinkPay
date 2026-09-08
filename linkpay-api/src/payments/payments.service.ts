@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import { PspFactory } from './psp/psp.factory';
@@ -89,19 +89,31 @@ export class PaymentsService {
     const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:5173');
     const backendUrl = `http://localhost:${this.configService.get<number>('PORT', 3000)}`;
 
-    const pspResult = await adapter.createPaymentIntent({
-      amount_cents: fees.total_cents,
-      currency: request.currency,
-      reference: request.reference,
-      customer: data.customer,
-      redirect_url: `${frontendUrl}/payment/result?ref=${request.reference}`,
-      webhook_url: `${backendUrl}/api/v1/webhooks/${provider}`,
-      metadata: {
-        payment_request_id: request.id,
-        merchant_id: request.merchant_id,
-        commission_model: request.commission_model,
-      },
-    });
+    let pspResult;
+    try {
+      pspResult = await adapter.createPaymentIntent({
+        amount_cents: fees.total_cents,
+        currency: request.currency,
+        reference: request.reference,
+        customer: data.customer,
+        redirect_url: `${frontendUrl}/payment/result?ref=${request.reference}`,
+        webhook_url: `${backendUrl}/api/v1/webhooks/${provider}`,
+        metadata: {
+          payment_request_id: request.id,
+          merchant_id: request.merchant_id,
+          commission_model: request.commission_model,
+        },
+      });
+    } catch (err: any) {
+      this.logger.error(`PSP payment init failed: ${err.message}`, err.stack);
+      if (err.message?.includes('not withlisted') || err.message?.includes('Authentication failed')) {
+        throw new ServiceUnavailableException('Le service de paiement est temporairement indisponible. Veuillez réessayer plus tard.');
+      }
+      if (err.message?.includes('phone') || err.message?.includes('PhoneNumber') || err.message?.includes('international format')) {
+        throw new BadRequestException('Numéro de téléphone invalide. Utilisez le format international (ex: +243XXXXXXXXX).');
+      }
+      throw new ServiceUnavailableException('Impossible d\'initialiser le paiement. Veuillez réessayer ou contacter le support.');
+    }
 
     const { data: intent, error: intentError } = await this.supabaseService.getClient()
       .from('payment_intents')

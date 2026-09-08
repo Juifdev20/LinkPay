@@ -47,11 +47,20 @@ export class CinetPayAdapter implements PspAdapter {
     });
   }
 
+  private normalizePhone(phone: string): string {
+    if (!phone) return '';
+    if (phone.startsWith('+')) return phone;
+    // DR Congo country code is +243 — strip leading 0 if present
+    const local = phone.replace(/^0+/, '');
+    return `+243${local}`;
+  }
+
   async createPaymentIntent(params: CreatePaymentIntentParams): Promise<PaymentIntentResult> {
     // CinetPay amounts are whole currency units (e.g. 1500 = 1500 CDF), not
     // the cents/centimes LinkPay uses internally everywhere else.
     const amount = Math.round(params.amount_cents / 100);
     const [firstName, ...rest] = (params.customer?.name || 'Client').split(' ');
+    const phone = this.normalizePhone(params.customer?.phone || '');
 
     const payment = await this.client.payment.initialize(
       {
@@ -63,7 +72,7 @@ export class CinetPayAdapter implements PspAdapter {
         clientEmail: params.customer?.email || 'client@linkpay.cd',
         clientFirstName: firstName || 'Client',
         clientLastName: rest.join(' ') || '-',
-        clientPhoneNumber: params.customer?.phone || '',
+        clientPhoneNumber: phone,
         successUrl: params.redirect_url,
         failedUrl: params.redirect_url,
         notifyUrl: params.webhook_url,
