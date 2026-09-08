@@ -15,7 +15,7 @@ import { Loader2, Check, DollarSign, ArrowLeft, Wallet as WalletIcon, Smartphone
 
 const PRESETS = [5000, 10000, 25000, 50000];
 
-type Step = 'amount' | 'method' | 'confirm' | 'processing' | 'success';
+type Step = 'amount' | 'method' | 'confirm' | 'processing' | 'success' | 'pending';
 
 export default function TopupPage() {
   const navigate = useNavigate();
@@ -77,26 +77,39 @@ export default function TopupPage() {
 
       // Mock provider (and an idempotent replay) settle synchronously.
       setResult(data.topup);
-      queryClient.invalidateQueries({ queryKey: ['wallet'] });
-      queryClient.invalidateQueries({ queryKey: ['wallet-transactions'] });
-      setStep('success');
+      if (data.topup?.status === 'PENDING') {
+        setStep('pending');
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['wallet'] });
+        queryClient.invalidateQueries({ queryKey: ['wallet-transactions'] });
+        setStep('success');
+      }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Erreur lors de la recharge');
       setStep('confirm');
     }
   };
 
-  if (step === 'success') {
+  if (step === 'success' || step === 'pending') {
+    const isPending = step === 'pending' || result?.status === 'PENDING';
     return (
       <div className="p-6 max-w-lg mx-auto">
         <Card>
           <CardContent className="pt-6 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-success/10 flex items-center justify-center mx-auto mb-4">
-              <Check className="w-8 h-8 text-success" />
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 ${isPending ? 'bg-warning/10' : 'bg-success/10'}`}>
+              {isPending ? (
+                <Loader2 className="w-8 h-8 text-warning animate-spin" />
+              ) : (
+                <Check className="w-8 h-8 text-success" />
+              )}
             </div>
-            <h2 className="text-xl font-bold text-foreground mb-1">Recharge réussie !</h2>
+            <h2 className="text-xl font-bold text-foreground mb-1">
+              {isPending ? 'En attente de confirmation' : 'Recharge réussie !'}
+            </h2>
             <p className="text-sm text-muted-foreground mb-6">
-              {formatCurrency(amountCents, currency)} ajouté(s) à votre compte LinkPay
+              {isPending
+                ? `Votre recharge de ${formatCurrency(amountCents, currency)} est en cours de traitement. Le solde sera mis à jour après confirmation.`
+                : `${formatCurrency(amountCents, currency)} ajouté(s) à votre compte LinkPay`}
             </p>
             <div className="rounded-xl bg-secondary p-4 text-left space-y-2">
               <div className="flex justify-between text-sm">
@@ -106,12 +119,14 @@ export default function TopupPage() {
               {paymentMethod === 'mobile_money' && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Moyen de paiement</span>
-                  <span className="text-foreground">{MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label} — {phone}</span>
+                  <span className="font-semibold text-foreground">{MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label} — {phone}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Statut</span>
-                <span className="font-semibold text-success">{result?.status || 'Confirmé'}</span>
+                <span className={`font-semibold ${isPending ? 'text-warning' : 'text-success'}`}>
+                  {isPending ? 'En attente' : 'Confirmé'}
+                </span>
               </div>
               {result?.id && (
                 <div className="flex justify-between text-sm">

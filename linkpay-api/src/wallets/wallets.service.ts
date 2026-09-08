@@ -147,7 +147,7 @@ export class WalletsService {
         // from a line that isn't the one they signed up with.
         customer: { email: profile?.email, phone: mobileMoneyPhone || profile?.phone, name: profile?.full_name },
         redirect_url: `${frontendUrl}/dashboard/wallet/topup/result?ref=${reference}`,
-        webhook_url: `${backendUrl}/api/v1/payments/webhooks/${provider}`,
+        webhook_url: `${backendUrl}/api/v1/webhooks/${provider}`,
         metadata: {
           kind: 'wallet_topup',
           wallet_id: wallet.id,
