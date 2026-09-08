@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PaymentRequestsService } from './payment-requests.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
-import { IsNumber, IsString, IsOptional, IsObject, Min, Max, MaxLength } from 'class-validator';
+import { IsNumber, IsString, IsOptional, IsObject, IsIn, Min, Max, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 class CreatePaymentRequestDto {
@@ -13,9 +13,9 @@ class CreatePaymentRequestDto {
   @Max(99999999999)
   amount_cents!: number;
 
-  @ApiPropertyOptional({ default: 'CDF' })
+  @ApiPropertyOptional({ default: 'CDF', enum: ['CDF', 'USD'] })
   @IsOptional()
-  @IsString()
+  @IsIn(['CDF', 'USD'])
   currency?: string;
 
   @ApiPropertyOptional({ example: 'Achat produits divers' })

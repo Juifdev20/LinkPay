@@ -10,6 +10,9 @@ import { CommissionsModule } from '../commissions/commissions.module';
 import { LedgerModule } from '../ledger/ledger.module';
 import { TransactionsModule } from '../transactions/transactions.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AuditModule } from '../audit/audit.module';
+import { WalletPinService } from '../wallets/wallet-pin.service';
+import { WalletLimitsService } from '../wallets/wallet-limits.service';
 
 @Module({
   imports: [
@@ -19,9 +22,15 @@ import { NotificationsModule } from '../notifications/notifications.module';
     LedgerModule,
     TransactionsModule,
     NotificationsModule,
+    AuditModule,
   ],
   controllers: [PaymentsController],
-  providers: [PaymentsService, PspFactory, MockPspAdapter, CinetPayAdapter],
+  // WalletPinService/WalletLimitsService are also provided by WalletsModule
+  // (which itself imports PaymentsModule for PspFactory) — redeclared here
+  // rather than importing WalletsModule, to avoid a circular module
+  // dependency. Both are stateless Supabase wrappers, so a second instance
+  // here is harmless.
+  providers: [PaymentsService, PspFactory, MockPspAdapter, CinetPayAdapter, WalletPinService, WalletLimitsService],
   exports: [PaymentsService, PspFactory],
 })
 export class PaymentsModule {}

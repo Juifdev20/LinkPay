@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
+import { sumByCurrency } from '../common/utils/currency';
 
 @Injectable()
 export class AdminService {
@@ -25,10 +26,10 @@ export class AdminService {
       .from('transactions').select('*', { count: 'exact', head: true }).gte('created_at', today.toISOString());
 
     const { data: volumeData } = await this.supabaseService.getClient()
-      .from('transactions').select('amount_cents, net_cents').eq('status', 'SUCCESS');
+      .from('transactions').select('amount_cents, net_cents, currency').eq('status', 'SUCCESS');
 
-    const totalVolume = volumeData?.reduce((s: number, t: any) => s + t.amount_cents, 0) || 0;
-    const totalNet = volumeData?.reduce((s: number, t: any) => s + t.net_cents, 0) || 0;
+    const volume = sumByCurrency(volumeData, 'amount_cents');
+    const net = sumByCurrency(volumeData, 'net_cents');
 
     const { count: pendingSettlements } = await this.supabaseService.getClient()
       .from('settlements').select('*', { count: 'exact', head: true }).eq('status', 'PENDING');
@@ -43,9 +44,10 @@ export class AdminService {
       pending_merchants: pendingMerchants || 0,
       total_transactions: totalTransactions || 0,
       today_transactions: todayTransactions || 0,
-      total_volume_cents: totalVolume,
-      total_net_cents: totalNet,
-      total_commission_cents: totalVolume - totalNet,
+      // Independent per-currency figures — never summed together.
+      volume,
+      net,
+      commission: { CDF: volume.CDF - net.CDF, USD: volume.USD - net.USD },
       pending_settlements: pendingSettlements || 0,
     };
   }
@@ -111,7 +113,10 @@ export class AdminService {
   async resetUserSession(userId: string) {
     const { error } = await this.supabaseService.getClient()
       .from('profiles')
-      .update({ active_session_id: null })
+      // Clear the device binding too — otherwise the freed session slot
+      // would still silently "belong" to the old device_id, defeating the
+      // point of a reset for a genuinely lost/stolen device.
+      .update({ active_session_id: null, active_device_id: null })
       .eq('id', userId);
 
     if (error) {

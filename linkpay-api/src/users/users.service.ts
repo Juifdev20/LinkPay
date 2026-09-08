@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
+import { sumByCurrency } from '../common/utils/currency';
 
 @Injectable()
 export class UsersService {
@@ -56,14 +57,13 @@ export class UsersService {
   async getClientStats(userId: string) {
     const { data, count } = await this.supabaseService.getClient()
       .from('transactions')
-      .select('amount_cents', { count: 'exact' })
+      .select('amount_cents, currency', { count: 'exact' })
       .eq('client_id', userId)
       .eq('status', 'SUCCESS');
 
-    const totalSpent = data?.reduce((sum: number, t: any) => sum + (t.amount_cents || 0), 0) || 0;
-
     return {
-      total_spent_cents: totalSpent,
+      // Independent per-currency figures — never summed together.
+      spent: sumByCurrency(data, 'amount_cents'),
       total_payments: count || 0,
     };
   }

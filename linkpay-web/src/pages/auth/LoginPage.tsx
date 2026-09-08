@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/lib/auth-store';
+import { safeRedirect } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,6 +11,7 @@ import { Loader2, Mail, Lock } from 'lucide-react';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const login = useAuthStore((s) => s.login);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,7 +24,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      navigate('/dashboard');
+      navigate(safeRedirect(searchParams.get('redirect')));
     } catch (err: any) {
       setError(err.response?.data?.message || 'Échec de la connexion');
     } finally {
@@ -88,7 +90,10 @@ export default function LoginPage() {
           <CardFooter className="flex justify-center">
             <p className="text-sm text-muted-foreground text-center">
               Pas de compte ?{' '}
-              <Link to="/register" className="text-primary font-semibold hover:underline">
+              <Link
+                to={searchParams.get('redirect') ? `/register?redirect=${encodeURIComponent(searchParams.get('redirect')!)}` : '/register'}
+                className="text-primary font-semibold hover:underline"
+              >
                 Créer un compte
               </Link>
             </p>

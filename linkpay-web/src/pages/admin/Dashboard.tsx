@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/PageHeader';
-import { formatCurrency } from '@/lib/utils';
+import { DualCurrencyStat } from '@/components/DualCurrencyStat';
 import { Users, Store, TrendingUp, Receipt } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -15,7 +15,7 @@ export default function AdminDashboard() {
   });
 
   const cards = [
-    { label: 'Volume total', value: formatCurrency(stats?.total_volume_cents || 0), icon: TrendingUp },
+    { label: 'Volume total', money: stats?.volume, icon: TrendingUp },
     { label: 'Transactions', value: String(stats?.total_transactions || 0), icon: Receipt },
     { label: 'Commercants', value: String(stats?.total_merchants || 0), icon: Store },
     { label: 'Utilisateurs', value: String(stats?.total_users || 0), icon: Users },
@@ -32,7 +32,11 @@ export default function AdminDashboard() {
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-3">
                 <c.icon className="w-5 h-5 text-primary" />
               </div>
-              <p className="text-xl font-bold text-foreground">{c.value}</p>
+              {c.money ? (
+                <DualCurrencyStat amounts={c.money} />
+              ) : (
+                <p className="text-xl font-bold text-foreground">{c.value}</p>
+              )}
               <p className="text-sm text-muted-foreground">{c.label}</p>
             </CardContent>
           </Card>
@@ -54,7 +58,7 @@ export default function AdminDashboard() {
             <CardTitle className="text-base font-bold">Commissions perçues</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-primary">{formatCurrency(stats?.total_commission_cents || 0)}</p>
+            <DualCurrencyStat amounts={stats?.commission || { CDF: 0, USD: 0 }} />
             <p className="text-sm text-muted-foreground">Total plateforme</p>
           </CardContent>
         </Card>

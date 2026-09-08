@@ -4,7 +4,7 @@ import { CommissionsService } from './commissions.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { IsString, IsOptional, IsNumber, IsBoolean, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsBoolean, IsIn, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 class CreateRuleDto {
@@ -47,9 +47,9 @@ class CreateRuleDto {
   @IsString()
   target_id?: string;
 
-  @ApiPropertyOptional({ default: 'CDF' })
+  @ApiPropertyOptional({ default: 'CDF', enum: ['CDF', 'USD'] })
   @IsOptional()
-  @IsString()
+  @IsIn(['CDF', 'USD'])
   currency?: string;
 }
 

@@ -1,15 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
+import { CurrencySelector } from '@/components/CurrencySelector';
 import { Loader2, Copy, Check, DollarSign, FileText, User, Phone } from 'lucide-react';
 
 export default function CreatePaymentRequestPage() {
   const navigate = useNavigate();
   const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState<'CDF' | 'USD'>('CDF');
   const [description, setDescription] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -18,6 +21,16 @@ export default function CreatePaymentRequestPage() {
   const [result, setResult] = useState<any>(null);
   const [copied, setCopied] = useState(false);
 
+  const { data: merchant } = useQuery({
+    queryKey: ['merchant-me'],
+    queryFn: async () => (await api.get('/merchants/me')).data,
+  });
+
+  // Prefill with the shop's own default currency, but still overridable per link.
+  useEffect(() => {
+    if (merchant?.default_currency === 'USD') setCurrency('USD');
+  }, [merchant?.default_currency]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -25,12 +38,13 @@ export default function CreatePaymentRequestPage() {
     try {
       const amountCents = Math.round(parseFloat(amount) * 100);
       if (!amountCents || amountCents < 50) {
-        setError('Montant minimum: 0.50 CDF');
+        setError(`Montant minimum : 0.50 ${currency}`);
         setLoading(false);
         return;
       }
       const { data } = await api.post('/payment-requests', {
         amount_cents: amountCents,
+        currency,
         description,
         customer_info: customerName || customerPhone ? { name: customerName, phone: customerPhone } : undefined,
       });
@@ -102,7 +116,11 @@ export default function CreatePaymentRequestPage() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="amount" className="font-semibold">Montant (CDF)</Label>
+              <Label className="font-semibold">Devise</Label>
+              <CurrencySelector value={currency} onChange={setCurrency} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="amount" className="font-semibold">Montant ({currency})</Label>
               <div className="relative">
                 <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input

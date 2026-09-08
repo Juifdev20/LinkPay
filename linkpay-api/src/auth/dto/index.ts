@@ -34,6 +34,12 @@ export class RegisterDto {
   @IsString()
   @MaxLength(255)
   business_name?: string;
+
+  @ApiPropertyOptional({ description: 'Client-generated UUID identifying this browser/app install, persisted across restarts — lets this same device silently reclaim its session later instead of hitting the single-session conflict.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  device_id?: string;
 }
 
 export class LoginDto {
@@ -45,4 +51,10 @@ export class LoginDto {
   @IsString()
   @MinLength(1)
   password!: string;
+
+  @ApiPropertyOptional({ description: 'Client-generated UUID identifying this browser/app install, persisted across restarts — lets this same device silently reclaim its session later instead of hitting the single-session conflict.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  device_id?: string;
 }

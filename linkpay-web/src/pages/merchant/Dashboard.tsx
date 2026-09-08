@@ -1,20 +1,32 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/PageHeader';
+import { BalanceCard } from '@/components/BalanceCard';
+import { WalletActions } from '@/components/WalletActions';
 import { TransactionItem } from '@/components/TransactionItem';
-import { formatCurrency } from '@/lib/utils';
+import { DualCurrencyStat } from '@/components/DualCurrencyStat';
 import { Plus, TrendingUp, Receipt, Wallet, QrCode } from 'lucide-react';
 
 export default function MerchantDashboard() {
   const merchantId = useAuthStore((s) => s.user?.merchant_id);
+  const [walletCurrency, setWalletCurrency] = useState<'CDF' | 'USD'>('CDF');
 
   const { data: stats } = useQuery({
     queryKey: ['merchant-stats'],
     queryFn: async () => {
       const { data } = await api.get('/merchants/me/stats');
+      return data;
+    },
+  });
+
+  const { data: wallet } = useQuery({
+    queryKey: ['wallet'],
+    queryFn: async () => {
+      const { data } = await api.get('/wallet');
       return data;
     },
   });
@@ -34,11 +46,17 @@ export default function MerchantDashboard() {
     !!merchantId,
   );
 
+  const walletQueryKeys = [['wallet'], ['wallet-transactions']];
+  useRealtimeInvalidate('wallet_topups', wallet ? `wallet_id=eq.${wallet.id}` : undefined, walletQueryKeys, !!wallet);
+  useRealtimeInvalidate('withdrawals', wallet ? `wallet_id=eq.${wallet.id}` : undefined, walletQueryKeys, !!wallet);
+  useRealtimeInvalidate('transfers', wallet ? `sender_wallet_id=eq.${wallet.id}` : undefined, walletQueryKeys, !!wallet);
+  useRealtimeInvalidate('transfers', wallet ? `recipient_wallet_id=eq.${wallet.id}` : undefined, walletQueryKeys, !!wallet);
+
   const cards = [
-    { label: 'Volume total', value: formatCurrency(stats?.total_volume_cents || 0), icon: TrendingUp },
+    { label: 'Volume total', money: stats?.volume, icon: TrendingUp },
     { label: 'Transactions', value: String(stats?.total_transactions || 0), icon: Receipt },
     { label: "Aujourd'hui", value: String(stats?.today_transactions || 0), icon: QrCode },
-    { label: 'En attente', value: formatCurrency(stats?.pending_cents || 0), icon: Wallet },
+    { label: 'En attente', money: stats?.pending, icon: Wallet },
   ];
 
   // Extra bottom padding on mobile clears PageHeader's floating action button
@@ -49,6 +67,15 @@ export default function MerchantDashboard() {
         action={{ label: 'Nouvelle demande', icon: Plus, to: '/dashboard/payment-requests/new' }}
       />
 
+      <BalanceCard
+        balances={wallet?.balances || { CDF: 0, USD: 0 }}
+        label="Solde LinkPay"
+        subtitle={wallet?.wallet_number}
+        maskable
+        onCurrencyChange={setWalletCurrency}
+        actions={<WalletActions currency={walletCurrency} />}
+      />
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {cards.map((c) => (
           <Card key={c.label}>
@@ -56,7 +83,11 @@ export default function MerchantDashboard() {
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-3">
                 <c.icon className="w-5 h-5 text-primary" />
               </div>
-              <p className="text-xl font-bold text-foreground">{c.value}</p>
+              {c.money ? (
+                <DualCurrencyStat amounts={c.money} />
+              ) : (
+                <p className="text-xl font-bold text-foreground">{c.value}</p>
+              )}
               <p className="text-sm text-muted-foreground">{c.label}</p>
             </CardContent>
           </Card>

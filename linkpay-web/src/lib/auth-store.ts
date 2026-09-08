@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import api from './api';
 import { supabase } from './supabase';
+import { getDeviceId } from './device';
 
 interface User {
   id: string;
@@ -57,7 +58,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: false,
 
   login: async (email: string, password: string) => {
-    const { data } = await api.post('/auth/login', { email, password });
+    const { data } = await api.post('/auth/login', { email, password, device_id: getDeviceId() });
     localStorage.setItem('linkpay_access_token', data.access_token);
     localStorage.setItem('linkpay_refresh_token', data.refresh_token);
     applySupabaseSession(data.supabase_session);
@@ -65,7 +66,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   register: async (data) => {
-    const res = await api.post('/auth/register', data);
+    const res = await api.post('/auth/register', { ...data, device_id: getDeviceId() });
     localStorage.setItem('linkpay_access_token', res.data.access_token);
     localStorage.setItem('linkpay_refresh_token', res.data.refresh_token);
     applySupabaseSession(res.data.supabase_session);

@@ -3,7 +3,10 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
+import { setupAutoUpdate } from './lib/pwa-update';
 import './index.css';
+
+setupAutoUpdate();
 
 const queryClient = new QueryClient({
   defaultOptions: {

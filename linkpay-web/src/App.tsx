@@ -19,6 +19,12 @@ import TeamPage from '@/pages/merchant/Team';
 
 import ClientDashboard from '@/pages/client/Dashboard';
 import ClientTransactionsPage from '@/pages/client/Transactions';
+import TopupPage from '@/pages/wallet/Topup';
+import SendPage from '@/pages/wallet/Send';
+import PayInvoicePage from '@/pages/wallet/Pay';
+import WithdrawPage from '@/pages/wallet/Withdraw';
+import SetPinPage from '@/pages/wallet/SetPin';
+import WalletTransactionsPage from '@/pages/wallet/Transactions';
 
 import AdminDashboard from '@/pages/admin/Dashboard';
 import AdminMerchantsPage from '@/pages/admin/Merchants';
@@ -101,6 +107,12 @@ export default function App() {
         />
         <Route path="client" element={<ClientDashboard />} />
         <Route path="client/transactions" element={<ClientTransactionsPage />} />
+        <Route path="wallet/topup" element={<TopupPage />} />
+        <Route path="wallet/send" element={<SendPage />} />
+        <Route path="wallet/pay" element={<PayInvoicePage />} />
+        <Route path="wallet/withdraw" element={<WithdrawPage />} />
+        <Route path="wallet/pin" element={<SetPinPage />} />
+        <Route path="wallet/transactions" element={<WalletTransactionsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route
           path="admin"

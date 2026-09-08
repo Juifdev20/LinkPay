@@ -50,7 +50,7 @@ export class SettlementsController {
   @ApiOperation({ summary: 'Get current merchant settlement balance' })
   async getBalance(@CurrentUser('merchant_id') merchantId: string | undefined) {
     if (!merchantId) {
-      return { available_cents: 0, pending_cents: 0, currency: 'CDF' };
+      return { available: { CDF: 0, USD: 0 }, pending: { CDF: 0, USD: 0 } };
     }
     return this.settlementsService.getMerchantBalance(merchantId);
   }
