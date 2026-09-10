@@ -8,6 +8,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // injectManifest (not the default generateSW) — required to add custom
+      // runtime code (push / notificationclick listeners) to the service
+      // worker. See src/sw.ts for the precaching + runtime caching + push
+      // logic that generateSW used to handle automatically via `workbox`.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
         name: 'LinkPay',
@@ -37,19 +44,31 @@ export default defineConfig({
             purpose: 'any maskable',
           },
         ],
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        runtimeCaching: [
+        // Long-press the installed icon → quick actions, without opening the
+        // app first. Android/desktop Chrome support this today; ignored
+        // elsewhere (never an error).
+        shortcuts: [
           {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-api',
-              expiration: { maxEntries: 100, maxAgeSeconds: 300 },
-            },
+            name: 'Recharger',
+            short_name: 'Recharger',
+            url: '/dashboard/wallet/topup',
+            icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }],
+          },
+          {
+            name: 'Envoyer',
+            short_name: 'Envoyer',
+            url: '/dashboard/wallet/send',
+            icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }],
           },
         ],
+      },
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+      },
+      devOptions: {
+        // The custom SW isn't built/served under plain `vite dev` — test
+        // push/precaching via `npm run build && npm run preview`.
+        enabled: false,
       },
     }),
   ],

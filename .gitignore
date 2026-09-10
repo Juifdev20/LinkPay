@@ -14,10 +14,12 @@ build/
 # TypeScript build cache
 *.tsbuildinfo
 
-# tsc -b (project references) compiles vite.config.ts to these as a side
-# effect of `npm run build` — generated, not source
+# tsc -b (project references) compiles vite.config.ts / src/sw.ts to these as
+# a side effect of `npm run build` — generated, not source
 linkpay-web/vite.config.js
 linkpay-web/vite.config.d.ts
+linkpay-web/src/sw.js
+linkpay-web/src/sw.d.ts
 
 # IDE
 .vscode/
