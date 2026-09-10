@@ -134,7 +134,9 @@ export class WalletsService {
     const reference = `TOPUP-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${uuidv4().slice(0, 6).toUpperCase()}`;
 
     const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:5173');
-    const backendUrl = `http://localhost:${this.configService.get<number>('PORT', 3000)}`;
+    const backendUrl = this.configService.get<string>('BACKEND_URL')
+      || this.configService.get<string>('RENDER_EXTERNAL_URL')
+      || `http://localhost:${this.configService.get<number>('PORT', 3000)}`;
 
     let pspResult;
     try {
@@ -214,7 +216,19 @@ export class WalletsService {
       throw new NotFoundException('Wallet top-up not found');
     }
 
-    if (topup.status === 'SUCCESS') {
+    // Atomically claim the PENDING -> SUCCESS transition: the mock provider's
+    // synchronous path and the status-check endpoint (a poll racing a
+    // delayed webhook) can both reach this method for the same top-up, and
+    // only one may credit the wallet.
+    const { data: claimed } = await this.supabaseService.getClient()
+      .from('wallet_topups')
+      .update({ status: 'SUCCESS', updated_at: new Date().toISOString() })
+      .eq('id', topupId)
+      .eq('status', 'PENDING')
+      .select()
+      .maybeSingle();
+
+    if (!claimed) {
       return;
     }
 
@@ -253,6 +267,60 @@ export class WalletsService {
     }
 
     this.logger.log(`Wallet top-up ${topup.id} completed, wallet ${topup.wallet_id} credited ${topup.amount_cents} ${topup.currency} cents`);
+  }
+
+  /**
+   * Marks a top-up as FAILED — the failure-side counterpart to completeTopup(),
+   * used by the status-check endpoint when the PSP reports the transaction
+   * did not succeed. Idempotent via the same atomic PENDING -> FAILED claim.
+   */
+  async failTopup(topupId: string): Promise<void> {
+    await this.supabaseService.getClient()
+      .from('wallet_topups')
+      .update({ status: 'FAILED', updated_at: new Date().toISOString() })
+      .eq('id', topupId)
+      .eq('status', 'PENDING');
+  }
+
+  /**
+   * Checks a top-up's status by reference — authenticated, ownership-checked
+   * (never lets one user poll another's top-up by guessing its reference).
+   * Used as the fallback source of truth when a webhook hasn't arrived yet:
+   * if still PENDING, re-verifies with the PSP directly and applies the same
+   * completeTopup/failTopup transition the webhook dispatcher uses.
+   */
+  async getTopupStatus(userId: string, reference: string) {
+    const wallet = await this.getWalletByUserId(userId);
+
+    const { data: topup } = await this.supabaseService.getClient()
+      .from('wallet_topups')
+      .select('*')
+      .eq('psp_intent_id', reference)
+      .eq('wallet_id', wallet.id)
+      .maybeSingle();
+
+    if (!topup) {
+      throw new NotFoundException('Recharge introuvable');
+    }
+
+    if (topup.status === 'PENDING') {
+      const adapter = this.pspFactory.get(topup.psp_provider);
+      const live = await adapter.getTransactionStatus(topup.psp_intent_id);
+      if (live.status === 'SUCCESS') {
+        await this.completeTopup(topup.id, topup.psp_intent_id);
+      } else if (live.status === 'FAILED') {
+        await this.failTopup(topup.id);
+      }
+    }
+
+    const { data: refreshed } = await this.supabaseService.getClient()
+      .from('wallet_topups')
+      .select('*')
+      .eq('id', topup.id)
+      .single();
+
+    const balances = await this.getBalances(wallet.id);
+    return { topup: refreshed, balances };
   }
 
   /** Used by payments.service.ts's webhook dispatcher to find a wallet_topups row by psp_intent_id. */
