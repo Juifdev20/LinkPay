@@ -399,11 +399,11 @@ export default function RegisterPage() {
                   className="text-sm font-normal text-muted-foreground cursor-pointer leading-tight"
                 >
                   J'accepte les{' '}
-                  <Link to="/terms" className="text-primary hover:text-secondary hover:underline">
+                  <Link to="/terms" className="text-primary hover:text-primary/80 hover:underline">
                     CGU
                   </Link>{' '}
                   et la{' '}
-                  <Link to="/privacy" className="text-primary hover:text-secondary hover:underline">
+                  <Link to="/privacy" className="text-primary hover:text-primary/80 hover:underline">
                     politique de confidentialité
                   </Link>
                 </Label>
@@ -421,7 +421,7 @@ export default function RegisterPage() {
                 Déjà un compte ?{' '}
                 <Link
                   to={searchParams.get('redirect') ? `/login?redirect=${encodeURIComponent(searchParams.get('redirect')!)}` : '/login'}
-                  className="text-primary font-semibold hover:text-secondary hover:underline"
+                  className="text-primary font-semibold hover:text-primary/80 hover:underline"
                 >
                   Se connecter
                 </Link>

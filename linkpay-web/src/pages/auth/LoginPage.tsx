@@ -176,7 +176,7 @@ export default function LoginPage() {
                 </div>
                 <Link
                   to="/forgot-password"
-                  className="text-sm text-primary hover:text-secondary hover:underline"
+                  className="text-sm text-primary hover:text-primary/80 hover:underline"
                 >
                   Mot de passe oublié ?
                 </Link>
@@ -196,7 +196,7 @@ export default function LoginPage() {
               Pas de compte ?{' '}
               <Link
                 to={searchParams.get('redirect') ? `/register?redirect=${encodeURIComponent(searchParams.get('redirect')!)}` : '/register'}
-                className="text-primary font-semibold hover:text-secondary hover:underline"
+                className="text-primary font-semibold hover:text-primary/80 hover:underline"
               >
                 Créer un compte
               </Link>
