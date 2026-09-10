@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
-import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching';
-import { registerRoute } from 'workbox-routing';
+import { cleanupOutdatedCaches, precacheAndRoute, createHandlerBoundToURL } from 'workbox-precaching';
+import { registerRoute, NavigationRoute } from 'workbox-routing';
 import { NetworkFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 
@@ -11,6 +11,20 @@ declare let self: ServiceWorkerGlobalScope & typeof globalThis & {
 // ---- Precaching (replaces generateSW's automatic precache) ----
 cleanupOutdatedCaches();
 precacheAndRoute(self.__WB_MANIFEST);
+
+// ---- SPA navigation fallback ----
+// generateSW auto-registers this (navigateFallback); injectManifest doesn't,
+// so it had to be added by hand here — without it, any full-page navigation
+// straight to a client-side route (a mobile pull-to-refresh reload while on
+// e.g. /dashboard/wallet/transactions, a notification click opening a new
+// window, a bookmark) skips React Router entirely and depends on the host's
+// own rewrite rule; any gap there surfaces as a raw "not found" instead of
+// the app loading and routing client-side.
+registerRoute(
+  new NavigationRoute(createHandlerBoundToURL('index.html'), {
+    denylist: [/^\/api\//],
+  }),
+);
 
 // ---- Supabase runtime caching (re-implemented from the old workbox.runtimeCaching rule) ----
 registerRoute(
@@ -73,7 +87,9 @@ self.addEventListener('push', (event: PushEvent) => {
 // ---- Click-through: focus an existing tab or open a new one, deep-linked ----
 function urlForNotification(data: Record<string, any> | undefined): string {
   const type = data?.type || '';
-  if (type.startsWith('wallet_topup') || type.startsWith('transfer')) return '/dashboard/wallet';
+  // No bare /dashboard/wallet route exists (App.tsx only defines
+  // wallet/topup, wallet/transactions, etc.) — point at an actual route.
+  if (type.startsWith('wallet_topup') || type.startsWith('transfer')) return '/dashboard/wallet/transactions';
   if (type.startsWith('withdrawal')) return '/dashboard/wallet/transactions';
   if (type.startsWith('payment')) return '/dashboard';
   return '/dashboard';

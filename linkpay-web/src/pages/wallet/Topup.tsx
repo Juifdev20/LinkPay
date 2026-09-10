@@ -32,6 +32,12 @@ export default function TopupPage() {
   const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [result, setResult] = useState<any>(null);
+  // Generated once per confirm attempt sequence (not per request) so a retry
+  // after a client-side timeout reuses the same key — the backend's
+  // idempotency check then returns the already-created top-up instead of
+  // risking a second real charge if the first request actually succeeded
+  // server-side but its response never reached this tab in time.
+  const [idempotencyKey, setIdempotencyKey] = useState('');
 
   const { data: wallet } = useQuery({
     queryKey: ['wallet'],
@@ -56,6 +62,10 @@ export default function TopupPage() {
   const confirmTopup = async () => {
     setError('');
     setStep('processing');
+    // Stable across retries (see the comment on the state declaration) —
+    // only generated once, the first time this sequence runs.
+    const key = idempotencyKey || crypto.randomUUID();
+    if (!idempotencyKey) setIdempotencyKey(key);
     try {
       const { data } = await api.post(
         '/wallet/topups',
@@ -66,7 +76,16 @@ export default function TopupPage() {
           mobile_money_operator: paymentMethod === 'mobile_money' ? operator : undefined,
           mobile_money_phone: paymentMethod === 'mobile_money' ? phone : undefined,
         },
-        { headers: { 'Idempotency-Key': crypto.randomUUID() } },
+        {
+          headers: { 'Idempotency-Key': key },
+          // The CinetPay SDK itself times out server-side at 30s — give this
+          // request a bit more room, then fail client-side rather than
+          // leaving the "Confirmez sur votre téléphone" screen spinning
+          // forever (e.g. if the tab was backgrounded while the user
+          // switched apps to enter their Mobile Money PIN, and the response
+          // effectively got lost to this tab).
+          timeout: 45000,
+        },
       );
 
       // Real PSPs (e.g. CinetPay) return a checkout_url and confirm later via
@@ -86,6 +105,18 @@ export default function TopupPage() {
         setStep('success');
       }
     } catch (err: any) {
+      if (err.code === 'ECONNABORTED') {
+        // The request may well have succeeded server-side — we just never
+        // got the response back in time. Don't invite an uninformed retry
+        // (a genuine second attempt is still safe thanks to the stable
+        // idempotency key above, but confusing the user with a raw error
+        // when the money may already be on its way is worse). Point them at
+        // the dashboard instead; a push notification will confirm the real
+        // outcome once it resolves.
+        setResult(null);
+        setStep('pending');
+        return;
+      }
       setError(err.response?.data?.message || 'Erreur lors de la recharge');
       setStep('confirm');
     }
