@@ -64,7 +64,7 @@ export default function LoginPage() {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/10 rounded-full blur-3xl" />
       </div>
 
-      <div className="relative w-full min-h-screen flex flex-col md:flex-row">
+      <div className="relative w-full min-h-screen flex flex-col justify-center md:flex-row md:justify-start">
         {/* Left Section - Welcome (Desktop only) */}
         <div className="hidden md:flex w-1/2 flex-col justify-center p-12 lg:p-16 relative">
           {/* Large QR Code Background */}
