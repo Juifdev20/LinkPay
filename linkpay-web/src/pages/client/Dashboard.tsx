@@ -79,7 +79,7 @@ export default function ClientDashboard() {
         </Card>
       </div>
 
-      <div className="flex justify-around py-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-2">
         <QuickAction icon={QrCode} label="Scanner QR" onClick={() => navigate('/dashboard/wallet/pay')} />
         <QuickAction icon={ArrowUpRight} label="Payer" onClick={() => navigate('/dashboard/wallet/pay')} />
         <QuickAction icon={ArrowDownLeft} label="Recevoir" />

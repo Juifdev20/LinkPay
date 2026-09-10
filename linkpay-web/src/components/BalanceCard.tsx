@@ -63,7 +63,7 @@ export function BalanceCard({
           )}
         </div>
       </div>
-      <p className="text-3xl font-bold mt-2 tracking-tight">
+      <p className="text-3xl md:text-4xl font-bold mt-2 tracking-tight">
         {hidden ? `•••••• ${activeCurrency}` : formatCurrency(balances[activeCurrency], activeCurrency)}
       </p>
       {actions && <div className="mt-4 flex gap-3">{actions}</div>}

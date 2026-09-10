@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom';
-import { User } from 'lucide-react';
+import { User, Sun, Moon } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import { NotificationsBell } from '@/components/NotificationsBell';
+import { Button } from '@/components/ui/button';
+import { useTheme } from '@/hooks/useTheme';
 
 /**
  * Fixed (not just sticky) top bar for mobile — stays perfectly still while
@@ -11,6 +13,8 @@ import { NotificationsBell } from '@/components/NotificationsBell';
  * "Profil" tab — see BottomNav.tsx, now relabeled "Paramètres".
  */
 export function TopBar() {
+  const { toggleTheme, effectiveTheme } = useTheme();
+
   return (
     // Two layers, same convention as BottomNav's `safe-area-bottom`: the
     // outer element only carries the safe-area inset (0 on non-notched
@@ -21,6 +25,9 @@ export function TopBar() {
       <div className="flex items-center justify-between px-4 py-3">
         <Logo size="sm" />
         <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" onClick={toggleTheme} className="h-10 w-10" aria-label="Changer de thème">
+            {effectiveTheme === 'dark' ? <Sun className="h-5 w-5 text-muted-foreground" /> : <Moon className="h-5 w-5 text-muted-foreground" />}
+          </Button>
           <NotificationsBell />
           <Link
             to="/dashboard/profile"
