@@ -92,7 +92,13 @@ export function NotificationsBell() {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-12 z-50 w-80 max-w-[90vw] rounded-2xl border border-border bg-card shadow-card-hover overflow-hidden">
+          {/* Positioned against the viewport on mobile (fixed + left/right
+              margins), not against the bell's own wrapper — the bell isn't
+              the rightmost element in TopBar anymore (the profile icon
+              follows it), so anchoring `right-0` there pushed a fixed-width
+              panel off the left edge on narrow screens. Desktop keeps the
+              original bell-relative positioning, where there's enough room. */}
+          <div className="fixed left-4 right-4 top-20 z-50 md:absolute md:left-auto md:right-0 md:top-12 md:w-80 rounded-2xl border border-border bg-card shadow-card-hover overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <p className="font-bold text-sm text-foreground">Notifications</p>
               {unreadCount > 0 && (
