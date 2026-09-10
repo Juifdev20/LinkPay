@@ -44,6 +44,16 @@ export class CinetPayAdapter implements PspAdapter {
       credentials: {
         [COUNTRY]: { apiKey, apiPassword },
       },
+      // Without this, the SDK defaults to a no-op logger and swallows the
+      // real cause of any failure (wrong credentials vs IP not whitelisted
+      // vs network/timeout) behind a generic "Authentication failed"
+      // message — wire it to NestJS's own logger so that detail actually
+      // reaches the Render logs instead of being discarded.
+      logger: {
+        debug: (message, data) => this.logger.debug(data ? `${message} ${JSON.stringify(data)}` : message),
+        warn: (message, data) => this.logger.warn(data ? `${message} ${JSON.stringify(data)}` : message),
+        error: (message, data) => this.logger.error(data ? `${message} ${JSON.stringify(data)}` : message),
+      },
     });
   }
 
