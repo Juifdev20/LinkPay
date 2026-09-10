@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { Loader2, Copy, Check, DollarSign, FileText, User, Phone, Share2 } from 'lucide-react';
 import { shareOrCopy } from '@/lib/share';
+import { FormSheet } from '@/components/FormSheet';
 
 export default function CreatePaymentRequestPage() {
   const navigate = useNavigate();
@@ -82,7 +83,10 @@ export default function CreatePaymentRequestPage() {
     }
   };
 
-  if (result) {
+  // Everything below renders inside the single FormSheet at the bottom of
+  // this component — same result-vs-form branching JSX as before.
+  function renderStep() {
+    if (result) {
     return (
       <div className="p-6 max-w-lg mx-auto">
         <Card>
@@ -194,5 +198,12 @@ export default function CreatePaymentRequestPage() {
         </CardContent>
       </Card>
     </div>
+    );
+  }
+
+  return (
+    <FormSheet onClose={() => navigate(-1)} title="Nouvelle demande de paiement">
+      {renderStep()}
+    </FormSheet>
   );
 }

@@ -5,6 +5,7 @@ import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { PinInput } from '@/components/PinInput';
+import { FormSheet } from '@/components/FormSheet';
 import { Loader2, ShieldCheck, ArrowLeft, Check } from 'lucide-react';
 
 const PIN_LENGTH = 4;
@@ -80,7 +81,10 @@ export default function SetPinPage() {
     }
   };
 
-  if (step === 'done') {
+  // Everything below renders inside the single FormSheet at the bottom of
+  // this component — same conditional JSX as before.
+  function renderStep() {
+    if (step === 'done') {
     return (
       <div className="p-6 max-w-md mx-auto">
         <Card>
@@ -151,5 +155,12 @@ export default function SetPinPage() {
         </CardContent>
       </Card>
     </div>
+    );
+  }
+
+  return (
+    <FormSheet onClose={() => navigate(-1)} title="Code PIN">
+      {renderStep()}
+    </FormSheet>
   );
 }

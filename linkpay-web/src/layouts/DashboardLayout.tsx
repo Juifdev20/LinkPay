@@ -3,6 +3,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
 import { BottomNav } from '@/components/BottomNav';
+import { TopBar } from '@/components/TopBar';
 import { NotificationsBell } from '@/components/NotificationsBell';
 import { LayoutDashboard, QrCode, Receipt, Wallet, LogOut, Users, UserCog, ShieldCheck, User, Settings, Percent, Building2, UsersRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -87,12 +88,11 @@ export default function DashboardLayout() {
 
         {/* Main content */}
         <main className="flex-1 overflow-y-auto">
-          {/* Mobile header */}
-          <div className="md:hidden flex items-center justify-between p-4 border-b border-border bg-card sticky top-0 z-40">
-            <Logo size="sm" />
-            <NotificationsBell />
-          </div>
-          <div className="pb-20 md:pb-0">
+          <TopBar />
+          {/* pt-20 clears the fixed TopBar (mobile only, hence md:pt-0 — the
+              desktop sidebar header above already accounts for its own
+              space in the normal flow) */}
+          <div className="pt-20 pb-20 md:pt-0 md:pb-0">
             <Outlet />
           </div>
         </main>

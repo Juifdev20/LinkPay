@@ -11,6 +11,7 @@ import { CurrencySelector } from '@/components/CurrencySelector';
 import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicker';
 import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
 import { formatCurrency, cn } from '@/lib/utils';
+import { FormSheet } from '@/components/FormSheet';
 import { Loader2, Check, ArrowLeft, ArrowUpFromLine, Smartphone, Landmark } from 'lucide-react';
 
 type Step = 'amount' | 'destination' | 'confirm' | 'pin' | 'processing' | 'success';
@@ -96,7 +97,10 @@ export default function WithdrawPage() {
     }
   };
 
-  if (step === 'success') {
+  // Everything below renders inside the single FormSheet at the bottom of
+  // this component — same step-branching JSX as before.
+  function renderStep() {
+    if (step === 'success') {
     const w = result?.withdrawal;
     return (
       <div className="p-6 max-w-md mx-auto">
@@ -298,5 +302,12 @@ export default function WithdrawPage() {
         </CardContent>
       </Card>
     </div>
+    );
+  }
+
+  return (
+    <FormSheet onClose={() => navigate(-1)} title="Retirer de l'argent">
+      {renderStep()}
+    </FormSheet>
   );
 }

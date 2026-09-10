@@ -11,13 +11,12 @@ import { Switch } from '@/components/ui/switch';
 import { Logo } from '@/components/Logo';
 import { PageHeader } from '@/components/PageHeader';
 import { CurrencySelector } from '@/components/CurrencySelector';
-import { Wallet, ShieldCheck, Users, UserCog, Percent, Building2, UsersRound, Receipt, LogOut, User, HelpCircle, FileText, ChevronRight, Store, Loader2, KeyRound, ArrowLeftRight, Bell } from 'lucide-react';
+import { Wallet, ShieldCheck, Users, UserCog, Percent, Building2, UsersRound, Receipt, HelpCircle, FileText, ChevronRight, Store, Loader2, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getCurrentPushPermission, hasActiveSubscription, subscribeToPush, unsubscribeFromPush } from '@/lib/push';
 
 export default function SettingsPage() {
   const user = useAuthStore((s) => s.user);
-  const logout = useAuthStore((s) => s.logout);
   const applyMerchantUpgrade = useAuthStore((s) => s.applyMerchantUpgrade);
   const applyEnterpriseUpgrade = useAuthStore((s) => s.applyEnterpriseUpgrade);
   const navigate = useNavigate();
@@ -54,11 +53,6 @@ export default function SettingsPage() {
   const [upgradeError, setUpgradeError] = useState('');
   const [orgError, setOrgError] = useState('');
 
-  const handleLogout = () => {
-    logout();
-    navigate('/');
-  };
-
   const upgradeMutation = useMutation({
     mutationFn: async () => {
       const { data } = await api.post('/merchants', store);
@@ -87,11 +81,7 @@ export default function SettingsPage() {
     },
   });
 
-  const walletRoles = ['merchant', 'cashier', 'enterprise', 'client'];
-
   const secondaryLinks = [
-    { to: '/dashboard/wallet/transactions', label: 'Mes transactions LinkPay', icon: ArrowLeftRight, roles: walletRoles },
-    { to: '/dashboard/wallet/pin', label: 'Code PIN de transaction', icon: KeyRound, roles: walletRoles },
     { to: '/dashboard/settlements', label: 'Règlements', icon: Wallet, roles: ['merchant', 'enterprise'] },
     { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: ShieldCheck, roles: ['merchant', 'cashier', 'enterprise'] },
     { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'] },
@@ -109,24 +99,6 @@ export default function SettingsPage() {
   return (
     <div className="p-6 space-y-6 max-w-2xl mx-auto">
       <PageHeader title="Paramètres" />
-
-      {/* Profile card */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-secondary flex items-center justify-center">
-              <User className="w-8 h-8 text-muted-foreground" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-lg text-foreground truncate">{user?.full_name || 'Utilisateur'}</p>
-              <p className="text-sm text-muted-foreground truncate">{user?.email}</p>
-              <span className="inline-block mt-1 text-xs font-semibold capitalize text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                {user?.role}
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Become a merchant */}
       {user?.role === 'client' && (
@@ -333,16 +305,6 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Logout */}
-      <Button
-        variant="outline"
-        className="w-full border-destructive/20 text-destructive hover:bg-destructive/5"
-        onClick={handleLogout}
-      >
-        <LogOut className="w-4 h-4 mr-2" />
-        Déconnexion
-      </Button>
 
       {/* Footer logo */}
       <div className="flex justify-center pt-4">
