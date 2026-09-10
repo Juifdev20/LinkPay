@@ -8,11 +8,18 @@ import * as express from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
+
   // Route outbound HTTP requests through a fixed-IP proxy when PROXY_URL is set.
   // Needed on Render (shared outbound IPs) for CinetPay IP whitelisting —
   // set PROXY_URL to your QuotaGuard/Fixie proxy URL in Render env vars.
+  // Logged (with credentials masked) so a "not whitelisted" error from
+  // CinetPay is easy to tell apart from "the proxy isn't even configured".
   if (process.env.PROXY_URL) {
     setGlobalDispatcher(new ProxyAgent(process.env.PROXY_URL));
+    logger.log(`Outbound requests routed via proxy: ${process.env.PROXY_URL.replace(/\/\/.*@/, '//***@')}`);
+  } else {
+    logger.warn('PROXY_URL not set — outbound requests use the raw platform IP (CinetPay IP whitelisting will fail on Render\'s shared IPs)');
   }
 
   const app = await NestFactory.create(AppModule, {
@@ -23,7 +30,6 @@ async function bootstrap() {
     bodyParser: false,
   });
   const configService = app.get(ConfigService);
-  const logger = new Logger('Bootstrap');
 
   app.use(
     express.json({
