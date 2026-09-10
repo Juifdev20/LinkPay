@@ -20,6 +20,7 @@ import TeamPage from '@/pages/merchant/Team';
 import ClientDashboard from '@/pages/client/Dashboard';
 import ClientTransactionsPage from '@/pages/client/Transactions';
 import TopupPage from '@/pages/wallet/Topup';
+import TopupResultPage from '@/pages/wallet/TopupResult';
 import SendPage from '@/pages/wallet/Send';
 import PayInvoicePage from '@/pages/wallet/Pay';
 import WithdrawPage from '@/pages/wallet/Withdraw';
@@ -108,6 +109,7 @@ export default function App() {
         <Route path="client" element={<ClientDashboard />} />
         <Route path="client/transactions" element={<ClientTransactionsPage />} />
         <Route path="wallet/topup" element={<TopupPage />} />
+        <Route path="wallet/topup/result" element={<TopupResultPage />} />
         <Route path="wallet/send" element={<SendPage />} />
         <Route path="wallet/pay" element={<PayInvoicePage />} />
         <Route path="wallet/withdraw" element={<WithdrawPage />} />

@@ -11,7 +11,8 @@ import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
 import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicker';
 import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
 import { formatCurrency } from '@/lib/utils';
-import { Loader2, Check, DollarSign, ArrowLeft, Wallet as WalletIcon, Smartphone, Phone } from 'lucide-react';
+import { TopupStatusCard, TopupCardStatus } from '@/components/TopupStatusCard';
+import { Loader2, DollarSign, ArrowLeft, Wallet as WalletIcon, Smartphone, Phone } from 'lucide-react';
 
 const PRESETS = [5000, 10000, 25000, 50000];
 
@@ -91,56 +92,19 @@ export default function TopupPage() {
   };
 
   if (step === 'success' || step === 'pending') {
-    const isPending = step === 'pending' || result?.status === 'PENDING';
+    const status: TopupCardStatus = (step === 'pending' || result?.status === 'PENDING') ? 'PENDING' : 'SUCCESS';
+    const extraRows = paymentMethod === 'mobile_money'
+      ? [{ label: 'Moyen de paiement', value: `${MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label} — ${phone}` }]
+      : [];
     return (
-      <div className="p-6 max-w-lg mx-auto">
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 ${isPending ? 'bg-warning/10' : 'bg-success/10'}`}>
-              {isPending ? (
-                <Loader2 className="w-8 h-8 text-warning animate-spin" />
-              ) : (
-                <Check className="w-8 h-8 text-success" />
-              )}
-            </div>
-            <h2 className="text-xl font-bold text-foreground mb-1">
-              {isPending ? 'En attente de confirmation' : 'Recharge réussie !'}
-            </h2>
-            <p className="text-sm text-muted-foreground mb-6">
-              {isPending
-                ? `Votre recharge de ${formatCurrency(amountCents, currency)} est en cours de traitement. Le solde sera mis à jour après confirmation.`
-                : `${formatCurrency(amountCents, currency)} ajouté(s) à votre compte LinkPay`}
-            </p>
-            <div className="rounded-xl bg-secondary p-4 text-left space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Montant</span>
-                <span className="font-semibold text-foreground">{formatCurrency(amountCents, currency)}</span>
-              </div>
-              {paymentMethod === 'mobile_money' && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Moyen de paiement</span>
-                  <span className="font-semibold text-foreground">{MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label} — {phone}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Statut</span>
-                <span className={`font-semibold ${isPending ? 'text-warning' : 'text-success'}`}>
-                  {isPending ? 'En attente' : 'Confirmé'}
-                </span>
-              </div>
-              {result?.id && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Référence</span>
-                  <span className="font-mono text-xs text-foreground truncate ml-2">{result.id}</span>
-                </div>
-              )}
-            </div>
-            <Button className="w-full mt-6" size="lg" onClick={() => navigate('/dashboard')}>
-              Retour au tableau de bord
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      <TopupStatusCard
+        status={status}
+        amountCents={amountCents}
+        currency={currency}
+        extraRows={extraRows}
+        reference={result?.id}
+        onBack={() => navigate('/dashboard')}
+      />
     );
   }
 

@@ -1,11 +1,10 @@
-import { Controller, Post, Body, Headers, Req, Param, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Headers, Param, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { IsString, IsOptional } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Request } from 'express';
 
 class CreatePaymentDto {
   @ApiProperty({ description: 'Payment request link token' })
@@ -95,15 +94,9 @@ export class PaymentsController {
   }
 
   @Public()
-  @Post('webhooks/:provider')
-  @ApiOperation({ summary: 'PSP webhook endpoint (public, signature verified)' })
-  async handleWebhook(
-    @Param('provider') provider: string,
-    @Req() req: Request,
-    @Headers() headers: Record<string, string>,
-  ) {
-    const rawBody = (req as any).rawBody as Buffer;
-    const signature = headers['x-signature'] || headers['verif-hash'] || '';
-    return this.paymentsService.processWebhook(provider, rawBody, signature, headers);
+  @Get('status/:reference')
+  @ApiOperation({ summary: 'Check a payment status by reference (public — the payer may be anonymous). Re-verifies with the PSP if still pending.' })
+  async getStatus(@Param('reference') reference: string) {
+    return this.paymentsService.getPaymentStatus(reference);
   }
 }

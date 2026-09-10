@@ -135,6 +135,15 @@ export class WalletsController {
     );
   }
 
+  @Get('topups/:reference/status')
+  @ApiOperation({ summary: "Check a wallet top-up's status by reference. Re-verifies with the PSP if still pending." })
+  async getTopupStatus(
+    @CurrentUser('id') userId: string,
+    @Param('reference') reference: string,
+  ) {
+    return this.walletsService.getTopupStatus(userId, reference);
+  }
+
   @Get('fees/:opType')
   @ApiOperation({ summary: 'Preview the fee for an operation before confirming (never hidden from the user)' })
   async previewFee(

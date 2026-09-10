@@ -16,6 +16,8 @@ services:
         value: 3000
       - key: FRONTEND_URL
         sync: false
+      - key: BACKEND_URL
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY

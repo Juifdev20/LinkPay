@@ -87,7 +87,9 @@ export class PaymentsService {
     const provider = adapter.provider;
 
     const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:5173');
-    const backendUrl = `http://localhost:${this.configService.get<number>('PORT', 3000)}`;
+    const backendUrl = this.configService.get<string>('BACKEND_URL')
+      || this.configService.get<string>('RENDER_EXTERNAL_URL')
+      || `http://localhost:${this.configService.get<number>('PORT', 3000)}`;
 
     let pspResult;
     try {
@@ -318,6 +320,57 @@ export class PaymentsService {
     }
   }
 
+  /**
+   * Checks a payment's status by reference — public (the payer may be
+   * anonymous, returning from a CinetPay redirect with no session). Used as
+   * the fallback source of truth when a webhook hasn't arrived yet: if the
+   * intent is still PENDING, re-verifies with the PSP directly and applies
+   * the same handleSuccessfulPayment/handleFailedPayment transition the
+   * webhook dispatcher uses, rather than trusting the caller's own claim.
+   */
+  async getPaymentStatus(reference: string) {
+    const { data: intent } = await this.supabaseService.getClient()
+      .from('payment_intents')
+      .select('*')
+      .eq('psp_intent_id', reference)
+      .maybeSingle();
+
+    if (!intent) {
+      throw new NotFoundException('Référence de paiement introuvable');
+    }
+
+    if (intent.status === 'PENDING' && intent.psp_provider !== 'wallet') {
+      const adapter = this.pspFactory.get(intent.psp_provider);
+      const live = await adapter.getTransactionStatus(intent.psp_intent_id);
+      if (live.status === 'SUCCESS') {
+        await this.handleSuccessfulPayment(intent, { psp_intent_id: intent.psp_intent_id });
+      } else if (live.status === 'FAILED') {
+        await this.handleFailedPayment(intent, { psp_intent_id: intent.psp_intent_id });
+      }
+
+      const { data: refreshed } = await this.supabaseService.getClient()
+        .from('payment_intents')
+        .select('*')
+        .eq('psp_intent_id', reference)
+        .maybeSingle();
+      return this.toStatusResponse(refreshed || intent);
+    }
+
+    return this.toStatusResponse(intent);
+  }
+
+  private toStatusResponse(intent: any) {
+    const status = intent.status === 'SUCCEEDED' ? 'SUCCESS'
+      : intent.status === 'FAILED' ? 'FAILED'
+      : 'PENDING';
+    return {
+      reference: intent.psp_intent_id,
+      status,
+      amount_cents: intent.amount_cents,
+      currency: intent.currency,
+    };
+  }
+
   async processWebhook(provider: string, payload: Buffer, signature: string, headers: Record<string, string>) {
     const adapter = this.pspFactory.get(provider);
 
@@ -391,6 +444,29 @@ export class PaymentsService {
   }
 
   private async handleSuccessfulPayment(intent: any, event: any): Promise<any> {
+    // Atomically claim the PENDING -> SUCCEEDED transition before doing any
+    // work: a webhook delivery and a concurrent status-check poll (GET
+    // /payments/status/:reference) can both reach this method for the same
+    // intent, and only one may create the transaction/ledger entries.
+    const { data: claimed } = await this.supabaseService.getClient()
+      .from('payment_intents')
+      .update({ status: 'SUCCEEDED', updated_at: new Date().toISOString() })
+      .eq('id', intent.id)
+      .eq('status', 'PENDING')
+      .select()
+      .maybeSingle();
+
+    if (!claimed) {
+      // Someone else already won the transition — return the transaction
+      // they created instead of reprocessing (double-crediting) it.
+      const { data: existingTx } = await this.supabaseService.getClient()
+        .from('transactions')
+        .select('*')
+        .eq('payment_intent_id', intent.id)
+        .maybeSingle();
+      return existingTx ?? undefined;
+    }
+
     const { data: request } = await this.supabaseService.getClient()
       .from('payment_requests')
       .select('*, merchant:merchants(*)')
@@ -439,10 +515,8 @@ export class PaymentsService {
 
     await this.ledgerService.writePaymentEntries(transaction);
 
-    await this.supabaseService.getClient()
-      .from('payment_intents')
-      .update({ status: 'SUCCEEDED', updated_at: new Date().toISOString() })
-      .eq('id', intent.id);
+    // (payment_intents.status was already set to SUCCEEDED by the atomic
+    // claim at the top of this method.)
 
     await this.paymentRequestsService.markPaid(request.id);
 
@@ -471,10 +545,20 @@ export class PaymentsService {
   }
 
   private async handleFailedPayment(intent: any, event: any) {
-    await this.supabaseService.getClient()
+    // Same atomic-claim guard as handleSuccessfulPayment: a webhook and a
+    // concurrent status-check poll must not both run the failure side
+    // effects (payment_requests rollback, notification) for the same intent.
+    const { data: claimed } = await this.supabaseService.getClient()
       .from('payment_intents')
       .update({ status: 'FAILED', updated_at: new Date().toISOString() })
-      .eq('id', intent.id);
+      .eq('id', intent.id)
+      .eq('status', 'PENDING')
+      .select()
+      .maybeSingle();
+
+    if (!claimed) {
+      return;
+    }
 
     const { data: request } = await this.supabaseService.getClient()
       .from('payment_requests')
