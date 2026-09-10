@@ -163,13 +163,27 @@ export default function RegisterPage() {
         </div>
 
         {/* Right Section - Register Form */}
-        <div className="w-full md:w-1/2 flex items-center justify-center p-4 md:p-12 lg:p-16 overflow-y-auto">
-          <div className="w-full max-w-md bg-card backdrop-blur-lg rounded-2xl p-6 md:p-8 border border-border shadow-2xl">
-            <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Inscription</h2>
-            <p className="text-muted-foreground mb-6 text-sm">
-              Rejoignez LinkPay en quelques secondes
-            </p>
+        <div className="w-full md:w-1/2 flex items-center justify-center p-4 md:p-12 lg:p-16">
+          {/* max-h + flex-col + only the form scrolling internally keeps the
+              card from ever overflowing the viewport, on mobile or desktop —
+              this form in particular has grown long (confirm password,
+              strength meter, terms checkbox), so this matters more here than
+              on LoginPage. Same "fixed chrome, scrolling middle" pattern as
+              FormSheet.tsx. */}
+          <div className="w-full max-w-md bg-card backdrop-blur-lg rounded-2xl border border-border shadow-2xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="px-6 md:px-8 pt-6 md:pt-8 pb-2 flex-shrink-0">
+              {/* Desktop already shows the logo in the left branding panel —
+                  this is only for mobile, where that panel is hidden. */}
+              <div className="md:hidden mb-6 flex justify-center">
+                <Logo size="sm" />
+              </div>
+              <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Inscription</h2>
+              <p className="text-muted-foreground text-sm">
+                Rejoignez LinkPay en quelques secondes
+              </p>
+            </div>
 
+            <div className="flex-1 overflow-y-auto px-6 md:px-8 py-4">
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
                 <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
@@ -400,16 +414,19 @@ export default function RegisterPage() {
                 Créer mon compte
               </Button>
             </form>
+            </div>
 
-            <p className="text-sm text-muted-foreground text-center mt-6">
-              Déjà un compte ?{' '}
-              <Link
-                to={searchParams.get('redirect') ? `/login?redirect=${encodeURIComponent(searchParams.get('redirect')!)}` : '/login'}
-                className="text-primary font-semibold hover:text-secondary hover:underline"
-              >
-                Se connecter
-              </Link>
-            </p>
+            <div className="px-6 md:px-8 pb-6 md:pb-8 pt-4 flex-shrink-0">
+              <p className="text-sm text-muted-foreground text-center">
+                Déjà un compte ?{' '}
+                <Link
+                  to={searchParams.get('redirect') ? `/login?redirect=${encodeURIComponent(searchParams.get('redirect')!)}` : '/login'}
+                  className="text-primary font-semibold hover:text-secondary hover:underline"
+                >
+                  Se connecter
+                </Link>
+              </p>
+            </div>
           </div>
         </div>
       </div>

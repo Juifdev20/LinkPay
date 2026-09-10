@@ -1,9 +1,7 @@
 import { Link } from 'react-router-dom';
-import { User, Sun, Moon } from 'lucide-react';
+import { User } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import { NotificationsBell } from '@/components/NotificationsBell';
-import { Button } from '@/components/ui/button';
-import { useTheme } from '@/hooks/useTheme';
 
 /**
  * Fixed (not just sticky) top bar for mobile — stays perfectly still while
@@ -11,10 +9,12 @@ import { useTheme } from '@/hooks/useTheme';
  * floating-card look. Replaces the old in-flow `sticky top-0` mobile header
  * in DashboardLayout. The profile icon here is what used to be BottomNav's
  * "Profil" tab — see BottomNav.tsx, now relabeled "Paramètres".
+ *
+ * No theme toggle here — it lives in Settings ("Général" card, same pattern
+ * as the push-notification toggle) instead, matching the desktop header's
+ * spot for it being left as its own independent quick-access affordance.
  */
 export function TopBar() {
-  const { toggleTheme, effectiveTheme } = useTheme();
-
   return (
     // Two layers, same convention as BottomNav's `safe-area-bottom`: the
     // outer element only carries the safe-area inset (0 on non-notched
@@ -25,9 +25,6 @@ export function TopBar() {
       <div className="flex items-center justify-between px-4 py-3">
         <Logo size="sm" />
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={toggleTheme} className="h-10 w-10" aria-label="Changer de thème">
-            {effectiveTheme === 'dark' ? <Sun className="h-5 w-5 text-muted-foreground" /> : <Moon className="h-5 w-5 text-muted-foreground" />}
-          </Button>
           <NotificationsBell />
           <Link
             to="/dashboard/profile"
