@@ -18,6 +18,7 @@ import { SettlementsModule } from './settlements/settlements.module';
 import { LedgerModule } from './ledger/ledger.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PushNotificationsModule } from './push-notifications/push-notifications.module';
 import { RiskModule } from './risk/risk.module';
 import { AdminModule } from './admin/admin.module';
 import { AuditModule } from './audit/audit.module';
@@ -51,6 +52,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     LedgerModule,
     WebhooksModule,
     NotificationsModule,
+    PushNotificationsModule,
     RiskModule,
     AdminModule,
     AuditModule,

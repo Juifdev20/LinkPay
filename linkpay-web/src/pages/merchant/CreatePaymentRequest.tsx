@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { CurrencySelector } from '@/components/CurrencySelector';
-import { Loader2, Copy, Check, DollarSign, FileText, User, Phone } from 'lucide-react';
+import { Loader2, Copy, Check, DollarSign, FileText, User, Phone, Share2 } from 'lucide-react';
+import { shareOrCopy } from '@/lib/share';
 
 export default function CreatePaymentRequestPage() {
   const navigate = useNavigate();
@@ -65,6 +66,22 @@ export default function CreatePaymentRequestPage() {
     }
   };
 
+  const shareLink = async () => {
+    if (!result?.link_token) return;
+    const url = `${window.location.origin}/p/${result.link_token}`;
+    const method = await shareOrCopy({
+      title: 'Lien de paiement LinkPay',
+      text: `Payez ${amount} ${currency} via LinkPay`,
+      url,
+    });
+    // The native share sheet already gives its own feedback — only show
+    // "Copié" when we actually fell back to the clipboard.
+    if (method === 'copy') {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   if (result) {
     return (
       <div className="p-6 max-w-lg mx-auto">
@@ -89,11 +106,15 @@ export default function CreatePaymentRequestPage() {
                 </Button>
               </div>
             </div>
-            <div className="flex gap-3 mt-6">
+            <Button className="w-full mt-4" onClick={shareLink}>
+              <Share2 className="mr-2 w-4 h-4" />
+              Partager le lien
+            </Button>
+            <div className="flex gap-3 mt-3">
               <Button variant="outline" className="flex-1" onClick={() => setResult(null)}>
                 Créer une autre
               </Button>
-              <Button className="flex-1" onClick={() => navigate('/dashboard/payment-requests')}>
+              <Button variant="outline" className="flex-1" onClick={() => navigate('/dashboard/payment-requests')}>
                 Voir toutes
               </Button>
             </div>

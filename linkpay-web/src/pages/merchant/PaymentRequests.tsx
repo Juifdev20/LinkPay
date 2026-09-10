@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Plus, Copy } from 'lucide-react';
+import { Plus, Share2 } from 'lucide-react';
+import { shareOrCopy } from '@/lib/share';
 
 export default function PaymentRequestsPage() {
   const { data } = useQuery({
@@ -16,8 +17,12 @@ export default function PaymentRequestsPage() {
     },
   });
 
-  const copyLink = (token: string) => {
-    navigator.clipboard.writeText(`${window.location.origin}/p/${token}`);
+  const shareLink = (req: { link_token: string; amount_cents: number; currency: string }) => {
+    shareOrCopy({
+      title: 'Lien de paiement LinkPay',
+      text: `Payez ${formatCurrency(req.amount_cents, req.currency)} via LinkPay`,
+      url: `${window.location.origin}/p/${req.link_token}`,
+    });
   };
 
   return (
@@ -46,8 +51,8 @@ export default function PaymentRequestsPage() {
                       {req.status}
                     </Badge>
                     {req.status === 'CREATED' || req.status === 'PENDING' ? (
-                      <Button variant="ghost" size="icon" onClick={() => copyLink(req.link_token)}>
-                        <Copy className="w-4 h-4" />
+                      <Button variant="ghost" size="icon" onClick={() => shareLink(req)}>
+                        <Share2 className="w-4 h-4" />
                       </Button>
                     ) : null}
                   </div>

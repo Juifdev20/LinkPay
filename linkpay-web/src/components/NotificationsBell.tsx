@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
@@ -59,6 +59,23 @@ export function NotificationsBell() {
   });
 
   const unreadCount = unread?.unread_count || 0;
+
+  // App icon badge (Badging API) — mirrors a native app's unread counter on
+  // the home-screen icon. Only reflects what this tab already knows (via the
+  // 30s poll + realtime above), so it can lag while the app is fully closed;
+  // still a clear step up from no badge at all. No-op, never an error, on
+  // browsers/platforms without navigator.setAppBadge.
+  useEffect(() => {
+    const nav = navigator as Navigator & {
+      setAppBadge?: (count?: number) => Promise<void>;
+      clearAppBadge?: () => Promise<void>;
+    };
+    if (unreadCount > 0) {
+      nav.setAppBadge?.(unreadCount).catch(() => null);
+    } else {
+      nav.clearAppBadge?.().catch(() => null);
+    }
+  }, [unreadCount]);
 
   return (
     <div className="relative">

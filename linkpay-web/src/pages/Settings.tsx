@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/auth-store';
@@ -7,11 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Logo } from '@/components/Logo';
 import { PageHeader } from '@/components/PageHeader';
 import { CurrencySelector } from '@/components/CurrencySelector';
-import { Wallet, ShieldCheck, Users, UserCog, Percent, Building2, UsersRound, Receipt, LogOut, User, HelpCircle, FileText, ChevronRight, Store, Loader2, KeyRound, ArrowLeftRight } from 'lucide-react';
+import { Wallet, ShieldCheck, Users, UserCog, Percent, Building2, UsersRound, Receipt, LogOut, User, HelpCircle, FileText, ChevronRight, Store, Loader2, KeyRound, ArrowLeftRight, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getCurrentPushPermission, hasActiveSubscription, subscribeToPush, unsubscribeFromPush } from '@/lib/push';
 
 export default function SettingsPage() {
   const user = useAuthStore((s) => s.user);
@@ -23,6 +25,30 @@ export default function SettingsPage() {
   const [showOrgForm, setShowOrgForm] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushPermission, setPushPermission] = useState(getCurrentPushPermission());
+  const [pushBusy, setPushBusy] = useState(false);
+
+  useEffect(() => {
+    setPushPermission(getCurrentPushPermission());
+    hasActiveSubscription().then(setPushEnabled);
+  }, []);
+
+  const handleTogglePush = async (checked: boolean) => {
+    setPushBusy(true);
+    try {
+      if (checked) {
+        const ok = await subscribeToPush();
+        setPushEnabled(ok);
+        setPushPermission(getCurrentPushPermission());
+      } else {
+        await unsubscribeFromPush();
+        setPushEnabled(false);
+      }
+    } finally {
+      setPushBusy(false);
+    }
+  };
   const [store, setStore] = useState({ name: '', phone: '', city: '', default_currency: 'CDF' as 'CDF' | 'USD' });
   const [orgForm, setOrgForm] = useState({ name: '', legal_name: '' });
   const [upgradeError, setUpgradeError] = useState('');
@@ -261,6 +287,24 @@ export default function SettingsPage() {
           <CardTitle className="text-base">Général</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
+          <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
+            <Bell className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-medium text-sm text-foreground">Notifications push</p>
+              <p className="text-xs text-muted-foreground">
+                {pushPermission === 'unsupported'
+                  ? "Non disponible sur cet appareil/navigateur."
+                  : pushPermission === 'denied'
+                  ? 'Bloquées — réactivez-les depuis les réglages de votre navigateur.'
+                  : 'Recevez une alerte même quand l\'app est fermée.'}
+              </p>
+            </div>
+            <Switch
+              checked={pushEnabled}
+              disabled={pushBusy || pushPermission === 'unsupported' || pushPermission === 'denied'}
+              onCheckedChange={handleTogglePush}
+            />
+          </div>
           <button
             onClick={() => setShowHelp(!showHelp)}
             className="flex items-center gap-3 w-full px-6 py-3.5 hover:bg-accent transition-colors text-left border-b border-border"

@@ -1,11 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
+import { PushNotificationsService } from '../push-notifications/push-notifications.service';
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
-  constructor(private supabaseService: SupabaseService) {}
+  constructor(
+    private supabaseService: SupabaseService,
+    private pushNotificationsService: PushNotificationsService,
+  ) {}
 
   async create(data: {
     user_id: string | null;
@@ -28,7 +32,16 @@ export class NotificationsService {
 
     if (error) {
       this.logger.error(`Failed to create notification: ${error.message}`);
+      return;
     }
+
+    // Real system-level push (vibration + popup even with the app closed) —
+    // best-effort, fire-and-forget. A delivery failure must never surface to
+    // the many call sites across payments.service.ts / wallets.service.ts
+    // that just want to record an in-app notification.
+    this.pushNotificationsService
+      .sendPush(data.user_id, { type: data.type, title: data.title, body: data.body, data: data.data })
+      .catch((err) => this.logger.error(`Push dispatch failed: ${err.message}`));
   }
 
   async getUserNotifications(userId: string, filters?: { unread_only?: boolean }) {
