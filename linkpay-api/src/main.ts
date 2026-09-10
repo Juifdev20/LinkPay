@@ -1,4 +1,4 @@
-import { ProxyAgent, setGlobalDispatcher } from 'undici';
+import { ProxyAgent } from 'undici';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -7,17 +7,36 @@ import helmet from 'helmet';
 import * as express from 'express';
 import { AppModule } from './app.module';
 
+// CinetPay's SDK talks to exactly these hosts (sandbox + production) — see
+// cinetpay.adapter.ts. Only requests to these get routed through the proxy;
+// everything else (Supabase Auth/REST, etc.) must keep using the platform's
+// normal outbound path.
+const CINETPAY_HOSTS = ['api.cinetpay.net', 'api.cinetpay.co'];
+
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
-  // Route outbound HTTP requests through a fixed-IP proxy when PROXY_URL is set.
-  // Needed on Render (shared outbound IPs) for CinetPay IP whitelisting —
-  // set PROXY_URL to your QuotaGuard/Fixie proxy URL in Render env vars.
-  // Logged (with credentials masked) so a "not whitelisted" error from
-  // CinetPay is easy to tell apart from "the proxy isn't even configured".
+  // Route outbound HTTP requests through a fixed-IP proxy when PROXY_URL is
+  // set — needed on Render (shared outbound IPs) for CinetPay IP
+  // whitelisting. Scoped to CinetPay's own hosts only: undici's
+  // setGlobalDispatcher() would apply to EVERY outbound fetch in the
+  // process, including the Supabase client's own calls (auth, REST) — that
+  // previously broke login/signup once PROXY_URL was set, since Supabase
+  // traffic got silently routed through a proxy that was never meant for
+  // it. Wrapping globalThis.fetch instead lets us pick the dispatcher
+  // per-request based on the destination host.
   if (process.env.PROXY_URL) {
-    setGlobalDispatcher(new ProxyAgent(process.env.PROXY_URL));
-    logger.log(`Outbound requests routed via proxy: ${process.env.PROXY_URL.replace(/\/\/.*@/, '//***@')}`);
+    const proxyAgent = new ProxyAgent(process.env.PROXY_URL);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' || input instanceof URL ? input : input.url;
+      const hostname = new URL(url).hostname;
+      if (CINETPAY_HOSTS.includes(hostname)) {
+        return originalFetch(input, { ...init, dispatcher: proxyAgent } as RequestInit);
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+    logger.log(`CinetPay requests (${CINETPAY_HOSTS.join(', ')}) routed via proxy: ${process.env.PROXY_URL.replace(/\/\/.*@/, '//***@')}`);
   } else {
     logger.warn('PROXY_URL not set — outbound requests use the raw platform IP (CinetPay IP whitelisting will fail on Render\'s shared IPs)');
   }
