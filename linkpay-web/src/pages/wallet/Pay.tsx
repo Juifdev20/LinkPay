@@ -10,6 +10,7 @@ import { PinInput } from '@/components/PinInput';
 import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicker';
 import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
 import { formatCurrency } from '@/lib/utils';
+import { FormSheet } from '@/components/FormSheet';
 import { Loader2, Check, Search, ArrowLeft, ScanLine, Store, Wallet as WalletIcon, Smartphone } from 'lucide-react';
 
 type Step = 'reference' | 'confirm' | 'method' | 'pin' | 'processing' | 'success';
@@ -113,7 +114,10 @@ export default function PayInvoicePage() {
     }
   };
 
-  if (step === 'success') {
+  // Everything below renders inside the single FormSheet at the bottom of
+  // this component — same step-branching JSX as before.
+  function renderStep() {
+    if (step === 'success') {
     return (
       <div className="p-6 max-w-md mx-auto">
         <Card>
@@ -373,5 +377,12 @@ export default function PayInvoicePage() {
         </CardContent>
       </Card>
     </div>
+    );
+  }
+
+  return (
+    <FormSheet onClose={() => navigate(-1)} title="Payer une facture">
+      {renderStep()}
+    </FormSheet>
   );
 }

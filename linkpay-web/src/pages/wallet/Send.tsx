@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { PinInput } from '@/components/PinInput';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { formatCurrency } from '@/lib/utils';
+import { FormSheet } from '@/components/FormSheet';
 import { Loader2, Check, Search, ArrowLeft, Send as SendIcon, User, Store } from 'lucide-react';
 
 type Step = 'number' | 'amount' | 'confirm' | 'pin' | 'processing' | 'success';
@@ -91,7 +92,11 @@ export default function SendPage() {
     }
   };
 
-  if (step === 'success') {
+  // Everything below renders inside the single FormSheet at the bottom of
+  // this component — same step-branching JSX as before, just no longer
+  // each wrapped in its own top-level page div.
+  function renderStep() {
+    if (step === 'success') {
     return (
       <div className="p-6 max-w-md mx-auto">
         <Card>
@@ -298,5 +303,12 @@ export default function SendPage() {
         </CardContent>
       </Card>
     </div>
+    );
+  }
+
+  return (
+    <FormSheet onClose={() => navigate(-1)} title="Envoyer de l'argent">
+      {renderStep()}
+    </FormSheet>
   );
 }

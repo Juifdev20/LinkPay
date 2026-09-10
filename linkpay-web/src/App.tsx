@@ -34,6 +34,7 @@ import AdminSettlementsPage from '@/pages/admin/Settlements';
 import AdminCommissionsPage from '@/pages/admin/Commissions';
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
 import SettingsPage from '@/pages/Settings';
+import ProfilePage from '@/pages/Profile';
 import InstallPrompt from '@/components/InstallPrompt';
 
 function DashboardIndex() {
@@ -116,6 +117,7 @@ export default function App() {
         <Route path="wallet/pin" element={<SetPinPage />} />
         <Route path="wallet/transactions" element={<WalletTransactionsPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="profile" element={<ProfilePage />} />
         <Route
           path="admin"
           element={
