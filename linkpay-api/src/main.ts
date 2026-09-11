@@ -27,8 +27,22 @@ async function bootstrap() {
   app.use(express.urlencoded({ extended: true }));
 
   app.use(helmet());
+  const frontendUrl = configService.get<string>('FRONTEND_URL');
+  const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:5175',
+    'http://localhost:5176',
+    'http://localhost:5177',
+    'http://localhost:5178',
+    'http://localhost:5179',
+    'http://localhost:5180',
+  ];
+  if (frontendUrl && !allowedOrigins.includes(frontendUrl)) {
+    allowedOrigins.push(frontendUrl);
+  }
   app.enableCors({
-    origin: configService.get<string>('FRONTEND_URL', 'http://localhost:5173'),
+    origin: allowedOrigins,
     credentials: true,
   });
 

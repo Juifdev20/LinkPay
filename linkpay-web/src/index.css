@@ -1,59 +1,170 @@
 @tailwind base;
+
 @tailwind components;
+
 @tailwind utilities;
 
+
+
 @layer base {
+
   :root {
-    --background: 220 20% 97%;
+
+    --background: 210 40% 98%;
+
     --foreground: 222 47% 11%;
+
     --card: 0 0% 100%;
+
     --card-foreground: 222 47% 11%;
+
     --popover: 0 0% 100%;
+
     --popover-foreground: 222 47% 11%;
-    --primary: 243 75% 59%;
+
+    --primary: 239 84% 67%;
+
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
+
+    --secondary: 217 91% 60%;
+
+    --secondary-foreground: 0 0% 100%;
+
     --muted: 210 40% 96%;
+
     --muted-foreground: 215 16% 47%;
+
     --accent: 210 40% 94%;
+
     --accent-foreground: 222 47% 11%;
+
     --destructive: 0 84% 60%;
+
     --destructive-foreground: 0 0% 100%;
+
     --success: 160 84% 39%;
+
     --success-foreground: 0 0% 100%;
+
     --warning: 38 92% 50%;
+
     --warning-foreground: 0 0% 100%;
+
     --info: 221 83% 53%;
+
     --info-foreground: 0 0% 100%;
+
     --border: 214 32% 91%;
+
     --input: 214 32% 91%;
-    --ring: 243 75% 59%;
+
+    --ring: 239 84% 67%;
+
     --radius: 0.75rem;
+
+    --gradient-orange: linear-gradient(135deg, #f97316 0%, #ef4444 100%);
+
+  }
+
+  .dark {
+
+    --background: 222 47% 8%;
+
+    --foreground: 210 40% 96%;
+
+    --card: 222 47% 11%;
+
+    --card-foreground: 210 40% 96%;
+
+    --popover: 222 47% 11%;
+
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 239 84% 67%;
+
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 217 91% 60%;
+
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 217 33% 17%;
+
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 217 33% 17%;
+
+    --accent-foreground: 210 40% 96%;
+
+    --destructive: 0 72% 51%;
+
+    --destructive-foreground: 210 40% 96%;
+
+    --success: 160 84% 39%;
+
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+
+    --warning-foreground: 0 0% 100%;
+
+    --info: 221 83% 53%;
+
+    --info-foreground: 0 0% 100%;
+
+    --border: 217 33% 17%;
+
+    --input: 217 33% 17%;
+
+    --ring: 239 84% 67%;
+
   }
 
   * {
+
     @apply border-border;
+
   }
 
   body {
+
     @apply bg-background text-foreground;
+
     font-family: 'Poppins', system-ui, -apple-system, sans-serif;
+
     font-feature-settings: 'rlig' 1, 'calt' 1;
+
     -webkit-font-smoothing: antialiased;
+
     -moz-osx-font-smoothing: grayscale;
+
   }
+
 }
 
+
+
 @layer utilities {
+
   .scrollbar-hide {
+
     -ms-overflow-style: none;
+
     scrollbar-width: none;
+
   }
+
   .scrollbar-hide::-webkit-scrollbar {
+
     display: none;
+
   }
+
   .safe-area-bottom {
+
     padding-bottom: env(safe-area-inset-bottom);
+
   }
+
 }
+
