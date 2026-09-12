@@ -79,24 +79,50 @@ export class MerchantsController {
     return this.merchantsService.getMerchantStats(merchant.id);
   }
 
+  // Privileged fields on a merchant record — never settable by the merchant
+  // owner themselves, only by platform admins. `status` also has its own
+  // dedicated, already-admin-gated route (AdminController.updateMerchantStatus)
+  // for the approve/reject/suspend workflow; kept reachable here too (admin
+  // callers only) since `commission_rule_id` has no other admin endpoint yet.
+  private static readonly ADMIN_ONLY_FIELDS = ['status', 'commission_rule_id'];
+
   @Get(':id')
-  @ApiOperation({ summary: 'Get merchant by ID' })
-  async getMerchant(@Param('id') id: string) {
+  @ApiOperation({ summary: 'Get merchant by ID (owner or admin only)' })
+  async getMerchant(
+    @Param('id') id: string,
+    @CurrentUser('merchant_id') callerMerchantId: string,
+    @CurrentUser('role') callerRole: string,
+  ) {
+    this.assertOwnMerchantOrAdmin(id, callerMerchantId, callerRole);
     return this.merchantsService.getMerchantById(id);
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update merchant' })
+  @ApiOperation({ summary: 'Update merchant (owner or admin only — status/commission_rule_id require admin)' })
   async updateMerchant(
     @Param('id') id: string,
     @Body() updates: Record<string, any>,
+    @CurrentUser('merchant_id') callerMerchantId: string,
+    @CurrentUser('role') callerRole: string,
   ) {
+    this.assertOwnMerchantOrAdmin(id, callerMerchantId, callerRole);
+    if (!this.isAdmin(callerRole)) {
+      const attemptedPrivileged = MerchantsController.ADMIN_ONLY_FIELDS.filter((f) => updates[f] !== undefined);
+      if (attemptedPrivileged.length > 0) {
+        throw new ForbiddenException(`Only an administrator can change: ${attemptedPrivileged.join(', ')}`);
+      }
+    }
     return this.merchantsService.updateMerchant(id, updates);
   }
 
   @Get(':id/stats')
-  @ApiOperation({ summary: 'Get merchant dashboard stats' })
-  async getMerchantStats(@Param('id') id: string) {
+  @ApiOperation({ summary: 'Get merchant dashboard stats (owner or admin only)' })
+  async getMerchantStats(
+    @Param('id') id: string,
+    @CurrentUser('merchant_id') callerMerchantId: string,
+    @CurrentUser('role') callerRole: string,
+  ) {
+    this.assertOwnMerchantOrAdmin(id, callerMerchantId, callerRole);
     return this.merchantsService.getMerchantStats(id);
   }
 
@@ -142,5 +168,14 @@ export class MerchantsController {
     if (!callerMerchantId || callerMerchantId !== paramMerchantId) {
       throw new ForbiddenException('You do not manage this merchant account');
     }
+  }
+
+  private isAdmin(role: string | undefined): boolean {
+    return role === 'admin' || role === 'super_admin';
+  }
+
+  private assertOwnMerchantOrAdmin(paramMerchantId: string, callerMerchantId: string | undefined, callerRole: string | undefined) {
+    if (this.isAdmin(callerRole)) return;
+    this.assertOwnMerchant(paramMerchantId, callerMerchantId);
   }
 }

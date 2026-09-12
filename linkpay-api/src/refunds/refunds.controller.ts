@@ -29,24 +29,34 @@ export class RefundsController {
   @Post('transaction/:transactionId')
   @Roles('merchant', 'admin', 'super_admin')
   @UseGuards(RolesGuard)
-  @ApiOperation({ summary: 'Create a refund for a transaction' })
+  @ApiOperation({ summary: 'Create a refund for a transaction (owner merchant or admin only)' })
   async createRefund(
     @Param('transactionId') transactionId: string,
     @CurrentUser('id') userId: string,
+    @CurrentUser('merchant_id') callerMerchantId: string,
+    @CurrentUser('role') callerRole: string,
     @Body() dto: CreateRefundDto,
   ) {
-    return this.refundsService.createRefund(transactionId, dto, userId);
+    return this.refundsService.createRefund(transactionId, dto, userId, callerMerchantId, callerRole);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get refund by ID' })
-  async getRefund(@Param('id') id: string) {
-    return this.refundsService.getRefundById(id);
+  @ApiOperation({ summary: 'Get refund by ID (owner merchant or admin only)' })
+  async getRefund(
+    @Param('id') id: string,
+    @CurrentUser('merchant_id') callerMerchantId: string,
+    @CurrentUser('role') callerRole: string,
+  ) {
+    return this.refundsService.getRefundById(id, callerMerchantId, callerRole);
   }
 
   @Get('transaction/:transactionId')
-  @ApiOperation({ summary: 'List refunds for a transaction' })
-  async getTransactionRefunds(@Param('transactionId') transactionId: string) {
-    return this.refundsService.getTransactionRefunds(transactionId);
+  @ApiOperation({ summary: 'List refunds for a transaction (owner merchant or admin only)' })
+  async getTransactionRefunds(
+    @Param('transactionId') transactionId: string,
+    @CurrentUser('merchant_id') callerMerchantId: string,
+    @CurrentUser('role') callerRole: string,
+  ) {
+    return this.refundsService.getTransactionRefunds(transactionId, callerMerchantId, callerRole);
   }
 }
