@@ -21,7 +21,7 @@ export default function WelcomePage() {
           <Logo size="sm" showText={false} imgClassName="w-12 h-12 rounded-lg" />
         </div>
         <div>
-          <p className="text-primary-foreground/80 text-lg">Bienvenue sur ✅ (test v2)</p>
+          <p className="text-primary-foreground/80 text-lg">Bienvenue sur</p>
           <h1 className="text-4xl font-bold text-primary-foreground">LinkPay</h1>
         </div>
         <p className="text-primary-foreground/80 text-sm max-w-xs leading-relaxed">
