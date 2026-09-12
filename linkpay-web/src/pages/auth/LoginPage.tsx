@@ -57,7 +57,11 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
-      <AuthBrandingPanel headline="Bienvenue !" className="h-40 md:h-auto md:w-1/2" />
+      <AuthBrandingPanel
+        headline="Bienvenue !"
+        tagline="LinkPay simplifie vos paiements en RDC : liens de paiement, QR code et encaissements en toute sécurité."
+        className="h-48 md:h-auto md:w-1/2"
+      />
 
       {/* Form section */}
       <div className="flex-1 flex items-center justify-center p-4 md:p-12 lg:p-16 md:overflow-y-auto">
