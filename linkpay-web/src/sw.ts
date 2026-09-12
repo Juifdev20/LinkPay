@@ -37,8 +37,17 @@ registerRoute(
 
 // ---- Keep the existing silent-auto-update UX working ----
 // Under generateSW + registerType:'autoUpdate', skipWaiting/clientsClaim are
-// injected automatically. injectManifest requires this by hand, or
-// pwa-update.ts's updateSW(true) call silently stops reloading tabs.
+// injected automatically. injectManifest requires this by hand — and it
+// must be unconditional, not just message-triggered: vite-plugin-pwa's own
+// registerType:'autoUpdate' runtime (the "auto" branch of register.js) never
+// sends a SKIP_WAITING message at all — it just listens for the new worker
+// to reach "activated" and reloads the page then. A worker that only skips
+// waiting on a message it's never sent sits in `waiting` forever, still
+// controlled by the old worker, serving stale content on every navigation —
+// including a manual refresh — until something else (e.g. every tab fully
+// closing, or a user manually clearing site data) lets it activate. Calling
+// skipWaiting() unconditionally here is what actually makes autoUpdate work.
+self.skipWaiting();
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
