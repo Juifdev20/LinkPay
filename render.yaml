@@ -29,7 +29,7 @@ services:
       - key: JWT_EXPIRES_IN
         value: 15m
       - key: JWT_REFRESH_EXPIRES_IN
-        value: 7d
+        value: 365d
       - key: PSP_PROVIDER
         value: cinetpay
       - key: CINETPAY_API_KEY_CD

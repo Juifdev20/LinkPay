@@ -108,7 +108,7 @@ SUPABASE_SERVICE_ROLE_KEY=votre-clé-service-role
 
 JWT_SECRET=une-chaîne-secrète-longue
 JWT_EXPIRES_IN=15m
-JWT_REFRESH_EXPIRES_IN=7d
+JWT_REFRESH_EXPIRES_IN=365d
 
 # PSP — laisser "mock" pour développer sans compte prestataire réel
 PSP_PROVIDER=mock
