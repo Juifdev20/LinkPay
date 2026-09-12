@@ -125,7 +125,11 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
-      <AuthBrandingPanel headline="Créer un compte" className="h-40 md:h-auto md:w-1/2" />
+      <AuthBrandingPanel
+        headline="Créer un compte"
+        tagline="Rejoignez LinkPay en quelques secondes et recevez vos paiements instantanément."
+        className="h-48 md:h-auto md:w-1/2"
+      />
 
       {/* Form section */}
       <div className="flex-1 flex items-center justify-center p-4 md:p-12 lg:p-16">
@@ -134,11 +138,11 @@ export default function RegisterPage() {
             this form in particular has grown long (confirm password,
             strength meter, terms checkbox), so this matters more here than
             on LoginPage. On mobile the branding panel above now takes a
-            fixed h-40 (10rem) of viewport height too, so the cap is sized
+            fixed h-48 (12rem) of viewport height too, so the cap is sized
             against the remaining space (`dvh`, for mobile browser chrome
             correctness) rather than a flat percentage. Same "fixed chrome,
             scrolling middle" pattern as FormSheet.tsx. */}
-        <div className="w-full max-w-md bg-card backdrop-blur-lg rounded-2xl border border-border shadow-2xl max-h-[calc(100dvh-10rem)] md:max-h-[85vh] flex flex-col overflow-hidden">
+        <div className="w-full max-w-md bg-card backdrop-blur-lg rounded-2xl border border-border shadow-2xl max-h-[calc(100dvh-12rem)] md:max-h-[85vh] flex flex-col overflow-hidden">
           <div className="px-6 md:px-8 pt-6 md:pt-8 pb-2 flex-shrink-0">
             <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Inscription</h2>
             <p className="text-muted-foreground text-sm">

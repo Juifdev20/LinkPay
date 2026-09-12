@@ -4,6 +4,8 @@ import { useEffect } from 'react';
 
 import LoginPage from '@/pages/auth/LoginPage';
 import RegisterPage from '@/pages/auth/RegisterPage';
+import WelcomePage from '@/pages/WelcomePage';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 import PaymentLinkPage from '@/pages/public/PaymentLinkPage';
 import PaymentResultPage from '@/pages/public/PaymentResultPage';
@@ -37,11 +39,20 @@ import ProfilePage from '@/pages/Profile';
 import InstallPrompt from '@/components/InstallPrompt';
 import { AppLockGate } from '@/components/AppLockGate';
 
-// No landing/marketing page in this app — professional apps go straight to
-// the dashboard or the login screen, never a pitch page.
+// No marketing landing page in this app (feature grid, nav bar, etc. — that's
+// for the website, not a professional app). An authenticated visitor always
+// goes straight to the dashboard. An unauthenticated one goes straight to
+// /login on desktop (the reference design bakes the branding directly into
+// that combined screen there); on mobile they first see WelcomePage — a
+// brand splash with a short pitch and the two ways in — matching the
+// reference's separate mobile "Welcome" screen.
 function RootRedirect() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  return <Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />;
+  const isDesktop = useMediaQuery('(min-width: 768px)');
+
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
+  if (isDesktop) return <Navigate to="/login" replace />;
+  return <WelcomePage />;
 }
 
 function DashboardIndex() {
