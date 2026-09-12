@@ -4,6 +4,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import { SESSION_TRACKING_EXEMPT_ROLES } from './constants';
+import { getRequiredJwtSecret } from './jwt-secret.util';
 
 export interface JwtPayload {
   sub: string;
@@ -22,7 +23,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET', 'fallback-secret'),
+      secretOrKey: getRequiredJwtSecret(configService),
     });
   }
 

@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { SupabaseModule } from '../supabase/supabase.module';
 import { JwtStrategy } from './jwt.strategy';
+import { getRequiredJwtSecret } from './jwt-secret.util';
 
 @Module({
   imports: [
@@ -14,7 +15,7 @@ import { JwtStrategy } from './jwt.strategy';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET', 'fallback-secret'),
+        secret: getRequiredJwtSecret(config),
         signOptions: {
           expiresIn: config.get<string>('JWT_EXPIRES_IN', '15m'),
         },

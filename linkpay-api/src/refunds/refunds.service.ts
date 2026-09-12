@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { PspFactory } from '../payments/psp/psp.factory';
 import { LedgerService } from '../ledger/ledger.service';
@@ -13,10 +13,25 @@ export class RefundsService {
     private ledgerService: LedgerService,
   ) {}
 
+  private isAdmin(role: string | undefined): boolean {
+    return role === 'admin' || role === 'super_admin';
+  }
+
+  private assertOwnsTransaction(
+    transactionMerchantId: string | undefined,
+    callerMerchantId: string | undefined,
+    callerRole: string | undefined,
+  ) {
+    if (this.isAdmin(callerRole)) return;
+    if (!callerMerchantId || callerMerchantId !== transactionMerchantId) {
+      throw new ForbiddenException('You do not manage this transaction');
+    }
+  }
+
   async createRefund(transactionId: string, data: {
     amount_cents: number;
     reason?: string;
-  }, userId: string) {
+  }, userId: string, callerMerchantId: string, callerRole: string) {
     const { data: transaction, error } = await this.supabaseService.getClient()
       .from('transactions')
       .select('*')
@@ -26,6 +41,8 @@ export class RefundsService {
     if (error || !transaction) {
       throw new NotFoundException('Transaction not found');
     }
+
+    this.assertOwnsTransaction(transaction.merchant_id, callerMerchantId, callerRole);
 
     if (transaction.status !== 'SUCCESS') {
       throw new BadRequestException('Can only refund successful transactions');
@@ -84,10 +101,10 @@ export class RefundsService {
     return refund;
   }
 
-  async getRefundById(id: string) {
+  async getRefundById(id: string, callerMerchantId: string, callerRole: string) {
     const { data, error } = await this.supabaseService.getClient()
       .from('refunds')
-      .select('*, transaction:transactions(reference, amount_cents, currency)')
+      .select('*, transaction:transactions(reference, amount_cents, currency, merchant_id)')
       .eq('id', id)
       .single();
 
@@ -95,10 +112,24 @@ export class RefundsService {
       throw new NotFoundException('Refund not found');
     }
 
+    this.assertOwnsTransaction(data.transaction?.merchant_id, callerMerchantId, callerRole);
+
     return data;
   }
 
-  async getTransactionRefunds(transactionId: string) {
+  async getTransactionRefunds(transactionId: string, callerMerchantId: string, callerRole: string) {
+    const { data: transaction, error: txError } = await this.supabaseService.getClient()
+      .from('transactions')
+      .select('merchant_id')
+      .eq('id', transactionId)
+      .single();
+
+    if (txError || !transaction) {
+      throw new NotFoundException('Transaction not found');
+    }
+
+    this.assertOwnsTransaction(transaction.merchant_id, callerMerchantId, callerRole);
+
     const { data, error } = await this.supabaseService.getClient()
       .from('refunds')
       .select('*')

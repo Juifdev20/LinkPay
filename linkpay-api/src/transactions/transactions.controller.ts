@@ -37,20 +37,35 @@ export class TransactionsController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get transaction by ID' })
-  async getById(@Param('id') id: string) {
-    return this.transactionsService.getTransactionById(id);
+  @ApiOperation({ summary: 'Get transaction by ID (own transaction, own store, or admin only)' })
+  async getById(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') role: string,
+    @CurrentUser('merchant_id') merchantId: string | undefined,
+  ) {
+    return this.transactionsService.getTransactionById(id, { userId, role, merchantId });
   }
 
   @Get('reference/:reference')
-  @ApiOperation({ summary: 'Get transaction by reference' })
-  async getByReference(@Param('reference') reference: string) {
-    return this.transactionsService.getTransactionByReference(reference);
+  @ApiOperation({ summary: 'Get transaction by reference (own transaction, own store, or admin only)' })
+  async getByReference(
+    @Param('reference') reference: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') role: string,
+    @CurrentUser('merchant_id') merchantId: string | undefined,
+  ) {
+    return this.transactionsService.getTransactionByReference(reference, { userId, role, merchantId });
   }
 
   @Get(':id/receipt')
-  @ApiOperation({ summary: 'Get transaction receipt' })
-  async getReceipt(@Param('id') id: string) {
-    return this.transactionsService.getReceipt(id);
+  @ApiOperation({ summary: 'Get transaction receipt (own transaction, own store, or admin only)' })
+  async getReceipt(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') role: string,
+    @CurrentUser('merchant_id') merchantId: string | undefined,
+  ) {
+    return this.transactionsService.getReceipt(id, { userId, role, merchantId });
   }
 }

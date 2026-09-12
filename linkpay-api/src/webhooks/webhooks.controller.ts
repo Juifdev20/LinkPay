@@ -1,7 +1,9 @@
-import { Controller, Post, Req, Param, Get, Query, Headers, BadRequestException } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { Controller, Post, Req, Param, Get, Query, Headers, BadRequestException, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { WebhooksService } from './webhooks.service';
 import { Public } from '../common/decorators/public.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RolesGuard } from '../common/guards/roles.guard';
 import { Request } from 'express';
 
 @ApiTags('Webhooks')
@@ -23,7 +25,10 @@ export class WebhooksController {
   }
 
   @Get('events')
-  @ApiOperation({ summary: 'List webhook events (admin)' })
+  @Roles('admin', 'super_admin')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List webhook events (admin only)' })
   async listEvents(
     @Query('provider') provider?: string,
     @Query('processed') processed?: string,

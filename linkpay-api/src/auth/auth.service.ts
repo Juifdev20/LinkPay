@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { SupabaseService } from '../supabase/supabase.service';
 import { RegisterDto, LoginDto } from './dto';
 import { SESSION_TRACKING_EXEMPT_ROLES } from './constants';
+import { getRequiredJwtSecret } from './jwt-secret.util';
 
 export interface JwtPayload {
   sub: string;
@@ -172,7 +173,7 @@ export class AuthService {
     let payload: { sub: string; email: string; type?: string; session_id?: string };
     try {
       payload = this.jwtService.verify(refreshToken, {
-        secret: this.configService.get<string>('JWT_SECRET', 'fallback-secret'),
+        secret: getRequiredJwtSecret(this.configService),
       });
     } catch {
       throw new UnauthorizedException('Invalid or expired refresh token');

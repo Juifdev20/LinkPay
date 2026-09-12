@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Param, Body, Query, UseGuards, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SettlementsService } from './settlements.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -56,9 +56,17 @@ export class SettlementsController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get settlement by ID' })
-  async getById(@Param('id') id: string) {
-    return this.settlementsService.getSettlementById(id);
+  @ApiOperation({ summary: 'Get settlement by ID (owner merchant or admin only)' })
+  async getById(
+    @Param('id') id: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('merchant_id') callerMerchantId: string | undefined,
+  ) {
+    const settlement = await this.settlementsService.getSettlementById(id);
+    if (callerRole !== 'admin' && callerRole !== 'super_admin' && settlement.merchant_id !== callerMerchantId) {
+      throw new ForbiddenException('You do not manage this settlement');
+    }
+    return settlement;
   }
 
   @Put(':id/status')
