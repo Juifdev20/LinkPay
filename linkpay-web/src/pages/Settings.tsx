@@ -11,10 +11,11 @@ import { Switch } from '@/components/ui/switch';
 import { Logo } from '@/components/Logo';
 import { PageHeader } from '@/components/PageHeader';
 import { CurrencySelector } from '@/components/CurrencySelector';
-import { Wallet, ShieldCheck, Users, UserCog, Percent, Building2, UsersRound, Receipt, HelpCircle, FileText, ChevronRight, Store, Loader2, Bell, Moon } from 'lucide-react';
+import { Wallet, ShieldCheck, Users, UserCog, Percent, Building2, UsersRound, Receipt, HelpCircle, FileText, ChevronRight, Store, Loader2, Bell, Moon, Fingerprint } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getCurrentPushPermission, hasActiveSubscription, subscribeToPush, unsubscribeFromPush } from '@/lib/push';
 import { useTheme } from '@/hooks/useTheme';
+import { isAppLockSupported, isAppLockEnabled, enableAppLock, disableAppLock } from '@/lib/webauthn';
 
 export default function SettingsPage() {
   const user = useAuthStore((s) => s.user);
@@ -29,6 +30,26 @@ export default function SettingsPage() {
   const [pushPermission, setPushPermission] = useState(getCurrentPushPermission());
   const [pushBusy, setPushBusy] = useState(false);
   const { toggleTheme, effectiveTheme } = useTheme();
+  const [appLockSupported] = useState(() => isAppLockSupported());
+  const [appLockEnabled, setAppLockEnabledState] = useState(isAppLockEnabled());
+  const [appLockBusy, setAppLockBusy] = useState(false);
+
+  const handleToggleAppLock = async (checked: boolean) => {
+    setAppLockBusy(true);
+    try {
+      if (checked) {
+        await enableAppLock();
+      } else {
+        await disableAppLock();
+      }
+      setAppLockEnabledState(checked);
+    } catch {
+      // Ceremony cancelled or failed (user dismissed the OS prompt, etc.) —
+      // leave the toggle in its previous state.
+    } finally {
+      setAppLockBusy(false);
+    }
+  };
 
   useEffect(() => {
     setPushPermission(getCurrentPushPermission());
@@ -268,6 +289,22 @@ export default function SettingsPage() {
               <p className="text-xs text-muted-foreground">Réduit la luminosité de l'interface.</p>
             </div>
             <Switch checked={effectiveTheme === 'dark'} onCheckedChange={toggleTheme} />
+          </div>
+          <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
+            <Fingerprint className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-medium text-sm text-foreground">Verrouillage biométrique</p>
+              <p className="text-xs text-muted-foreground">
+                {!appLockSupported
+                  ? 'Non disponible sur cet appareil/navigateur.'
+                  : "Empreinte, visage ou code de l'appareil pour ouvrir l'app."}
+              </p>
+            </div>
+            <Switch
+              checked={appLockEnabled}
+              disabled={appLockBusy || !appLockSupported}
+              onCheckedChange={handleToggleAppLock}
+            />
           </div>
           <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
             <Bell className="w-5 h-5 text-muted-foreground flex-shrink-0" />

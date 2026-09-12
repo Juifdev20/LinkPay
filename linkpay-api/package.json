@@ -26,6 +26,7 @@
     "@nestjs/platform-express": "^10.3.0",
     "@nestjs/swagger": "^7.2.0",
     "@nestjs/throttler": "^5.1.1",
+    "@simplewebauthn/server": "^14.0.1",
     "@supabase/supabase-js": "^2.39.3",
     "bcryptjs": "^3.0.3",
     "cinetpay-js": "^0.1.1",
