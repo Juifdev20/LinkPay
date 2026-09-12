@@ -58,8 +58,8 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
       <AuthBrandingPanel
-        headline="Bienvenue !"
-        tagline="LinkPay simplifie vos paiements en RDC : liens de paiement, QR code et encaissements en toute sécurité."
+        headline="Bienvenue"
+        tagline="LinkPay simplifie vos paiements en RDC avec toute sécurité."
         className="h-48 md:h-auto md:w-1/2"
       />
 
@@ -88,7 +88,7 @@ export default function LoginPage() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="vous@exemple.com"
+                  placeholder="vous@gmail.com"
                   value={email}
                   onChange={handleEmailChange}
                   required

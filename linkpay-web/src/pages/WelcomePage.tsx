@@ -25,11 +25,11 @@ export default function WelcomePage() {
           <h1 className="text-4xl font-bold text-primary-foreground">LinkPay</h1>
         </div>
         <p className="text-primary-foreground/80 text-sm max-w-xs leading-relaxed">
-          Encaissez et payez en toute simplicité, partout en RDC — liens de paiement, QR code et portefeuille mobile.
+          Encaissez et payez vos factures en toute simplicité, partout en RDC avec un simple liens de paiement, QR code et portefeuille mobile.
         </p>
       </div>
 
-      <div className="relative z-10 flex flex-col gap-3">
+      <div className="relative z-10 flex flex-col gap-3 mb-8">
         <Button asChild className="w-full py-6 text-base font-semibold rounded-xl bg-background text-primary hover:bg-background/90">
           <Link to="/register">Créer un compte</Link>
         </Button>
