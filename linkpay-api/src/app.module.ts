@@ -24,6 +24,7 @@ import { AdminModule } from './admin/admin.module';
 import { AuditModule } from './audit/audit.module';
 import { HealthModule } from './health/health.module';
 import { WalletsModule } from './wallets/wallets.module';
+import { WebauthnModule } from './webauthn/webauthn.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 
 @Module({
@@ -58,6 +59,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     AuditModule,
     HealthModule,
     WalletsModule,
+    WebauthnModule,
   ],
   providers: [
     {

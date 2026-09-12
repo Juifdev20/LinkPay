@@ -3,6 +3,7 @@ import api from './api';
 import { supabase } from './supabase';
 import { getDeviceId } from './device';
 import { getToken, setTokens, setAccessToken, clearTokens, setRememberMe, TOKEN_ACCESS_KEY } from './token-storage';
+import { clearAppLockLocal } from './webauthn';
 
 interface User {
   id: string;
@@ -97,6 +98,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
     clearTokens();
     clearSupabaseSession();
+    // A fresh login on this device/browser (possibly a different account)
+    // must never inherit a stale "locked" state or attempt a WebAuthn
+    // ceremony tied to the previous user's credential.
+    clearAppLockLocal();
     set({ user: null, isAuthenticated: false });
   },
 

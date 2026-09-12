@@ -35,6 +35,7 @@ import OrganizationProfilePage from '@/pages/OrganizationProfile';
 import SettingsPage from '@/pages/Settings';
 import ProfilePage from '@/pages/Profile';
 import InstallPrompt from '@/components/InstallPrompt';
+import { AppLockGate } from '@/components/AppLockGate';
 
 // No landing/marketing page in this app — professional apps go straight to
 // the dashboard or the login screen, never a pitch page.
@@ -83,6 +84,7 @@ export default function App() {
   return (
     <>
       <InstallPrompt />
+      <AppLockGate />
       <Routes>
       <Route path="/" element={<RootRedirect />} />
 
