@@ -77,6 +77,15 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    // Default is 4096 bytes — raised so src/assets/logo.png (~51KB) actually
+    // gets inlined as a base64 data URI wherever it's imported (Logo.tsx,
+    // InstallPrompt.tsx), instead of becoming a separate network-fetched
+    // file. The whole point is a brand mark that can never show as a broken
+    // image, online or off, cache or no cache — bundled into the app itself
+    // like a native app's icon, not something that can fail to load.
+    assetsInlineLimit: 60_000,
+  },
   server: {
     port: 5173,
     proxy: {

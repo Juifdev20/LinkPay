@@ -1,4 +1,12 @@
 import { cn } from '@/lib/utils';
+// Inlined as a base64 data URI at build time (vite.config.ts raises
+// assetsInlineLimit so this ~51KB file qualifies) instead of referenced as
+// a network path — a real app's icon ships inside the app itself and is
+// never something that can fail to load. Bundled once into the shared JS
+// (already precached by the service worker for the PWA build), so the logo
+// can never show as a broken image anywhere it's used, offline or online,
+// even on a cold start before the service worker has cached anything.
+import logoSrc from '@/assets/logo.png';
 
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
@@ -21,7 +29,7 @@ export function Logo({ size = 'md', showText = true, className, imgClassName }: 
   return (
     <div className={cn('flex items-center', s.gap, className)}>
       <img
-        src="/pwa-192x192.png"
+        src={logoSrc}
         alt="LinkPay"
         className={cn('rounded-xl object-cover shadow-sm', s.box, imgClassName)}
       />

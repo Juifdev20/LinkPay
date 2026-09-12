@@ -30,6 +30,7 @@ export default function SendPage() {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [looking, setLooking] = useState(false);
+  const [amountLoading, setAmountLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
 
   const { data: wallet } = useQuery({
@@ -61,6 +62,7 @@ export default function SendPage() {
       setError('Montant invalide');
       return;
     }
+    setAmountLoading(true);
     try {
       const { data } = await api.get(`/wallet/fees/TRANSFER?amount_cents=${amountCents}&currency=${currency}`);
       setFee(data);
@@ -68,6 +70,8 @@ export default function SendPage() {
     } catch {
       setFee({ fee_cents: 0, amount_cents: amountCents, total_cents: amountCents });
       setStep('confirm');
+    } finally {
+      setAmountLoading(false);
     }
   };
 
@@ -257,7 +261,10 @@ export default function SendPage() {
                 <Label htmlFor="description" className="font-semibold">Note (optionnel)</Label>
                 <Input id="description" placeholder="Pour le loyer..." value={description} onChange={(e) => setDescription(e.target.value)} />
               </div>
-              <Button type="submit" className="w-full" size="lg">Continuer</Button>
+              <Button type="submit" className="w-full" size="lg" disabled={amountLoading}>
+                {amountLoading && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
+                Continuer
+              </Button>
             </form>
           </CardContent>
         </Card>

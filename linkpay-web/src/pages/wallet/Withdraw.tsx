@@ -35,6 +35,7 @@ export default function WithdrawPage() {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [result, setResult] = useState<any>(null);
+  const [destinationLoading, setDestinationLoading] = useState(false);
 
   const { data: wallet } = useQuery({
     queryKey: ['wallet'],
@@ -64,11 +65,14 @@ export default function WithdrawPage() {
       setError('Informations bancaires incomplètes');
       return;
     }
+    setDestinationLoading(true);
     try {
       const { data } = await api.get(`/wallet/fees/WITHDRAWAL?amount_cents=${amountCents}&currency=${currency}`);
       setFee(data);
     } catch {
       setFee({ fee_cents: 0, amount_cents: amountCents, total_cents: amountCents });
+    } finally {
+      setDestinationLoading(false);
     }
     setStep('confirm');
   };
@@ -264,7 +268,10 @@ export default function WithdrawPage() {
                   </div>
                 </>
               )}
-              <Button type="submit" className="w-full" size="lg">Continuer</Button>
+              <Button type="submit" className="w-full" size="lg" disabled={destinationLoading}>
+                {destinationLoading && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
+                Continuer
+              </Button>
             </form>
           </CardContent>
         </Card>

@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { X, Download, Share2, Smartphone, Monitor } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+// Inlined at build time — see the identical comment in Logo.tsx — so this
+// banner's own icon can never show as a broken image either.
+import logoSrc from '@/assets/logo.png';
 
 type InstallPromptType = 'none' | 'pwa' | 'ios';
 
@@ -68,7 +71,7 @@ export default function InstallPrompt() {
 
   if (type === 'ios') {
     return (
-      <div className="fixed bottom-4 left-4 right-4 z-50 mx-auto max-w-md rounded-2xl border border-blue-200 bg-white p-4 shadow-lg">
+      <div className="fixed bottom-24 md:bottom-4 left-4 right-4 z-[60] mx-auto max-w-md rounded-2xl border border-blue-200 bg-white p-4 shadow-lg">
         <div className="mb-3 flex items-start justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
@@ -105,11 +108,11 @@ export default function InstallPrompt() {
   }
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-50 mx-auto max-w-md rounded-2xl border border-blue-200 bg-white p-4 shadow-lg">
+    <div className="fixed bottom-24 md:bottom-4 left-4 right-4 z-[60] mx-auto max-w-md rounded-2xl border border-blue-200 bg-white p-4 shadow-lg">
       <div className="mb-3 flex items-start justify-between">
         <div className="flex items-center gap-3">
           <img
-            src="/pwa-192x192.png"
+            src={logoSrc}
             alt="LinkPay"
             className="h-12 w-12 rounded-xl shadow-sm"
           />
