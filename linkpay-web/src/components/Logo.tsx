@@ -4,6 +4,9 @@ interface LogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   showText?: boolean;
   className?: string;
+  /** Override the icon's own size/shape (e.g. for a badge that needs a
+   * specific pixel size independent of the sm/md/lg/xl presets below). */
+  imgClassName?: string;
 }
 
 const sizeMap = {
@@ -13,14 +16,14 @@ const sizeMap = {
   xl: { box: 'w-16 h-16', gap: 'gap-4', title: 'text-2xl' },
 };
 
-export function Logo({ size = 'md', showText = true, className }: LogoProps) {
+export function Logo({ size = 'md', showText = true, className, imgClassName }: LogoProps) {
   const s = sizeMap[size];
   return (
     <div className={cn('flex items-center', s.gap, className)}>
       <img
         src="/pwa-192x192.png"
         alt="LinkPay"
-        className={cn('rounded-xl object-cover shadow-sm', s.box)}
+        className={cn('rounded-xl object-cover shadow-sm', s.box, imgClassName)}
       />
       {showText && (
         <span className={cn('font-bold tracking-tight text-foreground', s.title)}>

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import api from './api';
 import { supabase } from './supabase';
 import { getDeviceId } from './device';
+import { getToken, setTokens, setAccessToken, clearTokens, setRememberMe, TOKEN_ACCESS_KEY } from './token-storage';
 
 interface User {
   id: string;
@@ -21,7 +22,7 @@ interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (data: {
     email: string;
     password: string;
@@ -29,7 +30,7 @@ interface AuthState {
     phone?: string;
     account_type?: 'client' | 'merchant';
     business_name?: string;
-  }) => Promise<void>;
+  }, rememberMe?: boolean) => Promise<void>;
   logout: () => Promise<void>;
   fetchProfile: () => Promise<void>;
   applyMerchantUpgrade: (merchant: { id: string }, accessToken: string) => void;
@@ -54,34 +55,34 @@ function clearSupabaseSession() {
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  isAuthenticated: !!localStorage.getItem('linkpay_access_token'),
+  isAuthenticated: !!getToken(TOKEN_ACCESS_KEY),
   isLoading: false,
 
-  login: async (email: string, password: string) => {
+  login: async (email: string, password: string, rememberMe = true) => {
     const { data } = await api.post('/auth/login', { email, password, device_id: getDeviceId() });
-    localStorage.setItem('linkpay_access_token', data.access_token);
-    localStorage.setItem('linkpay_refresh_token', data.refresh_token);
+    setRememberMe(rememberMe);
+    setTokens(data.access_token, data.refresh_token);
     applySupabaseSession(data.supabase_session);
     set({ user: data.user, isAuthenticated: true });
   },
 
-  register: async (data) => {
+  register: async (data, rememberMe = true) => {
     const res = await api.post('/auth/register', { ...data, device_id: getDeviceId() });
-    localStorage.setItem('linkpay_access_token', res.data.access_token);
-    localStorage.setItem('linkpay_refresh_token', res.data.refresh_token);
+    setRememberMe(rememberMe);
+    setTokens(res.data.access_token, res.data.refresh_token);
     applySupabaseSession(res.data.supabase_session);
     set({ user: res.data.user, isAuthenticated: true });
   },
 
   applyMerchantUpgrade: (merchant, accessToken) => {
-    localStorage.setItem('linkpay_access_token', accessToken);
+    setAccessToken(accessToken);
     set((state) => ({
       user: state.user ? { ...state.user, role: 'merchant', merchant_id: merchant.id } : state.user,
     }));
   },
 
   applyEnterpriseUpgrade: (accessToken) => {
-    localStorage.setItem('linkpay_access_token', accessToken);
+    setAccessToken(accessToken);
     set((state) => ({
       user: state.user ? { ...state.user, role: 'enterprise' } : state.user,
     }));
@@ -94,8 +95,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       // Still clear local state even if the request fails (offline, token
       // already invalid, etc.) — the point is to let this device forget it.
     }
-    localStorage.removeItem('linkpay_access_token');
-    localStorage.removeItem('linkpay_refresh_token');
+    clearTokens();
     clearSupabaseSession();
     set({ user: null, isAuthenticated: false });
   },

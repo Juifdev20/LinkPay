@@ -2,7 +2,6 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/lib/auth-store';
 import { useEffect } from 'react';
 
-import LandingPage from '@/pages/LandingPage';
 import LoginPage from '@/pages/auth/LoginPage';
 import RegisterPage from '@/pages/auth/RegisterPage';
 
@@ -36,6 +35,13 @@ import OrganizationProfilePage from '@/pages/OrganizationProfile';
 import SettingsPage from '@/pages/Settings';
 import ProfilePage from '@/pages/Profile';
 import InstallPrompt from '@/components/InstallPrompt';
+
+// No landing/marketing page in this app — professional apps go straight to
+// the dashboard or the login screen, never a pitch page.
+function RootRedirect() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  return <Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />;
+}
 
 function DashboardIndex() {
   const user = useAuthStore((s) => s.user);
@@ -78,7 +84,7 @@ export default function App() {
     <>
       <InstallPrompt />
       <Routes>
-      <Route path="/" element={<LandingPage />} />
+      <Route path="/" element={<RootRedirect />} />
 
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
@@ -168,7 +174,7 @@ export default function App() {
         />
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<RootRedirect />} />
     </Routes>
     </>
   );
