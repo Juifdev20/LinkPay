@@ -33,9 +33,11 @@ export default function SettingsPage() {
   const [appLockSupported] = useState(() => isAppLockSupported());
   const [appLockEnabled, setAppLockEnabledState] = useState(isAppLockEnabled());
   const [appLockBusy, setAppLockBusy] = useState(false);
+  const [appLockError, setAppLockError] = useState('');
 
   const handleToggleAppLock = async (checked: boolean) => {
     setAppLockBusy(true);
+    setAppLockError('');
     try {
       if (checked) {
         await enableAppLock();
@@ -43,9 +45,15 @@ export default function SettingsPage() {
         await disableAppLock();
       }
       setAppLockEnabledState(checked);
-    } catch {
-      // Ceremony cancelled or failed (user dismissed the OS prompt, etc.) —
-      // leave the toggle in its previous state.
+    } catch (err: any) {
+      // Ceremony cancelled or failed (user dismissed the OS prompt, a
+      // network error, etc.) — leave the toggle in its previous state, but
+      // actually say why instead of failing silently.
+      if (err?.name === 'NotAllowedError') {
+        setAppLockError('Annulé.');
+      } else {
+        setAppLockError(err?.response?.data?.message || err?.message || 'Échec — réessayez.');
+      }
     } finally {
       setAppLockBusy(false);
     }
@@ -299,6 +307,9 @@ export default function SettingsPage() {
                   ? 'Non disponible sur cet appareil/navigateur.'
                   : "Empreinte, visage ou code de l'appareil pour ouvrir l'app."}
               </p>
+              {appLockError && (
+                <p className="text-xs text-destructive mt-1">{appLockError}</p>
+              )}
             </div>
             <Switch
               checked={appLockEnabled}

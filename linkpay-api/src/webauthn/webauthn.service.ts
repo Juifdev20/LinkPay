@@ -6,7 +6,7 @@ import {
   generateAuthenticationOptions,
   verifyAuthenticationResponse,
 } from '@simplewebauthn/server';
-import { isoBase64URL } from '@simplewebauthn/server/helpers';
+import { isoBase64URL, generateUserID } from '@simplewebauthn/server/helpers';
 import type { RegistrationResponseJSON, AuthenticationResponseJSON, WebAuthnCredential } from '@simplewebauthn/server';
 import { SupabaseService } from '../supabase/supabase.service';
 
@@ -98,7 +98,19 @@ export class WebauthnService {
       rpName: this.rpName,
       rpID: this.rpID,
       userName: email,
-      userID: new TextEncoder().encode(userId),
+      // A fresh random handle per ceremony — NOT derived from our own userId
+      // — is deliberate, not an oversight: some platform authenticators
+      // (notably Android/Chrome's passkey store) key their own credential
+      // storage by (rpID, user.id) and silently refuse — or throw
+      // InvalidStateError — to create a second credential for a (rpID,
+      // user.id) pair they've already seen, even after we've deleted our
+      // own DB row for it (disable → re-enable on the same device/account).
+      // WebAuthn auth here never needs this handle again afterward — we
+      // always pass `allowCredentials` built from our own DB by
+      // `credential_id`, never relying on a stable user.id to discover
+      // credentials — so randomizing it is free and sidesteps the whole
+      // class of "can't re-register after disabling" failures.
+      userID: await generateUserID(),
       attestationType: 'none',
       excludeCredentials: existing.map((c) => ({ id: c.credential_id, transports: c.transports || undefined })),
       authenticatorSelection: {
