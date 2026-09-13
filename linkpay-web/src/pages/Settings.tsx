@@ -311,6 +311,7 @@ export default function SettingsPage() {
                 <p className="text-xs text-destructive mt-1">{appLockError}</p>
               )}
             </div>
+            {appLockBusy && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />}
             <Switch
               checked={appLockEnabled}
               disabled={appLockBusy || !appLockSupported}
@@ -329,6 +330,7 @@ export default function SettingsPage() {
                   : 'Recevez une alerte même quand l\'app est fermée.'}
               </p>
             </div>
+            {pushBusy && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />}
             <Switch
               checked={pushEnabled}
               disabled={pushBusy || pushPermission === 'unsupported' || pushPermission === 'denied'}
