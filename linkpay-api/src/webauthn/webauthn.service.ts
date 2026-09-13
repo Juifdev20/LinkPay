@@ -92,27 +92,29 @@ export class WebauthnService {
   }
 
   async generateRegistrationOptionsFor(userId: string, email: string) {
-    const existing = await this.getUserCredentials(userId);
+    // App-lock has no per-device management UI today — Settings exposes a
+    // single on/off toggle, not a list of enrolled devices — so "enable"
+    // always starts from a clean slate: wipe any credential(s) already on
+    // file for this account first, then register with an empty
+    // excludeCredentials. This is what actually makes disable → re-enable
+    // on the same device reliable, regardless of *why* a previous row might
+    // still be lingering (a disable call that failed silently, a stale
+    // credential id cached client-side, a race, whatever) — there's simply
+    // nothing left for the authenticator to call "already registered" once
+    // this runs. (A prior fix tried solving this with a random per-ceremony
+    // userID instead, on the theory that some authenticators dedupe by
+    // (rpID, user.id) — that's still good practice and kept below, but it
+    // didn't fully fix this, since excludeCredentials was independently
+    // still telling the authenticator to refuse the old credential ID.)
+    await this.deleteAllCredentials(userId);
 
     const options = await generateRegistrationOptions({
       rpName: this.rpName,
       rpID: this.rpID,
       userName: email,
-      // A fresh random handle per ceremony — NOT derived from our own userId
-      // — is deliberate, not an oversight: some platform authenticators
-      // (notably Android/Chrome's passkey store) key their own credential
-      // storage by (rpID, user.id) and silently refuse — or throw
-      // InvalidStateError — to create a second credential for a (rpID,
-      // user.id) pair they've already seen, even after we've deleted our
-      // own DB row for it (disable → re-enable on the same device/account).
-      // WebAuthn auth here never needs this handle again afterward — we
-      // always pass `allowCredentials` built from our own DB by
-      // `credential_id`, never relying on a stable user.id to discover
-      // credentials — so randomizing it is free and sidesteps the whole
-      // class of "can't re-register after disabling" failures.
       userID: await generateUserID(),
       attestationType: 'none',
-      excludeCredentials: existing.map((c) => ({ id: c.credential_id, transports: c.transports || undefined })),
+      excludeCredentials: [],
       authenticatorSelection: {
         authenticatorAttachment: 'platform',
         userVerification: 'required',
@@ -233,6 +235,18 @@ export class WebauthnService {
       .from('webauthn_credentials')
       .delete()
       .eq('id', id)
+      .eq('user_id', userId);
+    return { success: true };
+  }
+
+  /** Used both by Settings' "disable" toggle (so it's honest immediately,
+   * not just eventually-cleaned-up on the next enable) and internally by
+   * generateRegistrationOptionsFor (see its comment) as the actual
+   * guarantee that re-enabling always works. */
+  async deleteAllCredentials(userId: string) {
+    await this.supabaseService.getClient()
+      .from('webauthn_credentials')
+      .delete()
       .eq('user_id', userId);
     return { success: true };
   }

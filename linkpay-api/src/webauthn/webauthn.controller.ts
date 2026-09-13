@@ -56,4 +56,10 @@ export class WebauthnController {
   remove(@CurrentUser('id') userId: string, @Param('id') id: string) {
     return this.webauthnService.deleteCredential(userId, id);
   }
+
+  @Delete('credentials')
+  @ApiOperation({ summary: "Revoke all of the current user's app-lock credentials (Settings disable toggle)" })
+  removeAll(@CurrentUser('id') userId: string) {
+    return this.webauthnService.deleteAllCredentials(userId);
+  }
 }

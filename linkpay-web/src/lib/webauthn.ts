@@ -46,21 +46,23 @@ export async function enableAppLock(): Promise<void> {
   setAppLockEnabled(true);
 }
 
-/** Revokes this device's server-side credential (if one was ever
- * registered) and clears the local flag. Safe to call even if the ceremony
- * was never completed. */
+/** Revokes every server-side credential on this account (app-lock has no
+ * per-device management UI — Settings is a single on/off toggle — so
+ * disabling clears all of it, not just whichever id happened to be cached
+ * locally) and clears the local flag. Safe to call even if no ceremony was
+ * ever completed. Note: the backend also does this same wipe at the start
+ * of every registration ceremony, so re-enabling is reliable even if this
+ * call itself fails here (offline, token expired, etc.) — this call is
+ * about making "disable" honest immediately, not the only thing standing
+ * between the user and the "already registered" bug this used to cause. */
 export async function disableAppLock(): Promise<void> {
-  const credentialId = localStorage.getItem(LOCK_CREDENTIAL_ID_KEY);
-  if (credentialId) {
-    try {
-      await api.delete(`/webauthn/credentials/${credentialId}`);
-    } catch {
-      // Best-effort — still clear the local flag so the device stops
-      // showing the lock screen even if the server call failed (offline,
-      // token expired, etc.).
-    }
-    localStorage.removeItem(LOCK_CREDENTIAL_ID_KEY);
+  try {
+    await api.delete('/webauthn/credentials');
+  } catch {
+    // Best-effort — still clear the local flag so the device stops showing
+    // the lock screen even if the server call failed.
   }
+  localStorage.removeItem(LOCK_CREDENTIAL_ID_KEY);
   setAppLockEnabled(false);
 }
 
