@@ -70,6 +70,8 @@ async function bootstrap() {
     'http://localhost:5178',
     'http://localhost:5179',
     'http://localhost:5180',
+    // Capacitor's Android WebView serves the bundled app from this origin.
+    'https://localhost',
   ];
   if (frontendUrl && !allowedOrigins.includes(frontendUrl)) {
     allowedOrigins.push(frontendUrl);
