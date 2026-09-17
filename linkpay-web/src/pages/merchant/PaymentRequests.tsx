@@ -1,11 +1,13 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
+import { FormSheet } from '@/components/FormSheet';
+import { PaymentRequestShareCard } from '@/components/PaymentRequestShareCard';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Plus, Share2 } from 'lucide-react';
+import { Plus, Share2, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { shareOrCopy } from '@/lib/share';
 
 export default function PaymentRequestsPage() {
@@ -16,6 +18,7 @@ export default function PaymentRequestsPage() {
       return data;
     },
   });
+  const [selected, setSelected] = useState<any>(null);
 
   const shareLink = (req: { link_token: string; amount_cents: number; currency: string }) => {
     shareOrCopy({
@@ -40,7 +43,12 @@ export default function PaymentRequestsPage() {
           {data?.data?.length ? (
             <div>
               {data.data.map((req: any) => (
-                <div key={req.id} className="flex items-center justify-between py-3 border-b border-border last:border-0">
+                <button
+                  key={req.id}
+                  type="button"
+                  onClick={() => setSelected(req)}
+                  className="w-full flex items-center justify-between py-3 border-b border-border last:border-0 text-left hover:bg-accent/50 transition-colors -mx-2 px-2 rounded-lg"
+                >
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold truncate text-foreground">{req.description || req.reference}</p>
                     <p className="text-sm text-muted-foreground">{formatDate(req.created_at)}</p>
@@ -51,12 +59,20 @@ export default function PaymentRequestsPage() {
                       {req.status}
                     </Badge>
                     {req.status === 'CREATED' || req.status === 'PENDING' ? (
-                      <Button variant="ghost" size="icon" onClick={() => shareLink(req)}>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          shareLink(req);
+                        }}
+                        className="p-2 rounded-lg hover:bg-accent inline-flex"
+                      >
                         <Share2 className="w-4 h-4" />
-                      </Button>
+                      </span>
                     ) : null}
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           ) : (
@@ -64,6 +80,41 @@ export default function PaymentRequestsPage() {
           )}
         </CardContent>
       </Card>
+
+      {selected && (
+        <FormSheet onClose={() => setSelected(null)} title="Demande de paiement">
+          <div className="p-6 max-w-lg mx-auto text-center">
+            <p className="font-semibold text-foreground text-lg mb-1">{selected.description || selected.reference}</p>
+            <p className="text-2xl font-bold text-foreground mb-6">{formatCurrency(selected.amount_cents, selected.currency)}</p>
+
+            {(selected.status === 'CREATED' || selected.status === 'PENDING') && (
+              <PaymentRequestShareCard request={selected} />
+            )}
+
+            {selected.status === 'PAID' && (
+              <div className="rounded-xl bg-success/10 border border-success/20 p-6">
+                <CheckCircle className="w-10 h-10 text-success mx-auto mb-2" />
+                <p className="font-semibold text-foreground">Payé</p>
+                {selected.updated_at && <p className="text-sm text-muted-foreground mt-1">{formatDate(selected.updated_at)}</p>}
+              </div>
+            )}
+
+            {selected.status === 'CANCELLED' && (
+              <div className="rounded-xl bg-destructive/10 border border-destructive/20 p-6">
+                <XCircle className="w-10 h-10 text-destructive mx-auto mb-2" />
+                <p className="font-semibold text-foreground">Demande annulée</p>
+              </div>
+            )}
+
+            {selected.status === 'EXPIRED' && (
+              <div className="rounded-xl bg-warning/10 border border-warning/20 p-6">
+                <Clock className="w-10 h-10 text-warning mx-auto mb-2" />
+                <p className="font-semibold text-foreground">Lien expiré</p>
+              </div>
+            )}
+          </div>
+        </FormSheet>
+      )}
     </div>
   );
 }

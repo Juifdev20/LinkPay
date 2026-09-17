@@ -7,9 +7,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { CurrencySelector } from '@/components/CurrencySelector';
-import { Loader2, Copy, Check, DollarSign, FileText, User, Phone, Share2 } from 'lucide-react';
-import { shareOrCopy } from '@/lib/share';
+import { Loader2, Check, DollarSign, FileText, User, Phone } from 'lucide-react';
 import { FormSheet } from '@/components/FormSheet';
+import { PaymentRequestShareCard } from '@/components/PaymentRequestShareCard';
+import { cn } from '@/lib/utils';
+
+const EXPIRY_PRESETS = [
+  { label: 'Paiement immédiat', minutes: 30 },
+  { label: 'Envoyer plus tard', minutes: 1440 },
+] as const;
 
 export default function CreatePaymentRequestPage() {
   const navigate = useNavigate();
@@ -18,10 +24,10 @@ export default function CreatePaymentRequestPage() {
   const [description, setDescription] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [expiryMinutes, setExpiryMinutes] = useState<number>(EXPIRY_PRESETS[0].minutes);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<any>(null);
-  const [copied, setCopied] = useState(false);
 
   const { data: merchant } = useQuery({
     queryKey: ['merchant-me'],
@@ -49,37 +55,13 @@ export default function CreatePaymentRequestPage() {
         currency,
         description,
         customer_info: customerName || customerPhone ? { name: customerName, phone: customerPhone } : undefined,
+        expires_in_minutes: expiryMinutes,
       });
       setResult(data);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Erreur lors de la creation');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const copyLink = () => {
-    if (result?.link_token) {
-      const url = `${window.location.origin}/p/${result.link_token}`;
-      navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  const shareLink = async () => {
-    if (!result?.link_token) return;
-    const url = `${window.location.origin}/p/${result.link_token}`;
-    const method = await shareOrCopy({
-      title: 'Lien de paiement LinkPay',
-      text: `Payez ${amount} ${currency} via LinkPay`,
-      url,
-    });
-    // The native share sheet already gives its own feedback — only show
-    // "Copié" when we actually fell back to the clipboard.
-    if (method === 'copy') {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -96,30 +78,7 @@ export default function CreatePaymentRequestPage() {
             </div>
             <h2 className="text-xl font-bold text-foreground mb-1">Demande créée !</h2>
             <p className="text-sm text-muted-foreground mb-6">Partagez le lien avec votre client</p>
-            {result.qr_code_url && (
-              <div className="flex justify-center mb-4">
-                <img src={result.qr_code_url} alt="QR Code" className="w-48 h-48 rounded-2xl border border-border" />
-              </div>
-            )}
-            {result.reference && (
-              <div className="mb-4">
-                <p className="text-xs text-muted-foreground mb-1">Ou faites saisir le code</p>
-                <p className="font-mono text-xl font-bold tracking-wider text-foreground">{result.reference}</p>
-              </div>
-            )}
-            <div className="rounded-xl bg-secondary p-3 text-left">
-              <p className="text-sm text-muted-foreground mb-1">Lien de paiement</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 text-sm truncate text-foreground">{window.location.origin}/p/{result.link_token}</code>
-                <Button variant="ghost" size="icon" onClick={copyLink}>
-                  {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
-                </Button>
-              </div>
-            </div>
-            <Button className="w-full mt-4" onClick={shareLink}>
-              <Share2 className="mr-2 w-4 h-4" />
-              Partager le lien
-            </Button>
+            <PaymentRequestShareCard request={result} />
             <div className="flex gap-3 mt-3">
               <Button variant="outline" className="flex-1" onClick={() => setResult(null)}>
                 Créer une autre
@@ -178,6 +137,26 @@ export default function CreatePaymentRequestPage() {
                   onChange={(e) => setDescription(e.target.value)}
                   className="pl-10"
                 />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="font-semibold">Validité du lien</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {EXPIRY_PRESETS.map((preset) => (
+                  <button
+                    key={preset.minutes}
+                    type="button"
+                    onClick={() => setExpiryMinutes(preset.minutes)}
+                    className={cn(
+                      'rounded-xl border-2 px-4 py-2.5 text-sm font-semibold transition-colors',
+                      expiryMinutes === preset.minutes
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-input text-muted-foreground hover:bg-accent',
+                    )}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
