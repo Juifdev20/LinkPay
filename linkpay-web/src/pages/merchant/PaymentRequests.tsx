@@ -38,18 +38,20 @@ export default function PaymentRequestsPage() {
                   key={req.id}
                   type="button"
                   onClick={() => setSelected(req)}
-                  className="w-full flex items-center justify-between py-3 border-b border-border last:border-0 text-left hover:bg-accent/50 transition-colors -mx-2 px-2 rounded-lg"
+                  className="w-full flex flex-col gap-1 py-3 border-b border-border last:border-0 text-left hover:bg-accent/50 transition-colors -mx-2 px-2 rounded-lg"
                 >
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold truncate text-foreground">{req.description || req.reference}</p>
-                    <p className="text-sm text-muted-foreground">{formatDate(req.created_at)}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold truncate text-foreground min-w-0 flex-1">{req.description || req.reference}</p>
+                    <span className="font-bold text-foreground flex-shrink-0">{formatCurrency(req.amount_cents, req.currency)}</span>
                   </div>
-                  <div className="flex items-center gap-3 ml-4">
-                    <span className="font-bold text-foreground">{formatCurrency(req.amount_cents, req.currency)}</span>
-                    <Badge variant={req.status === 'PAID' ? 'success' : req.status === 'CANCELLED' || req.status === 'EXPIRED' ? 'error' : 'warning'}>
-                      {req.status}
-                    </Badge>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm text-muted-foreground truncate min-w-0 flex-1">{formatDate(req.created_at)}</p>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Badge variant={req.status === 'PAID' ? 'success' : req.status === 'CANCELLED' || req.status === 'EXPIRED' ? 'error' : 'warning'}>
+                        {req.status}
+                      </Badge>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    </div>
                   </div>
                 </button>
               ))}
