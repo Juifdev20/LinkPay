@@ -15,7 +15,7 @@ import { Wallet, ShieldCheck, Users, UserCog, Percent, Building2, UsersRound, Re
 import { cn } from '@/lib/utils';
 import { getCurrentPushPermission, hasActiveSubscription, subscribeToPush, unsubscribeFromPush } from '@/lib/push';
 import { useTheme } from '@/hooks/useTheme';
-import { isAppLockSupported, isAppLockEnabled, enableAppLock, disableAppLock } from '@/lib/webauthn';
+import { isAppLockSupported, isAppLockEnabled, enableAppLock, disableAppLock } from '@/lib/app-lock';
 
 export default function SettingsPage() {
   const user = useAuthStore((s) => s.user);
@@ -30,10 +30,14 @@ export default function SettingsPage() {
   const [pushPermission, setPushPermission] = useState(getCurrentPushPermission());
   const [pushBusy, setPushBusy] = useState(false);
   const { toggleTheme, effectiveTheme } = useTheme();
-  const [appLockSupported] = useState(() => isAppLockSupported());
+  const [appLockSupported, setAppLockSupported] = useState(false);
   const [appLockEnabled, setAppLockEnabledState] = useState(isAppLockEnabled());
   const [appLockBusy, setAppLockBusy] = useState(false);
   const [appLockError, setAppLockError] = useState('');
+
+  useEffect(() => {
+    isAppLockSupported().then(setAppLockSupported);
+  }, []);
 
   const handleToggleAppLock = async (checked: boolean) => {
     setAppLockBusy(true);

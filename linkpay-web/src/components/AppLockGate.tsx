@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '@/lib/auth-store';
-import { isAppLockEnabled, verifyAppLock } from '@/lib/webauthn';
+import { isAppLockEnabled, verifyAppLock } from '@/lib/app-lock';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
 import { Loader2, Fingerprint } from 'lucide-react';
