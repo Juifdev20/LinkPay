@@ -77,6 +77,8 @@ export class PaymentRequestsService {
         .from('qr-codes')
         .getPublicUrl(`${linkToken}.png`);
       qrCodeUrl = urlData.publicUrl;
+    } else if (uploadError) {
+      this.logger.error(`Failed to upload QR code for ${request.id}: ${uploadError.message}`);
     }
 
     if (qrCodeUrl) {
