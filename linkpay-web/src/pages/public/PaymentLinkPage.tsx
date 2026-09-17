@@ -11,7 +11,7 @@ import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
 import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicker';
 import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Loader2, CheckCircle, AlertCircle, Lock, User, Phone, Smartphone, Wallet as WalletIcon, Sparkles } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, Lock, User, Phone, Smartphone, Wallet as WalletIcon, Sparkles, ArrowLeft } from 'lucide-react';
 
 export default function PaymentLinkPage() {
   const { token } = useParams<{ token: string }>();
@@ -32,6 +32,23 @@ export default function PaymentLinkPage() {
       .catch(() => setError('Lien de paiement invalide ou expiré'))
       .finally(() => setLoading(false));
   }, [token]);
+
+  // This page is also reachable by a guest with no LinkPay account (a
+  // shared link/scanned QR from outside the app) — for them there's
+  // nowhere in-app to "go back" to, so this only renders for an
+  // already-authenticated user (e.g. arrived via the in-app QR scanner),
+  // who'd otherwise be stuck here with no way back except the OS/browser
+  // back gesture.
+  const BackToDashboard = () =>
+    isAuthenticated ? (
+      <button
+        onClick={() => navigate('/dashboard')}
+        className="fixed top-4 left-4 z-10 w-10 h-10 rounded-full bg-card border border-border flex items-center justify-center text-foreground shadow-sm hover:bg-accent transition-colors"
+        aria-label="Retour au tableau de bord"
+      >
+        <ArrowLeft className="w-5 h-5" />
+      </button>
+    ) : null;
 
   const handlePay = async () => {
     setPaying(true);
@@ -73,6 +90,7 @@ export default function PaymentLinkPage() {
   if (error || !request) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 bg-background">
+        <BackToDashboard />
         <div className="w-full max-w-md">
           <div className="flex justify-center mb-8">
             <Logo size="lg" />
@@ -93,6 +111,7 @@ export default function PaymentLinkPage() {
   if (request.status === 'PAID') {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 bg-background">
+        <BackToDashboard />
         <div className="w-full max-w-md">
           <div className="flex justify-center mb-8">
             <Logo size="lg" />
@@ -114,6 +133,7 @@ export default function PaymentLinkPage() {
   if (request.status === 'CANCELLED' || request.status === 'EXPIRED') {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 bg-background">
+        <BackToDashboard />
         <div className="w-full max-w-md">
           <div className="flex justify-center mb-8">
             <Logo size="lg" />
@@ -165,6 +185,7 @@ export default function PaymentLinkPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-8 bg-background">
+      <BackToDashboard />
       <div className="w-full max-w-md">
         <div className="flex justify-center mb-8">
           <Logo size="lg" />
