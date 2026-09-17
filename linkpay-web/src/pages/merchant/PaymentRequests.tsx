@@ -7,8 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { FormSheet } from '@/components/FormSheet';
 import { PaymentRequestShareCard } from '@/components/PaymentRequestShareCard';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Plus, Share2, CheckCircle, XCircle, Clock } from 'lucide-react';
-import { shareOrCopy } from '@/lib/share';
+import { Plus, CheckCircle, XCircle, Clock, ChevronRight } from 'lucide-react';
 
 export default function PaymentRequestsPage() {
   const { data } = useQuery({
@@ -19,14 +18,6 @@ export default function PaymentRequestsPage() {
     },
   });
   const [selected, setSelected] = useState<any>(null);
-
-  const shareLink = (req: { link_token: string; amount_cents: number; currency: string }) => {
-    shareOrCopy({
-      title: 'Lien de paiement LinkPay',
-      text: `Payez ${formatCurrency(req.amount_cents, req.currency)} via LinkPay`,
-      url: `${window.location.origin}/p/${req.link_token}`,
-    });
-  };
 
   return (
     <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-4xl mx-auto">
@@ -58,19 +49,7 @@ export default function PaymentRequestsPage() {
                     <Badge variant={req.status === 'PAID' ? 'success' : req.status === 'CANCELLED' || req.status === 'EXPIRED' ? 'error' : 'warning'}>
                       {req.status}
                     </Badge>
-                    {req.status === 'CREATED' || req.status === 'PENDING' ? (
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          shareLink(req);
-                        }}
-                        className="p-2 rounded-lg hover:bg-accent inline-flex"
-                      >
-                        <Share2 className="w-4 h-4" />
-                      </span>
-                    ) : null}
+                    <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                   </div>
                 </button>
               ))}
