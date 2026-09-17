@@ -38,7 +38,12 @@ export function setAppLockEnabled(enabled: boolean) {
 
 export async function isAppLockSupported(): Promise<boolean> {
   try {
-    const { isAvailable } = await NativeBiometric.isAvailable({ useFallback: false });
+    // useFallback: true — many devices (this one included) have a screen
+    // lock (PIN/pattern/password) but no fingerprint/face enrolled. The
+    // device credential is just as good a "prove it's this device's owner"
+    // gate as a fingerprint, so don't require biometric enrollment
+    // specifically.
+    const { isAvailable } = await NativeBiometric.isAvailable({ useFallback: true });
     return isAvailable;
   } catch {
     return false;
@@ -52,6 +57,7 @@ export async function enableAppLock(): Promise<void> {
     await NativeBiometric.verifyIdentity({
       title: 'Activer le verrouillage',
       subtitle: 'Confirmez votre identité pour activer le verrouillage de LinkPay',
+      useFallback: true,
     });
   } catch (err) {
     throw normalizeError(err);
@@ -69,7 +75,8 @@ export async function verifyAppLock(): Promise<boolean> {
   try {
     await NativeBiometric.verifyIdentity({
       title: 'Déverrouiller LinkPay',
-      subtitle: 'Utilisez votre empreinte ou votre visage',
+      subtitle: "Utilisez l'empreinte, le visage ou le code de l'appareil",
+      useFallback: true,
     });
     return true;
   } catch (err) {

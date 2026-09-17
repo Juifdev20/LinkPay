@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 dist-ssr/
+vite.config.js.timestamp-*.mjs
 
 # Environment
 .env

@@ -13,7 +13,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { Wallet, ShieldCheck, Users, UserCog, Percent, Building2, UsersRound, Receipt, HelpCircle, FileText, ChevronRight, Store, Loader2, Bell, Moon, Fingerprint } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getCurrentPushPermission, hasActiveSubscription, subscribeToPush, unsubscribeFromPush } from '@/lib/push';
+import { getCurrentPushPermission, hasActiveSubscription, subscribeToPush, unsubscribeFromPush, type PushPermissionStatus } from '@/lib/app-push';
 import { useTheme } from '@/hooks/useTheme';
 import { isAppLockSupported, isAppLockEnabled, enableAppLock, disableAppLock } from '@/lib/app-lock';
 
@@ -27,7 +27,7 @@ export default function SettingsPage() {
   const [showHelp, setShowHelp] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
-  const [pushPermission, setPushPermission] = useState(getCurrentPushPermission());
+  const [pushPermission, setPushPermission] = useState<PushPermissionStatus>('unsupported');
   const [pushBusy, setPushBusy] = useState(false);
   const { toggleTheme, effectiveTheme } = useTheme();
   const [appLockSupported, setAppLockSupported] = useState(false);
@@ -64,7 +64,7 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
-    setPushPermission(getCurrentPushPermission());
+    getCurrentPushPermission().then(setPushPermission);
     hasActiveSubscription().then(setPushEnabled);
   }, []);
 
@@ -74,7 +74,7 @@ export default function SettingsPage() {
       if (checked) {
         const ok = await subscribeToPush();
         setPushEnabled(ok);
-        setPushPermission(getCurrentPushPermission());
+        setPushPermission(await getCurrentPushPermission());
       } else {
         await unsubscribeFromPush();
         setPushEnabled(false);

@@ -1,6 +1,8 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import { useAuthStore } from '@/lib/auth-store';
 import { useEffect } from 'react';
+import { initNativePushNavigation } from '@/lib/native-push';
 
 import LoginPage from '@/pages/auth/LoginPage';
 import RegisterPage from '@/pages/auth/RegisterPage';
@@ -85,12 +87,22 @@ function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?
 export default function App() {
   const fetchProfile = useAuthStore((s) => s.fetchProfile);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (isAuthenticated) {
       fetchProfile();
     }
   }, [fetchProfile, isAuthenticated]);
+
+  // Deep-link into the app when a delivered push notification is tapped —
+  // the native counterpart of sw.ts's notificationclick handler, which only
+  // runs in a real service worker context. Native-only: on web/iOS the
+  // service worker already owns this.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    return initNativePushNavigation(navigate);
+  }, [navigate]);
 
   return (
     <>
