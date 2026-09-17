@@ -44,6 +44,12 @@ services:
         sync: false
       - key: VAPID_SUBJECT
         sync: false
+      - key: FCM_PROJECT_ID
+        sync: false
+      - key: FCM_CLIENT_EMAIL
+        sync: false
+      - key: FCM_PRIVATE_KEY
+        sync: false
 
   # ── Frontend: React PWA (static) ──
   - type: web
