@@ -1,12 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { AuthService } from '../auth/auth.service';
+import { MerchantsService } from '../merchants/merchants.service';
 
 @Injectable()
 export class OrganizationsService {
   constructor(
     private supabaseService: SupabaseService,
     private authService: AuthService,
+    private merchantsService: MerchantsService,
   ) {}
 
   async createOrganization(ownerId: string, email: string, data: {
@@ -77,6 +79,70 @@ export class OrganizationsService {
     }
 
     return data;
+  }
+
+  /** Creates a new store under this organization — same shape/validation as
+   * a normal merchant self-signup (MerchantsService.createMerchant), just
+   * with elevateCallerRole: false so the enterprise owner's canonical role
+   * stays 'enterprise' (they can own many stores; only a merchant_users
+   * row is added for each, not a role change). */
+  async createOrganizationMerchant(orgId: string, ownerId: string, email: string, data: {
+    name: string;
+    legal_name?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    city?: string;
+    default_currency?: string;
+  }) {
+    const { merchant } = await this.merchantsService.createMerchant(ownerId, email, data, {
+      organizationId: orgId,
+      elevateCallerRole: false,
+    });
+    return { merchant };
+  }
+
+  async getOrganizationMerchants(orgId: string) {
+    const { data, error } = await this.supabaseService.getClient()
+      .from('merchants')
+      .select('*')
+      .eq('organization_id', orgId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw new Error(`Failed to fetch organization merchants: ${error.message}`);
+    }
+    return data || [];
+  }
+
+  async getOrganizationStats(orgId: string) {
+    const merchants = await this.getOrganizationMerchants(orgId);
+    return this.merchantsService.getStatsForMerchantIds(merchants.map((m) => m.id));
+  }
+
+  /** Mints a merchant-scoped token pair for one of this organization's
+   * stores — the owner's canonical role/user_roles row is never touched;
+   * see JwtPayload.acting_as_org_id and AuthService.refresh() for how this
+   * "temporary lens" survives token refresh without collapsing back to
+   * 'enterprise'. */
+  async enterOrganizationMerchant(orgId: string, ownerId: string, email: string, merchantId: string, sessionId?: string) {
+    const { data: merchant, error } = await this.supabaseService.getClient()
+      .from('merchants')
+      .select('*')
+      .eq('id', merchantId)
+      .single();
+
+    if (error || !merchant) {
+      throw new NotFoundException('Store not found');
+    }
+    if (merchant.organization_id !== orgId) {
+      throw new BadRequestException('This store does not belong to your organization');
+    }
+
+    const access_token = await this.authService.generateToken(ownerId, email, 'merchant', merchant.id, sessionId, orgId);
+    const refresh_token = await this.authService.generateRefreshToken(ownerId, email, sessionId, merchant.id, orgId);
+
+    return { merchant, access_token, refresh_token, organization_id: orgId };
   }
 
   async updateOrganization(id: string, updates: Record<string, any>) {

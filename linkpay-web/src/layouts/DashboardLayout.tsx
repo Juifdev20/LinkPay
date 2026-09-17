@@ -12,11 +12,17 @@ import { cn } from '@/lib/utils';
 
 const ALL_ROLES = ['merchant', 'cashier', 'enterprise', 'client', 'admin', 'super_admin'];
 
+// Merchant-scoped pages (payment-requests, transactions, settlements) need
+// the JWT's merchant_id claim — an enterprise account only gets one while
+// "acting as" a specific store (role becomes 'merchant' then; see
+// auth-store.ts enterStore()), never at the plain org level, so 'enterprise'
+// deliberately isn't listed on these — org-level enterprise instead gets
+// its own "Boutiques" section on /dashboard/organization.
 const navItems = [
   { to: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: ALL_ROLES },
-  { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: QrCode, roles: ['merchant', 'cashier', 'enterprise'] },
-  { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, roles: ['merchant', 'cashier', 'enterprise'] },
-  { to: '/dashboard/settlements', label: 'Règlements', icon: Wallet, roles: ['merchant', 'enterprise'] },
+  { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: QrCode, roles: ['merchant', 'cashier'] },
+  { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, roles: ['merchant', 'cashier'] },
+  { to: '/dashboard/settlements', label: 'Règlements', icon: Wallet, roles: ['merchant'] },
   { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'] },
   { to: '/dashboard/client/transactions', label: 'Mes paiements', icon: Receipt, roles: ALL_ROLES },
   { to: '/dashboard/admin', label: 'Administration', icon: ShieldCheck, roles: ['admin', 'super_admin'] },
@@ -31,6 +37,7 @@ const navItems = [
 export default function DashboardLayout() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const exitStore = useAuthStore((s) => s.exitStore);
   const navigate = useNavigate();
   const { toggleTheme, effectiveTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -138,6 +145,24 @@ export default function DashboardLayout() {
               desktop header above already accounts for its own space in
               the normal flow) */}
           <div className="pt-20 pb-20 md:pt-0 md:pb-0">
+            {/* Only shown while "acting as" a store entered from the org
+                dashboard (acting_as_org_id) — not role-based, since role is
+                'merchant' in that state, indistinguishable from a real
+                merchant account otherwise. The only way back. */}
+            {user?.acting_as_org_id && (
+              <div className="px-6 pt-4 md:px-4 md:pt-4">
+                <button
+                  onClick={() => {
+                    exitStore();
+                    navigate('/dashboard/organization');
+                  }}
+                  className="w-full flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10 transition-colors"
+                >
+                  <Building2 className="w-4 h-4" />
+                  Retour à l'organisation
+                </button>
+              </div>
+            )}
             <Outlet />
           </div>
         </main>

@@ -13,7 +13,7 @@ class AddMerchantUserDto {
   email!: string;
 }
 
-class CreateMerchantDto {
+export class CreateMerchantDto {
   @ApiProperty({ example: 'Boutique Mukendi' })
   @IsString()
   @MaxLength(255)
@@ -66,15 +66,23 @@ export class MerchantsController {
     return this.merchantsService.createMerchant(userId, email, dto);
   }
 
+  // An owner with more than one store (e.g. an enterprise account that has
+  // created several) has more than one `merchants` row with the same
+  // owner_id — getMerchantByOwner()'s `.single()` breaks the moment that's
+  // true. The JWT's own merchant_id claim (set at login/upgrade/enter-store
+  // time) says exactly which store this request means; only fall back to
+  // the owner lookup for a token that predates/lacks that claim.
   @Get('me')
   @ApiOperation({ summary: 'Get current user merchant account' })
-  async getMyMerchant(@CurrentUser('id') userId: string) {
+  async getMyMerchant(@CurrentUser('id') userId: string, @CurrentUser('merchant_id') merchantId?: string) {
+    if (merchantId) return this.merchantsService.getMerchantById(merchantId);
     return this.merchantsService.getMerchantByOwner(userId);
   }
 
   @Get('me/stats')
   @ApiOperation({ summary: 'Get current user merchant dashboard stats' })
-  async getMyMerchantStats(@CurrentUser('id') userId: string) {
+  async getMyMerchantStats(@CurrentUser('id') userId: string, @CurrentUser('merchant_id') merchantId?: string) {
+    if (merchantId) return this.merchantsService.getMerchantStats(merchantId);
     const merchant = await this.merchantsService.getMerchantByOwner(userId);
     return this.merchantsService.getMerchantStats(merchant.id);
   }

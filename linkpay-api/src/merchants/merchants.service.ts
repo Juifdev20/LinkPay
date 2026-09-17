@@ -10,15 +10,27 @@ export class MerchantsService {
     private authService: AuthService,
   ) {}
 
-  async createMerchant(ownerId: string, email: string, data: {
-    name: string;
-    legal_name?: string;
-    phone?: string;
-    email?: string;
-    address?: string;
-    city?: string;
-    default_currency?: string;
-  }) {
+  async createMerchant(
+    ownerId: string,
+    email: string,
+    data: {
+      name: string;
+      legal_name?: string;
+      phone?: string;
+      email?: string;
+      address?: string;
+      city?: string;
+      default_currency?: string;
+    },
+    options?: { organizationId?: string; elevateCallerRole?: boolean },
+  ) {
+    // Default true — the normal client-becomes-merchant upgrade path (the
+    // only caller before organizations existed). An enterprise owner
+    // creating a store under their org passes elevateCallerRole: false —
+    // their canonical role must stay 'enterprise', only a merchant_users
+    // row is added, exactly the multi-tenant-per-merchant mechanism below.
+    const elevateCallerRole = options?.elevateCallerRole ?? true;
+
     const { data: merchant, error } = await this.supabaseService.getClient()
       .from('merchants')
       .insert({
@@ -27,6 +39,7 @@ export class MerchantsService {
         owner_id: ownerId,
         status: 'pending',
         country: 'CD',
+        organization_id: options?.organizationId || null,
       })
       .select()
       .single();
@@ -49,21 +62,25 @@ export class MerchantsService {
         status: 'active',
       });
 
-      // Elevate the global role too — RolesGuard reads role only from the JWT,
-      // not from merchant_users, so without this the user stays "client" everywhere else.
-      // The JWT model only supports one "current" role per user, so replace any
-      // prior row(s) instead of accumulating — a leftover 'client' row alongside
-      // this new 'merchant' one would make role lookups ambiguous (.single()
-      // fails and silently falls back to 'client' on login/refresh).
-      await this.supabaseService.getClient().from('user_roles').delete().eq('user_id', ownerId);
-      await this.supabaseService.getClient().from('user_roles').insert({
-        user_id: ownerId,
-        role_id: role.id,
-        merchant_id: merchant.id,
-      });
+      if (elevateCallerRole) {
+        // Elevate the global role too — RolesGuard reads role only from the JWT,
+        // not from merchant_users, so without this the user stays "client" everywhere else.
+        // The JWT model only supports one "current" role per user, so replace any
+        // prior row(s) instead of accumulating — a leftover 'client' row alongside
+        // this new 'merchant' one would make role lookups ambiguous (.single()
+        // fails and silently falls back to 'client' on login/refresh).
+        await this.supabaseService.getClient().from('user_roles').delete().eq('user_id', ownerId);
+        await this.supabaseService.getClient().from('user_roles').insert({
+          user_id: ownerId,
+          role_id: role.id,
+          merchant_id: merchant.id,
+        });
+      }
     }
 
-    const access_token = await this.authService.generateToken(ownerId, email, 'merchant', merchant.id);
+    const access_token = elevateCallerRole
+      ? await this.authService.generateToken(ownerId, email, 'merchant', merchant.id)
+      : undefined;
 
     return { merchant, access_token };
   }
@@ -234,36 +251,55 @@ export class MerchantsService {
   }
 
   async getMerchantStats(merchantId: string) {
+    return this.getStatsForMerchantIds([merchantId]);
+  }
+
+  /** Same shape as getMerchantStats(), summed across every id given — the
+   * organization-level "aggregated across all my stores" stats reuse this
+   * directly instead of a parallel query set. */
+  async getStatsForMerchantIds(merchantIds: string[]) {
+    if (!merchantIds.length) {
+      return {
+        total_transactions: 0,
+        today_transactions: 0,
+        volume: sumByCurrency(null, 'amount_cents'),
+        net: sumByCurrency(null, 'net_cents'),
+        pending: sumByCurrency(null, 'amount_cents'),
+        pending_count: 0,
+        failed_count: 0,
+      };
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const { count: totalTransactions } = await this.supabaseService.getClient()
       .from('transactions')
       .select('*', { count: 'exact', head: true })
-      .eq('merchant_id', merchantId);
+      .in('merchant_id', merchantIds);
 
     const { count: todayTransactions } = await this.supabaseService.getClient()
       .from('transactions')
       .select('*', { count: 'exact', head: true })
-      .eq('merchant_id', merchantId)
+      .in('merchant_id', merchantIds)
       .gte('created_at', today.toISOString());
 
     const { data: volumeData } = await this.supabaseService.getClient()
       .from('transactions')
       .select('amount_cents, net_cents, currency')
-      .eq('merchant_id', merchantId)
+      .in('merchant_id', merchantIds)
       .eq('status', 'SUCCESS');
 
     const { data: pendingData, count: pendingCount } = await this.supabaseService.getClient()
       .from('transactions')
       .select('amount_cents, currency', { count: 'exact' })
-      .eq('merchant_id', merchantId)
+      .in('merchant_id', merchantIds)
       .in('status', ['PENDING', 'PROCESSING']);
 
     const { count: failedCount } = await this.supabaseService.getClient()
       .from('transactions')
       .select('*', { count: 'exact', head: true })
-      .eq('merchant_id', merchantId)
+      .in('merchant_id', merchantIds)
       .eq('status', 'FAILED');
 
     return {

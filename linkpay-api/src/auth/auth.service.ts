@@ -13,6 +13,11 @@ export interface JwtPayload {
   role: string;
   merchant_id?: string;
   session_id?: string;
+  // Set only on a token minted by OrganizationsService.enterMerchant(): the
+  // holder's canonical role (in user_roles) is 'enterprise', owner of this
+  // org, and role/merchant_id above are a temporary "acting as that store's
+  // merchant" lens — not a permanent role change. See refresh() below.
+  acting_as_org_id?: string;
 }
 
 @Injectable()
@@ -170,7 +175,14 @@ export class AuthService {
   }
 
   async refresh(refreshToken: string) {
-    let payload: { sub: string; email: string; type?: string; session_id?: string };
+    let payload: {
+      sub: string;
+      email: string;
+      type?: string;
+      session_id?: string;
+      merchant_id?: string;
+      acting_as_org_id?: string;
+    };
     try {
       payload = this.jwtService.verify(refreshToken, {
         secret: getRequiredJwtSecret(this.configService),
@@ -181,6 +193,36 @@ export class AuthService {
 
     if (payload.type !== 'refresh') {
       throw new UnauthorizedException('Invalid token type');
+    }
+
+    // "Acting as" a specific store's merchant (enterprise owner who entered
+    // one of their organization's stores) — re-derived from canonical
+    // user_roles below, this would silently collapse back to 'enterprise'
+    // on the very next token refresh (access tokens are short-lived). Skip
+    // the canonical lookup entirely as long as the grant (still this org's
+    // owner, store still theirs) holds; otherwise fall through to the
+    // normal canonical refresh, which quietly returns them to their real
+    // (enterprise) scope rather than hard-failing the whole refresh.
+    if (payload.merchant_id && payload.acting_as_org_id) {
+      const stillValid = await this.validateActingAsGrant(payload.sub, payload.merchant_id, payload.acting_as_org_id);
+      if (stillValid) {
+        if (!SESSION_TRACKING_EXEMPT_ROLES.includes('merchant')) {
+          const { data: profile } = await this.supabaseService.getClient()
+            .from('profiles')
+            .select('active_session_id')
+            .eq('id', payload.sub)
+            .single();
+
+          if (!profile || profile.active_session_id !== payload.session_id) {
+            throw new UnauthorizedException('Session no longer active — please log in again');
+          }
+        }
+
+        return {
+          access_token: await this.generateToken(payload.sub, payload.email, 'merchant', payload.merchant_id, payload.session_id, payload.acting_as_org_id),
+          refresh_token: await this.generateRefreshToken(payload.sub, payload.email, payload.session_id, payload.merchant_id, payload.acting_as_org_id),
+        };
+      }
     }
 
     const { data: roleData } = await this.supabaseService.getClient()
@@ -211,6 +253,27 @@ export class AuthService {
       access_token: await this.generateToken(payload.sub, payload.email, role, merchantId, payload.session_id),
       refresh_token: await this.generateRefreshToken(payload.sub, payload.email, payload.session_id),
     };
+  }
+
+  /** Confirms an "acting as" grant minted by OrganizationsService.enterMerchant()
+   * still holds: the caller still owns that organization, and the store is
+   * still part of it. Two cheap point lookups — called on every refresh of
+   * a scoped token, since the underlying relationship can change (store
+   * detached, org reassigned) after the token was minted. */
+  private async validateActingAsGrant(userId: string, merchantId: string, orgId: string): Promise<boolean> {
+    const { data: org } = await this.supabaseService.getClient()
+      .from('organizations')
+      .select('owner_id')
+      .eq('id', orgId)
+      .single();
+    if (!org || org.owner_id !== userId) return false;
+
+    const { data: merchant } = await this.supabaseService.getClient()
+      .from('merchants')
+      .select('organization_id')
+      .eq('id', merchantId)
+      .single();
+    return !!merchant && merchant.organization_id === orgId;
   }
 
   async logout(userId: string): Promise<void> {
@@ -284,6 +347,7 @@ export class AuthService {
     role: string,
     merchantId?: string,
     sessionId?: string,
+    actingAsOrgId?: string,
   ): Promise<string> {
     const payload: JwtPayload = {
       sub: userId,
@@ -291,13 +355,31 @@ export class AuthService {
       role,
       ...(merchantId ? { merchant_id: merchantId } : {}),
       ...(sessionId ? { session_id: sessionId } : {}),
+      ...(actingAsOrgId ? { acting_as_org_id: actingAsOrgId } : {}),
     };
     return this.jwtService.sign(payload);
   }
 
-  private async generateRefreshToken(userId: string, email: string, sessionId?: string): Promise<string> {
+  async generateRefreshToken(
+    userId: string,
+    email: string,
+    sessionId?: string,
+    merchantId?: string,
+    actingAsOrgId?: string,
+  ): Promise<string> {
     return this.jwtService.sign(
-      { sub: userId, email, type: 'refresh', ...(sessionId ? { session_id: sessionId } : {}) },
+      {
+        sub: userId,
+        email,
+        type: 'refresh',
+        ...(sessionId ? { session_id: sessionId } : {}),
+        // Only ever set together — an "acting as" refresh token needs
+        // merchant_id to know which store to re-validate against on the
+        // next refresh (validateActingAsGrant above); a normal refresh
+        // token deliberately carries no merchant_id, since a real role
+        // change is always re-derived from user_roles on every refresh.
+        ...(merchantId && actingAsOrgId ? { merchant_id: merchantId, acting_as_org_id: actingAsOrgId } : {}),
+      },
       // Long-lived by design ("remember me" — stay logged in like Facebook,
       // never a silent timeout): the actual security boundary is
       // active_session_id, re-checked on every refresh() and every request

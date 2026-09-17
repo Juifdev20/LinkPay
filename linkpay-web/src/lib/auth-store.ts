@@ -2,7 +2,17 @@ import { create } from 'zustand';
 import api from './api';
 import { supabase } from './supabase';
 import { getDeviceId } from './device';
-import { getToken, setTokens, setAccessToken, clearTokens, setRememberMe, TOKEN_ACCESS_KEY } from './token-storage';
+import {
+  getToken,
+  setTokens,
+  setAccessToken,
+  clearTokens,
+  setRememberMe,
+  stashOrgContextTokens,
+  popOrgContextTokens,
+  TOKEN_ACCESS_KEY,
+  TOKEN_REFRESH_KEY,
+} from './token-storage';
 import { clearAppLockLocal } from './webauthn';
 
 interface User {
@@ -12,6 +22,9 @@ interface User {
   phone?: string;
   role: string;
   merchant_id?: string;
+  /** Set while "acting as" one of an organization's stores — see
+   * enterStore()/exitStore() below. */
+  acting_as_org_id?: string;
 }
 
 interface SupabaseSession {
@@ -36,6 +49,8 @@ interface AuthState {
   fetchProfile: () => Promise<void>;
   applyMerchantUpgrade: (merchant: { id: string }, accessToken: string) => void;
   applyEnterpriseUpgrade: (accessToken: string) => void;
+  enterStore: (merchant: { id: string }, accessToken: string, refreshToken: string, organizationId: string) => void;
+  exitStore: () => void;
 }
 
 // Wires up the Supabase Realtime client with the session the backend mints
@@ -86,6 +101,33 @@ export const useAuthStore = create<AuthState>((set) => ({
     setAccessToken(accessToken);
     set((state) => ({
       user: state.user ? { ...state.user, role: 'enterprise' } : state.user,
+    }));
+  },
+
+  enterStore: (merchant, accessToken, refreshToken, organizationId) => {
+    // Full pair swap, not setAccessToken-only like applyMerchantUpgrade:
+    // the OLD (org-scoped) refresh token must not stay live in the primary
+    // slot, or a stray 401 before this finishes could re-derive an
+    // enterprise-scoped access token underneath the store-scoped one just
+    // set here. Stash it first so "back to organization" can restore it.
+    const currentAccess = getToken(TOKEN_ACCESS_KEY);
+    const currentRefresh = getToken(TOKEN_REFRESH_KEY);
+    if (currentAccess && currentRefresh) {
+      stashOrgContextTokens(currentAccess, currentRefresh);
+    }
+    setTokens(accessToken, refreshToken);
+    set((state) => ({
+      user: state.user
+        ? { ...state.user, role: 'merchant', merchant_id: merchant.id, acting_as_org_id: organizationId }
+        : state.user,
+    }));
+  },
+
+  exitStore: () => {
+    const orgTokens = popOrgContextTokens();
+    if (orgTokens) setTokens(orgTokens.access, orgTokens.refresh);
+    set((state) => ({
+      user: state.user ? { ...state.user, role: 'enterprise', merchant_id: undefined, acting_as_org_id: undefined } : state.user,
     }));
   },
 

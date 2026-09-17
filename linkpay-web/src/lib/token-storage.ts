@@ -2,6 +2,8 @@ const REMEMBER_KEY = 'linkpay_remember_me';
 const ACCESS_KEY = 'linkpay_access_token';
 const REFRESH_KEY = 'linkpay_refresh_token';
 const TOKEN_KEYS = [ACCESS_KEY, REFRESH_KEY];
+const ORG_CTX_ACCESS_KEY = 'linkpay_org_ctx_access_token';
+const ORG_CTX_REFRESH_KEY = 'linkpay_org_ctx_refresh_token';
 
 /**
  * "Se souvenir de moi" storage backend switch — checked (default, matches
@@ -64,3 +66,23 @@ export function clearTokens() {
 
 export const TOKEN_ACCESS_KEY = ACCESS_KEY;
 export const TOKEN_REFRESH_KEY = REFRESH_KEY;
+
+/**
+ * Stash for the org-level token pair while an enterprise owner is "inside"
+ * one of their stores (see auth-store.ts enterStore/exitStore) — lets
+ * "back to organization" restore the exact session they left, and survives
+ * a page reload since it lives in the same storage as the active tokens.
+ */
+export function stashOrgContextTokens(accessToken: string, refreshToken: string) {
+  activeStore().setItem(ORG_CTX_ACCESS_KEY, accessToken);
+  activeStore().setItem(ORG_CTX_REFRESH_KEY, refreshToken);
+}
+
+export function popOrgContextTokens(): { access: string; refresh: string } | null {
+  const access = activeStore().getItem(ORG_CTX_ACCESS_KEY);
+  const refresh = activeStore().getItem(ORG_CTX_REFRESH_KEY);
+  activeStore().removeItem(ORG_CTX_ACCESS_KEY);
+  activeStore().removeItem(ORG_CTX_REFRESH_KEY);
+  if (!access || !refresh) return null;
+  return { access, refresh };
+}

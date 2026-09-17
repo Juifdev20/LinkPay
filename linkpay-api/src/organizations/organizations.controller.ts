@@ -4,6 +4,7 @@ import { OrganizationsService } from './organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { IsString, IsOptional, MaxLength, IsObject } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CreateMerchantDto } from '../merchants/merchants.controller';
 
 class CreateOrganizationDto {
   @ApiProperty({ example: 'Tech Solutions SARL' })
@@ -79,12 +80,63 @@ export class OrganizationsController {
     return this.orgsService.updateOrganization(id, updates);
   }
 
+  @Post(':id/merchants')
+  @ApiOperation({ summary: 'Create a new store under this organization (owner only)' })
+  async createOrgMerchant(
+    @Param('id') id: string,
+    @Body() dto: CreateMerchantDto,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('email') email: string,
+  ) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.createOrganizationMerchant(id, callerId, email, dto);
+  }
+
+  @Get(':id/merchants')
+  @ApiOperation({ summary: "List this organization's stores (owner only)" })
+  async listOrgMerchants(@Param('id') id: string, @CurrentUser('id') callerId: string) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.getOrganizationMerchants(id);
+  }
+
+  @Get(':id/stats')
+  @ApiOperation({ summary: 'Get aggregated stats across every store in this organization (owner only)' })
+  async getOrgStats(@Param('id') id: string, @CurrentUser('id') callerId: string) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.getOrganizationStats(id);
+  }
+
+  @Post(':id/merchants/:merchantId/enter')
+  @ApiOperation({ summary: 'Get a merchant-scoped session for one of this organization\'s stores (owner only)' })
+  async enterOrgMerchant(
+    @Param('id') id: string,
+    @Param('merchantId') merchantId: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('email') email: string,
+    @CurrentUser('session_id') sessionId?: string,
+  ) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.enterOrganizationMerchant(id, callerId, email, merchantId, sessionId);
+  }
+
   private isAdmin(role: string | undefined): boolean {
     return role === 'admin' || role === 'super_admin';
   }
 
   private assertOwnOrgOrAdmin(ownerId: string | undefined, callerId: string | undefined, callerRole: string | undefined) {
     if (this.isAdmin(callerRole)) return;
+    this.assertOwnOrg(ownerId, callerId);
+  }
+
+  // Store management is intentionally owner-only, even for platform admins
+  // (unlike getOrg/updateOrg above) — admins manage individual merchants
+  // through their own existing merchant-admin surface, not by acting as an
+  // organization's owner.
+  private assertOwnOrg(ownerId: string | undefined, callerId: string | undefined) {
     if (!callerId || callerId !== ownerId) {
       throw new ForbiddenException('You do not manage this organization account');
     }

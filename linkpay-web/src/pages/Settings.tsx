@@ -117,8 +117,8 @@ export default function SettingsPage() {
   });
 
   const secondaryLinks = [
-    { to: '/dashboard/settlements', label: 'Règlements', icon: Wallet, roles: ['merchant', 'enterprise'] },
-    { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: ShieldCheck, roles: ['merchant', 'cashier', 'enterprise'] },
+    { to: '/dashboard/settlements', label: 'Règlements', icon: Wallet, roles: ['merchant'] },
+    { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: ShieldCheck, roles: ['merchant', 'cashier'] },
     { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'] },
     { to: '/dashboard/client/transactions', label: 'Mes paiements', icon: Receipt, roles: ['merchant', 'cashier', 'enterprise', 'client', 'admin', 'super_admin'] },
     { to: '/dashboard/organization', label: 'Mon organisation', icon: Building2, roles: ['enterprise'] },

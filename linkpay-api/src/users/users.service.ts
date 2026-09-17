@@ -6,7 +6,18 @@ import { sumByCurrency } from '../common/utils/currency';
 export class UsersService {
   constructor(private supabaseService: SupabaseService) {}
 
-  async getProfile(userId: string) {
+  /**
+   * role/merchant_id/actingAsOrgId come from the caller's JWT (already
+   * validated by JwtStrategy), not re-derived from user_roles here — an
+   * enterprise owner "acting as" one of their stores has a token whose
+   * role/merchant_id deliberately disagree with their canonical user_roles
+   * row (which stays 'enterprise'). Re-deriving from the DB on every call
+   * (this runs on every app mount via fetchProfile()) would silently reset
+   * them back to enterprise scope. For every other account type, token and
+   * canonical DB state are always in sync at issuance time anyway, so this
+   * is a no-op behavior change for them — and one fewer DB round trip.
+   */
+  async getProfile(userId: string, role: string, merchantId?: string, actingAsOrgId?: string) {
     const { data, error } = await this.supabaseService.getClient()
       .from('profiles')
       .select('*')
@@ -17,16 +28,11 @@ export class UsersService {
       throw new NotFoundException('Profile not found');
     }
 
-    const { data: roleData } = await this.supabaseService.getClient()
-      .from('user_roles')
-      .select('role:roles(slug), merchant_id')
-      .eq('user_id', userId)
-      .single();
-
     return {
       ...data,
-      role: (roleData?.role as any)?.slug || 'client',
-      merchant_id: roleData?.merchant_id || undefined,
+      role,
+      merchant_id: merchantId || undefined,
+      acting_as_org_id: actingAsOrgId || undefined,
     };
   }
 

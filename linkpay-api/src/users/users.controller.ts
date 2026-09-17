@@ -32,8 +32,13 @@ export class UsersController {
 
   @Get('me')
   @ApiOperation({ summary: 'Get current user profile' })
-  async getMyProfile(@CurrentUser('id') userId: string) {
-    return this.usersService.getProfile(userId);
+  async getMyProfile(
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') role: string,
+    @CurrentUser('merchant_id') merchantId?: string,
+    @CurrentUser('acting_as_org_id') actingAsOrgId?: string,
+  ) {
+    return this.usersService.getProfile(userId, role, merchantId, actingAsOrgId);
   }
 
   @Put('me')
