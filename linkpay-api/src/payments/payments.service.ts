@@ -76,6 +76,31 @@ export class PaymentsService {
       throw new BadRequestException('Payment request has expired');
     }
 
+    // Atomically claim this request (CREATED -> PENDING) before doing
+    // anything else — the check above is just a fast, friendly pre-check,
+    // not a safe one on its own: two near-simultaneous payment attempts on
+    // the same invoice could otherwise both pass it before either write
+    // landed, and both go on to create a payment_intent. This conditional
+    // update is the actual guard against paying the same invoice twice; if
+    // zero rows come back, someone else already claimed it.
+    const { data: claimed, error: claimError } = await this.supabaseService.getClient()
+      .from('payment_requests')
+      .update({ status: 'PENDING', updated_at: new Date().toISOString() })
+      .eq('id', request.id)
+      .eq('status', 'CREATED')
+      .select()
+      .maybeSingle();
+
+    if (claimError || !claimed) {
+      throw new BadRequestException('Cette demande de paiement est déjà en cours de traitement ou a déjà été payée.');
+    }
+
+    const revertClaim = () =>
+      this.supabaseService.getClient()
+        .from('payment_requests')
+        .update({ status: 'CREATED', updated_at: new Date().toISOString() })
+        .eq('id', request.id);
+
     const fees = await this.commissionsService.calculateFeesPreview(
       request.amount_cents,
       request.currency,
@@ -107,6 +132,7 @@ export class PaymentsService {
         },
       });
     } catch (err: any) {
+      await revertClaim();
       this.logger.error(`PSP payment init failed: ${err.message}`, err.stack);
       if (err.message?.includes('not withlisted') || err.message?.includes('Authentication failed')) {
         throw new ServiceUnavailableException('Le service de paiement est temporairement indisponible. Veuillez réessayer plus tard.');
@@ -140,13 +166,9 @@ export class PaymentsService {
       .single();
 
     if (intentError) {
+      await revertClaim();
       throw new Error(`Failed to create payment intent: ${intentError.message}`);
     }
-
-    await this.supabaseService.getClient()
-      .from('payment_requests')
-      .update({ status: 'PENDING', updated_at: new Date().toISOString() })
-      .eq('id', request.id);
 
     // The mock PSP has no real checkout page or webhook delivery mechanism —
     // simulate a successful payment instead of leaving the intent stuck
@@ -246,6 +268,26 @@ export class PaymentsService {
     const rule = await this.walletLimitsService.getRule('WALLET_PAYMENT', request.currency);
     await this.walletLimitsService.assertWithinLimits(payerWallet.id, 'WALLET_PAYMENT', fees.total_cents, rule);
 
+    // Atomically claim this request (CREATED -> PENDING) before creating
+    // any intent or touching the wallet — the status checks above are a
+    // fast, friendly pre-check, not a safe one on their own: two
+    // near-simultaneous payment attempts on the same invoice (e.g. a
+    // double-tap, or a wallet payment racing a Mobile Money one) could
+    // otherwise both pass them before either write landed, and both go on
+    // to debit. If zero rows come back here, someone else already claimed
+    // it first.
+    const { data: claimed, error: claimError } = await this.supabaseService.getClient()
+      .from('payment_requests')
+      .update({ status: 'PENDING', updated_at: new Date().toISOString() })
+      .eq('id', request.id)
+      .eq('status', 'CREATED')
+      .select()
+      .maybeSingle();
+
+    if (claimError || !claimed) {
+      throw new BadRequestException('Cette facture est déjà en cours de paiement ou a déjà été payée.');
+    }
+
     const pspIntentId = `WALLET-${uuidv4()}`;
 
     const { data: intent, error: intentError } = await this.supabaseService.getClient()
@@ -267,13 +309,12 @@ export class PaymentsService {
       .single();
 
     if (intentError) {
+      await this.supabaseService.getClient()
+        .from('payment_requests')
+        .update({ status: 'CREATED', updated_at: new Date().toISOString() })
+        .eq('id', request.id);
       throw new Error(`Failed to create payment intent: ${intentError.message}`);
     }
-
-    await this.supabaseService.getClient()
-      .from('payment_requests')
-      .update({ status: 'PENDING', updated_at: new Date().toISOString() })
-      .eq('id', request.id);
 
     const { error: debitError } = await this.supabaseService.getClient().rpc('debit_wallet', {
       p_wallet_id: payerWallet.id,
