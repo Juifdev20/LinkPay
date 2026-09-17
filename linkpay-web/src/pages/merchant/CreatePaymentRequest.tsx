@@ -101,6 +101,12 @@ export default function CreatePaymentRequestPage() {
                 <img src={result.qr_code_url} alt="QR Code" className="w-48 h-48 rounded-2xl border border-border" />
               </div>
             )}
+            {result.reference && (
+              <div className="mb-4">
+                <p className="text-xs text-muted-foreground mb-1">Ou faites saisir le code</p>
+                <p className="font-mono text-xl font-bold tracking-wider text-foreground">{result.reference}</p>
+              </div>
+            )}
             <div className="rounded-xl bg-secondary p-3 text-left">
               <p className="text-sm text-muted-foreground mb-1">Lien de paiement</p>
               <div className="flex items-center gap-2">

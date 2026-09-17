@@ -347,7 +347,25 @@ export default function PayInvoicePage() {
             <ScanLine className="w-7 h-7 text-primary" />
           </div>
           <h2 className="text-xl font-bold text-foreground mb-1 text-center">Payer une facture</h2>
-          <p className="text-sm text-muted-foreground mb-6 text-center">Entrez la référence indiquée par le marchand</p>
+          <p className="text-sm text-muted-foreground mb-6 text-center">Scannez le QR du marchand ou entrez la référence</p>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full mb-4"
+            size="lg"
+            onClick={() => navigate('/dashboard/wallet/scan')}
+          >
+            <ScanLine className="mr-2 w-4 h-4" />
+            Scanner un code QR
+          </Button>
+          <div className="relative mb-4">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-xs">
+              <span className="bg-card px-2 text-muted-foreground">ou</span>
+            </div>
+          </div>
           <form onSubmit={handleLookup} className="space-y-4">
             {error && (
               <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">

@@ -26,6 +26,7 @@ import TopupPage from '@/pages/wallet/Topup';
 import TopupResultPage from '@/pages/wallet/TopupResult';
 import SendPage from '@/pages/wallet/Send';
 import PayInvoicePage from '@/pages/wallet/Pay';
+import ScanQrPage from '@/pages/wallet/ScanQr';
 import WithdrawPage from '@/pages/wallet/Withdraw';
 import SetPinPage from '@/pages/wallet/SetPin';
 import WalletTransactionsPage from '@/pages/wallet/Transactions';
@@ -144,6 +145,7 @@ export default function App() {
         <Route path="wallet/topup/result" element={<TopupResultPage />} />
         <Route path="wallet/send" element={<SendPage />} />
         <Route path="wallet/pay" element={<PayInvoicePage />} />
+        <Route path="wallet/scan" element={<ScanQrPage />} />
         <Route path="wallet/withdraw" element={<WithdrawPage />} />
         <Route path="wallet/pin" element={<SetPinPage />} />
         <Route path="wallet/transactions" element={<WalletTransactionsPage />} />
