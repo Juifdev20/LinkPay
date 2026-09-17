@@ -65,7 +65,7 @@ export default function MerchantTeamPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            La personne doit déjà avoir un compte LinkPay (au moins un compte client).
+            La personne doit déjà avoir un compte ScanLinkPay (au moins un compte client).
           </p>
           {inviteError && (
             <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">

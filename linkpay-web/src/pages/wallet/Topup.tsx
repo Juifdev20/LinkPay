@@ -146,7 +146,7 @@ export default function TopupPage() {
 
     if (step === 'processing') {
       // Mirrors the same real-world Mobile Money STK/USSD push flow shown to
-      // payers on the public payment page: LinkPay never sees the PIN, the
+      // payers on the public payment page: ScanLinkPay never sees the PIN, the
       // confirmation happens entirely on the user's own phone.
       if (paymentMethod === 'mobile_money') {
         const operatorLabel = MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label;
@@ -298,7 +298,7 @@ export default function TopupPage() {
           <CardContent className="pt-6">
             <h2 className="text-xl font-bold text-foreground mb-1">Recharger mon compte</h2>
             <p className="text-sm text-muted-foreground mb-6">
-              {wallet?.wallet_number ? `Compte ${wallet.wallet_number}` : 'Ajoutez des fonds à votre solde LinkPay'}
+              {wallet?.wallet_number ? `Compte ${wallet.wallet_number}` : 'Ajoutez des fonds à votre solde ScanLinkPay'}
             </p>
             <form onSubmit={goToMethod} className="space-y-4">
               {error && (

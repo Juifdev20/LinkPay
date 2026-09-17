@@ -17,7 +17,7 @@ export default function ProfilePage() {
 
   const securityLinks = [
     { to: '/dashboard/wallet/pin', label: 'Code PIN de transaction', icon: KeyRound },
-    { to: '/dashboard/wallet/transactions', label: 'Mes transactions LinkPay', icon: ArrowLeftRight },
+    { to: '/dashboard/wallet/transactions', label: 'Mes transactions ScanLinkPay', icon: ArrowLeftRight },
   ];
 
   return (

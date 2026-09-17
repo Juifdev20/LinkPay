@@ -92,8 +92,8 @@ async function bootstrap() {
   );
 
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('LinkPay API')
-    .setDescription('LinkPay Payment Platform REST API')
+    .setTitle('ScanLinkPay API')
+    .setDescription('ScanLinkPay Payment Platform REST API')
     .setVersion('0.1.0')
     .addBearerAuth()
     .build();
@@ -102,7 +102,7 @@ async function bootstrap() {
 
   const port = configService.get<number>('PORT', 3000);
   await app.listen(port);
-  logger.log(`LinkPay API running on port ${port}`);
+  logger.log(`ScanLinkPay API running on port ${port}`);
   logger.log(`Swagger docs at http://localhost:${port}/api/v1/docs`);
 }
 

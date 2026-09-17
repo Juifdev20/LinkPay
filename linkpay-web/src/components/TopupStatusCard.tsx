@@ -51,7 +51,7 @@ export function TopupStatusCard({ status, amountCents, currency, extraRows = [],
     ? 'Cette recharge met plus de temps que prévu à se confirmer. Elle pourra tout de même aboutir — votre solde sera mis à jour dès que ce sera fait.'
     : status === 'PENDING'
     ? `Votre recharge de ${formatCurrency(amountCents, currency)} est en cours de traitement. Le solde sera mis à jour après confirmation.`
-    : `${formatCurrency(amountCents, currency)} ajouté(s) à votre compte LinkPay`;
+    : `${formatCurrency(amountCents, currency)} ajouté(s) à votre compte ScanLinkPay`;
 
   const statusLabel = isFailed ? 'Échouée' : isPending ? 'En attente' : 'Confirmé';
   const statusColor = isFailed ? 'text-destructive' : isPending ? 'text-warning' : 'text-success';

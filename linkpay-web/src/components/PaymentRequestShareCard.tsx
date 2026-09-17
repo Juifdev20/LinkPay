@@ -36,8 +36,8 @@ export function PaymentRequestShareCard({ request }: PaymentRequestShareCardProp
 
   const shareLink = async () => {
     const method = await shareOrCopy({
-      title: 'Lien de paiement LinkPay',
-      text: `Payez ${formatCurrency(request.amount_cents, request.currency)} via LinkPay`,
+      title: 'Lien de paiement ScanLinkPay',
+      text: `Payez ${formatCurrency(request.amount_cents, request.currency)} via ScanLinkPay`,
       url: paymentLink,
     });
     // The native share sheet already gives its own feedback — only show

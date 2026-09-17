@@ -70,7 +70,7 @@ export function AppLockGate() {
         <Fingerprint className="w-8 h-8 text-primary" />
       </div>
       <p className="text-muted-foreground text-center max-w-xs">
-        Déverrouillez LinkPay pour continuer
+        Déverrouillez ScanLinkPay pour continuer
       </p>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button onClick={unlock} disabled={verifying} className="px-8 py-6 text-base font-semibold rounded-xl">

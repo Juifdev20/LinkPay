@@ -78,8 +78,8 @@ export default function InstallPrompt() {
               <Icon className="h-6 w-6" />
             </div>
             <div>
-              <h3 className="font-semibold text-slate-900">Ajoutez LinkPay à votre écran</h3>
-              <p className="text-xs text-slate-500">Accédez à LinkPay comme une app native</p>
+              <h3 className="font-semibold text-slate-900">Ajoutez ScanLinkPay à votre écran</h3>
+              <p className="text-xs text-slate-500">Accédez à ScanLinkPay comme une app native</p>
             </div>
           </div>
           <button
@@ -113,15 +113,15 @@ export default function InstallPrompt() {
         <div className="flex items-center gap-3">
           <img
             src={logoSrc}
-            alt="LinkPay"
+            alt="ScanLinkPay"
             className="h-12 w-12 rounded-xl shadow-sm"
           />
           <div>
-            <h3 className="font-semibold text-slate-900">Installez LinkPay</h3>
+            <h3 className="font-semibold text-slate-900">Installez ScanLinkPay</h3>
             <p className="text-xs text-slate-500">
               {isMobile
                 ? 'Payez. Recevez. Simplement. Depuis votre appareil.'
-                : 'Lancez LinkPay depuis votre bureau.'}
+                : 'Lancez ScanLinkPay depuis votre bureau.'}
             </p>
           </div>
         </div>

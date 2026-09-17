@@ -43,7 +43,7 @@ class SetPinDto {
 }
 
 class TransferDto {
-  @ApiProperty({ example: 'LP-00001234' })
+  @ApiProperty({ example: 'SLP-00001234' })
   @IsString()
   recipient_wallet_number!: string;
 
@@ -174,13 +174,13 @@ export class WalletsController {
   }
 
   @Get('lookup/:number')
-  @ApiOperation({ summary: 'Look up a recipient/merchant by LinkPay number (masked display name only)' })
+  @ApiOperation({ summary: 'Look up a recipient/merchant by ScanLinkPay number (masked display name only)' })
   async lookup(@Param('number') number: string) {
     return this.walletsService.lookupWallet(number);
   }
 
   @Post('transfers')
-  @ApiOperation({ summary: 'Send money to another LinkPay user by wallet number' })
+  @ApiOperation({ summary: 'Send money to another ScanLinkPay user by wallet number' })
   async createTransfer(
     @CurrentUser('id') userId: string,
     @Body() dto: TransferDto,

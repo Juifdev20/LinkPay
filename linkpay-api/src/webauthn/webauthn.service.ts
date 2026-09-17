@@ -26,7 +26,7 @@ interface PendingChallenge {
 @Injectable()
 export class WebauthnService {
   private readonly logger = new Logger(WebauthnService.name);
-  private readonly rpName = 'LinkPay';
+  private readonly rpName = 'ScanLinkPay';
 
   // Registration/authentication challenges are short-lived (~2 min) and
   // single-use — an in-memory map is sufficient as long as this API runs as

@@ -8,7 +8,7 @@ interface BalanceCardProps {
   /** Independent per-currency balances — no conversion, each is its own real number. */
   balances: { CDF: number; USD: number };
   label?: string;
-  /** e.g. the wallet's LinkPay number — shown under the label */
+  /** e.g. the wallet's ScanLinkPay number — shown under the label */
   subtitle?: string;
   actions?: React.ReactNode;
   className?: string;

@@ -30,12 +30,12 @@ export function Logo({ size = 'md', showText = true, className, imgClassName }: 
     <div className={cn('flex items-center', s.gap, className)}>
       <img
         src={logoSrc}
-        alt="LinkPay"
+        alt="ScanLinkPay"
         className={cn('rounded-xl object-cover shadow-sm', s.box, imgClassName)}
       />
       {showText && (
         <span className={cn('font-bold tracking-tight text-foreground', s.title)}>
-          LinkPay
+          ScanLinkPay
         </span>
       )}
     </div>

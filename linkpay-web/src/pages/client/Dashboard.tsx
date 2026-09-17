@@ -51,7 +51,7 @@ export default function ClientDashboard() {
 
       <BalanceCard
         balances={wallet?.balances || { CDF: 0, USD: 0 }}
-        label="Solde LinkPay"
+        label="Solde ScanLinkPay"
         subtitle={wallet?.wallet_number}
         maskable
         onCurrencyChange={setWalletCurrency}

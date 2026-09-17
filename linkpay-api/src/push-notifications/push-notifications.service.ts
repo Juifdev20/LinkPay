@@ -62,7 +62,7 @@ export class PushNotificationsService {
 
   /**
    * Upserts on `endpoint` (globally unique per the Push API, not scoped to
-   * LinkPay) — a device re-subscribing (storage cleared, different account
+   * ScanLinkPay) — a device re-subscribing (storage cleared, different account
    * logged in on the same browser) replaces its old row instead of erroring
    * or leaving a stale duplicate.
    */

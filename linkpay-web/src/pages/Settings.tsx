@@ -364,7 +364,7 @@ export default function SettingsPage() {
           </button>
           {showTerms && (
             <p className="px-6 py-3.5 text-sm text-muted-foreground bg-secondary/50">
-              En utilisant LinkPay, vous acceptez nos conditions d'utilisation et notre politique de confidentialité.
+              En utilisant ScanLinkPay, vous acceptez nos conditions d'utilisation et notre politique de confidentialité.
             </p>
           )}
         </CardContent>

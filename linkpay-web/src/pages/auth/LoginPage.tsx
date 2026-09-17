@@ -59,7 +59,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
       <AuthBrandingPanel
         headline="Bienvenue"
-        tagline="LinkPay simplifie vos paiements en RDC avec toute sécurité."
+        tagline="ScanLinkPay simplifie vos paiements en RDC avec toute sécurité."
         className="h-48 md:h-auto md:w-1/2"
       />
 
@@ -71,7 +71,7 @@ export default function LoginPage() {
         <div className="w-full max-w-md bg-card backdrop-blur-lg rounded-2xl p-6 md:p-8 border border-border shadow-2xl">
           <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Connexion</h2>
           <p className="text-muted-foreground mb-8 text-sm">
-            Connectez-vous à votre compte LinkPay
+            Connectez-vous à votre compte ScanLinkPay
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-5">

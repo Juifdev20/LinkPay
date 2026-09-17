@@ -49,7 +49,7 @@ export default function SendPage() {
       setRecipient(data);
       setStep('amount');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Numéro LinkPay introuvable');
+      setError(err.response?.data?.message || 'Numéro ScanLinkPay introuvable');
     } finally {
       setLooking(false);
     }
@@ -118,7 +118,7 @@ export default function SendPage() {
                 <span className="font-semibold text-foreground">{recipient?.display_name}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Numéro LinkPay</span>
+                <span className="text-muted-foreground">Numéro ScanLinkPay</span>
                 <span className="font-mono text-foreground">{recipient?.wallet_number}</span>
               </div>
               <div className="flex justify-between text-sm">
@@ -280,7 +280,7 @@ export default function SendPage() {
             <SendIcon className="w-7 h-7 text-primary" />
           </div>
           <h2 className="text-xl font-bold text-foreground mb-1 text-center">Envoyer de l'argent</h2>
-          <p className="text-sm text-muted-foreground mb-6 text-center">Entrez le numéro LinkPay du destinataire</p>
+          <p className="text-sm text-muted-foreground mb-6 text-center">Entrez le numéro ScanLinkPay du destinataire</p>
           <form onSubmit={handleLookup} className="space-y-4">
             {error && (
               <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
@@ -288,7 +288,7 @@ export default function SendPage() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="number" className="font-semibold">Numéro LinkPay</Label>
+              <Label htmlFor="number" className="font-semibold">Numéro ScanLinkPay</Label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input

@@ -22,7 +22,7 @@ export default function WelcomePage() {
         </div>
         <div>
           <p className="text-primary-foreground/80 text-lg">Bienvenue sur</p>
-          <h1 className="text-4xl font-bold text-primary-foreground">LinkPay</h1>
+          <h1 className="text-4xl font-bold text-primary-foreground">ScanLinkPay</h1>
         </div>
         <p className="text-primary-foreground/80 text-sm max-w-xs leading-relaxed">
           Encaissez et payez vos factures en toute simplicité, partout en RDC avec de simples liens de paiement, QR code et portefeuille mobile.

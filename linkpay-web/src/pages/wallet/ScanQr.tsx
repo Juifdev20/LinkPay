@@ -7,7 +7,7 @@ import { X, Keyboard, AlertCircle } from 'lucide-react';
 
 QrScanner.WORKER_PATH = QrScannerWorkerPath;
 
-/** Extracts the payment-link token from a scanned LinkPay QR (which encodes
+/** Extracts the payment-link token from a scanned ScanLinkPay QR (which encodes
  * the full `{FRONTEND_URL}/p/{token}` URL — see linkpay-api's
  * payment-requests.service.ts). Accepts any host, only the /p/:token path
  * shape matters, since the QR always carries the real production domain
@@ -39,7 +39,7 @@ export default function ScanQrPage() {
       (result) => {
         const token = extractPaymentToken(result.data);
         if (!token) {
-          setError('QR non reconnu — ce code ne correspond pas à un lien de paiement LinkPay.');
+          setError('QR non reconnu — ce code ne correspond pas à un lien de paiement ScanLinkPay.');
           return;
         }
         scanner.stop();
@@ -54,7 +54,7 @@ export default function ScanQrPage() {
     scannerRef.current = scanner;
 
     scanner.start().catch(() => {
-      setError("Impossible d'accéder à la caméra. Vérifiez que la permission est accordée à LinkPay.");
+      setError("Impossible d'accéder à la caméra. Vérifiez que la permission est accordée à ScanLinkPay.");
     });
 
     return () => {
@@ -93,7 +93,7 @@ export default function ScanQrPage() {
                 onClick={() => {
                   setError('');
                   scannerRef.current?.start().catch(() => {
-                    setError("Impossible d'accéder à la caméra. Vérifiez que la permission est accordée à LinkPay.");
+                    setError("Impossible d'accéder à la caméra. Vérifiez que la permission est accordée à ScanLinkPay.");
                   });
                 }}
               >

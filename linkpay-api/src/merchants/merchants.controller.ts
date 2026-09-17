@@ -149,7 +149,7 @@ export class MerchantsController {
   @Post(':id/users')
   @Roles('merchant')
   @UseGuards(RolesGuard)
-  @ApiOperation({ summary: 'Invite an existing LinkPay user as cashier (owner only)' })
+  @ApiOperation({ summary: 'Invite an existing ScanLinkPay user as cashier (owner only)' })
   async addMerchantUser(
     @Param('id') id: string,
     @CurrentUser('merchant_id') callerMerchantId: string,

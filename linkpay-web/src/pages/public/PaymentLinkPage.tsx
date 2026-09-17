@@ -132,7 +132,7 @@ export default function PaymentLinkPage() {
   }
 
   // Waiting for the customer to confirm on their own phone — this mirrors a
-  // real mobile money STK/USSD push, where LinkPay never sees the PIN and the
+  // real mobile money STK/USSD push, where ScanLinkPay never sees the PIN and the
   // confirmation happens entirely on the customer's device.
   if (paying) {
     const operatorLabel = MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label;
@@ -195,17 +195,17 @@ export default function PaymentLinkPage() {
               >
                 <Link to={`/dashboard/wallet/pay?ref=${encodeURIComponent(request.reference)}`}>
                   <WalletIcon className="mr-2 w-4 h-4" />
-                  Payer avec mon solde LinkPay
+                  Payer avec mon solde ScanLinkPay
                 </Link>
               </Button>
             ) : (
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 mb-6">
                 <div className="flex items-center gap-2 mb-1">
                   <Sparkles className="w-4 h-4 text-primary flex-shrink-0" />
-                  <p className="text-sm font-semibold text-foreground">Payer avec votre solde LinkPay ?</p>
+                  <p className="text-sm font-semibold text-foreground">Payer avec votre solde ScanLinkPay ?</p>
                 </div>
                 <p className="text-xs text-muted-foreground mb-3">
-                  Créez votre compte en quelques secondes et profitez de toutes les fonctionnalités LinkPay.
+                  Créez votre compte en quelques secondes et profitez de toutes les fonctionnalités ScanLinkPay.
                 </p>
                 <div className="flex gap-2">
                   <Button asChild size="sm" className="flex-1">

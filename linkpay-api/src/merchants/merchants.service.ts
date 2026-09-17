@@ -181,7 +181,7 @@ export class MerchantsService {
       .single();
 
     if (!targetUser) {
-      throw new NotFoundException("Aucun compte LinkPay avec cet email — la personne doit d'abord créer un compte.");
+      throw new NotFoundException("Aucun compte ScanLinkPay avec cet email — la personne doit d'abord créer un compte.");
     }
 
     const { data: role } = await this.supabaseService.getClient()

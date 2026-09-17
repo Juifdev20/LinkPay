@@ -20,7 +20,7 @@ import {
 // account_password API (sk_test_/sk_live_ prefixed keys, api.cinetpay.net /
 // api.cinetpay.co) — the older apikey/site_id Checkout v2 API is being
 // migrated away from new merchant accounts, which no longer expose a site_id.
-// Country is hardcoded to CD (DR Congo) since LinkPay only operates there.
+// Country is hardcoded to CD (DR Congo) since ScanLinkPay only operates there.
 const COUNTRY = 'CD';
 
 // The new API's webhook only pings that a transaction reached a final state
@@ -67,7 +67,7 @@ export class CinetPayAdapter implements PspAdapter {
 
   async createPaymentIntent(params: CreatePaymentIntentParams): Promise<PaymentIntentResult> {
     // CinetPay amounts are whole currency units (e.g. 1500 = 1500 CDF), not
-    // the cents/centimes LinkPay uses internally everywhere else.
+    // the cents/centimes ScanLinkPay uses internally everywhere else.
     const amount = Math.round(params.amount_cents / 100);
     const [firstName, ...rest] = (params.customer?.name || 'Client').split(' ');
     const phone = this.normalizePhone(params.customer?.phone || '');
@@ -78,7 +78,7 @@ export class CinetPayAdapter implements PspAdapter {
         merchantTransactionId: params.reference,
         amount,
         lang: 'fr',
-        designation: `LinkPay - ${params.reference}`,
+        designation: `ScanLinkPay - ${params.reference}`,
         clientEmail: params.customer?.email || 'client@linkpay.cd',
         clientFirstName: firstName || 'Client',
         clientLastName: rest.join(' ') || '-',

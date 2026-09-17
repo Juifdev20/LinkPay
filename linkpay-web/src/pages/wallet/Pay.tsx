@@ -141,7 +141,7 @@ export default function PayInvoicePage() {
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Moyen de paiement</span>
                 <span className="text-foreground">
-                  {source === 'wallet' ? 'Solde LinkPay' : `${MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label} — ${phone}`}
+                  {source === 'wallet' ? 'Solde ScanLinkPay' : `${MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label} — ${phone}`}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
@@ -243,7 +243,7 @@ export default function PayInvoicePage() {
                   className={`flex flex-col items-center gap-1.5 rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-colors ${source === 'wallet' ? 'border-primary bg-primary/5 text-primary' : 'border-input text-muted-foreground hover:bg-accent'}`}
                 >
                   <WalletIcon className="w-5 h-5" />
-                  Solde LinkPay
+                  Solde ScanLinkPay
                 </button>
                 <button
                   type="button"

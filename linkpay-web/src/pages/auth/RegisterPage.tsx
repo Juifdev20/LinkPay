@@ -127,7 +127,7 @@ export default function RegisterPage() {
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
       <AuthBrandingPanel
         headline="Créer un compte"
-        tagline="Rejoignez LinkPay en quelques secondes et recevez vos paiements instantanément."
+        tagline="Rejoignez ScanLinkPay en quelques secondes et recevez vos paiements instantanément."
         className="h-48 md:h-auto md:w-1/2"
       />
 
@@ -146,7 +146,7 @@ export default function RegisterPage() {
           <div className="px-6 md:px-8 pt-6 md:pt-8 pb-2 flex-shrink-0">
             <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Inscription</h2>
             <p className="text-muted-foreground text-sm">
-              Rejoignez LinkPay en quelques secondes
+              Rejoignez ScanLinkPay en quelques secondes
             </p>
           </div>
 
@@ -190,7 +190,7 @@ export default function RegisterPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {accountType === 'client'
-                    ? 'Pour payer des commerçants LinkPay.'
+                    ? 'Pour payer des commerçants ScanLinkPay.'
                     : 'Pour recevoir des paiements via lien et QR code.'}
                 </p>
               </div>

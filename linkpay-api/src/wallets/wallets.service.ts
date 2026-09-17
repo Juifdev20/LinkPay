@@ -261,7 +261,7 @@ export class WalletsService {
         user_id: wallet.user_id,
         type: 'wallet_topup_success',
         title: 'Portefeuille rechargé',
-        body: `Votre compte LinkPay a été crédité de ${(topup.amount_cents / 100).toLocaleString('fr-FR')} ${topup.currency}.`,
+        body: `Votre compte ScanLinkPay a été crédité de ${(topup.amount_cents / 100).toLocaleString('fr-FR')} ${topup.currency}.`,
         data: { wallet_topup_id: topup.id },
       }).catch(() => null);
     }
@@ -363,7 +363,7 @@ export class WalletsService {
   }
 
   // ==========================================================================
-  // Lookup — search a recipient/merchant by LinkPay number. Only the minimum
+  // Lookup — search a recipient/merchant by ScanLinkPay number. Only the minimum
   // needed to confirm "who am I sending to" is returned (masked display
   // name) — never email/phone/full profile, and knowing a number never
   // allows modifying that account (read-only, no mutation endpoint takes a
@@ -378,13 +378,16 @@ export class WalletsService {
       .single();
 
     if (error || !wallet) {
-      throw new NotFoundException('Numéro LinkPay introuvable');
+      throw new NotFoundException('Numéro ScanLinkPay introuvable');
     }
     if (wallet.status !== 'ACTIVE') {
-      throw new BadRequestException('Ce compte LinkPay n\'est pas actif');
+      throw new BadRequestException('Ce compte ScanLinkPay n\'est pas actif');
     }
 
-    const isMerchant = wallet.wallet_number.startsWith('LP-MER-');
+    // Prefix-agnostic on purpose — existing wallets carry 'LP-MER-...' from
+    // before the SLP rebrand, new ones carry 'SLP-MER-...' (see migration
+    // 015); both must keep resolving to "this is a merchant wallet".
+    const isMerchant = wallet.wallet_number.includes('-MER-');
 
     if (isMerchant) {
       const { data: merchant } = await this.supabaseService.getClient()
@@ -396,7 +399,7 @@ export class WalletsService {
       return {
         wallet_number: wallet.wallet_number,
         is_merchant: true,
-        display_name: merchant?.name || 'Marchand LinkPay',
+        display_name: merchant?.name || 'Marchand ScanLinkPay',
         logo_url: merchant?.logo_url || null,
       };
     }
@@ -416,7 +419,7 @@ export class WalletsService {
   }
 
   // ==========================================================================
-  // Transfer — user-to-user, by LinkPay number. Atomic via the transfer_wallet
+  // Transfer — user-to-user, by ScanLinkPay number. Atomic via the transfer_wallet
   // RPC (see 007_wallet_phase2.sql): both ledger entries are written in one
   // Postgres transaction, so a transfer is never half-applied.
   // ==========================================================================
@@ -563,7 +566,7 @@ export class WalletsService {
   }
 
   private explainTransferFailure(message: string): string {
-    if (message?.includes('INSUFFICIENT_BALANCE')) return 'Solde LinkPay insuffisant pour ce transfert.';
+    if (message?.includes('INSUFFICIENT_BALANCE')) return 'Solde ScanLinkPay insuffisant pour ce transfert.';
     if (message?.includes('not PENDING')) return 'Ce transfert a déjà été traité.';
     if (message?.includes('WALLET_')) return 'Le compte du destinataire ou de l\'expéditeur n\'est pas actif.';
     return 'Le transfert a échoué. Aucun montant n\'a été débité.';
@@ -664,7 +667,7 @@ export class WalletsService {
         .from('withdrawals')
         .update({ status: 'FAILED', failure_reason: 'INSUFFICIENT_BALANCE', updated_at: new Date().toISOString() })
         .eq('id', withdrawal.id);
-      throw new BadRequestException('Solde LinkPay insuffisant pour ce retrait.');
+      throw new BadRequestException('Solde ScanLinkPay insuffisant pour ce retrait.');
     }
 
     await this.auditService.log({
@@ -748,7 +751,7 @@ export class WalletsService {
 
 /** "Jean Kambale" -> "Jean K." — never expose a recipient's full name from a bare number lookup. */
 function maskName(fullName?: string | null): string {
-  if (!fullName) return 'Utilisateur LinkPay';
+  if (!fullName) return 'Utilisateur ScanLinkPay';
   const parts = fullName.trim().split(/\s+/);
   if (parts.length === 1) return parts[0];
   return `${parts[0]} ${parts[parts.length - 1][0]}.`;

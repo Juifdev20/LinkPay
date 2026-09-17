@@ -326,7 +326,7 @@ export class AuthService {
   }
 
   /**
-   * Surfaces the Supabase Auth session (separate from LinkPay's own JWT) so
+   * Surfaces the Supabase Auth session (separate from ScanLinkPay's own JWT) so
    * the frontend can use Supabase Realtime, protected by the existing RLS
    * policies. Best-effort — Realtime is a nice-to-have, never block login.
    */

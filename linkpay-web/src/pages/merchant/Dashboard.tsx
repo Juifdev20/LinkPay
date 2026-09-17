@@ -69,7 +69,7 @@ export default function MerchantDashboard() {
 
       <BalanceCard
         balances={wallet?.balances || { CDF: 0, USD: 0 }}
-        label="Solde LinkPay"
+        label="Solde ScanLinkPay"
         subtitle={wallet?.wallet_number}
         maskable
         onCurrencyChange={setWalletCurrency}

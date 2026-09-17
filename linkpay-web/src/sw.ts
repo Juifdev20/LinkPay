@@ -71,12 +71,12 @@ interface ExtendedNotificationOptions extends NotificationOptions {
 }
 
 self.addEventListener('push', (event: PushEvent) => {
-  let payload: PushPayload = { title: 'LinkPay', body: '', type: '' };
+  let payload: PushPayload = { title: 'ScanLinkPay', body: '', type: '' };
   try {
     if (event.data) payload = event.data.json();
   } catch {
     // Non-JSON payload — fall back to plain text in the body.
-    payload = { title: 'LinkPay', body: event.data?.text() || '', type: '' };
+    payload = { title: 'ScanLinkPay', body: event.data?.text() || '', type: '' };
   }
 
   const options: ExtendedNotificationOptions = {
@@ -90,7 +90,7 @@ self.addEventListener('push', (event: PushEvent) => {
     data: { type: payload.type, ...payload.data },
   };
 
-  event.waitUntil(self.registration.showNotification(payload.title || 'LinkPay', options));
+  event.waitUntil(self.registration.showNotification(payload.title || 'ScanLinkPay', options));
 });
 
 // ---- Click-through: focus an existing tab or open a new one, deep-linked ----

@@ -37,7 +37,7 @@ export class LedgerService {
         currency: transaction.currency,
         reference: transaction.reference,
         source: 'system',
-        metadata: { description: 'LinkPay commission', commission_rule_id: transaction.commission_rule_id },
+        metadata: { description: 'ScanLinkPay commission', commission_rule_id: transaction.commission_rule_id },
       },
     ];
 

@@ -74,7 +74,7 @@ export async function subscribeToPush(): Promise<boolean> {
     try {
       token = await registerAndGetToken();
     } catch (err: any) {
-      console.error('[LinkPay push] FCM registration failed:', err?.message || String(err));
+      console.error('[ScanLinkPay push] FCM registration failed:', err?.message || String(err));
       return false;
     }
 
@@ -82,7 +82,7 @@ export async function subscribeToPush(): Promise<boolean> {
       await api.post('/push-subscriptions', { platform: 'android', fcmToken: token });
     } catch (err: any) {
       console.error(
-        '[LinkPay push] backend registration failed:',
+        '[ScanLinkPay push] backend registration failed:',
         err?.response?.status,
         JSON.stringify(err?.response?.data) || err?.message || String(err),
       );
@@ -92,7 +92,7 @@ export async function subscribeToPush(): Promise<boolean> {
     localStorage.setItem(FCM_TOKEN_KEY, token);
     return true;
   } catch (err: any) {
-    console.error('[LinkPay push] subscribeToPush failed:', err?.message || String(err));
+    console.error('[ScanLinkPay push] subscribeToPush failed:', err?.message || String(err));
     return false;
   }
 }

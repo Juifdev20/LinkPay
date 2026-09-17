@@ -81,7 +81,7 @@ export class PaymentsController {
 
   @Post('wallet')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Pay an existing payment request (invoice) from the LinkPay wallet — authenticated users only' })
+  @ApiOperation({ summary: 'Pay an existing payment request (invoice) from the ScanLinkPay wallet — authenticated users only' })
   async payWithWallet(
     @CurrentUser('id') userId: string,
     @Body() dto: PayWithWalletDto,

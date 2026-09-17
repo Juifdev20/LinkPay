@@ -56,7 +56,7 @@ export async function enableAppLock(): Promise<void> {
   try {
     await NativeBiometric.verifyIdentity({
       title: 'Activer le verrouillage',
-      subtitle: 'Confirmez votre identité pour activer le verrouillage de LinkPay',
+      subtitle: 'Confirmez votre identité pour activer le verrouillage de ScanLinkPay',
       useFallback: true,
     });
   } catch (err) {
@@ -74,7 +74,7 @@ export async function disableAppLock(): Promise<void> {
 export async function verifyAppLock(): Promise<boolean> {
   try {
     await NativeBiometric.verifyIdentity({
-      title: 'Déverrouiller LinkPay',
+      title: 'Déverrouiller ScanLinkPay',
       subtitle: "Utilisez l'empreinte, le visage ou le code de l'appareil",
       useFallback: true,
     });

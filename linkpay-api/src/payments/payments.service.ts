@@ -196,7 +196,7 @@ export class PaymentsService {
   }
 
   /**
-   * Pays an existing payment request (invoice) out of the payer's LinkPay
+   * Pays an existing payment request (invoice) out of the payer's ScanLinkPay
    * wallet — the authenticated, in-app counterpart to createPayment() above
    * (which is for anonymous customers checking out via PSP/Mobile Money).
    * Deliberately reuses payment_intents/handleSuccessfulPayment instead of a
@@ -328,7 +328,7 @@ export class PaymentsService {
     if (debitError) {
       await this.supabaseService.getClient().from('payment_intents').update({ status: 'FAILED', updated_at: new Date().toISOString() }).eq('id', intent.id);
       await this.supabaseService.getClient().from('payment_requests').update({ status: 'CREATED', updated_at: new Date().toISOString() }).eq('id', request.id);
-      throw new BadRequestException('Solde LinkPay insuffisant pour ce paiement.');
+      throw new BadRequestException('Solde ScanLinkPay insuffisant pour ce paiement.');
     }
 
     try {
@@ -671,7 +671,7 @@ export class PaymentsService {
             user_id: wallet.user_id,
             type: 'wallet_topup_success',
             title: 'Portefeuille rechargé',
-            body: `Votre compte LinkPay a été crédité de ${(topup.amount_cents / 100).toLocaleString('fr-FR')} ${topup.currency}.`,
+            body: `Votre compte ScanLinkPay a été crédité de ${(topup.amount_cents / 100).toLocaleString('fr-FR')} ${topup.currency}.`,
             data: { wallet_topup_id: topup.id },
           }).catch(() => null);
         }
