@@ -397,7 +397,7 @@ export default function RegisterPage() {
                 </Label>
               </div>
 
-              <Button type="submit" className="w-full py-6 text-base font-semibold rounded-xl" disabled={loading}>
+              <Button type="submit" className="w-full py-6 text-base font-semibold rounded-xl" disabled={loading || !acceptTerms}>
                 {loading && <Loader2 className="mr-2 w-5 h-5 animate-spin" />}
                 Créer mon compte
               </Button>
