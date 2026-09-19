@@ -1,5 +1,5 @@
 -- ============================================================================
--- 017_organization_expenses.sql — Manual expense tracking for the
+-- 019_organization_expenses.sql — Manual expense tracking for the
 -- enterprise dashboard's "Montant réel encaissé" reconciliation tile
 -- (electronic revenue + cash revenue − expenses).
 --

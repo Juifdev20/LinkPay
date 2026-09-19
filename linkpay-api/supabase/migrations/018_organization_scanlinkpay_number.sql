@@ -1,5 +1,5 @@
 -- ============================================================================
--- 016_organization_scanlinkpay_number.sql — Unique per-organization payment
+-- 018_organization_scanlinkpay_number.sql — Unique per-organization payment
 -- identifier ("ScanLinkPay number").
 --
 -- payment_requests today are always scoped to ONE invoice (a merchant issues

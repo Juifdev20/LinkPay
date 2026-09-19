@@ -1,5 +1,5 @@
 -- ============================================================================
--- 015_organization_kyb.sql — Full KYB (Know Your Business) profile for
+-- 017_organization_kyb.sql — Full KYB (Know Your Business) profile for
 -- enterprise accounts.
 --
 -- `organizations` only ever had name/legal_name/contact/status — nowhere near
