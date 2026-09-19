@@ -225,6 +225,30 @@ export default function TontineDetailPage() {
         </Card>
       )}
 
+      {data.contribution_history?.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Historique des cotisations</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {data.contribution_history.map((c: any) => (
+                <div key={c.id} className="flex items-center justify-between py-1.5 text-sm">
+                  <div className="min-w-0">
+                    <span className="text-foreground font-medium">{c.member?.display_name}</span>
+                    <span className="text-muted-foreground"> · cycle n°{c.cycle?.cycle_number}</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0 text-muted-foreground">
+                    <span className="font-semibold text-foreground">{formatCurrency(c.amount_cents, c.currency)}</span>
+                    <span>{formatDate(c.paid_at)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Membres ({members.length}/{group.max_members})</CardTitle>
@@ -249,7 +273,7 @@ export default function TontineDetailPage() {
             </div>
           ))}
 
-          {isCreator && group.status === 'forming' && (
+          {isCreator && (group.status === 'forming' || group.status === 'active') && (
             <div className="mt-4 space-y-3">
               <div className="space-y-2">
                 <Label htmlFor="invite_number" className="font-semibold text-sm">Inviter par numéro ScanLinkPay</Label>
@@ -266,8 +290,13 @@ export default function TontineDetailPage() {
                     {inviteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
                   </Button>
                 </div>
+                {group.status === 'active' && (
+                  <p className="text-xs text-muted-foreground">
+                    La tontine est déjà en cours — la personne invitée rejoindra en dernière position et cotisera dès le cycle actuel.
+                  </p>
+                )}
               </div>
-              {activeCount === group.max_members && (
+              {group.status === 'forming' && activeCount === group.max_members && (
                 <Button className="w-full" onClick={() => drawMutation.mutate()} disabled={drawMutation.isPending}>
                   {drawMutation.isPending ? <Loader2 className="mr-2 w-4 h-4 animate-spin" /> : <Shuffle className="mr-2 w-4 h-4" />}
                   Lancer le tirage au sort

@@ -164,7 +164,19 @@ export class TontinesService {
       }
     }
 
-    return { group, members: membersWithNames, current_cycle: currentCycle };
+    const { data: paidContributions } = await this.db
+      .from('tontine_contributions')
+      .select('id, member_id, amount_cents, currency, paid_at, cycle:tontine_cycles(cycle_number)')
+      .eq('group_id', groupId)
+      .eq('status', 'paid')
+      .order('paid_at', { ascending: false });
+
+    const contributionHistory = (paidContributions || []).map((c: any) => ({
+      ...c,
+      member: membersWithNames.find((m) => m.id === c.member_id),
+    }));
+
+    return { group, members: membersWithNames, current_cycle: currentCycle, contribution_history: contributionHistory };
   }
 
   async inviteMember(groupId: string, callerId: string, walletNumber: string) {
@@ -172,8 +184,14 @@ export class TontinesService {
     if (group.creator_id !== callerId) {
       throw new ForbiddenException("Seul le créateur de la tontine peut inviter des membres");
     }
-    if (group.status !== 'forming') {
-      throw new BadRequestException('Cette tontine a déjà démarré — impossible d\'ajouter des membres');
+    if (group.status === 'completed' || group.status === 'cancelled') {
+      throw new BadRequestException('Cette tontine est terminée — impossible d\'ajouter des membres');
+    }
+    // A group already running (post-draw) can still grow: the newcomer is
+    // simply appended to the back of the payout queue in respondToInvite
+    // below, never inserted ahead of someone still waiting their turn.
+    if (group.status === 'active' && group.max_members >= 30) {
+      throw new BadRequestException('Cette tontine a atteint la taille maximale (30 membres)');
     }
 
     // Public masked lookup for a friendly display name, same helper used by
@@ -206,7 +224,7 @@ export class TontinesService {
       .eq('group_id', groupId)
       .neq('status', 'declined');
 
-    if ((memberCount || 0) >= group.max_members) {
+    if (group.status === 'forming' && (memberCount || 0) >= group.max_members) {
       throw new BadRequestException('Cette tontine est déjà complète');
     }
 
@@ -251,12 +269,39 @@ export class TontinesService {
       throw new BadRequestException('Cette invitation a déjà été traitée');
     }
 
+    const group = await this.getGroupById(groupId);
+    const joiningActiveGroup = accept && group.status === 'active';
+
+    const updates: Record<string, any> = {
+      status: accept ? 'active' : 'declined',
+      accepted_at: accept ? new Date().toISOString() : null,
+    };
+
+    // Joining a tontine that already started: append to the very back of the
+    // payout queue (never ahead of someone still waiting their turn) and
+    // extend the group by one cycle so the newcomer is guaranteed their turn
+    // without displacing anyone already positioned.
+    if (joiningActiveGroup) {
+      const { data: lastPosition } = await this.db
+        .from('tontine_members')
+        .select('payout_position')
+        .eq('group_id', groupId)
+        .not('payout_position', 'is', null)
+        .order('payout_position', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      updates.payout_position = (lastPosition?.payout_position || 0) + 1;
+
+      await this.db
+        .from('tontine_groups')
+        .update({ max_members: group.max_members + 1, updated_at: new Date().toISOString() })
+        .eq('id', groupId);
+    }
+
     const { data: updated, error } = await this.db
       .from('tontine_members')
-      .update({
-        status: accept ? 'active' : 'declined',
-        accepted_at: accept ? new Date().toISOString() : null,
-      })
+      .update(updates)
       .eq('id', member.id)
       .select()
       .single();
@@ -264,6 +309,30 @@ export class TontinesService {
     if (error) {
       throw new Error(`Failed to respond to invite: ${error.message}`);
     }
+
+    // The current cycle's contributions were generated before this member
+    // existed — backfill their share for it. Future cycles pick up every
+    // active member automatically (generateContributions), no backfill needed.
+    if (joiningActiveGroup && group.current_cycle > 0) {
+      const { data: cycle } = await this.db
+        .from('tontine_cycles')
+        .select('id, due_date')
+        .eq('group_id', groupId)
+        .eq('cycle_number', group.current_cycle)
+        .maybeSingle();
+
+      if (cycle) {
+        await this.db.from('tontine_contributions').insert({
+          cycle_id: cycle.id,
+          group_id: groupId,
+          member_id: updated.id,
+          amount_cents: group.contribution_amount_cents,
+          currency: group.currency,
+          due_date: cycle.due_date,
+        });
+      }
+    }
+
     return { member: updated };
   }
 
