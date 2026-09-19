@@ -79,13 +79,6 @@ export default function ClientDashboard() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-2">
-        <QuickAction icon={QrCode} label="Scanner QR" onClick={() => navigate('/dashboard/wallet/scan')} />
-        <QuickAction icon={ArrowUpRight} label="Payer" onClick={() => navigate('/dashboard/wallet/pay')} />
-        <QuickAction icon={ArrowDownLeft} label="Recevoir" onClick={() => navigate('/dashboard/wallet/receive')} />
-        <QuickAction icon={History} label="Historique" onClick={() => navigate('/dashboard/client/transactions')} />
-      </div>
-
       <button
         onClick={() => navigate('/dashboard/tontines')}
         className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
@@ -98,6 +91,13 @@ export default function ClientDashboard() {
           <p className="text-sm text-muted-foreground">Épargnez en groupe, à tour de rôle</p>
         </div>
       </button>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-2">
+        <QuickAction icon={QrCode} label="Scanner QR" onClick={() => navigate('/dashboard/wallet/scan')} />
+        <QuickAction icon={ArrowUpRight} label="Payer" onClick={() => navigate('/dashboard/wallet/pay')} />
+        <QuickAction icon={ArrowDownLeft} label="Recevoir" onClick={() => navigate('/dashboard/wallet/receive')} />
+        <QuickAction icon={History} label="Historique" onClick={() => navigate('/dashboard/client/transactions')} />
+      </div>
 
       <Card>
         <CardHeader>
