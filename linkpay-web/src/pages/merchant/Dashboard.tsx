@@ -9,9 +9,11 @@ import { BalanceCard } from '@/components/BalanceCard';
 import { WalletActions } from '@/components/WalletActions';
 import { TransactionItem } from '@/components/TransactionItem';
 import { DualCurrencyStat } from '@/components/DualCurrencyStat';
-import { Plus, TrendingUp, Receipt, Wallet, QrCode } from 'lucide-react';
+import { Plus, TrendingUp, Receipt, Wallet, QrCode, RefreshCcw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function MerchantDashboard() {
+  const navigate = useNavigate();
   const merchantId = useAuthStore((s) => s.user?.merchant_id);
   const [walletCurrency, setWalletCurrency] = useState<'CDF' | 'USD'>('CDF');
 
@@ -93,6 +95,19 @@ export default function MerchantDashboard() {
           </Card>
         ))}
       </div>
+
+      <button
+        onClick={() => navigate('/dashboard/tontines')}
+        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
+      >
+        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
+          <RefreshCcw className="w-5 h-5 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-foreground">Tontines</p>
+          <p className="text-sm text-muted-foreground">Épargnez en groupe, à tour de rôle</p>
+        </div>
+      </button>
 
       <Card>
         <CardHeader>
