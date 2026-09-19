@@ -232,7 +232,9 @@ export default function RegisterPage() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="full_name" className="font-semibold text-foreground">Nom complet</Label>
+                <Label htmlFor="full_name" className="font-semibold text-foreground">
+                  {accountType === 'enterprise' ? 'Nom complet du responsable' : 'Nom complet'}
+                </Label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
