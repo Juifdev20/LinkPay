@@ -24,13 +24,13 @@ export class RegisterDto {
   @MaxLength(255)
   full_name?: string;
 
-  @ApiPropertyOptional({ enum: ['client', 'merchant'], default: 'client', description: 'Type of account to create' })
+  @ApiPropertyOptional({ enum: ['client', 'merchant', 'enterprise'], default: 'client', description: 'Type of account to create' })
   @IsOptional()
-  @IsIn(['client', 'merchant'])
-  account_type?: 'client' | 'merchant';
+  @IsIn(['client', 'merchant', 'enterprise'])
+  account_type?: 'client' | 'merchant' | 'enterprise';
 
-  @ApiPropertyOptional({ example: 'Boutique Mukendi', description: 'Required when account_type is "merchant"' })
-  @ValidateIf((o) => o.account_type === 'merchant')
+  @ApiPropertyOptional({ example: 'Boutique Mukendi', description: 'Required when account_type is "merchant" or "enterprise" — the store name or the company name, respectively' })
+  @ValidateIf((o) => o.account_type === 'merchant' || o.account_type === 'enterprise')
   @IsString()
   @MaxLength(255)
   business_name?: string;

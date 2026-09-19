@@ -42,7 +42,7 @@ interface AuthState {
     password: string;
     full_name: string;
     phone?: string;
-    account_type?: 'client' | 'merchant';
+    account_type?: 'client' | 'merchant' | 'enterprise';
     business_name?: string;
   }, rememberMe?: boolean) => Promise<void>;
   logout: () => Promise<void>;
