@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 
 // Modules
@@ -25,6 +26,7 @@ import { AuditModule } from './audit/audit.module';
 import { HealthModule } from './health/health.module';
 import { WalletsModule } from './wallets/wallets.module';
 import { WebauthnModule } from './webauthn/webauthn.module';
+import { TontinesModule } from './tontines/tontines.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 
 @Module({
@@ -39,6 +41,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
         limit: 100,
       },
     ]),
+    ScheduleModule.forRoot(),
     SupabaseModule,
     AuthModule,
     UsersModule,
@@ -60,6 +63,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     HealthModule,
     WalletsModule,
     WebauthnModule,
+    TontinesModule,
   ],
   providers: [
     {

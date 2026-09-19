@@ -9,7 +9,7 @@ import { TransactionItem } from '@/components/TransactionItem';
 import { WalletActions } from '@/components/WalletActions';
 import { DualCurrencyStat } from '@/components/DualCurrencyStat';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
-import { Receipt, TrendingUp, QrCode, ArrowUpRight, ArrowDownLeft, History } from 'lucide-react';
+import { Receipt, TrendingUp, QrCode, ArrowUpRight, ArrowDownLeft, History, RefreshCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function ClientDashboard() {
@@ -85,6 +85,19 @@ export default function ClientDashboard() {
         <QuickAction icon={ArrowDownLeft} label="Recevoir" onClick={() => navigate('/dashboard/wallet/receive')} />
         <QuickAction icon={History} label="Historique" onClick={() => navigate('/dashboard/client/transactions')} />
       </div>
+
+      <button
+        onClick={() => navigate('/dashboard/tontines')}
+        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
+      >
+        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
+          <RefreshCcw className="w-5 h-5 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-foreground">Tontines</p>
+          <p className="text-sm text-muted-foreground">Épargnez en groupe, à tour de rôle</p>
+        </div>
+      </button>
 
       <Card>
         <CardHeader>
