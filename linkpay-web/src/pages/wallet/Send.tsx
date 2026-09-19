@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -32,6 +32,7 @@ export default function SendPage() {
   const [looking, setLooking] = useState(false);
   const [amountLoading, setAmountLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const autoLookedUp = useRef(false);
 
   const { data: wallet } = useQuery({
     queryKey: ['wallet'],
@@ -40,12 +41,11 @@ export default function SendPage() {
 
   const amountCents = Math.round((parseFloat(amount) || 0) * 100);
 
-  const handleLookup = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const lookup = async (number: string) => {
     setError('');
     setLooking(true);
     try {
-      const { data } = await api.get(`/wallet/lookup/${encodeURIComponent(recipientNumber.trim())}`);
+      const { data } = await api.get(`/wallet/lookup/${encodeURIComponent(number.trim())}`);
       setRecipient(data);
       setStep('amount');
     } catch (err: any) {
@@ -53,6 +53,23 @@ export default function SendPage() {
     } finally {
       setLooking(false);
     }
+  };
+
+  // Arriving from the QR scanner (?to=) — skip retyping the number, search
+  // immediately, same pattern as Pay.tsx's ?ref= auto-lookup.
+  useEffect(() => {
+    const to = searchParams.get('to');
+    if (to && !autoLookedUp.current) {
+      autoLookedUp.current = true;
+      setRecipientNumber(to);
+      lookup(to);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleLookup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    lookup(recipientNumber);
   };
 
   const handleAmountContinue = async (e: React.FormEvent) => {
@@ -293,7 +310,7 @@ export default function SendPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   id="number"
-                  placeholder="LP-00001234"
+                  placeholder="SLP-00001234"
                   value={recipientNumber}
                   onChange={(e) => setRecipientNumber(e.target.value)}
                   required

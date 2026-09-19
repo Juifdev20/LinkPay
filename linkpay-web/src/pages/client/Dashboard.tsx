@@ -82,7 +82,7 @@ export default function ClientDashboard() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-2">
         <QuickAction icon={QrCode} label="Scanner QR" onClick={() => navigate('/dashboard/wallet/scan')} />
         <QuickAction icon={ArrowUpRight} label="Payer" onClick={() => navigate('/dashboard/wallet/pay')} />
-        <QuickAction icon={ArrowDownLeft} label="Recevoir" />
+        <QuickAction icon={ArrowDownLeft} label="Recevoir" onClick={() => navigate('/dashboard/wallet/receive')} />
         <QuickAction icon={History} label="Historique" onClick={() => navigate('/dashboard/client/transactions')} />
       </div>
 

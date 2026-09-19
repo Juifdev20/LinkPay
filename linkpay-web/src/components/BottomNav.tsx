@@ -2,14 +2,15 @@ import { NavLink } from 'react-router-dom';
 import { Home, Receipt, QrCode, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSheetStore } from '@/lib/sheet-store';
+import { useAuthStore } from '@/lib/auth-store';
 
 // "Profil" moved to TopBar.tsx (top-right icon) — this slot is now the app
 // Settings destination, matching what the desktop sidebar already calls it
 // (DashboardLayout.tsx's navItems: '/dashboard/settings' → "Paramètres").
-const tabs = [
+// The central "QR" tab's target depends on role — see BottomNav() below.
+const tabs: { to: string; label: string; icon: typeof Home; end: boolean; central?: boolean }[] = [
   { to: '/dashboard', label: 'Accueil', icon: Home, end: true },
   { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, end: false },
-  { to: '/dashboard/payment-requests/new', label: 'QR', icon: QrCode, end: false, central: true },
   { to: '/dashboard/settings', label: 'Paramètres', icon: Settings, end: false },
 ];
 
@@ -20,6 +21,15 @@ export function BottomNav() {
   // bar, but sliding it fully out of the way too avoids leaving its links
   // focusable/tappable underneath.
   const hidden = useSheetStore((s) => s.isOpen);
+  const hasMerchantId = useAuthStore((s) => !!s.user?.merchant_id);
+
+  // A plain client has no merchant_id — "Créer une demande de paiement"
+  // (the merchant-only endpoint) would 400 with "No merchant account
+  // associated" for them. Their actual "QR" action is scanning to pay.
+  const qrTab = hasMerchantId
+    ? { to: '/dashboard/payment-requests/new', label: 'QR', icon: QrCode, end: false, central: true }
+    : { to: '/dashboard/wallet/scan', label: 'Scanner', icon: QrCode, end: false, central: true };
+  const allTabs = [tabs[0], tabs[1], qrTab, tabs[2]];
 
   return (
     <nav
@@ -29,7 +39,7 @@ export function BottomNav() {
       )}
     >
       <div className="flex items-center justify-around h-16 px-2">
-        {tabs.map((tab) => (
+        {allTabs.map((tab) => (
           <NavLink
             key={tab.to}
             to={tab.to}

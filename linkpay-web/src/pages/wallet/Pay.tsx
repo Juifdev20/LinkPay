@@ -378,7 +378,7 @@ export default function PayInvoicePage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   id="reference"
-                  placeholder="LP-20260904-A1B2C3"
+                  placeholder="SLP-20260904-A1B2C3"
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
                   required

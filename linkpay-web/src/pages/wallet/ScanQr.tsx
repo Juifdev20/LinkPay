@@ -18,6 +18,15 @@ function extractPaymentToken(scanned: string): string | null {
   return match ? match[1] : null;
 }
 
+/** Recognizes a scanned personal wallet number (see Receive.tsx, which
+ * encodes the number as-is with no URL wrapper) — both the current SLP-
+ * prefix and the legacy LP- one still carried by wallets created before
+ * the rebrand. */
+function extractWalletNumber(scanned: string): string | null {
+  const trimmed = scanned.trim();
+  return /^S?LP-[A-Z0-9-]+$/.test(trimmed) ? trimmed : null;
+}
+
 /**
  * Full-screen camera scanner — the "Scanner QR" entry point payers use to
  * pay a merchant's QR code (generated server-side, see CreatePaymentRequest
@@ -38,12 +47,18 @@ export default function ScanQrPage() {
       videoRef.current,
       (result) => {
         const token = extractPaymentToken(result.data);
-        if (!token) {
-          setError('QR non reconnu — ce code ne correspond pas à un lien de paiement ScanLinkPay.');
+        if (token) {
+          scanner.stop();
+          navigate(`/p/${token}`);
           return;
         }
-        scanner.stop();
-        navigate(`/p/${token}`);
+        const walletNumber = extractWalletNumber(result.data);
+        if (walletNumber) {
+          scanner.stop();
+          navigate(`/dashboard/wallet/send?to=${encodeURIComponent(walletNumber)}`);
+          return;
+        }
+        setError('QR non reconnu — ce code ne correspond pas à un lien de paiement ou un numéro ScanLinkPay.');
       },
       {
         preferredCamera: 'environment',
