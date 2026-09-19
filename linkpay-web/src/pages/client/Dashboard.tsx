@@ -58,6 +58,19 @@ export default function ClientDashboard() {
         actions={<WalletActions currency={walletCurrency} />}
       />
 
+      <button
+        onClick={() => navigate('/dashboard/tontines')}
+        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
+      >
+        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
+          <RefreshCcw className="w-5 h-5 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-foreground">Tontines</p>
+          <p className="text-sm text-muted-foreground">Épargnez en groupe, à tour de rôle</p>
+        </div>
+      </button>
+
       <div className="grid grid-cols-2 gap-4">
         <Card>
           <CardContent className="pt-5">
@@ -78,19 +91,6 @@ export default function ClientDashboard() {
           </CardContent>
         </Card>
       </div>
-
-      <button
-        onClick={() => navigate('/dashboard/tontines')}
-        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
-      >
-        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
-          <RefreshCcw className="w-5 h-5 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-foreground">Tontines</p>
-          <p className="text-sm text-muted-foreground">Épargnez en groupe, à tour de rôle</p>
-        </div>
-      </button>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-2">
         <QuickAction icon={QrCode} label="Scanner QR" onClick={() => navigate('/dashboard/wallet/scan')} />
