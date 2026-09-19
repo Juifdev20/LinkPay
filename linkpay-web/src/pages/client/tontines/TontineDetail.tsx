@@ -96,6 +96,12 @@ export default function TontineDetailPage() {
   const canContribute = group.status === 'active' && myContribution && myContribution.status !== 'paid';
   const isMyTurn = cycle?.recipient?.user_id === currentUserId;
 
+  const payoutOrder = group.status !== 'forming'
+    ? [...members]
+        .filter((m: any) => m.payout_position)
+        .sort((a: any, b: any) => a.payout_position - b.payout_position)
+    : [];
+
   return (
     <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-2xl mx-auto">
       <button onClick={() => navigate('/dashboard/tontines')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
@@ -182,6 +188,43 @@ export default function TontineDetailPage() {
         </Card>
       )}
 
+      {payoutOrder.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Ordre de passage</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {payoutOrder.map((m: any) => {
+                const alreadyReceived = group.status === 'completed' || m.payout_position < group.current_cycle;
+                const receivingNow = group.status === 'active' && m.payout_position === group.current_cycle;
+                const nextUp = group.status === 'active' && m.payout_position === group.current_cycle + 1;
+                return (
+                  <div key={m.id} className="flex items-center justify-between py-1.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-xs font-mono text-muted-foreground flex-shrink-0">n°{m.payout_position}</span>
+                      <span className="text-foreground truncate">{m.display_name}</span>
+                      {m.user_id === currentUserId && <span className="text-xs text-muted-foreground flex-shrink-0">(vous)</span>}
+                    </div>
+                    {alreadyReceived ? (
+                      <Badge variant="success" className="flex-shrink-0">
+                        <Check className="w-3 h-3 mr-1" /> A déjà reçu
+                      </Badge>
+                    ) : receivingNow ? (
+                      <Badge className="flex-shrink-0">Reçoit maintenant</Badge>
+                    ) : nextUp ? (
+                      <Badge variant="warning" className="flex-shrink-0">Prochain tour</Badge>
+                    ) : (
+                      <Badge variant="secondary" className="flex-shrink-0">En attente</Badge>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Membres ({members.length}/{group.max_members})</CardTitle>
@@ -193,6 +236,9 @@ export default function TontineDetailPage() {
                 {m.user_id === group.creator_id && <Crown className="w-4 h-4 text-warning" />}
                 <span className="text-foreground">{m.display_name}</span>
                 {m.user_id === currentUserId && <span className="text-xs text-muted-foreground">(vous)</span>}
+                {m.user_id === group.creator_id && (
+                  <span className="text-xs font-medium text-warning">Administrateur</span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 {m.payout_position && <span className="text-xs text-muted-foreground">Tour n°{m.payout_position}</span>}
