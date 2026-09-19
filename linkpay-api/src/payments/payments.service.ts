@@ -578,7 +578,7 @@ export class PaymentsService {
       type: 'payment_received',
       title: 'Paiement reçu',
       body: `Un paiement de ${intent.amount_cents / 100} ${intent.currency} a été reçu (Réf: ${txReference}).`,
-      data: { transaction_id: transaction.id, reference: txReference },
+      data: { transaction_id: transaction.id, reference: txReference, amount_cents: intent.amount_cents, currency: intent.currency },
     }).catch(() => null);
 
     this.logger.log(`Payment succeeded: ${txReference}`);

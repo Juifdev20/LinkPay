@@ -547,7 +547,7 @@ export class WalletsService {
         type: 'transfer_received',
         title: 'Transfert reçu',
         body: `Vous avez reçu ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${dto.currency}.`,
-        data: { transfer_id: transferRow.id },
+        data: { transfer_id: transferRow.id, amount_cents: dto.amount_cents, currency: dto.currency },
       }).catch(() => null);
     }
 
