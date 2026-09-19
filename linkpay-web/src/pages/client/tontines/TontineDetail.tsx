@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { PinInput } from '@/components/PinInput';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Loader2, ArrowLeft, Check, Clock, Shuffle, UserPlus, Crown } from 'lucide-react';
+import { Loader2, ArrowLeft, Check, Clock, Shuffle, UserPlus, Crown, Info } from 'lucide-react';
 
 const STATUS_LABEL: Record<string, string> = {
   forming: 'En formation',
@@ -220,6 +220,12 @@ export default function TontineDetailPage() {
                   </div>
                 );
               })}
+            </div>
+            <div className="flex items-start gap-2 mt-4 pt-4 border-t border-border">
+              <Info className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-muted-foreground">
+                Un nouveau membre qui rejoint après le tirage est toujours ajouté en dernière position — il ne peut jamais passer avant quelqu'un déjà en attente. Il cotise dès son arrivée pour tous les cycles restants, mais ne doit rien pour les cycles déjà terminés.
+              </p>
             </div>
           </CardContent>
         </Card>
