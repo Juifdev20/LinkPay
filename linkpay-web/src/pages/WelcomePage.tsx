@@ -12,7 +12,7 @@ import { Logo } from '@/components/Logo';
  */
 export default function WelcomePage() {
   return (
-    <div className="min-h-[100dvh] flex flex-col relative overflow-hidden bg-gradient-to-br from-primary to-primary/80 px-6 py-10 safe-area-top safe-area-bottom">
+    <div className="min-h-screen flex flex-col relative overflow-hidden bg-gradient-to-br from-primary to-primary/80 px-6 py-10 safe-area-top safe-area-bottom">
       <div className="absolute -top-1/4 -left-1/4 w-[80%] h-[80%] bg-secondary/10 rounded-full blur-3xl" />
       <div className="absolute -bottom-1/4 -right-1/4 w-[80%] h-[80%] bg-background/10 rounded-full blur-3xl" />
 

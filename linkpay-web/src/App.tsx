@@ -11,6 +11,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 import PaymentLinkPage from '@/pages/public/PaymentLinkPage';
 import PaymentResultPage from '@/pages/public/PaymentResultPage';
+import PayByNumber from '@/pages/public/PayByNumber';
 
 import DashboardLayout from '@/layouts/DashboardLayout';
 import MerchantDashboard from '@/pages/merchant/Dashboard';
@@ -120,6 +121,7 @@ export default function App() {
       <Route path="/register" element={<RegisterPage />} />
 
       <Route path="/p/:token" element={<PaymentLinkPage />} />
+      <Route path="/pay/:number" element={<PayByNumber />} />
       <Route path="/payment/result" element={<PaymentResultPage />} />
 
       <Route

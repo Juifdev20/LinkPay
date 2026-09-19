@@ -3,9 +3,10 @@ import { PaymentRequestsController } from './payment-requests.controller';
 import { PaymentRequestsService } from './payment-requests.service';
 import { SupabaseModule } from '../supabase/supabase.module';
 import { CommissionsModule } from '../commissions/commissions.module';
+import { OrganizationsModule } from '../organizations/organizations.module';
 
 @Module({
-  imports: [SupabaseModule, CommissionsModule],
+  imports: [SupabaseModule, CommissionsModule, OrganizationsModule],
   controllers: [PaymentRequestsController],
   providers: [PaymentRequestsService],
   exports: [PaymentRequestsService],

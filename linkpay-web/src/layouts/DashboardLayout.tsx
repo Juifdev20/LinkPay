@@ -1,5 +1,7 @@
 import { Outlet, NavLink, Link, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
@@ -45,6 +47,16 @@ export default function DashboardLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   usePaymentReceivedAlert(user?.id);
+
+  // Same query key as OrganizationProfile.tsx's `my-organization` — react-query
+  // dedupes/shares the cache, so this doesn't add a second network call once
+  // that page (or the onboarding wizard it renders) has already fetched it.
+  const { data: org } = useQuery({
+    queryKey: ['my-organization'],
+    queryFn: async () => (await api.get('/organizations/me')).data,
+    enabled: user?.role === 'enterprise',
+  });
+  const navLocked = user?.role === 'enterprise' && !!org && !org.onboarding_completed_at;
 
   const handleLogout = () => {
     logout();
@@ -171,8 +183,10 @@ export default function DashboardLayout() {
         </main>
       </div>
 
-      {/* Mobile bottom nav */}
-      <BottomNav />
+      {/* Mobile bottom nav — hidden entirely (not just dimmed) while an
+          enterprise account hasn't finished onboarding, since none of these
+          destinations are usable yet. */}
+      {!navLocked && <BottomNav />}
     </div>
   );
 }

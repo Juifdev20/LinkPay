@@ -15,7 +15,7 @@ export class PaymentRequestsService {
     private configService: ConfigService,
   ) {}
 
-  async createPaymentRequest(merchantId: string, merchantUserId: string, data: {
+  async createPaymentRequest(merchantId: string, merchantUserId: string | undefined, data: {
     amount_cents: number;
     currency?: string;
     description?: string;

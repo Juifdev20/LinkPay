@@ -2,7 +2,8 @@ import { Controller, Get, Post, Put, Body, Param, ForbiddenException } from '@ne
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OrganizationsService } from './organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { IsString, IsOptional, MaxLength, IsObject } from 'class-validator';
+import { Public } from '../common/decorators/public.decorator';
+import { IsString, IsOptional, MaxLength, IsObject, IsNumber, IsIn, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CreateMerchantDto } from '../merchants/merchants.controller';
 
@@ -21,6 +22,25 @@ class CreateOrganizationDto {
   @IsOptional()
   @IsObject()
   contact?: Record<string, any>;
+}
+
+class CreateExpenseDto {
+  @ApiProperty({ example: 15000, description: 'Amount in cents' })
+  @IsNumber()
+  @Min(1)
+  @Max(99999999999)
+  amount_cents!: number;
+
+  @ApiPropertyOptional({ default: 'CDF', enum: ['CDF', 'USD'] })
+  @IsOptional()
+  @IsIn(['CDF', 'USD'])
+  currency?: string;
+
+  @ApiPropertyOptional({ example: 'Achat de fournitures' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
 }
 
 @ApiTags('Organizations')
@@ -43,6 +63,13 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Get current user organization' })
   async getMyOrg(@CurrentUser('id') userId: string) {
     return this.orgsService.getOrganizationByOwner(userId);
+  }
+
+  @Public()
+  @Get('pay/:number')
+  @ApiOperation({ summary: 'Look up a business by its ScanLinkPay number (public — no auth)' })
+  async getOrgByScanLinkPayNumber(@Param('number') number: string) {
+    return this.orgsService.getOrganizationByScanLinkPayNumber(number);
   }
 
   // Privileged field on an organization record — never settable by the
@@ -107,6 +134,50 @@ export class OrganizationsController {
     const org = await this.orgsService.getOrganizationById(id);
     this.assertOwnOrg(org.owner_id, callerId);
     return this.orgsService.getOrganizationStats(id);
+  }
+
+  @Get(':id/stores-breakdown')
+  @ApiOperation({ summary: 'Get per-store stats, sorted by volume (owner only)' })
+  async getOrgStoresBreakdown(@Param('id') id: string, @CurrentUser('id') callerId: string) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.getOrganizationStoresBreakdown(id);
+  }
+
+  @Get(':id/recent-transactions')
+  @ApiOperation({ summary: 'Get the latest transactions across every store in this organization (owner only)' })
+  async getOrgRecentTransactions(@Param('id') id: string, @CurrentUser('id') callerId: string) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.getOrganizationRecentTransactions(id);
+  }
+
+  @Post(':id/expenses')
+  @ApiOperation({ summary: 'Record a manual expense (owner only)' })
+  async createOrgExpense(
+    @Param('id') id: string,
+    @Body() dto: CreateExpenseDto,
+    @CurrentUser('id') callerId: string,
+  ) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.createExpense(id, callerId, dto);
+  }
+
+  @Get(':id/expenses')
+  @ApiOperation({ summary: 'List recorded expenses (owner only)' })
+  async listOrgExpenses(@Param('id') id: string, @CurrentUser('id') callerId: string) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.getExpenses(id);
+  }
+
+  @Get(':id/expenses-summary')
+  @ApiOperation({ summary: 'Get total expenses by currency (owner only)' })
+  async getOrgExpensesSummary(@Param('id') id: string, @CurrentUser('id') callerId: string) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.getExpensesSummary(id);
   }
 
   @Post(':id/merchants/:merchantId/enter')

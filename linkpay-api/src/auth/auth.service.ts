@@ -32,7 +32,7 @@ export class AuthService {
 
   async register(dto: RegisterDto) {
     const { email, password, phone, full_name, account_type, business_name } = dto;
-    const roleSlug = account_type === 'merchant' ? 'merchant' : 'client';
+    const roleSlug = account_type === 'merchant' ? 'merchant' : account_type === 'enterprise' ? 'enterprise' : 'client';
 
     const { data, error } = await this.supabaseService.getClient().auth.admin.createUser({
       email,
@@ -64,6 +64,7 @@ export class AuthService {
 
     const roleId = await this.getRoleId(roleSlug);
     let merchantId: string | undefined;
+    let organizationId: string | undefined;
 
     if (roleSlug === 'merchant') {
       const { data: merchant, error: merchantError } = await this.supabaseService.getClient()
@@ -88,10 +89,32 @@ export class AuthService {
       }
     }
 
+    // Same self-signup shape as the merchant branch above, just targeting
+    // `organizations` instead of `merchants` — kept inline here rather than
+    // delegating to OrganizationsService because that service already
+    // depends on AuthService (for generateToken), so importing it back here
+    // would create a circular module dependency (same reasoning as
+    // PaymentsModule re-declaring wallet providers instead of importing
+    // WalletsModule).
+    if (roleSlug === 'enterprise') {
+      const { data: organization, error: organizationError } = await this.supabaseService.getClient()
+        .from('organizations')
+        .insert({ owner_id: userId, name: business_name, status: 'pending' })
+        .select()
+        .single();
+
+      if (organizationError) {
+        this.logger.warn(`Organization creation failed for ${userId}: ${organizationError.message}`);
+      } else {
+        organizationId = organization.id;
+      }
+    }
+
     const { error: roleError } = await this.supabaseService.getClient().from('user_roles').upsert({
       user_id: userId,
       role_id: roleId,
       merchant_id: merchantId || null,
+      organization_id: organizationId || null,
     }, { onConflict: 'user_id,role_id,merchant_id' });
 
     if (roleError) {
@@ -114,7 +137,7 @@ export class AuthService {
     const supabaseSession = await this.mintSupabaseSession(email, password);
 
     return {
-      user: { id: userId, email, phone, full_name, role: roleSlug, merchant_id: merchantId },
+      user: { id: userId, email, phone, full_name, role: roleSlug, merchant_id: merchantId, organization_id: organizationId },
       access_token: token,
       refresh_token: refreshToken,
       supabase_session: supabaseSession,

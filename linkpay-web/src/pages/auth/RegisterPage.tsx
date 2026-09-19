@@ -6,14 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AuthBrandingPanel } from '@/components/auth/AuthBrandingPanel';
-import { Loader2, User, Mail, Phone, Lock, Store, Eye, EyeOff } from 'lucide-react';
+import { Loader2, User, Mail, Phone, Lock, Store, Building2, Eye, EyeOff } from 'lucide-react';
 import { cn, safeRedirect } from '@/lib/utils';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const register = useAuthStore((s) => s.register);
-  const [accountType, setAccountType] = useState<'client' | 'merchant'>('client');
+  const [accountType, setAccountType] = useState<'client' | 'merchant' | 'enterprise'>('client');
   const [businessName, setBusinessName] = useState('');
   const [form, setForm] = useState({ email: '', password: '', full_name: '', phone: '', confirmPassword: '' });
   const [error, setError] = useState('');
@@ -110,10 +110,11 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
+      const { confirmPassword: _confirmPassword, ...registerData } = form;
       await register({
-        ...form,
+        ...registerData,
         account_type: accountType,
-        ...(accountType === 'merchant' ? { business_name: businessName } : {}),
+        ...(accountType === 'merchant' || accountType === 'enterprise' ? { business_name: businessName } : {}),
       });
       navigate(safeRedirect(searchParams.get('redirect')));
     } catch (err: any) {
@@ -160,49 +161,68 @@ export default function RegisterPage() {
 
               <div className="space-y-2">
                 <Label className="font-semibold text-foreground">Type de compte</Label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setAccountType('client')}
                     className={cn(
-                      'flex flex-col items-center gap-2 rounded-xl border-2 px-4 py-4 text-sm font-semibold transition-colors',
+                      'flex flex-col items-center gap-2 rounded-xl border-2 px-2 py-4 text-sm font-semibold transition-colors',
                       accountType === 'client'
                         ? 'border-primary bg-primary/5 text-primary'
                         : 'border-input text-muted-foreground hover:bg-accent',
                     )}
                   >
-                    <User className="w-8 h-8" />
+                    <User className="w-6 h-6" />
                     Client
                   </button>
                   <button
                     type="button"
                     onClick={() => setAccountType('merchant')}
                     className={cn(
-                      'flex flex-col items-center gap-2 rounded-xl border-2 px-4 py-4 text-sm font-semibold transition-colors',
+                      'flex flex-col items-center gap-2 rounded-xl border-2 px-2 py-4 text-sm font-semibold transition-colors',
                       accountType === 'merchant'
                         ? 'border-primary bg-primary/5 text-primary'
                         : 'border-input text-muted-foreground hover:bg-accent',
                     )}
                   >
-                    <Store className="w-8 h-8" />
+                    <Store className="w-6 h-6" />
                     Marchand
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAccountType('enterprise')}
+                    className={cn(
+                      'flex flex-col items-center gap-2 rounded-xl border-2 px-2 py-4 text-sm font-semibold transition-colors',
+                      accountType === 'enterprise'
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-input text-muted-foreground hover:bg-accent',
+                    )}
+                  >
+                    <Building2 className="w-6 h-6" />
+                    Entreprise
                   </button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {accountType === 'client'
-                    ? 'Pour payer des commerçants ScanLinkPay.'
-                    : 'Pour recevoir des paiements via lien et QR code.'}
+                  {accountType === 'client' && 'Pour payer des commerçants ScanLinkPay.'}
+                  {accountType === 'merchant' && 'Pour recevoir des paiements via lien et QR code.'}
+                  {accountType === 'enterprise' && 'Pour gérer plusieurs boutiques sous une même entreprise.'}
                 </p>
               </div>
 
-              {accountType === 'merchant' && (
+              {(accountType === 'merchant' || accountType === 'enterprise') && (
                 <div className="space-y-2">
-                  <Label htmlFor="business_name" className="font-semibold text-foreground">Nom de la boutique</Label>
+                  <Label htmlFor="business_name" className="font-semibold text-foreground">
+                    {accountType === 'merchant' ? 'Nom de la boutique' : "Nom de l'entreprise"}
+                  </Label>
                   <div className="relative">
-                    <Store className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    {accountType === 'merchant' ? (
+                      <Store className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    ) : (
+                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    )}
                     <Input
                       id="business_name"
-                      placeholder="Boutique Mukendi"
+                      placeholder={accountType === 'merchant' ? 'Boutique Mukendi' : 'Doli Hotels'}
                       value={businessName}
                       onChange={(e) => setBusinessName(e.target.value)}
                       required
@@ -213,7 +233,9 @@ export default function RegisterPage() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="full_name" className="font-semibold text-foreground">Nom complet</Label>
+                <Label htmlFor="full_name" className="font-semibold text-foreground">
+                  {accountType === 'enterprise' ? 'Nom complet du responsable' : 'Nom complet'}
+                </Label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
@@ -376,7 +398,7 @@ export default function RegisterPage() {
                 </Label>
               </div>
 
-              <Button type="submit" className="w-full py-6 text-base font-semibold rounded-xl" disabled={loading}>
+              <Button type="submit" className="w-full py-6 text-base font-semibold rounded-xl" disabled={loading || !acceptTerms}>
                 {loading && <Loader2 className="mr-2 w-5 h-5 animate-spin" />}
                 Créer mon compte
               </Button>
