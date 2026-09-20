@@ -10,8 +10,10 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { DualCurrencyStat } from '@/components/DualCurrencyStat';
+import { TransactionItem } from '@/components/TransactionItem';
 import OnboardingWizard from '@/pages/organization/OnboardingWizard';
-import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X, Copy, Check } from 'lucide-react';
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
+import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X, Copy, Check, XCircle, Trophy } from 'lucide-react';
 import { shareOrCopy } from '@/lib/share';
 
 /** `contact.address` is a structured object (country/city/commune/avenue/number,
@@ -74,6 +76,25 @@ export default function OrganizationProfilePage() {
     queryFn: async () => (await api.get(`/organizations/${org.id}/merchants`)).data,
     enabled: !!org?.id,
   });
+
+  const { data: storesBreakdown } = useQuery({
+    queryKey: ['org-stores-breakdown', org?.id],
+    queryFn: async () => (await api.get(`/organizations/${org.id}/stores-breakdown`)).data,
+    enabled: !!org?.id && (merchants?.length || 0) > 1,
+  });
+
+  const { data: recentTransactions } = useQuery({
+    queryKey: ['org-recent-transactions', org?.id],
+    queryFn: async () => (await api.get(`/organizations/${org.id}/recent-transactions`)).data,
+    enabled: !!org?.id,
+  });
+
+  // Unfiltered on purpose — Supabase Realtime's postgres_changes filter only
+  // supports a single `column=eq.value`, not an IN-list of this org's
+  // merchant ids, so we can't scope the subscription itself. The REST
+  // refetch this triggers stays correctly scoped server-side; this just
+  // means the dashboard also refetches on unrelated merchants' activity.
+  useRealtimeInvalidate('transactions', undefined, [['org-stats', org?.id], ['org-stores-breakdown', org?.id], ['org-recent-transactions', org?.id]], !!org?.id);
 
   const enterMutation = useMutation({
     mutationFn: async (merchantId: string) => {
@@ -225,6 +246,69 @@ export default function OrganizationProfilePage() {
           </Card>
         ))}
       </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardContent className="pt-5">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-3">
+              <TrendingUp className="w-5 h-5 text-primary" />
+            </div>
+            <DualCurrencyStat amounts={stats?.net} />
+            <p className="text-sm text-muted-foreground">Net perçu</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-5">
+            <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center mb-3">
+              <XCircle className="w-5 h-5 text-destructive" />
+            </div>
+            <p className="text-xl font-bold text-foreground">{stats?.failed_count || 0}</p>
+            <p className="text-sm text-muted-foreground">Échecs</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {storesBreakdown && storesBreakdown.length > 1 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Meilleures boutiques</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {storesBreakdown.map((s: any, i: number) => (
+              <div key={s.merchant_id} className="flex items-center gap-3 py-3 border-b border-border last:border-0">
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary">
+                  {i === 0 ? <Trophy className="w-4 h-4" /> : i + 1}
+                </div>
+                <p className="font-semibold text-foreground truncate flex-1 min-w-0">{s.merchant_name}</p>
+                <DualCurrencyStat amounts={s.volume} />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Transactions récentes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {recentTransactions?.length ? (
+            recentTransactions.map((t: any) => (
+              <TransactionItem
+                key={t.id}
+                name={t.merchant?.name || 'Boutique'}
+                amountCents={t.amount_cents}
+                currency={t.currency}
+                status={t.status}
+                date={t.created_at}
+                type="in"
+              />
+            ))
+          ) : (
+            <p className="text-muted-foreground text-center py-6">Aucune transaction pour le moment</p>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

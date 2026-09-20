@@ -117,6 +117,22 @@ export class OrganizationsController {
     return this.orgsService.getOrganizationStats(id);
   }
 
+  @Get(':id/stores-breakdown')
+  @ApiOperation({ summary: 'Get per-store stats, sorted by volume (owner only)' })
+  async getOrgStoresBreakdown(@Param('id') id: string, @CurrentUser('id') callerId: string) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.getOrganizationStoresBreakdown(id);
+  }
+
+  @Get(':id/recent-transactions')
+  @ApiOperation({ summary: 'Get the latest transactions across every store in this organization (owner only)' })
+  async getOrgRecentTransactions(@Param('id') id: string, @CurrentUser('id') callerId: string) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.getOrganizationRecentTransactions(id);
+  }
+
   @Post(':id/merchants/:merchantId/enter')
   @ApiOperation({ summary: 'Get a merchant-scoped session for one of this organization\'s stores (owner only)' })
   async enterOrgMerchant(

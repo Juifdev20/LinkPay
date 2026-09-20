@@ -190,6 +190,43 @@ export class OrganizationsService {
     return this.merchantsService.getStatsForMerchantIds(merchants.map((m) => m.id));
   }
 
+  /** Per-store stats for the "Meilleures boutiques" dashboard widget — same
+   * getMerchantStats() the individual merchant dashboard already uses, just
+   * called once per store instead of once aggregated across all of them. */
+  async getOrganizationStoresBreakdown(orgId: string) {
+    const merchants = await this.getOrganizationMerchants(orgId);
+
+    const breakdown = await Promise.all(
+      merchants.map(async (m) => ({
+        merchant_id: m.id,
+        merchant_name: m.name,
+        ...(await this.merchantsService.getMerchantStats(m.id)),
+      })),
+    );
+
+    return breakdown.sort((a, b) => (b.volume.CDF + b.volume.USD) - (a.volume.CDF + a.volume.USD));
+  }
+
+  /** Latest transactions across every store this organization owns, for the
+   * "Transactions récentes" dashboard widget. */
+  async getOrganizationRecentTransactions(orgId: string, limit = 10) {
+    const merchants = await this.getOrganizationMerchants(orgId);
+    const merchantIds = merchants.map((m) => m.id);
+    if (!merchantIds.length) return [];
+
+    const { data, error } = await this.supabaseService.getClient()
+      .from('transactions')
+      .select('id, amount_cents, currency, status, created_at, merchant:merchants(name)')
+      .in('merchant_id', merchantIds)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      throw new Error(`Failed to fetch organization transactions: ${error.message}`);
+    }
+    return data || [];
+  }
+
   /** Mints a merchant-scoped token pair for one of this organization's
    * stores — the owner's canonical role/user_roles row is never touched;
    * see JwtPayload.acting_as_org_id and AuthService.refresh() for how this
