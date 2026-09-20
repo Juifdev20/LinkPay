@@ -196,8 +196,12 @@ export default function OnboardingWizard({ orgId, orgName }: { orgId: string; or
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl mx-auto">
-      <div>
+    <div className="max-w-2xl mx-auto">
+      {/* Sticky so it stays put while only the form card below scrolls —
+          top-20 on mobile clears the fixed TopBar (same offset as
+          DashboardLayout's pt-20), top-0 once that bar is gone at md:.
+          bg-background keeps the scrolling content from showing through. */}
+      <div className="sticky top-20 md:top-0 z-10 bg-background px-6 pt-6 pb-4">
         <h1 className="text-2xl font-bold text-foreground">Configuration de l'entreprise</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Étape {stepIndex + 1} sur {STEPS.length} — {STEPS[stepIndex].label}
@@ -210,6 +214,7 @@ export default function OnboardingWizard({ orgId, orgName }: { orgId: string; or
         </div>
       </div>
 
+      <div className="px-6 pb-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-base">{STEPS[stepIndex].label}</CardTitle>
@@ -450,6 +455,7 @@ export default function OnboardingWizard({ orgId, orgName }: { orgId: string; or
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
