@@ -180,8 +180,10 @@ export default function DashboardLayout() {
         </main>
       </div>
 
-      {/* Mobile bottom nav */}
-      <BottomNav locked={navLocked} />
+      {/* Mobile bottom nav — hidden entirely (not just dimmed) while an
+          enterprise account hasn't finished onboarding, since none of these
+          destinations are usable yet. */}
+      {!navLocked && <BottomNav />}
     </div>
   );
 }

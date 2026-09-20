@@ -13,7 +13,7 @@ const tabs = [
   { to: '/dashboard/settings', label: 'Paramètres', icon: Settings, end: false },
 ];
 
-export function BottomNav({ locked = false }: { locked?: boolean }) {
+export function BottomNav() {
   // Hidden while a FormSheet is open — the sheet owns the keyboard-aware
   // bottom-of-screen real estate at that point (see FormSheet.tsx /
   // sheet-store.ts). The sheet's own z-index already visually covers this
@@ -29,77 +29,46 @@ export function BottomNav({ locked = false }: { locked?: boolean }) {
       )}
     >
       <div className="flex items-center justify-around h-16 px-2">
-        {tabs.map((tab) =>
-          // Enterprise accounts mid-onboarding: keep every tab visible for
-          // layout consistency, but dimmed and inert — none of these
-          // destinations are usable until the wizard is done (see
-          // DashboardLayout.tsx's navLocked).
-          locked ? (
-            <div
-              key={tab.to}
-              aria-disabled="true"
-              className={cn(
-                'flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[60px] pointer-events-none opacity-40 text-muted-foreground',
+        {tabs.map((tab) => (
+          <NavLink
+            key={tab.to}
+            to={tab.to}
+            end={tab.end}
+            className={({ isActive }) =>
+              cn(
+                'flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg transition-colors min-w-[60px]',
                 tab.central && 'relative -mt-6',
-              )}
-            >
-              {tab.central ? (
+                !tab.central && (isActive ? 'text-primary' : 'text-muted-foreground'),
+              )
+            }
+          >
+            {({ isActive }) =>
+              tab.central ? (
                 <>
-                  <div className="w-12 h-12 rounded-2xl bg-primary flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/30">
                     <tab.icon className="w-6 h-6 text-primary-foreground" />
                   </div>
                   <span className="text-[10px] font-medium mt-0.5">{tab.label}</span>
                 </>
               ) : (
                 <>
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center">
-                    <tab.icon className="w-5 h-5" />
+                  {/* Active tab: colored pill behind the icon, icon stays
+                      light — same treatment as the central QR button above,
+                      generalized to every tab instead of just that one. */}
+                  <div
+                    className={cn(
+                      'w-9 h-9 rounded-full flex items-center justify-center transition-colors',
+                      isActive && 'bg-primary',
+                    )}
+                  >
+                    <tab.icon className={cn('w-5 h-5', isActive && 'text-primary-foreground')} />
                   </div>
                   <span className="text-[10px] font-medium">{tab.label}</span>
                 </>
-              )}
-            </div>
-          ) : (
-            <NavLink
-              key={tab.to}
-              to={tab.to}
-              end={tab.end}
-              className={({ isActive }) =>
-                cn(
-                  'flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg transition-colors min-w-[60px]',
-                  tab.central && 'relative -mt-6',
-                  !tab.central && (isActive ? 'text-primary' : 'text-muted-foreground'),
-                )
-              }
-            >
-              {({ isActive }) =>
-                tab.central ? (
-                  <>
-                    <div className="w-12 h-12 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/30">
-                      <tab.icon className="w-6 h-6 text-primary-foreground" />
-                    </div>
-                    <span className="text-[10px] font-medium mt-0.5">{tab.label}</span>
-                  </>
-                ) : (
-                  <>
-                    {/* Active tab: colored pill behind the icon, icon stays
-                        light — same treatment as the central QR button above,
-                        generalized to every tab instead of just that one. */}
-                    <div
-                      className={cn(
-                        'w-9 h-9 rounded-full flex items-center justify-center transition-colors',
-                        isActive && 'bg-primary',
-                      )}
-                    >
-                      <tab.icon className={cn('w-5 h-5', isActive && 'text-primary-foreground')} />
-                    </div>
-                    <span className="text-[10px] font-medium">{tab.label}</span>
-                  </>
-                )
-              }
-            </NavLink>
-          ),
-        )}
+              )
+            }
+          </NavLink>
+        ))}
       </div>
     </nav>
   );
