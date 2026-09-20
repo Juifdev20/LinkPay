@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Body, Param, ForbiddenException } from '@ne
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OrganizationsService } from './organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { Public } from '../common/decorators/public.decorator';
 import { IsString, IsOptional, MaxLength, IsObject } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CreateMerchantDto } from '../merchants/merchants.controller';
@@ -43,6 +44,13 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Get current user organization' })
   async getMyOrg(@CurrentUser('id') userId: string) {
     return this.orgsService.getOrganizationByOwner(userId);
+  }
+
+  @Public()
+  @Get('pay/:number')
+  @ApiOperation({ summary: 'Look up a business by its ScanLinkPay number (public — no auth)' })
+  async getOrgByScanLinkPayNumber(@Param('number') number: string) {
+    return this.orgsService.getOrganizationByScanLinkPayNumber(number);
   }
 
   // Privileged field on an organization record — never settable by the

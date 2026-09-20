@@ -11,7 +11,8 @@ import { Badge } from '@/components/ui/badge';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { DualCurrencyStat } from '@/components/DualCurrencyStat';
 import OnboardingWizard from '@/pages/organization/OnboardingWizard';
-import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X } from 'lucide-react';
+import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X, Copy, Check } from 'lucide-react';
+import { shareOrCopy } from '@/lib/share';
 
 /** `contact.address` is a structured object (country/city/commune/avenue/number,
  * filled by OnboardingWizard) — this just renders it as one readable line for
@@ -29,6 +30,7 @@ export default function OrganizationProfilePage() {
   const [showCreateStore, setShowCreateStore] = useState(false);
   const [newStore, setNewStore] = useState({ name: '', phone: '', city: '', default_currency: 'CDF' as 'CDF' | 'USD' });
   const [enteringId, setEnteringId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const { data: org, isLoading } = useQuery({
     queryKey: ['my-organization'],
@@ -166,6 +168,45 @@ export default function OrganizationProfilePage() {
           </Button>
         </CardContent>
       </Card>
+
+      {org?.scanlinkpay_number && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Numéro ScanLinkPay</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground mb-4">
+              Vos clients peuvent vous payer directement en scannant ce QR ou en saisissant ce numéro, sans facture préétablie.
+            </p>
+            {org.scanlinkpay_qr_url && (
+              <div className="flex justify-center mb-4">
+                <img src={org.scanlinkpay_qr_url} alt="QR ScanLinkPay" className="w-48 h-48 rounded-2xl border border-border" />
+              </div>
+            )}
+            <div className="rounded-xl bg-secondary p-3 text-left">
+              <p className="text-sm text-muted-foreground mb-1">Votre numéro</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 font-mono text-lg font-bold tracking-wider text-foreground">{org.scanlinkpay_number}</code>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={async () => {
+                    await shareOrCopy({
+                      title: 'Payez-moi via ScanLinkPay',
+                      text: `Payez ${org.name} via LinkPay`,
+                      url: `${window.location.origin}/pay/${org.scanlinkpay_number}`,
+                    });
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                >
+                  {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((c) => (
