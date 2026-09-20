@@ -110,8 +110,9 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
+      const { confirmPassword: _confirmPassword, ...registerData } = form;
       await register({
-        ...form,
+        ...registerData,
         account_type: accountType,
         ...(accountType === 'merchant' || accountType === 'enterprise' ? { business_name: businessName } : {}),
       });
