@@ -146,7 +146,23 @@ export class OrganizationsService {
   }
 
   async updateOrganization(id: string, updates: Record<string, any>) {
-    const allowedFields = ['name', 'legal_name', 'contact', 'status'];
+    const allowedFields = [
+      'name',
+      'legal_name',
+      'contact',
+      'status',
+      'legal_form',
+      'legal_identifiers',
+      'sector',
+      'description',
+      'currency',
+      'secondary_currencies',
+      'tax_regime',
+      'payout_info',
+      'legal_representative',
+      'receipt_footer_message',
+      'onboarding_completed_at',
+    ];
     const filtered: Record<string, any> = {};
 
     for (const key of allowedFields) {

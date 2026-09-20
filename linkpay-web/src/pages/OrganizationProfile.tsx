@@ -10,7 +10,16 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { DualCurrencyStat } from '@/components/DualCurrencyStat';
+import OnboardingWizard from '@/pages/organization/OnboardingWizard';
 import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X } from 'lucide-react';
+
+/** `contact.address` is a structured object (country/city/commune/avenue/number,
+ * filled by OnboardingWizard) — this just renders it as one readable line for
+ * the quick-edit card below, which doesn't re-implement structured editing. */
+function formatAddress(address: any): string {
+  if (!address || typeof address !== 'object') return '';
+  return [address.avenue, address.number, address.commune, address.city, address.country].filter(Boolean).join(', ');
+}
 
 export default function OrganizationProfilePage() {
   const navigate = useNavigate();
@@ -36,7 +45,7 @@ export default function OrganizationProfilePage() {
         legal_name: org.legal_name || '',
         phone: org.contact?.phone || '',
         email: org.contact?.email || '',
-        address: org.contact?.address || '',
+        address: typeof org.contact?.address === 'string' ? org.contact.address : formatAddress(org.contact?.address),
       });
     }
   }, [org]);
@@ -46,7 +55,7 @@ export default function OrganizationProfilePage() {
       await api.put(`/organizations/${org.id}`, {
         name: form.name,
         legal_name: form.legal_name,
-        contact: { phone: form.phone, email: form.email, address: form.address },
+        contact: { ...org.contact, phone: form.phone, email: form.email, address: org.contact?.address },
       });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-organization'] }),
@@ -102,6 +111,10 @@ export default function OrganizationProfilePage() {
     );
   }
 
+  if (org && !org.onboarding_completed_at) {
+    return <OnboardingWizard orgId={org.id} orgName={org.name} />;
+  }
+
   return (
     <div className="p-6 space-y-6 max-w-2xl mx-auto">
       <div className="flex items-center gap-3">
@@ -141,7 +154,7 @@ export default function OrganizationProfilePage() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="org_address">Adresse</Label>
-            <Input id="org_address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+            <Input id="org_address" value={form.address} readOnly disabled className="disabled:opacity-100" />
           </div>
           <Button
             className="w-full"
