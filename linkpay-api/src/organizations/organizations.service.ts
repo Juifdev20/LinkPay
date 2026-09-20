@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import { AuthService } from '../auth/auth.service';
 import { MerchantsService } from '../merchants/merchants.service';
+import { sumByCurrency } from '../common/utils/currency';
 import * as QRCode from 'qrcode';
 
 @Injectable()
@@ -290,5 +291,61 @@ export class OrganizationsService {
     }
 
     return data;
+  }
+
+  async createExpense(orgId: string, userId: string, data: { amount_cents: number; currency?: string; description?: string }) {
+    const { data: expense, error } = await this.supabaseService.getClient()
+      .from('organization_expenses')
+      .insert({
+        organization_id: orgId,
+        amount_cents: data.amount_cents,
+        currency: data.currency || 'CDF',
+        description: data.description,
+        created_by: userId,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to record expense: ${error.message}`);
+    }
+    return expense;
+  }
+
+  /** Sums recorded expenses by currency for the dashboard's "Dépenses" tile.
+   * Tolerates `organization_expenses` not existing yet (migration 017 not
+   * run) by returning zero instead of throwing — same reasoning as
+   * ensureScanLinkPayQr() tolerating a missing column, so the dashboard
+   * never breaks while migrations are pending. */
+  async getExpensesSummary(orgId: string) {
+    try {
+      const { data, error } = await this.supabaseService.getClient()
+        .from('organization_expenses')
+        .select('amount_cents, currency')
+        .eq('organization_id', orgId);
+
+      if (error) throw error;
+      return sumByCurrency(data, 'amount_cents');
+    } catch (err: any) {
+      this.logger.warn(`Expenses summary unavailable for org ${orgId} (migration 017 likely pending): ${err.message}`);
+      return sumByCurrency(null, 'amount_cents');
+    }
+  }
+
+  async getExpenses(orgId: string, limit = 20) {
+    try {
+      const { data, error } = await this.supabaseService.getClient()
+        .from('organization_expenses')
+        .select('*')
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+      return data || [];
+    } catch (err: any) {
+      this.logger.warn(`Expenses list unavailable for org ${orgId} (migration 017 likely pending): ${err.message}`);
+      return [];
+    }
   }
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -13,22 +13,13 @@ import { DualCurrencyStat } from '@/components/DualCurrencyStat';
 import { TransactionItem } from '@/components/TransactionItem';
 import OnboardingWizard from '@/pages/organization/OnboardingWizard';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
-import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X, Copy, Check, XCircle, Trophy } from 'lucide-react';
+import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X, Copy, Check, XCircle, Trophy, Banknote, Smartphone, Package, MinusCircle, PiggyBank } from 'lucide-react';
 import { shareOrCopy } from '@/lib/share';
-
-/** `contact.address` is a structured object (country/city/commune/avenue/number,
- * filled by OnboardingWizard) — this just renders it as one readable line for
- * the quick-edit card below, which doesn't re-implement structured editing. */
-function formatAddress(address: any): string {
-  if (!address || typeof address !== 'object') return '';
-  return [address.avenue, address.number, address.commune, address.city, address.country].filter(Boolean).join(', ');
-}
 
 export default function OrganizationProfilePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const enterStore = useAuthStore((s) => s.enterStore);
-  const [form, setForm] = useState({ name: '', legal_name: '', phone: '', email: '', address: '' });
   const [showCreateStore, setShowCreateStore] = useState(false);
   const [newStore, setNewStore] = useState({ name: '', phone: '', city: '', default_currency: 'CDF' as 'CDF' | 'USD' });
   const [enteringId, setEnteringId] = useState<string | null>(null);
@@ -40,29 +31,6 @@ export default function OrganizationProfilePage() {
       const { data } = await api.get('/organizations/me');
       return data;
     },
-  });
-
-  useEffect(() => {
-    if (org) {
-      setForm({
-        name: org.name || '',
-        legal_name: org.legal_name || '',
-        phone: org.contact?.phone || '',
-        email: org.contact?.email || '',
-        address: typeof org.contact?.address === 'string' ? org.contact.address : formatAddress(org.contact?.address),
-      });
-    }
-  }, [org]);
-
-  const updateMutation = useMutation({
-    mutationFn: async () => {
-      await api.put(`/organizations/${org.id}`, {
-        name: form.name,
-        legal_name: form.legal_name,
-        contact: { ...org.contact, phone: form.phone, email: form.email, address: org.contact?.address },
-      });
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-organization'] }),
   });
 
   const { data: stats } = useQuery({
@@ -87,6 +55,28 @@ export default function OrganizationProfilePage() {
     queryKey: ['org-recent-transactions', org?.id],
     queryFn: async () => (await api.get(`/organizations/${org.id}/recent-transactions`)).data,
     enabled: !!org?.id,
+  });
+
+  const { data: expensesSummary } = useQuery({
+    queryKey: ['org-expenses-summary', org?.id],
+    queryFn: async () => (await api.get(`/organizations/${org.id}/expenses-summary`)).data,
+    enabled: !!org?.id,
+  });
+
+  const [showAddExpense, setShowAddExpense] = useState(false);
+  const [newExpense, setNewExpense] = useState({ amount: '', description: '', currency: 'CDF' as 'CDF' | 'USD' });
+  const addExpenseMutation = useMutation({
+    mutationFn: async () =>
+      (await api.post(`/organizations/${org.id}/expenses`, {
+        amount_cents: Math.round((parseFloat(newExpense.amount) || 0) * 100),
+        currency: newExpense.currency,
+        description: newExpense.description,
+      })).data,
+    onSuccess: () => {
+      setShowAddExpense(false);
+      setNewExpense({ amount: '', description: '', currency: 'CDF' });
+      queryClient.invalidateQueries({ queryKey: ['org-expenses-summary', org.id] });
+    },
   });
 
   // Unfiltered on purpose — Supabase Realtime's postgres_changes filter only
@@ -119,8 +109,26 @@ export default function OrganizationProfilePage() {
     },
   });
 
+  // "Espèces" and "Articles vendus" have no data source yet (no caisse, no
+  // stock/ventes module) — shown as honest placeholders rather than fake
+  // numbers, filled in automatically once those tranches land.
+  const cashReceived = { CDF: 0, USD: 0 };
+  const electronicReceived = stats?.volume || { CDF: 0, USD: 0 };
+  const expenses = expensesSummary || { CDF: 0, USD: 0 };
+  const netCashReconciliation = {
+    CDF: electronicReceived.CDF + cashReceived.CDF - expenses.CDF,
+    USD: electronicReceived.USD + cashReceived.USD - expenses.USD,
+  };
+
+  const recapCards = [
+    { label: 'Perçu électronique', money: electronicReceived, icon: Smartphone },
+    { label: 'Perçu en espèces', money: cashReceived, icon: Banknote, note: 'Bientôt disponible — via la Caisse' },
+    { label: 'Articles vendus', value: '—', icon: Package, note: 'Bientôt disponible — via Stock & Ventes' },
+    { label: 'Dépenses', money: expenses, icon: MinusCircle },
+    { label: 'Montant réel encaissé', money: netCashReconciliation, icon: PiggyBank },
+  ];
+
   const statCards = [
-    { label: 'Volume total', money: stats?.volume, icon: TrendingUp },
     { label: 'Transactions', value: String(stats?.total_transactions || 0), icon: Receipt },
     { label: "Aujourd'hui", value: String(stats?.today_transactions || 0), icon: QrCode },
     { label: 'En attente', money: stats?.pending, icon: Wallet },
@@ -145,7 +153,7 @@ export default function OrganizationProfilePage() {
           <Building2 className="w-6 h-6 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Mon organisation</h1>
+          <h1 className="text-2xl font-bold text-foreground">{org?.name || 'Dashboard'}</h1>
           {org?.status && (
             <Badge variant={org.status === 'active' ? 'success' : 'warning'} className="mt-1 capitalize">
               {org.status}
@@ -153,42 +161,6 @@ export default function OrganizationProfilePage() {
           )}
         </div>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Informations</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="org_name">Nom</Label>
-            <Input id="org_name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="org_legal_name">Raison sociale</Label>
-            <Input id="org_legal_name" value={form.legal_name} onChange={(e) => setForm({ ...form, legal_name: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="org_phone">Téléphone</Label>
-            <Input id="org_phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="org_email">Email</Label>
-            <Input id="org_email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="org_address">Adresse</Label>
-            <Input id="org_address" value={form.address} readOnly disabled className="disabled:opacity-100" />
-          </div>
-          <Button
-            className="w-full"
-            disabled={!form.name || updateMutation.isPending}
-            onClick={() => updateMutation.mutate()}
-          >
-            {updateMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
-            Enregistrer
-          </Button>
-        </CardContent>
-      </Card>
 
       {org?.scanlinkpay_number && (
         <Card>
@@ -228,6 +200,71 @@ export default function OrganizationProfilePage() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Récapitulatif</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            {recapCards.map((c) => (
+              <div key={c.label} className="rounded-xl border border-border p-4">
+                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center mb-2">
+                  <c.icon className="w-4 h-4 text-primary" />
+                </div>
+                {c.money ? <DualCurrencyStat amounts={c.money} /> : <p className="text-xl font-bold text-foreground">{c.value}</p>}
+                <p className="text-sm text-muted-foreground">{c.label}</p>
+                {c.note && <p className="text-xs text-muted-foreground/70 mt-0.5">{c.note}</p>}
+              </div>
+            ))}
+          </div>
+
+          {showAddExpense ? (
+            <div className="rounded-xl border border-border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="font-semibold text-foreground text-sm">Nouvelle dépense</p>
+                <button onClick={() => setShowAddExpense(false)} className="text-muted-foreground hover:text-foreground">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="expense_amount">Montant</Label>
+                <Input
+                  id="expense_amount"
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={newExpense.amount}
+                  onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })}
+                />
+              </div>
+              <CurrencySelector value={newExpense.currency} onChange={(c) => setNewExpense({ ...newExpense, currency: c })} />
+              <div className="space-y-2">
+                <Label htmlFor="expense_description">Description</Label>
+                <Input
+                  id="expense_description"
+                  placeholder="Achat de fournitures"
+                  value={newExpense.description}
+                  onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+                />
+              </div>
+              <Button
+                className="w-full"
+                disabled={!newExpense.amount || addExpenseMutation.isPending}
+                onClick={() => addExpenseMutation.mutate()}
+              >
+                {addExpenseMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
+                Enregistrer la dépense
+              </Button>
+            </div>
+          ) : (
+            <Button variant="outline" className="w-full" onClick={() => setShowAddExpense(true)}>
+              <Plus className="mr-1 w-4 h-4" />
+              Ajouter une dépense
+            </Button>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((c) => (

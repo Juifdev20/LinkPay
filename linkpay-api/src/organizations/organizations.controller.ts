@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OrganizationsService } from './organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
-import { IsString, IsOptional, MaxLength, IsObject } from 'class-validator';
+import { IsString, IsOptional, MaxLength, IsObject, IsNumber, IsIn, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CreateMerchantDto } from '../merchants/merchants.controller';
 
@@ -22,6 +22,25 @@ class CreateOrganizationDto {
   @IsOptional()
   @IsObject()
   contact?: Record<string, any>;
+}
+
+class CreateExpenseDto {
+  @ApiProperty({ example: 15000, description: 'Amount in cents' })
+  @IsNumber()
+  @Min(1)
+  @Max(99999999999)
+  amount_cents!: number;
+
+  @ApiPropertyOptional({ default: 'CDF', enum: ['CDF', 'USD'] })
+  @IsOptional()
+  @IsIn(['CDF', 'USD'])
+  currency?: string;
+
+  @ApiPropertyOptional({ example: 'Achat de fournitures' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
 }
 
 @ApiTags('Organizations')
@@ -131,6 +150,34 @@ export class OrganizationsController {
     const org = await this.orgsService.getOrganizationById(id);
     this.assertOwnOrg(org.owner_id, callerId);
     return this.orgsService.getOrganizationRecentTransactions(id);
+  }
+
+  @Post(':id/expenses')
+  @ApiOperation({ summary: 'Record a manual expense (owner only)' })
+  async createOrgExpense(
+    @Param('id') id: string,
+    @Body() dto: CreateExpenseDto,
+    @CurrentUser('id') callerId: string,
+  ) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.createExpense(id, callerId, dto);
+  }
+
+  @Get(':id/expenses')
+  @ApiOperation({ summary: 'List recorded expenses (owner only)' })
+  async listOrgExpenses(@Param('id') id: string, @CurrentUser('id') callerId: string) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.getExpenses(id);
+  }
+
+  @Get(':id/expenses-summary')
+  @ApiOperation({ summary: 'Get total expenses by currency (owner only)' })
+  async getOrgExpensesSummary(@Param('id') id: string, @CurrentUser('id') callerId: string) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.getExpensesSummary(id);
   }
 
   @Post(':id/merchants/:merchantId/enter')
