@@ -98,10 +98,13 @@ export class TontinesService {
   }
 
   async getMyGroups(userId: string) {
+    // Excludes 'declined' — a refused invitation should disappear from "My
+    // tontines", not linger there forever alongside real memberships.
     const { data: memberships, error } = await this.db
       .from('tontine_members')
       .select('status, payout_position, group:tontine_groups(*)')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .neq('status', 'declined');
 
     if (error) {
       throw new Error(`Failed to fetch tontines: ${error.message}`);
@@ -210,11 +213,14 @@ export class TontinesService {
 
     const { data: existing } = await this.db
       .from('tontine_members')
-      .select('id')
+      .select('id, status')
       .eq('group_id', groupId)
       .eq('user_id', walletRow.user_id)
       .maybeSingle();
-    if (existing) {
+    // A 'declined' row doesn't block a fresh invite — someone can always
+    // change their mind, or the admin may have meant to re-invite after a
+    // mistaken refusal. Any other status (invited/active) still blocks.
+    if (existing && existing.status !== 'declined') {
       throw new BadRequestException('Cette personne fait déjà partie de la tontine');
     }
 
@@ -228,16 +234,29 @@ export class TontinesService {
       throw new BadRequestException('Cette tontine est déjà complète');
     }
 
-    const { data: member, error } = await this.db
-      .from('tontine_members')
-      .insert({
-        group_id: groupId,
-        user_id: walletRow.user_id,
-        join_order: (memberCount || 0) + 1,
-        status: 'invited',
-      })
-      .select()
-      .single();
+    let member: any;
+    let error: any;
+    if (existing) {
+      // Re-invite: reset the same row (group_id, user_id) is unique, so a
+      // fresh INSERT would fail — instead of a new row.
+      ({ data: member, error } = await this.db
+        .from('tontine_members')
+        .update({ status: 'invited', invited_at: new Date().toISOString(), accepted_at: null })
+        .eq('id', existing.id)
+        .select()
+        .single());
+    } else {
+      ({ data: member, error } = await this.db
+        .from('tontine_members')
+        .insert({
+          group_id: groupId,
+          user_id: walletRow.user_id,
+          join_order: (memberCount || 0) + 1,
+          status: 'invited',
+        })
+        .select()
+        .single());
+    }
 
     if (error) {
       throw new Error(`Failed to invite member: ${error.message}`);

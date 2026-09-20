@@ -57,7 +57,10 @@ export default function TontineDetailPage() {
 
   const respondMutation = useMutation({
     mutationFn: async (accept: boolean) => (await api.post(`/tontines/${id}/${accept ? 'accept' : 'decline'}`)).data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tontine', id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tontine', id] });
+      queryClient.invalidateQueries({ queryKey: ['tontines'] });
+    },
   });
 
   const contributeMutation = useMutation({
@@ -257,7 +260,7 @@ export default function TontineDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Membres ({members.length}/{group.max_members})</CardTitle>
+          <CardTitle className="text-base">Membres ({activeCount}/{group.max_members})</CardTitle>
         </CardHeader>
         <CardContent>
           {members.map((m: any) => (
