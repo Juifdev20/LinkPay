@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Headers, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsInt, IsIn, IsBoolean, IsNumber, Min, Max, MaxLength, Length } from 'class-validator';
+import { IsString, IsOptional, IsInt, IsIn, IsBoolean, IsNumber, Min, Max, MaxLength, Length, ValidateIf } from 'class-validator';
 import { TontinesService } from './tontines.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
@@ -24,9 +24,16 @@ class CreateTontineDto {
   @IsIn(['CDF', 'USD'])
   currency!: string;
 
-  @ApiProperty({ enum: ['weekly', 'monthly'] })
-  @IsIn(['weekly', 'monthly'])
-  frequency!: 'weekly' | 'monthly';
+  @ApiProperty({ enum: ['weekly', 'monthly', 'custom'] })
+  @IsIn(['weekly', 'monthly', 'custom'])
+  frequency!: 'weekly' | 'monthly' | 'custom';
+
+  @ApiPropertyOptional({ description: 'Required when frequency is "custom" — the cycle repeats every N days', minimum: 1, maximum: 90 })
+  @ValidateIf((o) => o.frequency === 'custom')
+  @IsInt()
+  @Min(1)
+  @Max(90)
+  custom_interval_days?: number;
 
   @ApiProperty({ minimum: 3, maximum: 30 })
   @IsInt()

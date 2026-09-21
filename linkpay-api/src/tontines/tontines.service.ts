@@ -9,7 +9,8 @@ interface CreateGroupData {
   description?: string;
   contribution_amount_cents: number;
   currency: string;
-  frequency: 'weekly' | 'monthly';
+  frequency: 'weekly' | 'monthly' | 'custom';
+  custom_interval_days?: number;
   max_members: number;
   grace_period_days?: number;
 }
@@ -46,6 +47,7 @@ export class TontinesService {
         contribution_amount_cents: data.contribution_amount_cents,
         currency: data.currency,
         frequency: data.frequency,
+        custom_interval_days: data.frequency === 'custom' ? data.custom_interval_days : null,
         max_members: data.max_members,
         grace_period_days: data.grace_period_days ?? 3,
         status: 'forming',
@@ -505,7 +507,7 @@ export class TontinesService {
 
     await this.db.from('tontine_groups').update({ status: 'active', current_cycle: 1, updated_at: new Date().toISOString() }).eq('id', groupId);
 
-    const cycle = await this.createCycle(groupId, 1, shuffled[0].id, group.frequency);
+    const cycle = await this.createCycle(groupId, 1, shuffled[0].id, group.frequency, group.custom_interval_days);
     await this.generateContributions(cycle.id, groupId, shuffled[0].id, members, group.contribution_amount_cents, group.currency, cycle.due_date);
 
     for (const m of shuffled) {
@@ -521,18 +523,20 @@ export class TontinesService {
     return this.getGroupDetail(groupId, callerId);
   }
 
-  private addInterval(date: Date, frequency: string): Date {
+  private addInterval(date: Date, frequency: string, customIntervalDays?: number): Date {
     const next = new Date(date);
     if (frequency === 'weekly') {
       next.setDate(next.getDate() + 7);
+    } else if (frequency === 'custom') {
+      next.setDate(next.getDate() + (customIntervalDays || 1));
     } else {
       next.setMonth(next.getMonth() + 1);
     }
     return next;
   }
 
-  private async createCycle(groupId: string, cycleNumber: number, recipientMemberId: string, frequency: string) {
-    const dueDate = this.addInterval(new Date(), frequency);
+  private async createCycle(groupId: string, cycleNumber: number, recipientMemberId: string, frequency: string, customIntervalDays?: number) {
+    const dueDate = this.addInterval(new Date(), frequency, customIntervalDays);
     const { data: cycle, error } = await this.db
       .from('tontine_cycles')
       .insert({
@@ -691,7 +695,7 @@ export class TontinesService {
           throw new Error(`Tontine data inconsistency: no member at payout_position ${cycle.cycle_number + 1} for group ${group.id}`);
         }
 
-        const nextCycle = await this.createCycle(group.id, cycle.cycle_number + 1, nextRecipient.id, group.frequency);
+        const nextCycle = await this.createCycle(group.id, cycle.cycle_number + 1, nextRecipient.id, group.frequency, group.custom_interval_days);
         await this.generateContributions(nextCycle.id, group.id, nextRecipient.id, allMembers || [], group.contribution_amount_cents, group.currency, nextCycle.due_date);
         await this.db.from('tontine_groups').update({ current_cycle: cycle.cycle_number + 1, updated_at: new Date().toISOString() }).eq('id', group.id);
       }

@@ -120,7 +120,7 @@ export default function TontineDetailPage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-foreground truncate">{group.name}</h1>
           <p className="text-sm text-muted-foreground">
-            {formatCurrency(group.contribution_amount_cents, group.currency)} · {group.frequency === 'weekly' ? 'Hebdomadaire' : 'Mensuelle'}
+            {formatCurrency(group.contribution_amount_cents, group.currency)} · {group.frequency === 'weekly' ? 'Hebdomadaire' : group.frequency === 'custom' ? `Tous les ${group.custom_interval_days} jours` : 'Mensuelle'}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
