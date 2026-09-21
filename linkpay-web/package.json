@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:android": "tsc -b && vite build --mode android",
+    "build:android:local": "tsc -b && vite build --mode android-local",
     "preview": "vite preview",
     "lint": "eslint ."
   },

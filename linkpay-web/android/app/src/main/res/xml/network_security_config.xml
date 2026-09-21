@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Allows plain HTTP only to loopback addresses, for the build:android:local
+  dev workflow (a NestJS backend running on the PC, reached via
+  `adb reverse tcp:3000 tcp:3000`). The real production API domain stays on
+  HTTPS as normal — this does not weaken anything for it.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
