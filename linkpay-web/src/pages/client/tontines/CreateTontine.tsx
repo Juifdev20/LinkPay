@@ -78,20 +78,29 @@ export default function CreateTontinePage() {
               </div>
               <div className="space-y-2">
                 <Label className="font-semibold">Fréquence</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['weekly', 'monthly', 'custom'] as const).map((f) => (
+                <div className="grid grid-cols-2 gap-2">
+                  {(['weekly', 'monthly'] as const).map((f) => (
                     <button
                       key={f}
                       type="button"
                       onClick={() => setFrequency(f)}
-                      className={`rounded-xl border-2 px-2 py-2.5 text-sm font-semibold transition-colors ${
+                      className={`rounded-xl border-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
                         frequency === f ? 'border-primary bg-primary/5 text-primary' : 'border-input text-muted-foreground hover:bg-accent'
                       }`}
                     >
-                      {f === 'weekly' ? 'Hebdomadaire' : f === 'monthly' ? 'Mensuelle' : 'Journalière'}
+                      {f === 'weekly' ? 'Hebdomadaire' : 'Mensuelle'}
                     </button>
                   ))}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setFrequency('custom')}
+                  className={`w-full rounded-xl border-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+                    frequency === 'custom' ? 'border-primary bg-primary/5 text-primary' : 'border-input text-muted-foreground hover:bg-accent'
+                  }`}
+                >
+                  Journalière (personnalisée)
+                </button>
                 {frequency === 'custom' && (
                   <div className="space-y-2 pt-2">
                     <Label htmlFor="custom_interval" className="font-semibold text-sm">Tous les combien de jours ?</Label>
