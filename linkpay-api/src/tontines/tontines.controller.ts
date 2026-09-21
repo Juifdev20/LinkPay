@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Headers, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Headers, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, IsInt, IsIn, Min, Max, MaxLength, Length } from 'class-validator';
 import { TontinesService } from './tontines.service';
@@ -83,6 +83,12 @@ export class TontinesController {
   @ApiOperation({ summary: 'Invite an existing ScanLinkPay user by wallet number (creator only, while forming)' })
   async invite(@Param('id') id: string, @CurrentUser('id') userId: string, @Body() dto: InviteMemberDto) {
     return this.tontinesService.inviteMember(id, userId, dto.wallet_number);
+  }
+
+  @Delete(':id/members/:memberId')
+  @ApiOperation({ summary: 'Cancel a pending invitation (creator only — the invite was never accepted, so it can just be withdrawn)' })
+  async cancelInvite(@Param('id') id: string, @Param('memberId') memberId: string, @CurrentUser('id') userId: string) {
+    return this.tontinesService.cancelInvite(id, userId, memberId);
   }
 
   @Post(':id/accept')

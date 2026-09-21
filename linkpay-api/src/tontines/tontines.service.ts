@@ -273,6 +273,42 @@ export class TontinesService {
     return { member };
   }
 
+  /** Creator-only: withdraws a pending invitation sent by mistake. Only
+   * 'invited' rows are eligible — an 'active' member has to be handled
+   * differently (they hold a payout_position and possibly contributions,
+   * not implemented here), and a 'declined' one is already gone from the
+   * invitee's view. The row is deleted outright rather than marked
+   * 'declined', since that status specifically means the invitee refused —
+   * conflating an admin-initiated cancellation with that would be
+   * misleading in the members list. */
+  async cancelInvite(groupId: string, callerId: string, memberId: string) {
+    const group = await this.getGroupById(groupId);
+    if (group.creator_id !== callerId) {
+      throw new ForbiddenException("Seul le créateur de la tontine peut annuler une invitation");
+    }
+
+    const { data: member } = await this.db
+      .from('tontine_members')
+      .select('id, status')
+      .eq('id', memberId)
+      .eq('group_id', groupId)
+      .maybeSingle();
+
+    if (!member) {
+      throw new NotFoundException('Membre introuvable');
+    }
+    if (member.status !== 'invited') {
+      throw new BadRequestException('Seules les invitations en attente peuvent être annulées');
+    }
+
+    const { error } = await this.db.from('tontine_members').delete().eq('id', memberId);
+    if (error) {
+      throw new Error(`Failed to cancel invite: ${error.message}`);
+    }
+
+    return { success: true };
+  }
+
   async respondToInvite(groupId: string, userId: string, accept: boolean) {
     const { data: member } = await this.db
       .from('tontine_members')

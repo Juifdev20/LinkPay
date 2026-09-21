@@ -50,6 +50,11 @@ export default function TontineDetailPage() {
     onError: (err: any) => setInviteError(err.response?.data?.message || 'Échec de l\'invitation'),
   });
 
+  const cancelInviteMutation = useMutation({
+    mutationFn: async (memberId: string) => (await api.delete(`/tontines/${id}/members/${memberId}`)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tontine', id] }),
+  });
+
   const drawMutation = useMutation({
     mutationFn: async () => (await api.post(`/tontines/${id}/draw`)).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tontine', id] }),
@@ -278,6 +283,15 @@ export default function TontineDetailPage() {
                 <Badge variant={m.status === 'active' ? 'success' : m.status === 'declined' ? 'error' : 'warning'}>
                   {m.status === 'active' ? 'Actif' : m.status === 'invited' ? 'Invité' : 'Refusé'}
                 </Badge>
+                {isCreator && m.status === 'invited' && (
+                  <button
+                    onClick={() => cancelInviteMutation.mutate(m.id)}
+                    disabled={cancelInviteMutation.isPending}
+                    className="text-xs text-muted-foreground hover:text-destructive underline"
+                  >
+                    Annuler
+                  </button>
+                )}
               </div>
             </div>
           ))}
