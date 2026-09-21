@@ -428,6 +428,11 @@ export class WalletsService {
     userId: string,
     dto: { recipient_wallet_number: string; amount_cents: number; currency: string; description?: string; pin: string },
     idempotencyKey: string,
+    // Internal-only — never settable from a public DTO/controller. Exists
+    // solely for TontinesService's auto-payment cron path, where the member
+    // already gave standing consent (auto_payment_opt_in) instead of
+    // entering their PIN for this specific transfer.
+    internalOptions?: { skipPinVerification?: boolean },
   ) {
     if (!dto.amount_cents || dto.amount_cents < 1) {
       throw new BadRequestException('Montant invalide');
@@ -471,7 +476,11 @@ export class WalletsService {
 
     // PIN verified only after the cheap checks above, but always before any
     // money moves — never trust the frontend's "user confirmed" state.
-    await this.walletPinService.verifyPin(userId, dto.pin);
+    // Skipped only for the pre-authorized tontine auto-payment path (see
+    // internalOptions above) — every other caller still requires it.
+    if (!internalOptions?.skipPinVerification) {
+      await this.walletPinService.verifyPin(userId, dto.pin);
+    }
 
     const rule = await this.walletLimitsService.getRule('TRANSFER', dto.currency);
     const fee = this.walletLimitsService.quoteFee(dto.amount_cents, rule);

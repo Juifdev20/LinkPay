@@ -30,6 +30,7 @@ import ReceivePage from '@/pages/wallet/Receive';
 import TontinesListPage from '@/pages/client/tontines/TontinesList';
 import CreateTontinePage from '@/pages/client/tontines/CreateTontine';
 import TontineDetailPage from '@/pages/client/tontines/TontineDetail';
+import TontineSettingsPage from '@/pages/client/tontines/TontineSettings';
 import PayInvoicePage from '@/pages/wallet/Pay';
 import ScanQrPage from '@/pages/wallet/ScanQr';
 import WithdrawPage from '@/pages/wallet/Withdraw';
@@ -154,6 +155,7 @@ export default function App() {
         <Route path="tontines" element={<TontinesListPage />} />
         <Route path="tontines/new" element={<CreateTontinePage />} />
         <Route path="tontines/:id" element={<TontineDetailPage />} />
+        <Route path="tontines/:id/settings" element={<TontineSettingsPage />} />
         <Route path="wallet/pay" element={<PayInvoicePage />} />
         <Route path="wallet/scan" element={<ScanQrPage />} />
         <Route path="wallet/withdraw" element={<WithdrawPage />} />

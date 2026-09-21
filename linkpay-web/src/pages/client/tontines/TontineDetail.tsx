@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { PinInput } from '@/components/PinInput';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Loader2, ArrowLeft, Check, Clock, Shuffle, UserPlus, Crown, Info } from 'lucide-react';
+import { Loader2, ArrowLeft, Check, Clock, Shuffle, UserPlus, Crown, Info, Settings } from 'lucide-react';
 
 const STATUS_LABEL: Record<string, string> = {
   forming: 'En formation',
@@ -116,16 +116,25 @@ export default function TontineDetailPage() {
         <ArrowLeft className="w-4 h-4" /> Retour
       </button>
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{group.name}</h1>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-foreground truncate">{group.name}</h1>
           <p className="text-sm text-muted-foreground">
             {formatCurrency(group.contribution_amount_cents, group.currency)} · {group.frequency === 'weekly' ? 'Hebdomadaire' : 'Mensuelle'}
           </p>
         </div>
-        <Badge variant={group.status === 'active' ? 'success' : group.status === 'completed' ? 'error' : 'warning'}>
-          {STATUS_LABEL[group.status] || group.status}
-        </Badge>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Badge variant={group.status === 'active' ? 'success' : group.status === 'completed' ? 'error' : 'warning'}>
+            {STATUS_LABEL[group.status] || group.status}
+          </Badge>
+          <button
+            onClick={() => navigate(`/dashboard/tontines/${id}/settings`)}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            aria-label="Réglages"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {myMember?.status === 'invited' && (
@@ -172,9 +181,14 @@ export default function TontineDetailPage() {
               </div>
             )}
             {canContribute && !showPin && (
-              <Button className="w-full" onClick={() => setShowPin(true)}>
-                Cotiser {formatCurrency(group.contribution_amount_cents, group.currency)}
-              </Button>
+              <>
+                <Button className="w-full" onClick={() => setShowPin(true)}>
+                  Cotiser {formatCurrency(myContribution.effective_amount_cents ?? myContribution.amount_cents, myContribution.currency)}
+                </Button>
+                {myContribution.effective_amount_cents > myContribution.amount_cents && (
+                  <p className="text-xs text-destructive text-center mt-2">Inclut une pénalité de retard</p>
+                )}
+              </>
             )}
             {showPin && (
               <div className="text-center">
@@ -234,30 +248,6 @@ export default function TontineDetailPage() {
               <p className="text-xs text-muted-foreground">
                 Un nouveau membre qui rejoint après le tirage est toujours ajouté en dernière position — il ne peut jamais passer avant quelqu'un déjà en attente. Il cotise dès son arrivée pour tous les cycles restants, mais ne doit rien pour les cycles déjà terminés.
               </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {data.contribution_history?.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Historique des cotisations</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {data.contribution_history.map((c: any) => (
-                <div key={c.id} className="flex items-center justify-between py-1.5 text-sm">
-                  <div className="min-w-0">
-                    <span className="text-foreground font-medium">{c.member?.display_name}</span>
-                    <span className="text-muted-foreground"> · cycle n°{c.cycle?.cycle_number}</span>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0 text-muted-foreground">
-                    <span className="font-semibold text-foreground">{formatCurrency(c.amount_cents, c.currency)}</span>
-                    <span>{formatDate(c.paid_at)}</span>
-                  </div>
-                </div>
-              ))}
             </div>
           </CardContent>
         </Card>
@@ -329,6 +319,30 @@ export default function TontineDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {data.contribution_history?.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Historique des cotisations</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {data.contribution_history.map((c: any) => (
+                <div key={c.id} className="flex items-center justify-between py-1.5 text-sm">
+                  <div className="min-w-0">
+                    <span className="text-foreground font-medium">{c.member?.display_name}</span>
+                    <span className="text-muted-foreground"> · cycle n°{c.cycle?.cycle_number}</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0 text-muted-foreground">
+                    <span className="font-semibold text-foreground">{formatCurrency(c.amount_cents, c.currency)}</span>
+                    <span>{formatDate(c.paid_at)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
