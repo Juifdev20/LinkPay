@@ -1,6 +1,6 @@
 # LinkPay — Paiements par lien et QR code en RDC
 
-Plateforme de paiement PWA (mobile-first) permettant aux commerçants de créer des demandes de paiement instantanées via lien et QR code, avec règlements, remboursements, gestion d'équipe, temps réel et administration multi-rôles.
+Plateforme de paiement PWA (mobile-first) permettant aux commerçants de créer des demandes de paiement instantanées via lien et QR code, avec règlements, remboursements, gestion d'équipe, temps réel et administration multi-rôles. Inclut aussi un portefeuille LinkPay (transferts P2P, recharge, retrait), des comptes Entreprise multi-boutiques (KYB, numéro ScanLinkPay pour être payé directement sans facture, tableau de bord récapitulatif), et un module Tontines (épargne collective).
 
 ## Architecture
 
@@ -11,15 +11,19 @@ LinkPay/
 │   │   ├── auth/              # JWT (login, register, refresh, logout), session unique par appareil
 │   │   ├── users/              # Profil utilisateur, stats client
 │   │   ├── merchants/          # Boutiques, équipe (inviter/retirer un caissier)
-│   │   ├── organizations/      # Comptes "entreprise" (profil de base)
+│   │   ├── organizations/      # Comptes "entreprise" : KYB, multi-boutiques, numéro ScanLinkPay, dashboard, dépenses
 │   │   ├── payment-requests/   # Demandes de paiement (lien + QR)
 │   │   ├── payments/           # Paiement + adaptateurs PSP (mock, CinetPay)
+│   │   ├── wallets/             # Portefeuille LinkPay (solde, PIN, transfert P2P, recharge, retrait)
+│   │   ├── tontines/            # Épargne collective (cycles, cotisations, invitations, cron de rappel)
 │   │   ├── transactions/       # Historique et reçus
 │   │   ├── settlements/        # Règlements commerçants (solde, demande, traitement admin)
 │   │   ├── refunds/            # Remboursements
 │   │   ├── commissions/        # Règles de commission (admin)
 │   │   ├── ledger/              # Grand livre (double entrée)
 │   │   ├── notifications/      # Notifications utilisateur (API + temps réel)
+│   │   ├── push-notifications/  # Web Push (VAPID) + notifications natives Android (FCM)
+│   │   ├── webauthn/            # Verrouillage d'app par biométrie/clé de sécurité
 │   │   ├── webhooks/            # Webhooks PSP
 │   │   ├── risk/                # Scoring de risque (service interne)
 │   │   ├── admin/               # Statistiques plateforme, rôles, réinitialisation de session
@@ -35,13 +39,15 @@ LinkPay/
     │   ├── lib/                  # Client API (axios), client Supabase (realtime), store d'authentification (Zustand), utils
     │   ├── layouts/               # DashboardLayout (sidebar desktop / bottom nav mobile)
     │   ├── pages/
-    │   │   ├── auth/               # Login, Register (choix client/marchand)
-    │   │   ├── public/             # PaymentLink (paiement anonyme), PaymentResult
+    │   │   ├── auth/               # Login, Register (choix Client / Marchand / Entreprise)
+    │   │   ├── public/             # PaymentLink (paiement anonyme), PayByNumber (paiement par numéro ScanLinkPay), PaymentResult
     │   │   ├── merchant/           # Dashboard, PaymentRequests, Create, Transactions, Settlements, Team
-    │   │   ├── client/             # Dashboard, Transactions
+    │   │   ├── client/             # Dashboard, Transactions, tontines/ (liste, création, détail)
+    │   │   ├── wallet/             # Solde, envoi, réception, recharge, retrait, PIN, historique
     │   │   ├── admin/              # Dashboard, Merchants, Users, Settlements, Commissions
-    │   │   ├── OrganizationProfile.tsx
-    │   │   └── Settings.tsx        # Profil, upgrade marchand/entreprise, gestion
+    │   │   ├── organization/       # OnboardingWizard (KYB en 6 étapes, obligatoire avant le dashboard)
+    │   │   ├── OrganizationProfile.tsx  # Dashboard Entreprise (récapitulatif, ScanLinkPay, boutiques, dépenses)
+    │   │   └── Settings.tsx        # Profil, gestion du compte
     │   └── App.tsx                # Routing avec ProtectedRoute par rôle
     └── vite.config.ts             # PWA (manifest, service worker) + proxy API
 ```
@@ -55,6 +61,9 @@ LinkPay/
 - **JWT** maison (access + refresh tokens) avec **session unique par compte** (un compte ne peut être connecté que sur un seul appareil à la fois ; réinitialisable par un admin)
 - **RBAC** à 6 rôles : `super_admin`, `admin`, `enterprise`, `merchant`, `cashier`, `client`
 - **Adaptateur PSP** (pattern extensible) : `mock` (démo, succès simulé) et `cinetpay` (Mobile Money RDC — Orange/Airtel/M-Pesa — + carte, préparé mais non testé en conditions réelles, voir `.env.example`)
+- **Portefeuille LinkPay** : solde CDF/USD indépendants, numéro unique généré automatiquement, transfert P2P, PIN transactionnel, recharge/retrait
+- **Tontines** : cycles d'épargne collective avec invitations, cotisations, et une tâche planifiée (`@nestjs/schedule`) pour les rappels
+- **Push notifications** : Web Push (VAPID) pour la PWA, Firebase Cloud Messaging pour l'app Android (Capacitor)
 
 ### Frontend
 - **React 18** + **Vite 5**
@@ -82,6 +91,20 @@ LinkPay/
    - `003_fix_rls_policies.sql` — politiques RLS
    - `004_merchant_users.sql` — table de gestion d'équipe (manquante dans le schéma initial)
    - `005_session_tracking.sql` — session unique par compte + activation Realtime sur `notifications`/`transactions`
+   - `006_wallets.sql` — Portefeuille LinkPay (compte, numéro, recharge)
+   - `007_wallet_phase2.sql` — PIN transactionnel, transfert P2P, retrait, limites
+   - `008_multi_currency.sql` — support CDF/USD (sans conversion)
+   - `009_device_binding.sql` — reprise de session sur le même appareil
+   - `010_push_subscriptions.sql` — abonnements Web Push (VAPID)
+   - `011_webauthn_credentials.sql` — verrouillage d'app par biométrie/clé de sécurité
+   - `012_fcm_push_tokens.sql` — jetons de notifications natives Android (FCM)
+   - `013_qr_codes_bucket.sql` — bucket Storage pour les QR codes générés
+   - `014_organization_merchants.sql` — rattachement des boutiques à une organisation (multi-boutiques)
+   - `015_slp_wallet_numbers.sql` — évolution du format des numéros de portefeuille
+   - `016_tontines.sql` — épargne collective (cycles, cotisations, invitations)
+   - `017_organization_kyb.sql` — profil KYB complet de l'entreprise (identité légale, activité, règlement, représentant légal)
+   - `018_organization_scanlinkpay_number.sql` — numéro ScanLinkPay unique par entreprise (paiement direct sans facture)
+   - `019_organization_expenses.sql` — suivi manuel des dépenses (tableau de bord Entreprise)
 3. Récupérer dans **Project Settings → API** : l'URL du projet, la clé `anon`/`public`, et la clé `service_role`.
 
 ⚠️ Chaque nouvelle migration ajoutée au projet doit être exécutée manuellement de la même façon — elles ne s'appliquent jamais automatiquement.
@@ -96,15 +119,17 @@ npm install
 npm run start:dev
 ```
 
-Variables d'environnement (`linkpay-api/.env`) :
+Variables d'environnement (`linkpay-api/.env` — voir `linkpay-api/.env.example` pour la liste exhaustive commentée) :
 ```
 NODE_ENV=development
 PORT=3000
 FRONTEND_URL=http://localhost:5173
+BACKEND_URL=http://localhost:3000
 
 SUPABASE_URL=https://votre-projet.supabase.co
 SUPABASE_ANON_KEY=votre-clé-anon
 SUPABASE_SERVICE_ROLE_KEY=votre-clé-service-role
+DATABASE_URL=postgresql://postgres:password@db.votre-projet.supabase.co:5432/postgres
 
 JWT_SECRET=une-chaîne-secrète-longue
 JWT_EXPIRES_IN=15m
@@ -112,11 +137,22 @@ JWT_REFRESH_EXPIRES_IN=365d
 
 # PSP — laisser "mock" pour développer sans compte prestataire réel
 PSP_PROVIDER=mock
-# Si compte CinetPay actif (Mobile Money RDC) :
+PSP_SANDBOX=true
+# Si compte CinetPay actif (Mobile Money RDC) — nouvelle API panel.cinetpay.net :
 # PSP_PROVIDER=cinetpay
-# CINETPAY_API_KEY=
-# CINETPAY_SITE_ID=
-# PSP_WEBHOOK_SECRET=   # clé secrète HMAC de notification CinetPay
+# CINETPAY_API_KEY_CD=
+# CINETPAY_API_PASSWORD_CD=
+# PROXY_URL=   # requis en production (Render) pour le whitelisting IP CinetPay
+
+# Web Push (VAPID) — notifications même app fermée, générer avec `npx web-push generate-vapid-keys`
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:contact@example.com
+
+# Firebase Cloud Messaging — notifications natives pour l'app Android (Capacitor)
+FCM_PROJECT_ID=
+FCM_CLIENT_EMAIL=
+FCM_PRIVATE_KEY=
 ```
 
 L'API démarre sur `http://localhost:3000`, documentation Swagger sur `http://localhost:3000/api/v1/docs`.
@@ -136,13 +172,16 @@ Variables d'environnement (`linkpay-web/.env`) :
 VITE_API_URL=http://localhost:3000/api/v1
 VITE_SUPABASE_URL=https://votre-projet.supabase.co
 VITE_SUPABASE_ANON_KEY=votre-clé-anon
+VITE_VAPID_PUBLIC_KEY=   # doit correspondre à VAPID_PUBLIC_KEY côté backend
 ```
+
+Pour builder et tester l'app Android (Capacitor) sur un téléphone — y compris contre un backend local sans passer par Render — voir `TESTING_LOCAL.md` à la racine du dépôt.
 
 L'application démarre sur `http://localhost:5173`.
 
 ### 4. Premiers comptes
 
-Aucun compte n'est pré-créé. Inscrivez-vous depuis `/register` (choix Client ou Marchand). Pour obtenir un compte `admin`/`super_admin`/`cashier`/`enterprise`, il faut soit :
+Aucun compte n'est pré-créé. Inscrivez-vous depuis `/register` (choix Client, Marchand ou Entreprise). Un compte Entreprise doit obligatoirement terminer l'assistant de configuration KYB (identité légale, coordonnées, activité, règlement, représentant légal, branding) avant d'accéder à son tableau de bord. Pour obtenir un compte `admin`/`super_admin`/`cashier`, il faut soit :
 - attribuer le rôle manuellement en base (table `user_roles`, via l'éditeur Supabase), soit
 - créer un premier `super_admin` ainsi, puis utiliser la page **Utilisateurs** (`/dashboard/admin/users`) pour attribuer des rôles aux comptes suivants.
 
@@ -165,21 +204,25 @@ Aucun compte n'est pré-créé. Inscrivez-vous depuis `/register` (choix Client 
 |------|-------|
 | `super_admin` | Tout — gestion des rôles, règles de commission, réinitialisation de session |
 | `admin` | Tableau de bord plateforme, approbation commerçants, gestion utilisateurs, réinitialisation de session |
-| `enterprise` | Profil d'organisation (gestion multi-boutiques non encore disponible) |
+| `enterprise` | Tableau de bord Entreprise (récapitulatif, meilleures boutiques, transactions récentes, dépenses), création/gestion de plusieurs boutiques, numéro ScanLinkPay pour être payé directement |
 | `merchant` | Demandes de paiement, transactions, règlements, gestion d'équipe (inviter un caissier) |
 | `cashier` | Demandes de paiement, transactions (rattaché à un marchand, ne gère pas l'équipe ni les règlements) |
 | `client` | Paiements, historique, reçus — accessible à tous les rôles, pas seulement `client` |
 
 ## Flow de paiement
 
-1. Commerçant crée une demande de paiement → lien + QR générés
-2. Client ouvre le lien / scanne le QR (aucun compte requis)
-3. Choix du mode (Mobile Money + opérateur, ou carte), saisie des infos
-4. PSP traite la transaction (`mock` : succès simulé après un court délai ; `cinetpay` : vraie redirection Mobile Money/carte)
-5. Transaction enregistrée, commission calculée, grand livre mis à jour
-6. Notification instantanée (temps réel) au commerçant et au client
-7. Reçu disponible, commerçant peut demander un règlement
-8. Un admin traite le règlement (`/dashboard/admin/settlements`)
+Deux façons d'initier un paiement :
+- **Facture précise** : le commerçant crée une demande de paiement avec un montant fixe → lien + QR générés (`/p/:token`), expire après un délai.
+- **Numéro ScanLinkPay** : chaque entreprise a un numéro fixe et non expirant (`/pay/:numéro`) — le client scanne le QR permanent ou tape le numéro, choisit lui-même le montant et la boutique (si plusieurs), sans qu'une facture n'ait été créée à l'avance.
+
+Les deux convergent ensuite sur le même parcours :
+1. Client ouvre le lien / scanne le QR (aucun compte requis)
+2. Choix du mode (Mobile Money + opérateur, carte, ou solde LinkPay si connecté), saisie des infos
+3. PSP traite la transaction (`mock` : succès simulé après un court délai ; `cinetpay` : vraie redirection Mobile Money/carte)
+4. Transaction enregistrée, commission calculée, grand livre mis à jour
+5. Notification instantanée (temps réel) au commerçant et au client
+6. Reçu disponible, commerçant peut demander un règlement
+7. Un admin traite le règlement (`/dashboard/admin/settlements`)
 
 ## Sécurité
 
