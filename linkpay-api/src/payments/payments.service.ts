@@ -10,6 +10,7 @@ import { PaymentRequestsService } from '../payment-requests/payment-requests.ser
 import { WalletPinService } from '../wallets/wallet-pin.service';
 import { WalletLimitsService } from '../wallets/wallet-limits.service';
 import { AuditService } from '../audit/audit.service';
+import { SavingsService } from '../savings/savings.service';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
 
@@ -29,6 +30,7 @@ export class PaymentsService {
     private walletPinService: WalletPinService,
     private walletLimitsService: WalletLimitsService,
     private auditService: AuditService,
+    private savingsService: SavingsService,
   ) {}
 
   async createPayment(data: {
@@ -342,7 +344,15 @@ export class PaymentsService {
         changes: { amount_cents: request.amount_cents, merchant_id: request.merchant_id, reference: request.reference },
       });
 
-      return { payment_intent_id: intent.id, status: 'SUCCESS', reference: transaction?.reference };
+      // .catch() here is load-bearing, not just style: this is still inside
+      // the try block whose catch reverses the whole payment — a round-up
+      // failure must never fall into that catch and undo a payment that
+      // already succeeded.
+      const roundup = await this.savingsService
+        .maybeRoundUp(userId, payerWallet.id, request.amount_cents, request.currency, `payment:${request.reference}`)
+        .catch(() => null);
+
+      return { payment_intent_id: intent.id, status: 'SUCCESS', reference: transaction?.reference, roundup };
     } catch (err: any) {
       // The wallet was already debited but the transaction/ledger pipeline
       // failed downstream — never leave the customer's money in limbo:

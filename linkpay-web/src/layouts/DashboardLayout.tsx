@@ -10,7 +10,7 @@ import { TopBar } from '@/components/TopBar';
 import { NotificationsBell } from '@/components/NotificationsBell';
 import { useTheme } from '@/hooks/useTheme';
 import { usePaymentReceivedAlert } from '@/hooks/usePaymentReceivedAlert';
-import { LayoutDashboard, QrCode, Receipt, Wallet, LogOut, Users, UserCog, ShieldCheck, User, Settings, Percent, Building2, UsersRound, RefreshCcw, Sun, Moon, Menu, Search, X } from 'lucide-react';
+import { LayoutDashboard, QrCode, Receipt, Wallet, LogOut, Users, UserCog, ShieldCheck, User, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Sun, Moon, Menu, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const ALL_ROLES = ['merchant', 'cashier', 'enterprise', 'client', 'admin', 'super_admin'];
@@ -29,6 +29,7 @@ const navItems = [
   { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'] },
   { to: '/dashboard/client/transactions', label: 'Mes paiements', icon: Receipt, roles: ALL_ROLES },
   { to: '/dashboard/tontines', label: 'Tontines', icon: RefreshCcw, roles: ALL_ROLES },
+  { to: '/dashboard/savings', label: 'Épargne', icon: PiggyBank, roles: ALL_ROLES },
   { to: '/dashboard/admin', label: 'Administration', icon: ShieldCheck, roles: ['admin', 'super_admin'] },
   { to: '/dashboard/admin/merchants', label: 'Commerçants', icon: Users, roles: ['admin', 'super_admin'] },
   { to: '/dashboard/admin/settlements', label: 'Règlements (admin)', icon: Wallet, roles: ['admin', 'super_admin'] },

@@ -7,6 +7,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { WalletPinService } from './wallet-pin.service';
 import { WalletLimitsService } from './wallet-limits.service';
 import { AuditService } from '../audit/audit.service';
+import { SavingsService } from '../savings/savings.service';
 
 @Injectable()
 export class WalletsService {
@@ -20,6 +21,7 @@ export class WalletsService {
     private walletPinService: WalletPinService,
     private walletLimitsService: WalletLimitsService,
     private auditService: AuditService,
+    private savingsService: SavingsService,
   ) {}
 
   async getWalletByUserId(userId: string) {
@@ -560,10 +562,15 @@ export class WalletsService {
       }).catch(() => null);
     }
 
+    const roundup = await this.savingsService
+      .maybeRoundUp(userId, senderWallet.id, dto.amount_cents, dto.currency, `transfer:${transferRow.id}`)
+      .catch(() => null);
+
     return {
       transfer: finalTransfer || { ...transferRow, status: 'SUCCESS' },
       recipient: { wallet_number: recipient.wallet_number, display_name: recipient.display_name },
       sender_balance: (result as any)?.sender_balance,
+      roundup,
     };
   }
 

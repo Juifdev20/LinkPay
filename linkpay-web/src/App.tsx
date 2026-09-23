@@ -27,6 +27,7 @@ import TopupPage from '@/pages/wallet/Topup';
 import TopupResultPage from '@/pages/wallet/TopupResult';
 import SendPage from '@/pages/wallet/Send';
 import ReceivePage from '@/pages/wallet/Receive';
+import SavingsPotPage from '@/pages/wallet/SavingsPot';
 import TontinesListPage from '@/pages/client/tontines/TontinesList';
 import CreateTontinePage from '@/pages/client/tontines/CreateTontine';
 import TontineDetailPage from '@/pages/client/tontines/TontineDetail';
@@ -152,6 +153,7 @@ export default function App() {
         <Route path="wallet/topup/result" element={<TopupResultPage />} />
         <Route path="wallet/send" element={<SendPage />} />
         <Route path="wallet/receive" element={<ReceivePage />} />
+        <Route path="savings" element={<SavingsPotPage />} />
         <Route path="tontines" element={<TontinesListPage />} />
         <Route path="tontines/new" element={<CreateTontinePage />} />
         <Route path="tontines/:id" element={<TontineDetailPage />} />

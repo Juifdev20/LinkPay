@@ -13,6 +13,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { AuditModule } from '../audit/audit.module';
 import { WalletPinService } from '../wallets/wallet-pin.service';
 import { WalletLimitsService } from '../wallets/wallet-limits.service';
+import { SavingsModule } from '../savings/savings.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { WalletLimitsService } from '../wallets/wallet-limits.service';
     TransactionsModule,
     NotificationsModule,
     AuditModule,
+    SavingsModule,
   ],
   controllers: [PaymentsController],
   // WalletPinService/WalletLimitsService are also provided by WalletsModule
