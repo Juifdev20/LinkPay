@@ -2,15 +2,22 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { SupabaseService } from '../supabase/supabase.service';
 import { WalletPinService } from '../wallets/wallet-pin.service';
 
+const CURRENCIES = ['CDF', 'USD'] as const;
+type Currency = (typeof CURRENCIES)[number];
+
 /**
- * Round-up savings ("épargne par arrondi") — opt-in, per user, for both
- * client and merchant wallets alike (no role restriction anywhere here).
+ * Round-up savings ("épargne par arrondi") — opt-in, per user AND per
+ * currency, for both client and merchant wallets alike (no role restriction
+ * anywhere here). CDF and USD are fully independent — own toggle, own
+ * increment, own goal, own balance — same principle already used everywhere
+ * else in this app (see 008_multi_currency.sql), never auto-converted.
  * Deliberately not a second `wallets` row (would break every `.single()`
  * wallet lookup elsewhere) — a small standalone ledger-style system instead,
  * moving real money against the main wallet only through the existing
  * credit_wallet/debit_wallet Postgres primitives (via the
- * round_up_to_savings/withdraw_from_savings_pot RPCs — see migration
- * 022_savings_pots.sql), never a raw balance update.
+ * round_up_to_savings/withdraw_from_savings_pot RPCs — see migrations
+ * 022_savings_pots.sql and 023_savings_multi_currency.sql), never a raw
+ * balance update.
  */
 @Injectable()
 export class SavingsService {
@@ -25,13 +32,24 @@ export class SavingsService {
     return this.supabaseService.getClient();
   }
 
-  private async getOrCreatePot(userId: string) {
-    const { data: existing } = await this.db.from('savings_pots').select('*').eq('user_id', userId).maybeSingle();
+  private assertCurrency(currency: string): asserts currency is Currency {
+    if (!CURRENCIES.includes(currency as Currency)) {
+      throw new BadRequestException(`Devise invalide: ${currency}`);
+    }
+  }
+
+  private async getPot(userId: string, currency: string) {
+    const { data } = await this.db.from('savings_pots').select('*').eq('user_id', userId).eq('currency', currency).maybeSingle();
+    return data;
+  }
+
+  private async getOrCreatePot(userId: string, currency: string) {
+    const existing = await this.getPot(userId, currency);
     if (existing) return existing;
 
     const { data: created, error } = await this.db
       .from('savings_pots')
-      .insert({ user_id: userId })
+      .insert({ user_id: userId, currency })
       .select()
       .single();
 
@@ -46,25 +64,35 @@ export class SavingsService {
     return (entries || []).reduce((sum, e: any) => sum + (e.type === 'round_up' ? e.amount_cents : -e.amount_cents), 0);
   }
 
+  /** Both currencies at once — a currency the user never configured comes
+   * back as a default/disabled placeholder, no row created just for reading. */
   async getMyPot(userId: string) {
-    const pot = await this.getOrCreatePot(userId);
-    const balance_cents = await this.getBalance(pot.id);
+    const pots = await Promise.all(
+      CURRENCIES.map(async (currency) => {
+        const pot = await this.getPot(userId, currency);
+        if (!pot) {
+          return { currency, pot: null, balance_cents: 0, entries: [] as any[] };
+        }
 
-    const { data: entries } = await this.db
-      .from('savings_pot_entries')
-      .select('*')
-      .eq('pot_id', pot.id)
-      .order('created_at', { ascending: false })
-      .limit(20);
+        const [balance_cents, { data: entries }] = await Promise.all([
+          this.getBalance(pot.id),
+          this.db.from('savings_pot_entries').select('*').eq('pot_id', pot.id).order('created_at', { ascending: false }).limit(20),
+        ]);
 
-    return { pot, balance_cents, entries: entries || [] };
+        return { currency, pot, balance_cents, entries: entries || [] };
+      }),
+    );
+
+    return { pots };
   }
 
   async updateSettings(
     userId: string,
+    currency: string,
     dto: { round_up_enabled?: boolean; round_up_increment_cents?: number; goal_name?: string; goal_amount_cents?: number },
   ) {
-    const pot = await this.getOrCreatePot(userId);
+    this.assertCurrency(currency);
+    const pot = await this.getOrCreatePot(userId, currency);
 
     const updates: Record<string, any> = { updated_at: new Date().toISOString() };
     if (dto.round_up_enabled !== undefined) updates.round_up_enabled = dto.round_up_enabled;
@@ -85,9 +113,11 @@ export class SavingsService {
     return { pot: updated };
   }
 
-  /** The free-anytime withdrawal, back to the caller's own main wallet — a
-   * real money movement, so it requires the PIN like transfer/payWithWallet. */
-  async withdraw(userId: string, amountCents: number, pin: string) {
+  /** The free-anytime withdrawal, back to the caller's own main wallet, in
+   * the SAME currency as the pot withdrawn from — a real money movement, so
+   * it requires the PIN like transfer/payWithWallet. */
+  async withdraw(userId: string, currency: string, amountCents: number, pin: string) {
+    this.assertCurrency(currency);
     if (!amountCents || amountCents < 1) {
       throw new BadRequestException('Montant invalide');
     }
@@ -102,6 +132,7 @@ export class SavingsService {
     const { data: newBalance, error } = await this.db.rpc('withdraw_from_savings_pot', {
       p_wallet_id: wallet.id,
       p_user_id: userId,
+      p_currency: currency,
       p_amount_cents: amountCents,
     });
 
@@ -109,23 +140,25 @@ export class SavingsService {
       throw new BadRequestException(error.message.includes('Insufficient') ? 'Solde de la tirelire insuffisant' : 'Échec du retrait');
     }
 
-    return { pot_balance_cents: newBalance };
+    return { currency, pot_balance_cents: newBalance };
   }
 
   /** Best-effort — called by WalletsService.transfer() and
    * PaymentsService.payWithWallet() strictly AFTER their own money movement
-   * has already succeeded. Never throws: any failure (pot not enabled,
-   * insufficient balance for the small extra amount, etc.) just means no
-   * round-up happens this time — the triggering payment/transfer is
-   * completely unaffected either way. CDF only — USD amounts are never
-   * rounded (see migration/plan notes). */
+   * has already succeeded. Never throws: any failure (pot not enabled for
+   * this currency, insufficient balance for the small extra amount, etc.)
+   * just means no round-up happens this time — the triggering
+   * payment/transfer is completely unaffected either way. Always rounds up
+   * in the SAME currency as the payment — a USD payment can only ever grow
+   * the USD pot, never CDF, and vice versa. */
   async maybeRoundUp(userId: string, walletId: string, amountCents: number, currency: string, reference: string) {
-    if (currency !== 'CDF') return null;
+    if (!CURRENCIES.includes(currency as Currency)) return null;
 
     const { data: pot } = await this.db
       .from('savings_pots')
       .select('id, round_up_enabled, round_up_increment_cents')
       .eq('user_id', userId)
+      .eq('currency', currency)
       .maybeSingle();
 
     if (!pot?.round_up_enabled || !pot.round_up_increment_cents) return null;
@@ -138,12 +171,13 @@ export class SavingsService {
       const { data: newBalance, error } = await this.db.rpc('round_up_to_savings', {
         p_wallet_id: walletId,
         p_user_id: userId,
+        p_currency: currency,
         p_amount_cents: delta,
         p_reference: reference,
       });
       if (error) throw new Error(error.message);
 
-      return { amount_cents: delta, pot_balance_cents: newBalance };
+      return { currency, amount_cents: delta, pot_balance_cents: newBalance };
     } catch (err: any) {
       this.logger.warn(`Round-up skipped for user ${userId} (${reference}): ${err.message}`);
       return null;

@@ -155,7 +155,7 @@ export default function SendPage() {
             </div>
             {result?.roundup && (
               <div className="rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 mt-4 text-sm text-primary font-medium">
-                🐷 Vous avez aussi épargné {formatCurrency(result.roundup.amount_cents, 'CDF')} — tirelire : {formatCurrency(result.roundup.pot_balance_cents, 'CDF')}
+                🐷 Vous avez aussi épargné {formatCurrency(result.roundup.amount_cents, result.roundup.currency)} — tirelire : {formatCurrency(result.roundup.pot_balance_cents, result.roundup.currency)}
               </div>
             )}
             <Button className="w-full mt-6" size="lg" onClick={() => navigate('/dashboard')}>

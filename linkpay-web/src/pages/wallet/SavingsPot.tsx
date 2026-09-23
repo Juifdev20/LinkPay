@@ -12,23 +12,79 @@ import { PageHeader } from '@/components/PageHeader';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
 import { Loader2, ArrowLeft, PiggyBank, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 
-const INCREMENTS = [
-  { label: '100 CDF', cents: 10000 },
-  { label: '500 CDF', cents: 50000 },
-  { label: '1 000 CDF', cents: 100000 },
-];
+type Currency = 'CDF' | 'USD';
+
+const INCREMENTS: Record<Currency, { label: string; cents: number }[]> = {
+  CDF: [
+    { label: '100 CDF', cents: 10000 },
+    { label: '500 CDF', cents: 50000 },
+    { label: '1 000 CDF', cents: 100000 },
+  ],
+  USD: [
+    { label: '0,10 $', cents: 10 },
+    { label: '0,50 $', cents: 50 },
+    { label: '1,00 $', cents: 100 },
+  ],
+};
+
+const DEFAULT_INCREMENT: Record<Currency, number> = { CDF: 50000, USD: 50 };
+
+interface PotData {
+  currency: Currency;
+  pot: any;
+  balance_cents: number;
+  entries: any[];
+}
 
 export default function SavingsPotPage() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-
   const { data, isLoading } = useQuery({
     queryKey: ['savings'],
-    queryFn: async () => (await api.get('/savings')).data,
+    queryFn: async () => (await api.get('/savings')).data as { pots: PotData[] },
   });
 
+  if (isLoading || !data) {
+    return (
+      <div className="p-6 flex justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-2xl mx-auto">
+      <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="w-4 h-4" /> Retour
+      </button>
+
+      <PageHeader title="Épargne par arrondi" />
+
+      <Card>
+        <CardContent className="pt-6 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-3">
+            <PiggyBank className="w-7 h-7 text-primary" />
+          </div>
+          <p className="text-sm text-muted-foreground mb-1">Solde total de la tirelire</p>
+          <p className="text-2xl font-bold text-foreground">
+            {data.pots.map((p) => formatCurrency(p.balance_cents, p.currency)).join(' · ')}
+          </p>
+        </CardContent>
+      </Card>
+
+      {data.pots.map((p) => (
+        <CurrencyPotCard key={p.currency} data={p} />
+      ))}
+    </div>
+  );
+}
+
+function CurrencyPotCard({ data }: { data: PotData }) {
+  const { currency } = data;
+  const queryClient = useQueryClient();
+  const increments = INCREMENTS[currency];
+
   const [enabled, setEnabled] = useState(false);
-  const [increment, setIncrement] = useState(50000);
+  const [increment, setIncrement] = useState(DEFAULT_INCREMENT[currency]);
   const [goalName, setGoalName] = useState('');
   const [goalAmount, setGoalAmount] = useState('');
   const [settingsError, setSettingsError] = useState('');
@@ -41,14 +97,15 @@ export default function SavingsPotPage() {
 
   const [seeded, setSeeded] = useState(false);
   useEffect(() => {
-    if (data?.pot && !seeded) {
+    if (data.pot && !seeded) {
       setEnabled(!!data.pot.round_up_enabled);
-      setIncrement(data.pot.round_up_increment_cents ?? 50000);
+      setIncrement(data.pot.round_up_increment_cents ?? DEFAULT_INCREMENT[currency]);
       setGoalName(data.pot.goal_name || '');
       setGoalAmount(data.pot.goal_amount_cents ? String(data.pot.goal_amount_cents / 100) : '');
       setSeeded(true);
     }
-  }, [data, seeded]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.pot, seeded]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -58,7 +115,7 @@ export default function SavingsPotPage() {
         goal_name: goalName || undefined,
       };
       if (goalAmount) payload.goal_amount_cents = Math.round(parseFloat(goalAmount) * 100);
-      return (await api.put('/savings/settings', payload)).data;
+      return (await api.put(`/savings/settings/${currency}`, payload)).data;
     },
     onSuccess: () => {
       setSettingsError('');
@@ -68,7 +125,8 @@ export default function SavingsPotPage() {
   });
 
   const withdrawMutation = useMutation({
-    mutationFn: async (pinValue: string) => (await api.post('/savings/withdraw', { amount_cents: Math.round(parseFloat(withdrawAmount) * 100), pin: pinValue })).data,
+    mutationFn: async (pinValue: string) =>
+      (await api.post(`/savings/${currency}/withdraw`, { amount_cents: Math.round(parseFloat(withdrawAmount) * 100), pin: pinValue })).data,
     onSuccess: () => {
       setShowWithdraw(false);
       setShowPin(false);
@@ -84,39 +142,22 @@ export default function SavingsPotPage() {
     },
   });
 
-  if (isLoading || !data) {
-    return (
-      <div className="p-6 flex justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   const balance = data.balance_cents || 0;
   const goalAmountCents = data.pot?.goal_amount_cents;
   const progress = goalAmountCents ? Math.min(100, Math.round((balance / goalAmountCents) * 100)) : null;
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-2xl mx-auto">
-      <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="w-4 h-4" /> Retour
-      </button>
-
-      <PageHeader title="Épargne par arrondi" />
-
+    <>
       <Card>
         <CardContent className="pt-6 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-3">
-            <PiggyBank className="w-7 h-7 text-primary" />
-          </div>
-          <p className="text-sm text-muted-foreground mb-1">Solde de la tirelire</p>
-          <p className="text-3xl font-bold text-foreground mb-4">{formatCurrency(balance, 'CDF')}</p>
+          <p className="text-sm text-muted-foreground mb-1">Tirelire {currency}</p>
+          <p className="text-3xl font-bold text-foreground mb-4">{formatCurrency(balance, currency)}</p>
 
           {data.pot?.goal_name && (
             <div className="mb-4">
               <div className="flex justify-between text-xs text-muted-foreground mb-1">
                 <span>{data.pot.goal_name}</span>
-                <span>{progress}%{goalAmountCents ? ` · ${formatCurrency(goalAmountCents, 'CDF')}` : ''}</span>
+                <span>{progress}%{goalAmountCents ? ` · ${formatCurrency(goalAmountCents, currency)}` : ''}</span>
               </div>
               <div className="h-2 rounded-full bg-secondary overflow-hidden">
                 <div className="h-full bg-primary transition-all" style={{ width: `${progress || 0}%` }} />
@@ -127,7 +168,7 @@ export default function SavingsPotPage() {
           {!showWithdraw && (
             <Button variant="outline" className="w-full" onClick={() => setShowWithdraw(true)} disabled={balance <= 0}>
               <ArrowUpFromLine className="mr-2 w-4 h-4" />
-              Retirer vers mon solde principal
+              Retirer vers mon solde principal ({currency})
             </Button>
           )}
 
@@ -135,12 +176,12 @@ export default function SavingsPotPage() {
             <div className="space-y-3 text-left">
               {withdrawError && <p className="text-sm text-destructive">{withdrawError}</p>}
               <div className="space-y-2">
-                <Label htmlFor="withdraw_amount" className="font-semibold text-sm">Montant à retirer (CDF)</Label>
+                <Label htmlFor={`withdraw_amount_${currency}`} className="font-semibold text-sm">Montant à retirer ({currency})</Label>
                 <Input
-                  id="withdraw_amount"
+                  id={`withdraw_amount_${currency}`}
                   type="number"
                   step="0.01"
-                  placeholder="5000"
+                  placeholder={currency === 'CDF' ? '5000' : '5.00'}
                   value={withdrawAmount}
                   onChange={(e) => setWithdrawAmount(e.target.value)}
                 />
@@ -161,7 +202,7 @@ export default function SavingsPotPage() {
           {showPin && (
             <div className="text-center">
               {withdrawError && <p className="text-sm text-destructive mb-3">{withdrawError}</p>}
-              <p className="text-sm text-muted-foreground mb-3">Entrez votre code PIN pour retirer {formatCurrency(Math.round(parseFloat(withdrawAmount) * 100), 'CDF')}</p>
+              <p className="text-sm text-muted-foreground mb-3">Entrez votre code PIN pour retirer {formatCurrency(Math.round(parseFloat(withdrawAmount) * 100), currency)}</p>
               <PinInput
                 value={pin}
                 onChange={(v) => {
@@ -179,7 +220,7 @@ export default function SavingsPotPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Réglages</CardTitle>
+          <CardTitle className="text-base">Réglages — {currency}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
           {settingsError && (
@@ -190,8 +231,8 @@ export default function SavingsPotPage() {
 
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="font-semibold text-sm text-foreground">Activer l'épargne par arrondi</p>
-              <p className="text-xs text-muted-foreground">À chaque paiement en CDF, le montant est arrondi et la différence part dans votre tirelire.</p>
+              <p className="font-semibold text-sm text-foreground">Activer l'épargne par arrondi en {currency}</p>
+              <p className="text-xs text-muted-foreground">À chaque paiement en {currency}, le montant est arrondi et la différence part dans cette tirelire.</p>
             </div>
             <Switch checked={enabled} onCheckedChange={setEnabled} />
           </div>
@@ -200,7 +241,7 @@ export default function SavingsPotPage() {
             <div className="space-y-2">
               <Label className="font-semibold text-sm">Arrondir au multiple de</Label>
               <div className="grid grid-cols-3 gap-2">
-                {INCREMENTS.map((i) => (
+                {increments.map((i) => (
                   <button
                     key={i.cents}
                     type="button"
@@ -218,13 +259,13 @@ export default function SavingsPotPage() {
           )}
 
           <div className="pt-2 border-t border-border space-y-3">
-            <Label htmlFor="goal_name" className="font-semibold text-sm">Objectif (optionnel)</Label>
-            <Input id="goal_name" placeholder="Ex: Vélo" value={goalName} onChange={(e) => setGoalName(e.target.value)} />
+            <Label htmlFor={`goal_name_${currency}`} className="font-semibold text-sm">Objectif (optionnel)</Label>
+            <Input id={`goal_name_${currency}`} placeholder="Ex: Vélo" value={goalName} onChange={(e) => setGoalName(e.target.value)} />
             <Input
-              id="goal_amount"
+              id={`goal_amount_${currency}`}
               type="number"
               step="0.01"
-              placeholder="Montant cible (CDF)"
+              placeholder={`Montant cible (${currency})`}
               value={goalAmount}
               onChange={(e) => setGoalAmount(e.target.value)}
             />
@@ -240,7 +281,7 @@ export default function SavingsPotPage() {
       {data.entries?.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Historique</CardTitle>
+            <CardTitle className="text-base">Historique — {currency}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
@@ -256,7 +297,7 @@ export default function SavingsPotPage() {
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <span className={cn('font-semibold', e.type === 'round_up' ? 'text-success' : 'text-foreground')}>
-                      {e.type === 'round_up' ? '+' : '-'}{formatCurrency(e.amount_cents, 'CDF')}
+                      {e.type === 'round_up' ? '+' : '-'}{formatCurrency(e.amount_cents, currency)}
                     </span>
                     <span>{formatDate(e.created_at)}</span>
                   </div>
@@ -266,6 +307,6 @@ export default function SavingsPotPage() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </>
   );
 }
