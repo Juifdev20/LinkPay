@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "3878883572",
-    "project_id": "linkpay-380a1",
-    "storage_bucket": "linkpay-380a1.firebasestorage.app"
+    "project_number": "640656118948",
+    "project_id": "scanlinkpay-fd949",
+    "storage_bucket": "scanlinkpay-fd949.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:3878883572:android:cda121f721020083c54ea1",
+        "mobilesdk_app_id": "1:640656118948:android:3af56d4899b633c3b60231",
         "android_client_info": {
-          "package_name": "com.linkpay.app"
+          "package_name": "com.scanlinkpay.app"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDg-qkkFfjpsprqFklF2ztObnrM9JeYFOw"
+          "current_key": "AIzaSyAMdzyKMjHfswqeV-B7h05csKigig7LvYM"
         }
       ],
       "services": {
