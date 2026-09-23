@@ -25,10 +25,13 @@ export function BottomNav() {
 
   // A plain client has no merchant_id — "Créer une demande de paiement"
   // (the merchant-only endpoint) would 400 with "No merchant account
-  // associated" for them. Their actual "QR" action is scanning to pay.
+  // associated" for them. Their central action is showing their own QR/
+  // number to get paid (same screen as the "Recevoir" quick action on the
+  // dashboard) — scanning someone else's QR to pay remains available from
+  // that same quick-action grid, this tab just isn't it.
   const qrTab = hasMerchantId
     ? { to: '/dashboard/payment-requests/new', label: 'QR', icon: QrCode, end: false, central: true }
-    : { to: '/dashboard/wallet/scan', label: 'Scanner', icon: QrCode, end: false, central: true };
+    : { to: '/dashboard/wallet/receive', label: 'Recevoir', icon: QrCode, end: false, central: true };
   const allTabs = [tabs[0], tabs[1], qrTab, tabs[2]];
 
   return (
