@@ -37,7 +37,9 @@ export class MerchantsService {
         ...data,
         default_currency: data.default_currency || 'CDF',
         owner_id: ownerId,
-        status: 'pending',
+        // Merchants go live immediately, same as a client — only
+        // organizations (enterprise accounts) require admin approval.
+        status: 'active',
         country: 'CD',
         organization_id: options?.organizationId || null,
       })

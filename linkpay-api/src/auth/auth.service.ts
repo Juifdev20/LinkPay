@@ -69,7 +69,9 @@ export class AuthService {
     if (roleSlug === 'merchant') {
       const { data: merchant, error: merchantError } = await this.supabaseService.getClient()
         .from('merchants')
-        .insert({ owner_id: userId, name: business_name, status: 'pending', country: 'CD' })
+        // Merchants go live immediately, same as a client — only
+        // organizations (enterprise accounts) require admin approval.
+        .insert({ owner_id: userId, name: business_name, status: 'active', country: 'CD' })
         .select()
         .single();
 
