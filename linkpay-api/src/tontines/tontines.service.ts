@@ -122,19 +122,43 @@ export class TontinesService {
   }
 
   async getGroupDetail(groupId: string, userId: string) {
-    await this.assertIsMember(groupId, userId);
-    const group = await this.getGroupById(groupId);
-
-    const { data: members } = await this.db
-      .from('tontine_members')
-      .select('id, user_id, join_order, payout_position, status, auto_payment_opt_in')
-      .eq('group_id', groupId)
-      .order('join_order', { ascending: true });
+    // These four don't depend on each other's results — assertIsMember only
+    // throws (never used below) and paidContributions only needs groupId —
+    // so they can all go out over the wire at once instead of one after
+    // another. A non-member still gets rejected below before anything is
+    // returned; the wasted reads on that error path are a fine trade for
+    // cutting the common (member) case from 7 sequential round trips to 3.
+    const [, group, { data: members }, { data: paidContributions }] = await Promise.all([
+      this.assertIsMember(groupId, userId),
+      this.getGroupById(groupId),
+      this.db
+        .from('tontine_members')
+        .select('id, user_id, join_order, payout_position, status, auto_payment_opt_in')
+        .eq('group_id', groupId)
+        .order('join_order', { ascending: true }),
+      this.db
+        .from('tontine_contributions')
+        .select('id, member_id, amount_cents, currency, paid_at, cycle:tontine_cycles(cycle_number)')
+        .eq('group_id', groupId)
+        .eq('status', 'paid')
+        .order('paid_at', { ascending: false }),
+    ]);
 
     const userIds = (members || []).map((m: any) => m.user_id);
-    const { data: profiles } = userIds.length
-      ? await this.db.from('profiles').select('id, full_name, phone').in('id', userIds)
-      : { data: [] as any[] };
+    const [{ data: profiles }, cycle] = await Promise.all([
+      userIds.length
+        ? this.db.from('profiles').select('id, full_name, phone').in('id', userIds)
+        : Promise.resolve({ data: [] as any[] }),
+      group.current_cycle > 0
+        ? this.db
+            .from('tontine_cycles')
+            .select('*')
+            .eq('group_id', groupId)
+            .eq('cycle_number', group.current_cycle)
+            .maybeSingle()
+            .then((r) => r.data)
+        : Promise.resolve(null),
+    ]);
     const profilesById = Object.fromEntries((profiles || []).map((p: any) => [p.id, p]));
 
     const membersWithNames = (members || []).map((m: any) => ({
@@ -143,39 +167,23 @@ export class TontinesService {
     }));
 
     let currentCycle: any = null;
-    if (group.current_cycle > 0) {
-      const { data: cycle } = await this.db
-        .from('tontine_cycles')
+    if (cycle) {
+      const { data: contributions } = await this.db
+        .from('tontine_contributions')
         .select('*')
-        .eq('group_id', groupId)
-        .eq('cycle_number', group.current_cycle)
-        .maybeSingle();
+        .eq('cycle_id', cycle.id);
 
-      if (cycle) {
-        const { data: contributions } = await this.db
-          .from('tontine_contributions')
-          .select('*')
-          .eq('cycle_id', cycle.id);
-
-        const recipient = membersWithNames.find((m) => m.id === cycle.recipient_member_id);
-        currentCycle = {
-          ...cycle,
-          recipient,
-          contributions: (contributions || []).map((c: any) => ({
-            ...c,
-            member: membersWithNames.find((m) => m.id === c.member_id),
-            effective_amount_cents: this.computePenalizedAmount(c, group),
-          })),
-        };
-      }
+      const recipient = membersWithNames.find((m) => m.id === cycle.recipient_member_id);
+      currentCycle = {
+        ...cycle,
+        recipient,
+        contributions: (contributions || []).map((c: any) => ({
+          ...c,
+          member: membersWithNames.find((m) => m.id === c.member_id),
+          effective_amount_cents: this.computePenalizedAmount(c, group),
+        })),
+      };
     }
-
-    const { data: paidContributions } = await this.db
-      .from('tontine_contributions')
-      .select('id, member_id, amount_cents, currency, paid_at, cycle:tontine_cycles(cycle_number)')
-      .eq('group_id', groupId)
-      .eq('status', 'paid')
-      .order('paid_at', { ascending: false });
 
     const contributionHistory = (paidContributions || []).map((c: any) => ({
       ...c,

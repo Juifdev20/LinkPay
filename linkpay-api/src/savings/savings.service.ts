@@ -59,27 +59,38 @@ export class SavingsService {
     return created;
   }
 
-  private async getBalance(potId: string): Promise<number> {
-    const { data: entries } = await this.db.from('savings_pot_entries').select('type, amount_cents').eq('pot_id', potId);
-    return (entries || []).reduce((sum, e: any) => sum + (e.type === 'round_up' ? e.amount_cents : -e.amount_cents), 0);
-  }
-
   /** Both currencies at once — a currency the user never configured comes
-   * back as a default/disabled placeholder, no row created just for reading. */
+   * back as a default/disabled placeholder, no row created just for reading.
+   * One round trip per currency (both run in parallel): the pot and ALL its
+   * entries come back together via PostgREST's embedded-resource select,
+   * instead of the pot, then the full entry list again for the balance, then
+   * the last 20 again for display — three reads of the same table down to
+   * one. The balance still needs every entry ever recorded (it's a running
+   * ledger total, not just the recent ones shown in the UI). */
   async getMyPot(userId: string) {
     const pots = await Promise.all(
       CURRENCIES.map(async (currency) => {
-        const pot = await this.getPot(userId, currency);
+        const { data: pot } = await this.db
+          .from('savings_pots')
+          .select('*, savings_pot_entries(*)')
+          .eq('user_id', userId)
+          .eq('currency', currency)
+          .maybeSingle();
+
         if (!pot) {
           return { currency, pot: null, balance_cents: 0, entries: [] as any[] };
         }
 
-        const [balance_cents, { data: entries }] = await Promise.all([
-          this.getBalance(pot.id),
-          this.db.from('savings_pot_entries').select('*').eq('pot_id', pot.id).order('created_at', { ascending: false }).limit(20),
-        ]);
+        const { savings_pot_entries: allEntries, ...potFields } = pot as any;
+        const entries = (allEntries || []).sort(
+          (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        );
+        const balance_cents = entries.reduce(
+          (sum: number, e: any) => sum + (e.type === 'round_up' ? e.amount_cents : -e.amount_cents),
+          0,
+        );
 
-        return { currency, pot, balance_cents, entries: entries || [] };
+        return { currency, pot: potFields, balance_cents, entries: entries.slice(0, 20) };
       }),
     );
 
