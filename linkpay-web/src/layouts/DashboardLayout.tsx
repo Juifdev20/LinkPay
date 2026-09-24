@@ -30,11 +30,16 @@ const navItems = [
   { to: '/dashboard/client/transactions', label: 'Mes paiements', icon: Receipt, roles: ALL_ROLES },
   { to: '/dashboard/tontines', label: 'Tontines', icon: RefreshCcw, roles: ALL_ROLES },
   { to: '/dashboard/savings', label: 'Épargne', icon: PiggyBank, roles: ALL_ROLES },
+  // Deliberately excludes 'enterprise' — organizations have their own,
+  // separate expense feature (see OrganizationProfile.tsx's expense tile),
+  // unlike tontines/savings above which enterprise can currently also see.
+  { to: '/dashboard/expenses', label: 'Mes dépenses', icon: Receipt, roles: ['client', 'merchant', 'cashier', 'admin', 'super_admin'] },
   { to: '/dashboard/admin', label: 'Administration', icon: ShieldCheck, roles: ['admin', 'super_admin'] },
   { to: '/dashboard/admin/merchants', label: 'Commerçants', icon: Users, roles: ['admin', 'super_admin'] },
   { to: '/dashboard/admin/settlements', label: 'Règlements (admin)', icon: Wallet, roles: ['admin', 'super_admin'] },
   { to: '/dashboard/admin/users', label: 'Utilisateurs', icon: UserCog, roles: ['super_admin'] },
   { to: '/dashboard/admin/commissions', label: 'Commissions', icon: Percent, roles: ['super_admin'] },
+  { to: '/dashboard/admin/expense-tracker-settings', label: 'Dépenses — Config.', icon: Receipt, roles: ['super_admin'] },
   { to: '/dashboard/organization', label: 'Mon organisation', icon: Building2, roles: ['enterprise'] },
   { to: '/dashboard/settings', label: 'Paramètres', icon: Settings, roles: ALL_ROLES },
 ];

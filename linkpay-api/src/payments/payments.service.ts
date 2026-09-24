@@ -477,6 +477,12 @@ export class PaymentsService {
         return { status: 'processed', event_type: event.event_type };
       }
 
+      const handledAsExpensePro = await this.tryHandleExpenseProWebhook(event.psp_intent_id, event.status);
+      if (handledAsExpensePro) {
+        await this.markWebhookProcessed(dedupHash);
+        return { status: 'processed', event_type: event.event_type };
+      }
+
       this.logger.warn(`No payment intent found for psp_intent_id: ${event.psp_intent_id}`);
       await this.markWebhookProcessed(dedupHash, 'no_intent_found');
       return { status: 'no_intent' };
@@ -693,6 +699,54 @@ export class PaymentsService {
         .from('wallet_topups')
         .update({ status: 'FAILED', updated_at: new Date().toISOString() })
         .eq('id', topup.id);
+    }
+
+    return true;
+  }
+
+  /** Returns true if an expense_pro_payments row was found for this psp_intent_id (handled either way). */
+  private async tryHandleExpenseProWebhook(pspIntentId: string, status: string): Promise<boolean> {
+    const { data: payment } = await this.supabaseService.getClient()
+      .from('expense_pro_payments')
+      .select('*')
+      .eq('psp_intent_id', pspIntentId)
+      .single();
+
+    if (!payment) {
+      return false;
+    }
+
+    if (status === 'SUCCESS') {
+      if (payment.status !== 'SUCCESS') {
+        const { data: newExpiry, error: rpcError } = await this.supabaseService.getClient().rpc('extend_expense_pro', {
+          p_user_id: payment.user_id,
+        });
+
+        if (rpcError) {
+          this.logger.error(`Failed to extend expense Pro for payment ${payment.id}: ${rpcError.message}`);
+          return true;
+        }
+
+        await this.supabaseService.getClient()
+          .from('expense_pro_payments')
+          .update({ status: 'SUCCESS', extended_to: newExpiry, updated_at: new Date().toISOString() })
+          .eq('id', payment.id);
+
+        await this.notificationsService.create({
+          user_id: payment.user_id,
+          type: 'expense_pro_activated',
+          title: 'Mode Pro activé',
+          body: 'Votre abonnement Pro pour la gestion de dépenses est actif.',
+          data: { expense_pro_payment_id: payment.id },
+        }).catch(() => null);
+
+        this.logger.log(`Expense Pro payment ${payment.id} confirmed via webhook, user ${payment.user_id} extended to ${newExpiry}`);
+      }
+    } else if (status === 'FAILED') {
+      await this.supabaseService.getClient()
+        .from('expense_pro_payments')
+        .update({ status: 'FAILED', updated_at: new Date().toISOString() })
+        .eq('id', payment.id);
     }
 
     return true;

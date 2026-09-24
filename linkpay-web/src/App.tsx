@@ -28,6 +28,8 @@ import TopupResultPage from '@/pages/wallet/TopupResult';
 import SendPage from '@/pages/wallet/Send';
 import ReceivePage from '@/pages/wallet/Receive';
 import SavingsPotPage from '@/pages/wallet/SavingsPot';
+import ExpenseTrackerPage from '@/pages/expense-tracker/ExpenseTracker';
+import ProActivationResultPage from '@/pages/expense-tracker/ProActivationResult';
 import TontinesListPage from '@/pages/client/tontines/TontinesList';
 import CreateTontinePage from '@/pages/client/tontines/CreateTontine';
 import TontineDetailPage from '@/pages/client/tontines/TontineDetail';
@@ -43,6 +45,7 @@ import AdminMerchantsPage from '@/pages/admin/Merchants';
 import AdminUsersPage from '@/pages/admin/Users';
 import AdminSettlementsPage from '@/pages/admin/Settlements';
 import AdminCommissionsPage from '@/pages/admin/Commissions';
+import ExpenseTrackerSettingsPage from '@/pages/admin/ExpenseTrackerSettings';
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
 import SettingsPage from '@/pages/Settings';
 import ProfilePage from '@/pages/Profile';
@@ -154,6 +157,15 @@ export default function App() {
         <Route path="wallet/send" element={<SendPage />} />
         <Route path="wallet/receive" element={<ReceivePage />} />
         <Route path="savings" element={<SavingsPotPage />} />
+        <Route
+          path="expenses"
+          element={
+            <ProtectedRoute roles={['client', 'merchant', 'cashier', 'admin', 'super_admin']}>
+              <ExpenseTrackerPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="expenses/pro/result" element={<ProActivationResultPage />} />
         <Route path="tontines" element={<TontinesListPage />} />
         <Route path="tontines/new" element={<CreateTontinePage />} />
         <Route path="tontines/:id" element={<TontineDetailPage />} />
@@ -202,6 +214,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={['super_admin']}>
               <AdminCommissionsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/expense-tracker-settings"
+          element={
+            <ProtectedRoute roles={['super_admin']}>
+              <ExpenseTrackerSettingsPage />
             </ProtectedRoute>
           }
         />
