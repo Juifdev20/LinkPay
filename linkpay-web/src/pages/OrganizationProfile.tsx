@@ -14,7 +14,7 @@ import { TransactionItem } from '@/components/TransactionItem';
 import OnboardingWizard from '@/pages/organization/OnboardingWizard';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X, Copy, Check, XCircle, Trophy, Banknote, Smartphone, Package, MinusCircle, PiggyBank } from 'lucide-react';
-import { shareOrCopy } from '@/lib/share';
+import { shareOrCopy, publicOrigin } from '@/lib/share';
 
 export default function OrganizationProfilePage() {
   const navigate = useNavigate();
@@ -187,7 +187,7 @@ export default function OrganizationProfilePage() {
                     await shareOrCopy({
                       title: 'Payez-moi via ScanLinkPay',
                       text: `Payez ${org.name} via ScanLinkPay`,
-                      url: `${window.location.origin}/pay/${org.scanlinkpay_number}`,
+                      url: `${publicOrigin()}/pay/${org.scanlinkpay_number}`,
                     });
                     setCopied(true);
                     setTimeout(() => setCopied(false), 2000);

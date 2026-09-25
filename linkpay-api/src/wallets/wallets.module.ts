@@ -7,9 +7,10 @@ import { SupabaseModule } from '../supabase/supabase.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuditModule } from '../audit/audit.module';
+import { SavingsModule } from '../savings/savings.module';
 
 @Module({
-  imports: [SupabaseModule, PaymentsModule, NotificationsModule, AuditModule],
+  imports: [SupabaseModule, PaymentsModule, NotificationsModule, AuditModule, SavingsModule],
   controllers: [WalletsController],
   providers: [WalletsService, WalletPinService, WalletLimitsService],
   exports: [WalletsService, WalletPinService, WalletLimitsService],

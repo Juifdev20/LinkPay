@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Delete, Body, Param, Headers, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Headers, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsInt, IsIn, Min, Max, MaxLength, Length } from 'class-validator';
+import { IsString, IsOptional, IsInt, IsIn, IsBoolean, IsNumber, Min, Max, MaxLength, Length, ValidateIf } from 'class-validator';
 import { TontinesService } from './tontines.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
@@ -24,9 +24,16 @@ class CreateTontineDto {
   @IsIn(['CDF', 'USD'])
   currency!: string;
 
-  @ApiProperty({ enum: ['weekly', 'monthly'] })
-  @IsIn(['weekly', 'monthly'])
-  frequency!: 'weekly' | 'monthly';
+  @ApiProperty({ enum: ['weekly', 'monthly', 'custom'] })
+  @IsIn(['weekly', 'monthly', 'custom'])
+  frequency!: 'weekly' | 'monthly' | 'custom';
+
+  @ApiPropertyOptional({ description: 'Required when frequency is "custom" — the cycle repeats every N days', minimum: 1, maximum: 90 })
+  @ValidateIf((o) => o.frequency === 'custom')
+  @IsInt()
+  @Min(1)
+  @Max(90)
+  custom_interval_days?: number;
 
   @ApiProperty({ minimum: 3, maximum: 30 })
   @IsInt()
@@ -55,6 +62,49 @@ class ContributeDto {
   pin!: string;
 }
 
+class UpdateTontineSettingsDto {
+  @ApiPropertyOptional({ description: 'Visible to every member' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  description?: string;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 14 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(14)
+  reminder_days_before?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  late_penalty_enabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Percent of the contribution added per day late, starting after the grace period', minimum: 0, maximum: 100 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  late_penalty_percent_per_day?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  auto_payment_enabled?: boolean;
+
+  @ApiPropertyOptional({ enum: [0, 2, 4], description: 'Days before the due date to auto-pay (0 = same day)' })
+  @IsOptional()
+  @IsIn([0, 2, 4])
+  auto_payment_days_before?: number;
+}
+
+class AutoPaymentOptInDto {
+  @ApiProperty()
+  @IsBoolean()
+  enabled!: boolean;
+}
+
 @ApiTags('Tontines')
 @ApiBearerAuth()
 @Controller('tontines')
@@ -77,6 +127,18 @@ export class TontinesController {
   @ApiOperation({ summary: 'Get tontine detail (members, current cycle, who has paid) — members only' })
   async detail(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.tontinesService.getGroupDetail(id, userId);
+  }
+
+  @Put(':id/settings')
+  @ApiOperation({ summary: 'Update group settings (creator only) — description, reminder timing, late penalty, auto-payment schedule' })
+  async updateSettings(@Param('id') id: string, @CurrentUser('id') userId: string, @Body() dto: UpdateTontineSettingsDto) {
+    return this.tontinesService.updateSettings(id, userId, dto);
+  }
+
+  @Post(':id/auto-payment-optin')
+  @ApiOperation({ summary: 'Opt this member in/out of auto-payment for their own contributions — required even when the group has auto-payment enabled' })
+  async autoPaymentOptIn(@Param('id') id: string, @CurrentUser('id') userId: string, @Body() dto: AutoPaymentOptInDto) {
+    return this.tontinesService.setAutoPaymentOptIn(id, userId, dto.enabled);
   }
 
   @Post(':id/invite')

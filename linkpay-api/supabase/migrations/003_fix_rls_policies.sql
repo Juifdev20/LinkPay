@@ -3,9 +3,15 @@
 -- ============================================================================
 
 -- Drop all existing policies that cause infinite recursion
+-- (profiles_insert_own/user_roles_insert_own were already created by
+-- 001_initial_schema.sql and re-declared below identically — dropped here
+-- too so this migration replays cleanly on a fresh database, not just on
+-- the original project where they'd been dropped by hand at the time.)
 DROP POLICY IF EXISTS profiles_select_own ON profiles;
+DROP POLICY IF EXISTS profiles_insert_own ON profiles;
 DROP POLICY IF EXISTS profiles_update_own ON profiles;
 DROP POLICY IF EXISTS user_roles_select_own ON user_roles;
+DROP POLICY IF EXISTS user_roles_insert_own ON user_roles;
 DROP POLICY IF EXISTS merchants_select_own ON merchants;
 DROP POLICY IF EXISTS merchants_insert_own ON merchants;
 DROP POLICY IF EXISTS merchants_update_own ON merchants;

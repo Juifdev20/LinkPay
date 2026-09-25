@@ -9,7 +9,7 @@ import { BalanceCard } from '@/components/BalanceCard';
 import { WalletActions } from '@/components/WalletActions';
 import { TransactionItem } from '@/components/TransactionItem';
 import { DualCurrencyStat } from '@/components/DualCurrencyStat';
-import { Plus, TrendingUp, Receipt, Wallet, QrCode, RefreshCcw } from 'lucide-react';
+import { Plus, TrendingUp, Receipt, Wallet, QrCode, RefreshCcw, PiggyBank, Wallet2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function MerchantDashboard() {
@@ -88,6 +88,32 @@ export default function MerchantDashboard() {
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-foreground">Tontines</p>
           <p className="text-sm text-muted-foreground">Épargnez en groupe, à tour de rôle</p>
+        </div>
+      </button>
+
+      <button
+        onClick={() => navigate('/dashboard/savings')}
+        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
+      >
+        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
+          <PiggyBank className="w-5 h-5 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-foreground">Épargne par arrondi</p>
+          <p className="text-sm text-muted-foreground">Épargnez sans y penser, à chaque paiement</p>
+        </div>
+      </button>
+
+      <button
+        onClick={() => navigate('/dashboard/expenses')}
+        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
+      >
+        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
+          <Wallet2 className="w-5 h-5 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-foreground">Mes dépenses</p>
+          <p className="text-sm text-muted-foreground">Suivez vos dépenses au jour le jour</p>
         </div>
       </button>
 

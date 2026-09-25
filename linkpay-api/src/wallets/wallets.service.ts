@@ -7,6 +7,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { WalletPinService } from './wallet-pin.service';
 import { WalletLimitsService } from './wallet-limits.service';
 import { AuditService } from '../audit/audit.service';
+import { SavingsService } from '../savings/savings.service';
 
 @Injectable()
 export class WalletsService {
@@ -20,6 +21,7 @@ export class WalletsService {
     private walletPinService: WalletPinService,
     private walletLimitsService: WalletLimitsService,
     private auditService: AuditService,
+    private savingsService: SavingsService,
   ) {}
 
   async getWalletByUserId(userId: string) {
@@ -428,6 +430,11 @@ export class WalletsService {
     userId: string,
     dto: { recipient_wallet_number: string; amount_cents: number; currency: string; description?: string; pin: string },
     idempotencyKey: string,
+    // Internal-only — never settable from a public DTO/controller. Exists
+    // solely for TontinesService's auto-payment cron path, where the member
+    // already gave standing consent (auto_payment_opt_in) instead of
+    // entering their PIN for this specific transfer.
+    internalOptions?: { skipPinVerification?: boolean },
   ) {
     if (!dto.amount_cents || dto.amount_cents < 1) {
       throw new BadRequestException('Montant invalide');
@@ -471,7 +478,11 @@ export class WalletsService {
 
     // PIN verified only after the cheap checks above, but always before any
     // money moves — never trust the frontend's "user confirmed" state.
-    await this.walletPinService.verifyPin(userId, dto.pin);
+    // Skipped only for the pre-authorized tontine auto-payment path (see
+    // internalOptions above) — every other caller still requires it.
+    if (!internalOptions?.skipPinVerification) {
+      await this.walletPinService.verifyPin(userId, dto.pin);
+    }
 
     const rule = await this.walletLimitsService.getRule('TRANSFER', dto.currency);
     const fee = this.walletLimitsService.quoteFee(dto.amount_cents, rule);
@@ -551,10 +562,15 @@ export class WalletsService {
       }).catch(() => null);
     }
 
+    const roundup = await this.savingsService
+      .maybeRoundUp(userId, senderWallet.id, dto.amount_cents, dto.currency, `transfer:${transferRow.id}`)
+      .catch(() => null);
+
     return {
       transfer: finalTransfer || { ...transferRow, status: 'SUCCESS' },
       recipient: { wallet_number: recipient.wallet_number, display_name: recipient.display_name },
       sender_balance: (result as any)?.sender_balance,
+      roundup,
     };
   }
 

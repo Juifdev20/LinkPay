@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.linkpay.app',
+  appId: 'com.scanlinkpay.app',
   appName: 'ScanLinkPay',
   webDir: 'dist',
   // No server.url — the app bundles dist/ directly (default behavior),

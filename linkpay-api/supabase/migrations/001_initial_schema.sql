@@ -478,48 +478,63 @@ RETURNS BOOLEAN AS $$
 $$ LANGUAGE SQL STABLE SECURITY DEFINER;
 
 -- profiles: users can see/update own profile, admins can see all
+DROP POLICY IF EXISTS profiles_select_own ON profiles;
 CREATE POLICY profiles_select_own ON profiles FOR SELECT USING (
   auth.uid() = id OR public.is_admin()
 );
+DROP POLICY IF EXISTS profiles_insert_own ON profiles;
 CREATE POLICY profiles_insert_own ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+DROP POLICY IF EXISTS profiles_update_own ON profiles;
 CREATE POLICY profiles_update_own ON profiles FOR UPDATE USING (auth.uid() = id);
 
 -- roles: everyone can read
+DROP POLICY IF EXISTS roles_select_all ON roles;
 CREATE POLICY roles_select_all ON roles FOR SELECT USING (TRUE);
 
 -- user_roles: users can see their own, admins can see all
+DROP POLICY IF EXISTS user_roles_select_own ON user_roles;
 CREATE POLICY user_roles_select_own ON user_roles FOR SELECT USING (
   auth.uid() = user_id OR public.is_admin()
 );
+DROP POLICY IF EXISTS user_roles_insert_own ON user_roles;
 CREATE POLICY user_roles_insert_own ON user_roles FOR INSERT WITH CHECK (
   auth.uid() = user_id OR public.is_admin()
 );
 
 -- merchants: owner + merchant users can see; admins can see all
+DROP POLICY IF EXISTS merchants_select_own ON merchants;
 CREATE POLICY merchants_select_own ON merchants FOR SELECT USING (
   auth.uid() = owner_id OR public.is_merchant_user(merchants.id)
 );
+DROP POLICY IF EXISTS merchants_insert_own ON merchants;
 CREATE POLICY merchants_insert_own ON merchants FOR INSERT WITH CHECK (auth.uid() = owner_id);
+DROP POLICY IF EXISTS merchants_update_own ON merchants;
 CREATE POLICY merchants_update_own ON merchants FOR UPDATE USING (
   auth.uid() = owner_id OR public.is_admin()
 );
 
 -- organizations: owner can see/update
+DROP POLICY IF EXISTS orgs_select_own ON organizations;
 CREATE POLICY orgs_select_own ON organizations FOR SELECT USING (
   auth.uid() = owner_id OR public.is_admin()
 );
+DROP POLICY IF EXISTS orgs_insert_own ON organizations;
 CREATE POLICY orgs_insert_own ON organizations FOR INSERT WITH CHECK (auth.uid() = owner_id);
+DROP POLICY IF EXISTS orgs_update_own ON organizations;
 CREATE POLICY orgs_update_own ON organizations FOR UPDATE USING (auth.uid() = owner_id);
 
 -- commission_rules: everyone can read active rules
+DROP POLICY IF EXISTS commission_rules_select_all ON commission_rules;
 CREATE POLICY commission_rules_select_all ON commission_rules FOR SELECT USING (TRUE);
 
 -- payment_requests: merchant users can see their own; public can access via link_token
+DROP POLICY IF EXISTS payment_requests_select_own ON payment_requests;
 CREATE POLICY payment_requests_select_own ON payment_requests FOR SELECT USING (
   public.is_merchant_user(payment_requests.merchant_id)
 );
 
 -- payment_intents: client can see own; merchant users can see their store's
+DROP POLICY IF EXISTS payment_intents_select_own ON payment_intents;
 CREATE POLICY payment_intents_select_own ON payment_intents FOR SELECT USING (
   auth.uid() = client_id OR public.is_merchant_user(
     (SELECT merchant_id FROM payment_requests WHERE id = payment_intents.payment_request_id)
@@ -527,11 +542,13 @@ CREATE POLICY payment_intents_select_own ON payment_intents FOR SELECT USING (
 );
 
 -- transactions: client sees own, merchant users see their store's, admins see all
+DROP POLICY IF EXISTS transactions_select_own ON transactions;
 CREATE POLICY transactions_select_own ON transactions FOR SELECT USING (
   auth.uid() = client_id OR public.is_merchant_user(transactions.merchant_id)
 );
 
 -- refunds: merchant users and admins
+DROP POLICY IF EXISTS refunds_select_own ON refunds;
 CREATE POLICY refunds_select_own ON refunds FOR SELECT USING (
   public.is_merchant_user(
     (SELECT merchant_id FROM transactions WHERE id = refunds.transaction_id)
@@ -539,6 +556,7 @@ CREATE POLICY refunds_select_own ON refunds FOR SELECT USING (
 );
 
 -- receipts: same as transactions
+DROP POLICY IF EXISTS receipts_select_own ON receipts;
 CREATE POLICY receipts_select_own ON receipts FOR SELECT USING (
   auth.uid() IN (
     SELECT t.client_id FROM transactions t WHERE t.id = receipts.transaction_id
@@ -548,22 +566,29 @@ CREATE POLICY receipts_select_own ON receipts FOR SELECT USING (
 );
 
 -- ledger_entries: admins only
+DROP POLICY IF EXISTS ledger_entries_admin_only ON ledger_entries;
 CREATE POLICY ledger_entries_admin_only ON ledger_entries FOR SELECT USING (public.is_admin());
 
 -- settlements: merchant owners and admins
+DROP POLICY IF EXISTS settlements_select_own ON settlements;
 CREATE POLICY settlements_select_own ON settlements FOR SELECT USING (
   public.is_merchant_user(settlements.merchant_id)
 );
 
 -- webhook_events: admins only
+DROP POLICY IF EXISTS webhook_events_admin_only ON webhook_events;
 CREATE POLICY webhook_events_admin_only ON webhook_events FOR SELECT USING (public.is_admin());
 
 -- notifications: users see own only
+DROP POLICY IF EXISTS notifications_select_own ON notifications;
 CREATE POLICY notifications_select_own ON notifications FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS notifications_update_own ON notifications;
 CREATE POLICY notifications_update_own ON notifications FOR UPDATE USING (auth.uid() = user_id);
 
 -- risk_logs: admins only
+DROP POLICY IF EXISTS risk_logs_admin_only ON risk_logs;
 CREATE POLICY risk_logs_admin_only ON risk_logs FOR SELECT USING (public.is_admin());
 
 -- audit_logs: admins only
+DROP POLICY IF EXISTS audit_logs_admin_only ON audit_logs;
 CREATE POLICY audit_logs_admin_only ON audit_logs FOR SELECT USING (public.is_admin());

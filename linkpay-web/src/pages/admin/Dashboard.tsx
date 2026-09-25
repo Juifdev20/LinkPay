@@ -1,11 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/PageHeader';
 import { DualCurrencyStat } from '@/components/DualCurrencyStat';
-import { Users, Store, TrendingUp, Receipt } from 'lucide-react';
+import { Users, Store, TrendingUp, Receipt, Wallet2 } from 'lucide-react';
 
 export default function AdminDashboard() {
+  const navigate = useNavigate();
   const { data: stats } = useQuery({
     queryKey: ['admin-stats'],
     queryFn: async () => {
@@ -24,6 +26,19 @@ export default function AdminDashboard() {
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
       <PageHeader title="Administration" />
+
+      <button
+        onClick={() => navigate('/dashboard/expenses')}
+        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
+      >
+        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
+          <Wallet2 className="w-5 h-5 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-foreground">Mes dépenses</p>
+          <p className="text-sm text-muted-foreground">Suivez vos dépenses au jour le jour</p>
+        </div>
+      </button>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {cards.map((c) => (

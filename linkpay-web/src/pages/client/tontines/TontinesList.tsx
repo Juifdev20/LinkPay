@@ -48,7 +48,7 @@ export default function TontinesListPage() {
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-sm text-muted-foreground truncate min-w-0 flex-1">
-                      {item.group.frequency === 'weekly' ? 'Hebdomadaire' : 'Mensuelle'}
+                      {item.group.frequency === 'weekly' ? 'Hebdomadaire' : item.group.frequency === 'custom' ? `Tous les ${item.group.custom_interval_days} jours` : 'Mensuelle'}
                       {item.my_payout_position ? ` · Mon tour : n°${item.my_payout_position}` : ''}
                     </p>
                     <div className="flex items-center gap-2 flex-shrink-0">

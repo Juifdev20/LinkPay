@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Copy, Check, Share2 } from 'lucide-react';
-import { shareOrCopy } from '@/lib/share';
+import { shareOrCopy, publicOrigin } from '@/lib/share';
 import { formatCurrency } from '@/lib/utils';
 
 interface PaymentRequestShareCardProps {
@@ -26,7 +26,7 @@ interface PaymentRequestShareCardProps {
  */
 export function PaymentRequestShareCard({ request }: PaymentRequestShareCardProps) {
   const [copied, setCopied] = useState(false);
-  const paymentLink = `${window.location.origin}/p/${request.link_token}`;
+  const paymentLink = `${publicOrigin()}/p/${request.link_token}`;
 
   const copyLink = () => {
     navigator.clipboard.writeText(paymentLink);

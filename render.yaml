@@ -64,6 +64,8 @@ services:
     envVars:
       - key: VITE_API_URL
         sync: false
+      - key: VITE_PUBLIC_WEB_URL
+        sync: false
       - key: VITE_SUPABASE_URL
         sync: false
       - key: VITE_SUPABASE_ANON_KEY

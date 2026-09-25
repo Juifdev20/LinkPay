@@ -1,4 +1,4 @@
-package com.linkpay.app;
+package com.scanlinkpay.app;
 
 import com.getcapacitor.BridgeActivity;
 

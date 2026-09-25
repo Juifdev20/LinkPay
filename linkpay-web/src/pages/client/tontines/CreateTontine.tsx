@@ -15,7 +15,8 @@ export default function CreateTontinePage() {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState<'CDF' | 'USD'>('CDF');
-  const [frequency, setFrequency] = useState<'weekly' | 'monthly'>('monthly');
+  const [frequency, setFrequency] = useState<'weekly' | 'monthly' | 'custom'>('monthly');
+  const [customIntervalDays, setCustomIntervalDays] = useState('3');
   const [maxMembers, setMaxMembers] = useState('5');
   const [error, setError] = useState('');
 
@@ -29,11 +30,16 @@ export default function CreateTontinePage() {
       if (!members || members < 3 || members > 30) {
         throw new Error('Le nombre de membres doit être entre 3 et 30');
       }
+      const intervalDays = parseInt(customIntervalDays, 10);
+      if (frequency === 'custom' && (!intervalDays || intervalDays < 1 || intervalDays > 90)) {
+        throw new Error('Le nombre de jours doit être entre 1 et 90');
+      }
       const { data } = await api.post('/tontines', {
         name,
         contribution_amount_cents: amountCents,
         currency,
         frequency,
+        ...(frequency === 'custom' ? { custom_interval_days: intervalDays } : {}),
         max_members: members,
       });
       return data;
@@ -86,6 +92,30 @@ export default function CreateTontinePage() {
                     </button>
                   ))}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setFrequency('custom')}
+                  className={`w-full rounded-xl border-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+                    frequency === 'custom' ? 'border-primary bg-primary/5 text-primary' : 'border-input text-muted-foreground hover:bg-accent'
+                  }`}
+                >
+                  Journalière (personnalisée)
+                </button>
+                {frequency === 'custom' && (
+                  <div className="space-y-2 pt-2">
+                    <Label htmlFor="custom_interval" className="font-semibold text-sm">Tous les combien de jours ?</Label>
+                    <Input
+                      id="custom_interval"
+                      type="number"
+                      min={1}
+                      max={90}
+                      value={customIntervalDays}
+                      onChange={(e) => setCustomIntervalDays(e.target.value)}
+                      className="max-w-[120px]"
+                    />
+                    <p className="text-xs text-muted-foreground">Ex: 3 pour une cotisation tous les 3 jours.</p>
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="tontine_members" className="font-semibold">Nombre de membres (3 à 30)</Label>

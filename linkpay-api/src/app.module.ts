@@ -27,6 +27,8 @@ import { HealthModule } from './health/health.module';
 import { WalletsModule } from './wallets/wallets.module';
 import { WebauthnModule } from './webauthn/webauthn.module';
 import { TontinesModule } from './tontines/tontines.module';
+import { SavingsModule } from './savings/savings.module';
+import { ExpenseTrackerModule } from './expense-tracker/expense-tracker.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 
 @Module({
@@ -64,6 +66,8 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     WalletsModule,
     WebauthnModule,
     TontinesModule,
+    SavingsModule,
+    ExpenseTrackerModule,
   ],
   providers: [
     {

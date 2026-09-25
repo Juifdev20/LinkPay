@@ -10,6 +10,7 @@ import { PaymentRequestsService } from '../payment-requests/payment-requests.ser
 import { WalletPinService } from '../wallets/wallet-pin.service';
 import { WalletLimitsService } from '../wallets/wallet-limits.service';
 import { AuditService } from '../audit/audit.service';
+import { SavingsService } from '../savings/savings.service';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
 
@@ -29,6 +30,7 @@ export class PaymentsService {
     private walletPinService: WalletPinService,
     private walletLimitsService: WalletLimitsService,
     private auditService: AuditService,
+    private savingsService: SavingsService,
   ) {}
 
   async createPayment(data: {
@@ -342,7 +344,15 @@ export class PaymentsService {
         changes: { amount_cents: request.amount_cents, merchant_id: request.merchant_id, reference: request.reference },
       });
 
-      return { payment_intent_id: intent.id, status: 'SUCCESS', reference: transaction?.reference };
+      // .catch() here is load-bearing, not just style: this is still inside
+      // the try block whose catch reverses the whole payment — a round-up
+      // failure must never fall into that catch and undo a payment that
+      // already succeeded.
+      const roundup = await this.savingsService
+        .maybeRoundUp(userId, payerWallet.id, request.amount_cents, request.currency, `payment:${request.reference}`)
+        .catch(() => null);
+
+      return { payment_intent_id: intent.id, status: 'SUCCESS', reference: transaction?.reference, roundup };
     } catch (err: any) {
       // The wallet was already debited but the transaction/ledger pipeline
       // failed downstream — never leave the customer's money in limbo:
@@ -463,6 +473,12 @@ export class PaymentsService {
       // WalletsModule already depends on PaymentsModule for PspFactory.
       const handledAsTopup = await this.tryHandleTopupWebhook(event.psp_intent_id, event.status);
       if (handledAsTopup) {
+        await this.markWebhookProcessed(dedupHash);
+        return { status: 'processed', event_type: event.event_type };
+      }
+
+      const handledAsExpensePro = await this.tryHandleExpenseProWebhook(event.psp_intent_id, event.status);
+      if (handledAsExpensePro) {
         await this.markWebhookProcessed(dedupHash);
         return { status: 'processed', event_type: event.event_type };
       }
@@ -683,6 +699,54 @@ export class PaymentsService {
         .from('wallet_topups')
         .update({ status: 'FAILED', updated_at: new Date().toISOString() })
         .eq('id', topup.id);
+    }
+
+    return true;
+  }
+
+  /** Returns true if an expense_pro_payments row was found for this psp_intent_id (handled either way). */
+  private async tryHandleExpenseProWebhook(pspIntentId: string, status: string): Promise<boolean> {
+    const { data: payment } = await this.supabaseService.getClient()
+      .from('expense_pro_payments')
+      .select('*')
+      .eq('psp_intent_id', pspIntentId)
+      .single();
+
+    if (!payment) {
+      return false;
+    }
+
+    if (status === 'SUCCESS') {
+      if (payment.status !== 'SUCCESS') {
+        const { data: newExpiry, error: rpcError } = await this.supabaseService.getClient().rpc('extend_expense_pro', {
+          p_user_id: payment.user_id,
+        });
+
+        if (rpcError) {
+          this.logger.error(`Failed to extend expense Pro for payment ${payment.id}: ${rpcError.message}`);
+          return true;
+        }
+
+        await this.supabaseService.getClient()
+          .from('expense_pro_payments')
+          .update({ status: 'SUCCESS', extended_to: newExpiry, updated_at: new Date().toISOString() })
+          .eq('id', payment.id);
+
+        await this.notificationsService.create({
+          user_id: payment.user_id,
+          type: 'expense_pro_activated',
+          title: 'Mode Pro activé',
+          body: 'Votre abonnement Pro pour la gestion de dépenses est actif.',
+          data: { expense_pro_payment_id: payment.id },
+        }).catch(() => null);
+
+        this.logger.log(`Expense Pro payment ${payment.id} confirmed via webhook, user ${payment.user_id} extended to ${newExpiry}`);
+      }
+    } else if (status === 'FAILED') {
+      await this.supabaseService.getClient()
+        .from('expense_pro_payments')
+        .update({ status: 'FAILED', updated_at: new Date().toISOString() })
+        .eq('id', payment.id);
     }
 
     return true;
