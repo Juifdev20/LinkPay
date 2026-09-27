@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import { AuthService } from '../auth/auth.service';
 import { MerchantsService } from '../merchants/merchants.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { sumByCurrency } from '../common/utils/currency';
 import * as QRCode from 'qrcode';
 
@@ -14,6 +15,7 @@ export class OrganizationsService {
     private supabaseService: SupabaseService,
     private authService: AuthService,
     private merchantsService: MerchantsService,
+    private notificationsService: NotificationsService,
     private configService: ConfigService,
   ) {}
 
@@ -291,6 +293,118 @@ export class OrganizationsService {
     }
 
     return data;
+  }
+
+  /** Owner submits their completed KYB onboarding for super-admin review —
+   * first submission or a resubmission after rejection both go through
+   * here, which is why it resets rejection_reason unconditionally. Does
+   * NOT touch `status` beyond ensuring it's 'pending' — the org only
+   * becomes 'active' (and gets its ScanLinkPay number) once a super admin
+   * calls validateOrganization() below. */
+  async submitOrganization(id: string) {
+    const org = await this.getOrganizationById(id);
+    if (!org.onboarding_completed_at) {
+      throw new BadRequestException('Terminez la configuration de l\'entreprise avant de soumettre pour validation');
+    }
+    if (org.status !== 'pending' && org.status !== 'rejected') {
+      throw new BadRequestException('Cette entreprise ne peut pas être soumise dans son état actuel');
+    }
+
+    const { data, error } = await this.supabaseService.getClient()
+      .from('organizations')
+      .update({ status: 'pending', submitted_at: new Date().toISOString(), rejection_reason: null })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to submit organization: ${error.message}`);
+    }
+
+    await this.notifyAllSuperAdmins(
+      'org_submitted',
+      'Nouvelle entreprise à valider',
+      `${org.name} a soumis son dossier pour validation.`,
+      { organization_id: id },
+    );
+
+    return data;
+  }
+
+  /** Super admin approves the submission — this is the moment the
+   * organization is treated as "really created": status flips to 'active'
+   * and the BEFORE UPDATE trigger set up in migration 028 fills
+   * scanlinkpay_number on this exact write (it was deliberately left NULL
+   * until now). */
+  async validateOrganization(id: string, adminId: string) {
+    const org = await this.getOrganizationById(id);
+
+    const { data, error } = await this.supabaseService.getClient()
+      .from('organizations')
+      .update({ status: 'active', validated_at: new Date().toISOString(), validated_by: adminId })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to validate organization: ${error.message}`);
+    }
+
+    await this.notificationsService.create({
+      user_id: org.owner_id,
+      type: 'org_validated',
+      title: 'Entreprise validée',
+      body: `${org.name} a été validée. Votre numéro ScanLinkPay est disponible.`,
+      data: { organization_id: id },
+    });
+
+    return data;
+  }
+
+  async rejectOrganization(id: string, reason: string) {
+    const org = await this.getOrganizationById(id);
+
+    const { data, error } = await this.supabaseService.getClient()
+      .from('organizations')
+      .update({ status: 'rejected', rejection_reason: reason })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to reject organization: ${error.message}`);
+    }
+
+    await this.notificationsService.create({
+      user_id: org.owner_id,
+      type: 'org_rejected',
+      title: 'Entreprise rejetée',
+      body: `${org.name} a été rejetée : ${reason}`,
+      data: { organization_id: id, reason },
+    });
+
+    return data;
+  }
+
+  /** No "notify every user with role X" helper exists anywhere in the
+   * codebase yet (NotificationsService.create() is single-user only) — this
+   * queries user_roles for every current super_admin and loops create(). */
+  private async notifyAllSuperAdmins(type: string, title: string, body: string, data?: Record<string, any>) {
+    const { data: superAdmins, error } = await this.supabaseService.getClient()
+      .from('user_roles')
+      .select('user_id, role:roles!inner(slug)')
+      .eq('role.slug', 'super_admin');
+
+    if (error) {
+      this.logger.warn(`Failed to look up super admins for notification: ${error.message}`);
+      return;
+    }
+
+    await Promise.all(
+      (superAdmins || []).map((row: any) =>
+        this.notificationsService.create({ user_id: row.user_id, type, title, body, data }),
+      ),
+    );
   }
 
   async createExpense(orgId: string, userId: string, data: { amount_cents: number; currency?: string; description?: string }) {

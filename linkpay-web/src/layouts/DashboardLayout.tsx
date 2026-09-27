@@ -15,6 +15,14 @@ import { cn } from '@/lib/utils';
 
 const ALL_ROLES = ['merchant', 'cashier', 'enterprise', 'client', 'admin', 'super_admin'];
 
+// Enterprise-internal staff (created via OrganizationStaffController, see
+// organization-staff module) — no wallet, no stock/caisse/ventes module
+// exists yet for them to use, so they deliberately get only a minimal nav
+// (dashboard + settings), not the full ALL_ROLES set (which includes
+// wallet-dependent items like Tontines/Épargne/Mes paiements they can't
+// actually use yet).
+const STAFF_ROLES = ['magasinier', 'vendeur', 'caissier', 'comptable'];
+
 // Merchant-scoped pages (payment-requests, transactions, settlements) need
 // the JWT's merchant_id claim — an enterprise account only gets one while
 // "acting as" a specific store (role becomes 'merchant' then; see
@@ -22,7 +30,7 @@ const ALL_ROLES = ['merchant', 'cashier', 'enterprise', 'client', 'admin', 'supe
 // deliberately isn't listed on these — org-level enterprise instead gets
 // its own "Boutiques" section on /dashboard/organization.
 const navItems = [
-  { to: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: ALL_ROLES },
+  { to: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: [...ALL_ROLES, ...STAFF_ROLES] },
   { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: QrCode, roles: ['merchant', 'cashier'] },
   { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, roles: ['merchant', 'cashier'] },
   { to: '/dashboard/settlements', label: 'Règlements', icon: Wallet, roles: ['merchant'] },
@@ -36,12 +44,13 @@ const navItems = [
   { to: '/dashboard/expenses', label: 'Mes dépenses', icon: Receipt, roles: ['client', 'merchant', 'cashier', 'admin', 'super_admin'] },
   { to: '/dashboard/admin', label: 'Administration', icon: ShieldCheck, roles: ['admin', 'super_admin'] },
   { to: '/dashboard/admin/merchants', label: 'Commerçants', icon: Users, roles: ['admin', 'super_admin'] },
+  { to: '/dashboard/admin/organizations', label: 'Entreprises', icon: Building2, roles: ['admin', 'super_admin'] },
   { to: '/dashboard/admin/settlements', label: 'Règlements (admin)', icon: Wallet, roles: ['admin', 'super_admin'] },
   { to: '/dashboard/admin/users', label: 'Utilisateurs', icon: UserCog, roles: ['super_admin'] },
   { to: '/dashboard/admin/commissions', label: 'Commissions', icon: Percent, roles: ['super_admin'] },
   { to: '/dashboard/admin/expense-tracker-settings', label: 'Dépenses — Config.', icon: Receipt, roles: ['super_admin'] },
   { to: '/dashboard/organization', label: 'Mon organisation', icon: Building2, roles: ['enterprise'] },
-  { to: '/dashboard/settings', label: 'Paramètres', icon: Settings, roles: ALL_ROLES },
+  { to: '/dashboard/settings', label: 'Paramètres', icon: Settings, roles: [...ALL_ROLES, ...STAFF_ROLES] },
 ];
 
 export default function DashboardLayout() {
@@ -62,7 +71,7 @@ export default function DashboardLayout() {
     queryFn: async () => (await api.get('/organizations/me')).data,
     enabled: user?.role === 'enterprise',
   });
-  const navLocked = user?.role === 'enterprise' && !!org && !org.onboarding_completed_at;
+  const navLocked = user?.role === 'enterprise' && !!org && org.status !== 'active';
 
   const handleLogout = () => {
     logout();

@@ -1,6 +1,6 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Put, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiProperty, ApiBearerAuth } from '@nestjs/swagger';
-import { IsString } from 'class-validator';
+import { IsString, MinLength } from 'class-validator';
 import { AuthService } from './auth.service';
 import { RegisterDto, LoginDto } from './dto';
 import { Public } from '../common/decorators/public.decorator';
@@ -10,6 +10,13 @@ class RefreshDto {
   @ApiProperty()
   @IsString()
   refresh_token!: string;
+}
+
+class ChangePasswordDto {
+  @ApiProperty({ example: 'un-nouveau-mot-de-passe' })
+  @IsString()
+  @MinLength(8)
+  new_password!: string;
 }
 
 @ApiTags('Auth')
@@ -45,6 +52,15 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
   async refresh(@Body() dto: RefreshDto) {
     return this.authService.refresh(dto.refresh_token);
+  }
+
+  @Put('change-password')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Change the current user\'s password (used for the forced first-login change)' })
+  async changePassword(@CurrentUser('id') userId: string, @Body() dto: ChangePasswordDto) {
+    await this.authService.changePassword(userId, dto.new_password);
+    return { success: true };
   }
 
   @Post('logout')

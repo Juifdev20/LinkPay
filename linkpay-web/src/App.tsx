@@ -46,11 +46,17 @@ import AdminUsersPage from '@/pages/admin/Users';
 import AdminSettlementsPage from '@/pages/admin/Settlements';
 import AdminCommissionsPage from '@/pages/admin/Commissions';
 import ExpenseTrackerSettingsPage from '@/pages/admin/ExpenseTrackerSettings';
+import AdminOrganizationsPage from '@/pages/admin/Organizations';
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
+import StaffPage from '@/pages/organization/Staff';
+import StaffHome from '@/pages/staff/StaffHome';
 import SettingsPage from '@/pages/Settings';
 import ProfilePage from '@/pages/Profile';
 import InstallPrompt from '@/components/InstallPrompt';
 import { AppLockGate } from '@/components/AppLockGate';
+import { ForcePasswordChangeGate } from '@/components/ForcePasswordChangeGate';
+
+const STAFF_ROLES = ['magasinier', 'vendeur', 'caissier', 'comptable'];
 
 // No marketing landing page in this app (feature grid, nav bar, etc. — that's
 // for the website, not a professional app). An authenticated visitor always
@@ -77,6 +83,9 @@ function DashboardIndex() {
   // Enterprise accounts aren't linked to a merchant_id yet (no multi-store
   // support), so MerchantDashboard's stats calls would 404 for them.
   if (user.role === 'enterprise') return <Navigate to="/dashboard/organization" replace />;
+  // Enterprise-internal staff (organization-staff module) have no
+  // merchant_id either — same reasoning as enterprise above.
+  if (STAFF_ROLES.includes(user.role)) return <StaffHome />;
   return <MerchantDashboard />;
 }
 
@@ -119,6 +128,7 @@ export default function App() {
     <>
       <InstallPrompt />
       <AppLockGate />
+      <ForcePasswordChangeGate />
       <Routes>
       <Route path="/" element={<RootRedirect />} />
 
@@ -230,6 +240,22 @@ export default function App() {
           element={
             <ProtectedRoute roles={['enterprise']}>
               <OrganizationProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/staff"
+          element={
+            <ProtectedRoute roles={['enterprise']}>
+              <StaffPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/organizations"
+          element={
+            <ProtectedRoute roles={['admin', 'super_admin']}>
+              <AdminOrganizationsPage />
             </ProtectedRoute>
           }
         />

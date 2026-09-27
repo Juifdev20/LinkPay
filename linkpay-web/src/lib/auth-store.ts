@@ -25,6 +25,10 @@ interface User {
   /** Set while "acting as" one of an organization's stores — see
    * enterStore()/exitStore() below. */
   acting_as_org_id?: string;
+  /** True until this account's forced first-login password change is done
+   * — set on enterprise-staff accounts created via OrganizationStaffService.
+   * See ForcePasswordChangeGate.tsx, mounted once in App.tsx. */
+  must_change_password?: boolean;
 }
 
 interface SupabaseSession {
@@ -51,6 +55,7 @@ interface AuthState {
   applyEnterpriseUpgrade: (accessToken: string) => void;
   enterStore: (merchant: { id: string }, accessToken: string, refreshToken: string, organizationId: string) => void;
   exitStore: () => void;
+  clearMustChangePassword: () => void;
 }
 
 // Wires up the Supabase Realtime client with the session the backend mints
@@ -120,6 +125,12 @@ export const useAuthStore = create<AuthState>((set) => ({
       user: state.user
         ? { ...state.user, role: 'merchant', merchant_id: merchant.id, acting_as_org_id: organizationId }
         : state.user,
+    }));
+  },
+
+  clearMustChangePassword: () => {
+    set((state) => ({
+      user: state.user ? { ...state.user, must_change_password: false } : state.user,
     }));
   },
 

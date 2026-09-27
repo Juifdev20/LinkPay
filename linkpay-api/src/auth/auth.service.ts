@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import { SupabaseService } from '../supabase/supabase.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { RegisterDto, LoginDto } from './dto';
 import { SESSION_TRACKING_EXEMPT_ROLES } from './constants';
 import { getRequiredJwtSecret } from './jwt-secret.util';
@@ -28,6 +29,7 @@ export class AuthService {
     private supabaseService: SupabaseService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private notificationsService: NotificationsService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -188,6 +190,7 @@ export class AuthService {
         full_name: profile?.full_name,
         role,
         merchant_id: merchantId,
+        must_change_password: !!profile?.must_change_password,
       },
       access_token: token,
       refresh_token: refreshToken,
@@ -306,6 +309,49 @@ export class AuthService {
       .from('profiles')
       .update({ active_session_id: null })
       .eq('id', userId);
+  }
+
+  /** Forced first-login password change (see ForcePasswordChangeGate on the
+   * frontend, gated on profiles.must_change_password). Also closes the
+   * loop on the enterprise-staff credential lifecycle: if this account was
+   * created by OrganizationStaffService.createStaff(), its
+   * organization_staff.temp_password row is nulled out right here — the
+   * "archived only until first use" rule — and the admin who created it is
+   * notified. notifications/organization_staff lookups are best-effort;
+   * neither failure should ever block the password itself from changing. */
+  async changePassword(userId: string, newPassword: string): Promise<void> {
+    const { error } = await this.supabaseService.getClient().auth.admin.updateUserById(userId, {
+      password: newPassword,
+    });
+    if (error) {
+      throw new UnauthorizedException(error.message);
+    }
+
+    await this.supabaseService.getClient()
+      .from('profiles')
+      .update({ must_change_password: false })
+      .eq('id', userId);
+
+    const { data: staff } = await this.supabaseService.getClient()
+      .from('organization_staff')
+      .select('id, created_by, prenom, nom, temp_password')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (staff?.temp_password) {
+      await this.supabaseService.getClient()
+        .from('organization_staff')
+        .update({ temp_password: null })
+        .eq('id', staff.id);
+
+      await this.notificationsService.create({
+        user_id: staff.created_by,
+        type: 'staff_password_changed',
+        title: 'Mot de passe défini',
+        body: `${staff.prenom} ${staff.nom} a défini son propre mot de passe. Le mot de passe temporaire n'est plus disponible.`,
+        data: { staff_id: staff.id },
+      });
+    }
   }
 
   /**

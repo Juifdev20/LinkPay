@@ -24,6 +24,13 @@ class CreateOrganizationDto {
   contact?: Record<string, any>;
 }
 
+class RejectOrganizationDto {
+  @ApiProperty({ example: 'Numéro RCCM illisible sur le document fourni' })
+  @IsString()
+  @MaxLength(1000)
+  reason!: string;
+}
+
 class CreateExpenseDto {
   @ApiProperty({ example: 15000, description: 'Amount in cents' })
   @IsNumber()
@@ -72,9 +79,12 @@ export class OrganizationsController {
     return this.orgsService.getOrganizationByScanLinkPayNumber(number);
   }
 
-  // Privileged field on an organization record — never settable by the
+  // Privileged fields on an organization record — never settable by the
   // owner themselves, only by platform admins (mirrors merchants.controller.ts).
-  private static readonly ADMIN_ONLY_FIELDS = ['status'];
+  // The submission-review lifecycle fields are also never meant to go
+  // through this generic PUT at all — submit/validate/reject below own
+  // them exclusively — but they're listed here too as defense in depth.
+  private static readonly ADMIN_ONLY_FIELDS = ['status', 'submitted_at', 'rejection_reason', 'validated_at', 'validated_by'];
 
   @Get(':id')
   @ApiOperation({ summary: 'Get organization by ID (owner or admin only)' })
@@ -105,6 +115,40 @@ export class OrganizationsController {
       }
     }
     return this.orgsService.updateOrganization(id, updates);
+  }
+
+  @Post(':id/submit')
+  @ApiOperation({ summary: 'Submit completed onboarding for super-admin review (owner only)' })
+  async submitOrg(@Param('id') id: string, @CurrentUser('id') callerId: string) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.submitOrganization(id);
+  }
+
+  @Post(':id/validate')
+  @ApiOperation({ summary: 'Validate a submitted organization — activates it and issues its ScanLinkPay number (admin only)' })
+  async validateOrg(
+    @Param('id') id: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+  ) {
+    if (!this.isAdmin(callerRole)) {
+      throw new ForbiddenException('Only an administrator can validate an organization');
+    }
+    return this.orgsService.validateOrganization(id, callerId);
+  }
+
+  @Post(':id/reject')
+  @ApiOperation({ summary: 'Reject a submitted organization with a reason (admin only)' })
+  async rejectOrg(
+    @Param('id') id: string,
+    @Body() dto: RejectOrganizationDto,
+    @CurrentUser('role') callerRole: string,
+  ) {
+    if (!this.isAdmin(callerRole)) {
+      throw new ForbiddenException('Only an administrator can reject an organization');
+    }
+    return this.orgsService.rejectOrganization(id, dto.reason);
   }
 
   @Post(':id/merchants')

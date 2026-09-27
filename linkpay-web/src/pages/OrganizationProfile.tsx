@@ -13,8 +13,55 @@ import { DualCurrencyStat } from '@/components/DualCurrencyStat';
 import { TransactionItem } from '@/components/TransactionItem';
 import OnboardingWizard from '@/pages/organization/OnboardingWizard';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
-import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X, Copy, Check, XCircle, Trophy, Banknote, Smartphone, Package, MinusCircle, PiggyBank } from 'lucide-react';
+import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X, Copy, Check, XCircle, Trophy, Banknote, Smartphone, Package, MinusCircle, PiggyBank, Clock, AlertTriangle, Users } from 'lucide-react';
 import { shareOrCopy, publicOrigin } from '@/lib/share';
+import { Link } from 'react-router-dom';
+
+/** Shown once the KYB onboarding is submitted, while status is still
+ * 'pending' — distinct from the wizard itself (onboarding_completed_at is
+ * already set) and from the active dashboard (status isn't 'active' yet). */
+function PendingValidationScreen({ orgName }: { orgName: string }) {
+  return (
+    <div className="p-6 flex flex-col items-center justify-center min-h-[70vh] text-center max-w-md mx-auto">
+      <div className="w-16 h-16 rounded-full bg-warning/10 flex items-center justify-center mb-4">
+        <Clock className="w-8 h-8 text-warning" />
+      </div>
+      <h1 className="text-xl font-bold text-foreground mb-2">Dossier en cours de validation</h1>
+      <p className="text-muted-foreground">
+        Le dossier de <span className="font-semibold text-foreground">{orgName}</span> a été soumis et est en attente de validation par l'équipe ScanLinkPay. Vous serez notifié dès qu'une décision sera prise.
+      </p>
+    </div>
+  );
+}
+
+/** Shown when a super admin rejected the submission — surfaces the reason
+ * and lets the owner reopen the wizard (pre-filled from the org's already
+ * saved fields) to correct and resubmit via OnboardingWizard's own
+ * POST .../submit call. */
+function RejectedScreen({ orgId, orgName, org, reason }: { orgId: string; orgName: string; org: Record<string, any>; reason?: string }) {
+  const [correcting, setCorrecting] = useState(false);
+  if (correcting) return <OnboardingWizard orgId={orgId} orgName={orgName} org={org} />;
+
+  return (
+    <div className="p-6 flex flex-col items-center justify-center min-h-[70vh] text-center max-w-md mx-auto">
+      <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+        <AlertTriangle className="w-8 h-8 text-destructive" />
+      </div>
+      <h1 className="text-xl font-bold text-foreground mb-2">Dossier rejeté</h1>
+      <p className="text-muted-foreground mb-1">
+        Le dossier de <span className="font-semibold text-foreground">{orgName}</span> a été rejeté.
+      </p>
+      {reason && (
+        <div className="w-full rounded-xl bg-destructive/5 border border-destructive/20 px-4 py-3 my-3 text-sm text-destructive text-left">
+          {reason}
+        </div>
+      )}
+      <Button className="mt-3" onClick={() => setCorrecting(true)}>
+        Corriger et resoumettre
+      </Button>
+    </div>
+  );
+}
 
 export default function OrganizationProfilePage() {
   const navigate = useNavigate();
@@ -143,7 +190,15 @@ export default function OrganizationProfilePage() {
   }
 
   if (org && !org.onboarding_completed_at) {
-    return <OnboardingWizard orgId={org.id} orgName={org.name} />;
+    return <OnboardingWizard orgId={org.id} orgName={org.name} org={org} />;
+  }
+
+  if (org && org.status === 'pending') {
+    return <PendingValidationScreen orgName={org.name} />;
+  }
+
+  if (org && org.status === 'rejected') {
+    return <RejectedScreen orgId={org.id} orgName={org.name} org={org} reason={org.rejection_reason} />;
   }
 
   return (
@@ -265,6 +320,20 @@ export default function OrganizationProfilePage() {
           )}
         </CardContent>
       </Card>
+
+      <Link
+        to="/dashboard/organization/staff"
+        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 hover:bg-primary/10 transition-colors"
+      >
+        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
+          <Users className="w-5 h-5 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-foreground">Utilisateurs internes</p>
+          <p className="text-sm text-muted-foreground">Magasinier, Vendeur, Caissier, Comptable...</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+      </Link>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((c) => (

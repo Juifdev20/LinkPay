@@ -41,6 +41,20 @@ export class AdminController {
     return this.adminService.updateMerchantStatus(id, body.status, body.notes);
   }
 
+  @Get('organizations')
+  @ApiOperation({ summary: 'List organizations (defaults to those awaiting validation review)' })
+  async listOrganizations(
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adminService.listOrganizations({
+      status,
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 20,
+    });
+  }
+
   @Get('users')
   @ApiOperation({ summary: 'List all users' })
   async listUsers(

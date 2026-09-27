@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { MerchantsModule } from './merchants/merchants.module';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { OrganizationStaffModule } from './organization-staff/organization-staff.module';
 import { PaymentRequestsModule } from './payment-requests/payment-requests.module';
 import { PaymentsModule } from './payments/payments.module';
 import { TransactionsModule } from './transactions/transactions.module';
@@ -49,6 +50,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     UsersModule,
     MerchantsModule,
     OrganizationsModule,
+    OrganizationStaffModule,
     PaymentRequestsModule,
     PaymentsModule,
     TransactionsModule,

@@ -11,14 +11,13 @@ import { CurrencySelector } from '@/components/CurrencySelector';
 import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicker';
 import { Loader2, ChevronLeft } from 'lucide-react';
 
-type Step = 'legal' | 'contact' | 'activity' | 'payout' | 'representative' | 'branding';
+type Step = 'legal' | 'contact' | 'activity' | 'payout' | 'branding';
 
 const STEPS: { id: Step; label: string }[] = [
   { id: 'legal', label: 'Identité légale' },
   { id: 'contact', label: 'Coordonnées' },
   { id: 'activity', label: "Profil d'activité" },
   { id: 'payout', label: 'Règlement' },
-  { id: 'representative', label: 'Représentant légal' },
   { id: 'branding', label: 'Branding' },
 ];
 
@@ -38,16 +37,10 @@ const SETTLEMENT_FREQUENCIES = [
   { value: 'daily', label: 'Quotidien' },
   { value: 'weekly', label: 'Hebdomadaire' },
 ];
-const REP_ROLES = ['Directeur', 'Gérant', 'Propriétaire'];
-const ID_TYPES = ["Carte d'électeur", 'Passeport', 'Permis de conduire'];
 
 interface OnboardingFormData {
   name: string;
-  legal_name: string;
   legal_form: string;
-  rccm: string;
-  id_nat: string;
-  nif: string;
 
   country: string;
   city: string;
@@ -56,7 +49,6 @@ interface OnboardingFormData {
   number: string;
   phone: string;
   email: string;
-  website: string;
 
   sector: string;
   description: string;
@@ -67,63 +59,42 @@ interface OnboardingFormData {
   mm_operator: string;
   mm_number: string;
   mm_holder_name: string;
-  bank_name: string;
-  bank_account_number: string;
-  bank_account_holder: string;
   settlement_frequency: string;
-
-  rep_full_name: string;
-  rep_role: string;
-  rep_phone: string;
-  rep_email: string;
-  rep_id_type: string;
-  rep_id_number: string;
 
   receipt_footer_message: string;
 }
 
-export default function OnboardingWizard({ orgId, orgName }: { orgId: string; orgName: string }) {
+// `org` carries whatever was already saved — populated on a first-time
+// onboarding only if register() happened to set name/contact (usually
+// not), but always populated on a resubmission after rejection, so the
+// owner never has to retype a rejected KYB submission from scratch.
+export default function OnboardingWizard({ orgId, orgName, org }: { orgId: string; orgName: string; org?: Record<string, any> }) {
   const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>('legal');
   const [form, setForm] = useState<OnboardingFormData>({
     name: orgName,
-    legal_name: '',
-    legal_form: '',
-    rccm: '',
-    id_nat: '',
-    nif: '',
+    legal_form: org?.legal_form || '',
 
-    country: 'RD Congo',
-    city: '',
-    commune: '',
-    avenue: '',
-    number: '',
-    phone: '',
-    email: '',
-    website: '',
+    country: org?.contact?.address?.country || 'RD Congo',
+    city: org?.contact?.address?.city || '',
+    commune: org?.contact?.address?.commune || '',
+    avenue: org?.contact?.address?.avenue || '',
+    number: org?.contact?.address?.number || '',
+    phone: org?.contact?.phone || '',
+    email: org?.contact?.email || '',
 
-    sector: '',
-    description: '',
-    currency: 'CDF',
-    secondary_currencies: [],
-    vat_registered: false,
+    sector: org?.sector || '',
+    description: org?.description || '',
+    currency: org?.currency || 'CDF',
+    secondary_currencies: org?.secondary_currencies || [],
+    vat_registered: org?.tax_regime === 'vat_registered',
 
-    mm_operator: '',
-    mm_number: '',
-    mm_holder_name: '',
-    bank_name: '',
-    bank_account_number: '',
-    bank_account_holder: '',
-    settlement_frequency: 'instant',
+    mm_operator: org?.payout_info?.mobile_money?.operator || '',
+    mm_number: org?.payout_info?.mobile_money?.number || '',
+    mm_holder_name: org?.payout_info?.mobile_money?.holder_name || '',
+    settlement_frequency: org?.payout_info?.settlement_frequency || 'instant',
 
-    rep_full_name: '',
-    rep_role: '',
-    rep_phone: '',
-    rep_email: '',
-    rep_id_type: '',
-    rep_id_number: '',
-
-    receipt_footer_message: '',
+    receipt_footer_message: org?.receipt_footer_message || '',
   });
 
   const set = <K extends keyof OnboardingFormData>(key: K, value: OnboardingFormData[K]) =>
@@ -135,13 +106,10 @@ export default function OnboardingWizard({ orgId, orgName }: { orgId: string; or
     mutationFn: async () => {
       await api.put(`/organizations/${orgId}`, {
         name: form.name,
-        legal_name: form.legal_name,
         legal_form: form.legal_form,
-        legal_identifiers: { rccm: form.rccm, id_nat: form.id_nat, nif: form.nif },
         contact: {
           phone: form.phone,
           email: form.email,
-          website: form.website,
           address: { country: form.country, city: form.city, commune: form.commune, avenue: form.avenue, number: form.number },
         },
         sector: form.sector,
@@ -151,20 +119,17 @@ export default function OnboardingWizard({ orgId, orgName }: { orgId: string; or
         tax_regime: form.vat_registered ? 'vat_registered' : 'exempt',
         payout_info: {
           mobile_money: form.mm_operator ? { operator: form.mm_operator, number: form.mm_number, holder_name: form.mm_holder_name } : null,
-          bank: form.bank_name ? { name: form.bank_name, account_number: form.bank_account_number, account_holder: form.bank_account_holder } : null,
           settlement_frequency: form.settlement_frequency,
-        },
-        legal_representative: {
-          full_name: form.rep_full_name,
-          role: form.rep_role,
-          phone: form.rep_phone,
-          email: form.rep_email,
-          id_type: form.rep_id_type,
-          id_number: form.rep_id_number,
         },
         receipt_footer_message: form.receipt_footer_message,
         onboarding_completed_at: new Date().toISOString(),
       });
+      // Submits for super-admin review — the org only becomes 'active' (and
+      // gets its ScanLinkPay number) once an admin validates it from
+      // /dashboard/admin/organizations. Also the resubmission path after a
+      // rejection: this resets status to 'pending' and clears any prior
+      // rejection_reason server-side.
+      await api.post(`/organizations/${orgId}/submit`);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-organization'] }),
   });
@@ -174,7 +139,6 @@ export default function OnboardingWizard({ orgId, orgName }: { orgId: string; or
     if (step === 'contact') return !!form.city && !!form.phone;
     if (step === 'activity') return !!form.sector;
     if (step === 'payout') return true;
-    if (step === 'representative') return !!form.rep_full_name && !!form.rep_phone;
     return true;
   };
 
@@ -227,10 +191,6 @@ export default function OnboardingWizard({ orgId, orgName }: { orgId: string; or
                 <Input id="ob_name" value={form.name} onChange={(e) => set('name', e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="ob_legal_name">Raison sociale (si différente)</Label>
-                <Input id="ob_legal_name" value={form.legal_name} onChange={(e) => set('legal_name', e.target.value)} />
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="ob_legal_form">Forme juridique</Label>
                 <Select id="ob_legal_form" value={form.legal_form} onChange={(e) => set('legal_form', e.target.value)}>
                   <option value="">Sélectionner...</option>
@@ -238,18 +198,6 @@ export default function OnboardingWizard({ orgId, orgName }: { orgId: string; or
                     <option key={f} value={f}>{f}</option>
                   ))}
                 </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob_rccm">RCCM (optionnel)</Label>
-                <Input id="ob_rccm" value={form.rccm} onChange={(e) => set('rccm', e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob_id_nat">Identification Nationale (optionnel)</Label>
-                <Input id="ob_id_nat" value={form.id_nat} onChange={(e) => set('id_nat', e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob_nif">NIF (optionnel)</Label>
-                <Input id="ob_nif" value={form.nif} onChange={(e) => set('nif', e.target.value)} />
               </div>
             </>
           )}
@@ -283,10 +231,6 @@ export default function OnboardingWizard({ orgId, orgName }: { orgId: string; or
               <div className="space-y-2">
                 <Label htmlFor="ob_email">Email professionnel</Label>
                 <Input id="ob_email" type="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob_website">Site web / Réseaux sociaux (optionnel)</Label>
-                <Input id="ob_website" value={form.website} onChange={(e) => set('website', e.target.value)} />
               </div>
             </>
           )}
@@ -342,7 +286,7 @@ export default function OnboardingWizard({ orgId, orgName }: { orgId: string; or
           {step === 'payout' && (
             <>
               <p className="text-sm text-muted-foreground">
-                Renseigne au moins un moyen de règlement pour recevoir les fonds collectés.
+                Renseigne ton moyen de règlement Mobile Money pour recevoir les fonds collectés.
               </p>
               <MobileMoneyOperatorPicker value={form.mm_operator} onChange={(v) => set('mm_operator', v)} />
               <div className="space-y-2">
@@ -353,21 +297,6 @@ export default function OnboardingWizard({ orgId, orgName }: { orgId: string; or
                 <Label htmlFor="ob_mm_holder">Nom du titulaire</Label>
                 <Input id="ob_mm_holder" value={form.mm_holder_name} onChange={(e) => set('mm_holder_name', e.target.value)} />
               </div>
-              <div className="pt-2 border-t border-border space-y-4">
-                <p className="text-sm font-semibold text-foreground">Coordonnées bancaires (optionnel)</p>
-                <div className="space-y-2">
-                  <Label htmlFor="ob_bank_name">Banque</Label>
-                  <Input id="ob_bank_name" value={form.bank_name} onChange={(e) => set('bank_name', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ob_bank_account">Numéro de compte / IBAN / RIB</Label>
-                  <Input id="ob_bank_account" value={form.bank_account_number} onChange={(e) => set('bank_account_number', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ob_bank_holder">Intitulé du compte</Label>
-                  <Input id="ob_bank_holder" value={form.bank_account_holder} onChange={(e) => set('bank_account_holder', e.target.value)} />
-                </div>
-              </div>
               <div className="space-y-2">
                 <Label htmlFor="ob_settlement_freq">Fréquence de règlement</Label>
                 <Select id="ob_settlement_freq" value={form.settlement_frequency} onChange={(e) => set('settlement_frequency', e.target.value)}>
@@ -375,45 +304,6 @@ export default function OnboardingWizard({ orgId, orgName }: { orgId: string; or
                     <option key={f.value} value={f.value}>{f.label}</option>
                   ))}
                 </Select>
-              </div>
-            </>
-          )}
-
-          {step === 'representative' && (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="ob_rep_name">Nom et prénom</Label>
-                <Input id="ob_rep_name" value={form.rep_full_name} onChange={(e) => set('rep_full_name', e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob_rep_role">Fonction</Label>
-                <Select id="ob_rep_role" value={form.rep_role} onChange={(e) => set('rep_role', e.target.value)}>
-                  <option value="">Sélectionner...</option>
-                  {REP_ROLES.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob_rep_phone">Téléphone</Label>
-                <Input id="ob_rep_phone" placeholder="+243 8XX XXX XXX" value={form.rep_phone} onChange={(e) => set('rep_phone', e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob_rep_email">Email</Label>
-                <Input id="ob_rep_email" type="email" value={form.rep_email} onChange={(e) => set('rep_email', e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob_rep_id_type">Type de pièce d'identité</Label>
-                <Select id="ob_rep_id_type" value={form.rep_id_type} onChange={(e) => set('rep_id_type', e.target.value)}>
-                  <option value="">Sélectionner...</option>
-                  {ID_TYPES.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob_rep_id_number">Numéro de la pièce</Label>
-                <Input id="ob_rep_id_number" value={form.rep_id_number} onChange={(e) => set('rep_id_number', e.target.value)} />
               </div>
             </>
           )}

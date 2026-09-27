@@ -37,11 +37,15 @@ export class AdminService {
     const { count: pendingMerchants } = await this.supabaseService.getClient()
       .from('merchants').select('*', { count: 'exact', head: true }).eq('status', 'pending');
 
+    const { count: pendingOrganizations } = await this.supabaseService.getClient()
+      .from('organizations').select('*', { count: 'exact', head: true }).eq('status', 'pending').not('submitted_at', 'is', null);
+
     return {
       total_users: totalUsers || 0,
       total_merchants: totalMerchants || 0,
       active_merchants: activeMerchants || 0,
       pending_merchants: pendingMerchants || 0,
+      pending_organizations: pendingOrganizations || 0,
       total_transactions: totalTransactions || 0,
       today_transactions: todayTransactions || 0,
       // Independent per-currency figures — never summed together.
@@ -77,6 +81,31 @@ export class AdminService {
 
     if (error) throw new NotFoundException('Merchant not found');
     return data;
+  }
+
+  /** Lists organizations for the super-admin review screen. Defaults (no
+   * `status` filter given) to "awaiting review" — 'pending' AND
+   * submitted_at set — since that's this screen's whole purpose; a fresh
+   * registration still mid-onboarding is also 'status=pending' but has no
+   * submitted_at yet and must NOT show up here. Pass an explicit status
+   * (e.g. 'active') to see something else instead. */
+  async listOrganizations(filters?: { status?: string; page?: number; limit?: number }) {
+    let query = this.supabaseService.getClient()
+      .from('organizations').select('*', { count: 'exact' }).order('created_at', { ascending: false });
+
+    if (!filters?.status || filters.status === 'pending') {
+      query = query.eq('status', 'pending').not('submitted_at', 'is', null);
+    } else {
+      query = query.eq('status', filters.status);
+    }
+
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 20;
+    query = query.range((page - 1) * limit, page * limit - 1);
+
+    const { data, error, count } = await query;
+    if (error) throw new Error(`Failed to fetch organizations: ${error.message}`);
+    return { data, total: count || 0, page, limit };
   }
 
   async listUsers(filters?: { page?: number; limit?: number }) {

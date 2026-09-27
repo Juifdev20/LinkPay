@@ -58,7 +58,7 @@ export default function AdminDashboard() {
         ))}
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid md:grid-cols-3 gap-4">
         <Card>
           <CardHeader>
             <CardTitle className="text-base font-bold">Commerçants en attente</CardTitle>
@@ -68,6 +68,17 @@ export default function AdminDashboard() {
             <p className="text-sm text-muted-foreground">En attente d'approbation</p>
           </CardContent>
         </Card>
+        <button onClick={() => navigate('/dashboard/admin/organizations')} className="text-left">
+          <Card className="hover:bg-accent/50 transition-colors h-full">
+            <CardHeader>
+              <CardTitle className="text-base font-bold">Entreprises en attente</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold text-warning">{stats?.pending_organizations || 0}</p>
+              <p className="text-sm text-muted-foreground">En attente de validation</p>
+            </CardContent>
+          </Card>
+        </button>
         <Card>
           <CardHeader>
             <CardTitle className="text-base font-bold">Commissions perçues</CardTitle>

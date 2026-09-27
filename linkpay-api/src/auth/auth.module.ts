@@ -5,6 +5,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { SupabaseModule } from '../supabase/supabase.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { JwtStrategy } from './jwt.strategy';
 import { getRequiredJwtSecret } from './jwt-secret.util';
 
@@ -22,6 +23,7 @@ import { getRequiredJwtSecret } from './jwt-secret.util';
       }),
     }),
     SupabaseModule,
+    NotificationsModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
