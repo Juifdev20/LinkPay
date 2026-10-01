@@ -8,34 +8,23 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { CurrencySelector } from '@/components/CurrencySelector';
-import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicker';
-import { Loader2, ChevronLeft } from 'lucide-react';
+import { Loader2, ChevronLeft, Smartphone, ShoppingCart, ShoppingBasket } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-type Step = 'legal' | 'contact' | 'activity' | 'payout' | 'branding';
+type Step = 'legal' | 'contact' | 'activity' | 'branding';
 
 const STEPS: { id: Step; label: string }[] = [
   { id: 'legal', label: 'Identité légale' },
   { id: 'contact', label: 'Coordonnées' },
   { id: 'activity', label: "Profil d'activité" },
-  { id: 'payout', label: 'Règlement' },
   { id: 'branding', label: 'Branding' },
 ];
 
 const LEGAL_FORMS = ['Ets', 'SARL', 'SUARL', 'SA', 'Association/ONG', 'Autre'];
 const SECTORS = [
-  { value: 'boutique', label: 'Boutique' },
-  { value: 'electronique', label: "Shop d'appareils électroniques" },
-  { value: 'magasin', label: 'Magasin' },
-  { value: 'supermarche', label: 'Supermarché' },
-  { value: 'restaurant', label: 'Restaurant' },
-  { value: 'pharmacie', label: 'Pharmacie' },
-  { value: 'service', label: 'Service / Prestation' },
-  { value: 'autre', label: 'Autre' },
-];
-const SETTLEMENT_FREQUENCIES = [
-  { value: 'instant', label: 'Instantané' },
-  { value: 'daily', label: 'Quotidien' },
-  { value: 'weekly', label: 'Hebdomadaire' },
+  { value: 'electronique', label: "Shop d'appareils électroniques", icon: Smartphone },
+  { value: 'supermarche', label: 'Supermarché', icon: ShoppingCart },
+  { value: 'alimentation', label: 'Alimentation', icon: ShoppingBasket },
 ];
 
 interface OnboardingFormData {
@@ -47,19 +36,12 @@ interface OnboardingFormData {
   commune: string;
   avenue: string;
   number: string;
-  phone: string;
-  email: string;
 
   sector: string;
   description: string;
   currency: 'CDF' | 'USD';
   secondary_currencies: ('CDF' | 'USD')[];
   vat_registered: boolean;
-
-  mm_operator: string;
-  mm_number: string;
-  mm_holder_name: string;
-  settlement_frequency: string;
 
   receipt_footer_message: string;
 }
@@ -80,19 +62,12 @@ export default function OnboardingWizard({ orgId, orgName, org }: { orgId: strin
     commune: org?.contact?.address?.commune || '',
     avenue: org?.contact?.address?.avenue || '',
     number: org?.contact?.address?.number || '',
-    phone: org?.contact?.phone || '',
-    email: org?.contact?.email || '',
 
     sector: org?.sector || '',
     description: org?.description || '',
     currency: org?.currency || 'CDF',
     secondary_currencies: org?.secondary_currencies || [],
     vat_registered: org?.tax_regime === 'vat_registered',
-
-    mm_operator: org?.payout_info?.mobile_money?.operator || '',
-    mm_number: org?.payout_info?.mobile_money?.number || '',
-    mm_holder_name: org?.payout_info?.mobile_money?.holder_name || '',
-    settlement_frequency: org?.payout_info?.settlement_frequency || 'instant',
 
     receipt_footer_message: org?.receipt_footer_message || '',
   });
@@ -108,8 +83,6 @@ export default function OnboardingWizard({ orgId, orgName, org }: { orgId: strin
         name: form.name,
         legal_form: form.legal_form,
         contact: {
-          phone: form.phone,
-          email: form.email,
           address: { country: form.country, city: form.city, commune: form.commune, avenue: form.avenue, number: form.number },
         },
         sector: form.sector,
@@ -117,10 +90,6 @@ export default function OnboardingWizard({ orgId, orgName, org }: { orgId: strin
         currency: form.currency,
         secondary_currencies: form.secondary_currencies,
         tax_regime: form.vat_registered ? 'vat_registered' : 'exempt',
-        payout_info: {
-          mobile_money: form.mm_operator ? { operator: form.mm_operator, number: form.mm_number, holder_name: form.mm_holder_name } : null,
-          settlement_frequency: form.settlement_frequency,
-        },
         receipt_footer_message: form.receipt_footer_message,
         onboarding_completed_at: new Date().toISOString(),
       });
@@ -136,9 +105,8 @@ export default function OnboardingWizard({ orgId, orgName, org }: { orgId: strin
 
   const canAdvance = (): boolean => {
     if (step === 'legal') return !!form.name && !!form.legal_form;
-    if (step === 'contact') return !!form.city && !!form.phone;
+    if (step === 'contact') return !!form.city;
     if (step === 'activity') return !!form.sector;
-    if (step === 'payout') return true;
     return true;
   };
 
@@ -224,27 +192,31 @@ export default function OnboardingWizard({ orgId, orgName, org }: { orgId: strin
                   <Input id="ob_avenue" value={form.avenue} onChange={(e) => set('avenue', e.target.value)} />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob_phone">Téléphone professionnel / WhatsApp</Label>
-                <Input id="ob_phone" placeholder="+243 8XX XXX XXX" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob_email">Email professionnel</Label>
-                <Input id="ob_email" type="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
-              </div>
             </>
           )}
 
           {step === 'activity' && (
             <>
               <div className="space-y-2">
-                <Label htmlFor="ob_sector">Secteur d'activité</Label>
-                <Select id="ob_sector" value={form.sector} onChange={(e) => set('sector', e.target.value)}>
-                  <option value="">Sélectionner...</option>
+                <Label>Secteur d'activité</Label>
+                <div className="grid grid-cols-3 gap-2">
                   {SECTORS.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
+                    <button
+                      key={s.value}
+                      type="button"
+                      onClick={() => set('sector', s.value)}
+                      className={cn(
+                        'flex flex-col items-center gap-2 rounded-xl border-2 px-2 py-4 text-xs font-semibold text-center transition-colors',
+                        form.sector === s.value
+                          ? 'border-primary bg-primary/5 text-primary'
+                          : 'border-input text-muted-foreground hover:bg-accent',
+                      )}
+                    >
+                      <s.icon className="w-6 h-6" />
+                      {s.label}
+                    </button>
                   ))}
-                </Select>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ob_description">Description courte / Slogan</Label>
@@ -279,31 +251,6 @@ export default function OnboardingWizard({ orgId, orgName, org }: { orgId: strin
                   <p className="text-xs text-muted-foreground">Pour le calcul automatique sur les factures</p>
                 </div>
                 <Switch checked={form.vat_registered} onCheckedChange={(v) => set('vat_registered', v)} />
-              </div>
-            </>
-          )}
-
-          {step === 'payout' && (
-            <>
-              <p className="text-sm text-muted-foreground">
-                Renseigne ton moyen de règlement Mobile Money pour recevoir les fonds collectés.
-              </p>
-              <MobileMoneyOperatorPicker value={form.mm_operator} onChange={(v) => set('mm_operator', v)} />
-              <div className="space-y-2">
-                <Label htmlFor="ob_mm_number">Numéro Mobile Money</Label>
-                <Input id="ob_mm_number" placeholder="+243 8XX XXX XXX" value={form.mm_number} onChange={(e) => set('mm_number', e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob_mm_holder">Nom du titulaire</Label>
-                <Input id="ob_mm_holder" value={form.mm_holder_name} onChange={(e) => set('mm_holder_name', e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob_settlement_freq">Fréquence de règlement</Label>
-                <Select id="ob_settlement_freq" value={form.settlement_frequency} onChange={(e) => set('settlement_frequency', e.target.value)}>
-                  {SETTLEMENT_FREQUENCIES.map((f) => (
-                    <option key={f.value} value={f.value}>{f.label}</option>
-                  ))}
-                </Select>
               </div>
             </>
           )}

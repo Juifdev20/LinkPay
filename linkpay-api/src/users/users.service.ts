@@ -17,7 +17,7 @@ export class UsersService {
    * canonical DB state are always in sync at issuance time anyway, so this
    * is a no-op behavior change for them — and one fewer DB round trip.
    */
-  async getProfile(userId: string, role: string, merchantId?: string, actingAsOrgId?: string) {
+  async getProfile(userId: string, role: string, merchantId?: string, actingAsOrgId?: string, organizationId?: string) {
     const { data, error } = await this.supabaseService.getClient()
       .from('profiles')
       .select('*')
@@ -33,6 +33,7 @@ export class UsersService {
       role,
       merchant_id: merchantId || undefined,
       acting_as_org_id: actingAsOrgId || undefined,
+      organization_id: organizationId || undefined,
     };
   }
 

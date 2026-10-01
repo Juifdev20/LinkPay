@@ -1,4 +1,5 @@
 import { useAuthStore } from '@/lib/auth-store';
+import StockPage from '@/pages/organization/Stock';
 import { UserCircle } from 'lucide-react';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -9,14 +10,19 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 /**
- * Minimal placeholder dashboard for enterprise-internal staff accounts
- * (magasinier/vendeur/caissier/comptable — see organization-staff module).
- * No stock/caisse/ventes module exists yet for these roles to actually use
- * — this just confirms login works and shows who's signed in, ready to be
- * replaced once each business module lands.
+ * Landing dashboard for enterprise-internal staff accounts (magasinier/
+ * vendeur/caissier/comptable — see organization-staff module). Magasinier
+ * already has a real module (Stock & Approvisionnement, backend-gated via
+ * StockService.resolveMerchantAccess()) so gets it directly here; the other
+ * roles stay on the placeholder until their own modules (ventes, caisse)
+ * land.
  */
 export default function StaffHome() {
   const user = useAuthStore((s) => s.user);
+
+  if (user?.role === 'magasinier') {
+    return <StockPage />;
+  }
 
   return (
     <div className="p-6 flex flex-col items-center justify-center min-h-[70vh] text-center max-w-md mx-auto">

@@ -49,6 +49,7 @@ import ExpenseTrackerSettingsPage from '@/pages/admin/ExpenseTrackerSettings';
 import AdminOrganizationsPage from '@/pages/admin/Organizations';
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
 import StaffPage from '@/pages/organization/Staff';
+import StockPage from '@/pages/organization/Stock';
 import StaffHome from '@/pages/staff/StaffHome';
 import SettingsPage from '@/pages/Settings';
 import ProfilePage from '@/pages/Profile';
@@ -248,6 +249,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={['enterprise']}>
               <StaffPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/stock"
+          element={
+            <ProtectedRoute roles={['enterprise', 'magasinier']}>
+              <StockPage />
             </ProtectedRoute>
           }
         />

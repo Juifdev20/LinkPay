@@ -13,6 +13,13 @@ export interface JwtPayload {
   email: string;
   role: string;
   merchant_id?: string;
+  // Set for enterprise-internal staff (magasinier/vendeur/caissier/
+  // comptable — see organization-staff module), whose user_roles row is
+  // organization_id-scoped rather than merchant_id-scoped. Lets stock/
+  // caisse/ventes endpoints confirm a staff member belongs to the same
+  // organization as the store they're trying to act on, without an extra
+  // DB round trip per request.
+  organization_id?: string;
   session_id?: string;
   // Set only on a token minted by OrganizationsService.enterMerchant(): the
   // holder's canonical role (in user_roles) is 'enterprise', owner of this
@@ -136,7 +143,7 @@ export class AuthService {
     }
 
     const sessionId = await this.claimSession(userId, roleSlug, dto.device_id);
-    const token = await this.generateToken(userId, email, roleSlug, merchantId, sessionId);
+    const token = await this.generateToken(userId, email, roleSlug, merchantId, sessionId, undefined, organizationId);
     const refreshToken = await this.generateRefreshToken(userId, email, sessionId);
     const supabaseSession = await this.mintSupabaseSession(email, password);
 
@@ -165,12 +172,13 @@ export class AuthService {
 
     const { data: roleData } = await this.supabaseService.getClient()
       .from('user_roles')
-      .select('role:roles(slug), merchant_id')
+      .select('role:roles(slug), merchant_id, organization_id')
       .eq('user_id', userId)
       .single();
 
     const role = (roleData?.role as any)?.slug || 'client';
     const merchantId = roleData?.merchant_id || undefined;
+    const organizationId = roleData?.organization_id || undefined;
 
     const { data: profile } = await this.supabaseService.getClient()
       .from('profiles')
@@ -179,7 +187,7 @@ export class AuthService {
       .single();
 
     const sessionId = await this.claimSession(userId, role, device_id);
-    const token = await this.generateToken(userId, email, role, merchantId, sessionId);
+    const token = await this.generateToken(userId, email, role, merchantId, sessionId, undefined, organizationId);
     const refreshToken = await this.generateRefreshToken(userId, email, sessionId);
 
     return {
@@ -190,6 +198,7 @@ export class AuthService {
         full_name: profile?.full_name,
         role,
         merchant_id: merchantId,
+        organization_id: organizationId,
         must_change_password: !!profile?.must_change_password,
       },
       access_token: token,
@@ -255,12 +264,13 @@ export class AuthService {
 
     const { data: roleData } = await this.supabaseService.getClient()
       .from('user_roles')
-      .select('role:roles(slug), merchant_id')
+      .select('role:roles(slug), merchant_id, organization_id')
       .eq('user_id', payload.sub)
       .single();
 
     const role = (roleData?.role as any)?.slug || 'client';
     const merchantId = roleData?.merchant_id || undefined;
+    const organizationId = roleData?.organization_id || undefined;
 
     // Admins/super admins are exempt from single-session tracking — skip the
     // check even if this refresh token still carries a session_id minted
@@ -278,7 +288,7 @@ export class AuthService {
     }
 
     return {
-      access_token: await this.generateToken(payload.sub, payload.email, role, merchantId, payload.session_id),
+      access_token: await this.generateToken(payload.sub, payload.email, role, merchantId, payload.session_id, undefined, organizationId),
       refresh_token: await this.generateRefreshToken(payload.sub, payload.email, payload.session_id),
     };
   }
@@ -419,6 +429,7 @@ export class AuthService {
     merchantId?: string,
     sessionId?: string,
     actingAsOrgId?: string,
+    organizationId?: string,
   ): Promise<string> {
     const payload: JwtPayload = {
       sub: userId,
@@ -427,6 +438,7 @@ export class AuthService {
       ...(merchantId ? { merchant_id: merchantId } : {}),
       ...(sessionId ? { session_id: sessionId } : {}),
       ...(actingAsOrgId ? { acting_as_org_id: actingAsOrgId } : {}),
+      ...(organizationId ? { organization_id: organizationId } : {}),
     };
     return this.jwtService.sign(payload);
   }

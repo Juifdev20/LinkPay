@@ -11,6 +11,7 @@ export interface JwtPayload {
   email: string;
   role: string;
   merchant_id?: string;
+  organization_id?: string;
   session_id?: string;
   acting_as_org_id?: string;
 }
@@ -57,6 +58,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email: payload.email,
       role: payload.role,
       merchant_id: payload.merchant_id,
+      organization_id: payload.organization_id,
       acting_as_org_id: payload.acting_as_org_id,
     };
   }

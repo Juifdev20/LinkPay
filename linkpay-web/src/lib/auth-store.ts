@@ -22,6 +22,10 @@ interface User {
   phone?: string;
   role: string;
   merchant_id?: string;
+  /** Set for enterprise-internal staff (magasinier/vendeur/caissier/
+   * comptable) — the organization they belong to, since they aren't its
+   * owner (see organization-staff module). */
+  organization_id?: string;
   /** Set while "acting as" one of an organization's stores — see
    * enterStore()/exitStore() below. */
   acting_as_org_id?: string;

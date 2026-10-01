@@ -90,12 +90,9 @@ export default function AdminOrganizationsPage() {
                   {expandedId === org.id && (
                     <div className="mt-3 ml-6 space-y-1 text-sm rounded-xl border border-border p-4">
                       <p><span className="text-muted-foreground">Forme juridique : </span>{org.legal_form || '—'}</p>
-                      <p><span className="text-muted-foreground">Téléphone : </span>{org.contact?.phone || '—'}</p>
-                      <p><span className="text-muted-foreground">Email : </span>{org.contact?.email || '—'}</p>
                       <p><span className="text-muted-foreground">Adresse : </span>{[org.contact?.address?.avenue, org.contact?.address?.commune, org.contact?.address?.city, org.contact?.address?.country].filter(Boolean).join(', ') || '—'}</p>
                       <p><span className="text-muted-foreground">Secteur : </span>{org.sector || '—'}</p>
                       <p><span className="text-muted-foreground">Devise : </span>{org.currency || '—'}</p>
-                      <p><span className="text-muted-foreground">Moyen de règlement : </span>{org.payout_info?.mobile_money ? `Mobile Money (${org.payout_info.mobile_money.operator})` : '—'}</p>
                     </div>
                   )}
 

@@ -67,9 +67,19 @@ export class OrganizationsController {
   }
 
   @Get('me')
-  @ApiOperation({ summary: 'Get current user organization' })
-  async getMyOrg(@CurrentUser('id') userId: string) {
-    return this.orgsService.getOrganizationByOwner(userId);
+  @ApiOperation({ summary: 'Get current user organization (owner) or the organization they staff (magasinier/vendeur/caissier/comptable)' })
+  async getMyOrg(@CurrentUser('id') userId: string, @CurrentUser('organization_id') callerOrgId?: string) {
+    try {
+      return await this.orgsService.getOrganizationByOwner(userId);
+    } catch (err) {
+      // Not an owner — fall back to the org an enterprise-staff member
+      // belongs to (see organization-staff module; their JWT carries
+      // organization_id, not an owned org row). Re-throw the original
+      // NotFoundException for a caller with neither (e.g. a client/merchant
+      // hitting this by mistake).
+      if (callerOrgId) return this.orgsService.getOrganizationById(callerOrgId);
+      throw err;
+    }
   }
 
   @Public()
@@ -87,14 +97,17 @@ export class OrganizationsController {
   private static readonly ADMIN_ONLY_FIELDS = ['status', 'submitted_at', 'rejection_reason', 'validated_at', 'validated_by'];
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get organization by ID (owner or admin only)' })
+  @ApiOperation({ summary: 'Get organization by ID (owner, its staff, or admin)' })
   async getOrg(
     @Param('id') id: string,
     @CurrentUser('id') callerId: string,
     @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
   ) {
     const org = await this.orgsService.getOrganizationById(id);
-    this.assertOwnOrgOrAdmin(org.owner_id, callerId, callerRole);
+    if (!this.isAdmin(callerRole)) {
+      this.assertOwnOrgOrStaff(org, callerId, callerOrgId);
+    }
     return org;
   }
 
@@ -165,10 +178,14 @@ export class OrganizationsController {
   }
 
   @Get(':id/merchants')
-  @ApiOperation({ summary: "List this organization's stores (owner only)" })
-  async listOrgMerchants(@Param('id') id: string, @CurrentUser('id') callerId: string) {
+  @ApiOperation({ summary: "List this organization's stores (owner or its staff)" })
+  async listOrgMerchants(
+    @Param('id') id: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
     const org = await this.orgsService.getOrganizationById(id);
-    this.assertOwnOrg(org.owner_id, callerId);
+    this.assertOwnOrgOrStaff(org, callerId, callerOrgId);
     return this.orgsService.getOrganizationMerchants(id);
   }
 
@@ -245,6 +262,17 @@ export class OrganizationsController {
   private assertOwnOrgOrAdmin(ownerId: string | undefined, callerId: string | undefined, callerRole: string | undefined) {
     if (this.isAdmin(callerRole)) return;
     this.assertOwnOrg(ownerId, callerId);
+  }
+
+  // Read-only access for any organization-staff member (magasinier/vendeur/
+  // caissier/comptable — see organization-staff module) of THIS org, in
+  // addition to its owner — basic org info and store list are harmless to
+  // read and every staff-facing module (stock now, ventes/caisse later)
+  // needs them. Never used for write endpoints, which stay owner-only.
+  private assertOwnOrgOrStaff(org: { id: string; owner_id: string }, callerId: string | undefined, callerOrgId: string | undefined) {
+    if (callerId && org.owner_id === callerId) return;
+    if (callerOrgId && callerOrgId === org.id) return;
+    throw new ForbiddenException('You do not have access to this organization');
   }
 
   // Store management is intentionally owner-only, even for platform admins

@@ -37,8 +37,9 @@ export class UsersController {
     @CurrentUser('role') role: string,
     @CurrentUser('merchant_id') merchantId?: string,
     @CurrentUser('acting_as_org_id') actingAsOrgId?: string,
+    @CurrentUser('organization_id') organizationId?: string,
   ) {
-    return this.usersService.getProfile(userId, role, merchantId, actingAsOrgId);
+    return this.usersService.getProfile(userId, role, merchantId, actingAsOrgId, organizationId);
   }
 
   @Put('me')
