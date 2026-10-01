@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Param, Query } from '@nestjs/common';
+import { Controller, Get, Put, Delete, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -10,13 +10,17 @@ export class NotificationsController {
   constructor(private notificationsService: NotificationsService) {}
 
   @Get()
-  @ApiOperation({ summary: "List current user's notifications" })
+  @ApiOperation({ summary: "List current user's notifications (paginated — never auto-expire, archived until explicitly deleted)" })
   async list(
     @CurrentUser('id') userId: string,
     @Query('unread_only') unreadOnly?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     return this.notificationsService.getUserNotifications(userId, {
       unread_only: unreadOnly === 'true',
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 20,
     });
   }
 
@@ -39,5 +43,14 @@ export class NotificationsController {
   @ApiOperation({ summary: 'Mark all notifications as read' })
   async markAllAsRead(@CurrentUser('id') userId: string) {
     return this.notificationsService.markAllAsRead(userId);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete one of the current user\'s own notifications' })
+  async deleteNotification(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.notificationsService.deleteNotification(id, userId);
   }
 }

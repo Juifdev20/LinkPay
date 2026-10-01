@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { formatDate, cn } from '@/lib/utils';
-import { Bell, CheckCheck } from 'lucide-react';
+import { Bell, CheckCheck, Trash2 } from 'lucide-react';
+import { NotificationDetailDialog } from '@/components/NotificationDetailDialog';
 
 export function NotificationsBell() {
   const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<any>(null);
   const queryClient = useQueryClient();
   const userId = useAuthStore((s) => s.user?.id);
 
@@ -51,6 +54,18 @@ export function NotificationsBell() {
   const markAllReadMutation = useMutation({
     mutationFn: async () => {
       await api.put('/notifications/read-all');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+    },
+  });
+
+  // Explicit delete is the only way a notification ever leaves the archive —
+  // nothing here ever expires or auto-removes on its own.
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/notifications/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
@@ -114,29 +129,55 @@ export function NotificationsBell() {
             <div className="max-h-96 overflow-y-auto">
               {notifications?.length ? (
                 notifications.map((n: any) => (
-                  <button
+                  <div
                     key={n.id}
-                    onClick={() => !n.read && markAsReadMutation.mutate(n.id)}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      setSelected(n);
+                      if (!n.read) markAsReadMutation.mutate(n.id);
+                    }}
                     className={cn(
-                      'flex flex-col gap-0.5 w-full px-4 py-3 text-left border-b border-border last:border-0 hover:bg-accent transition-colors',
+                      'flex items-start gap-2 w-full px-4 py-3 text-left border-b border-border last:border-0 hover:bg-accent transition-colors cursor-pointer',
                       !n.read && 'bg-primary/5',
                     )}
                   >
-                    <div className="flex items-center gap-2">
-                      {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />}
-                      <p className="font-semibold text-sm text-foreground truncate">{n.title}</p>
+                    <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2">
+                        {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />}
+                        <p className="font-semibold text-sm text-foreground truncate">{n.title}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-2">{n.body}</p>
+                      <p className="text-[10px] text-muted-foreground">{formatDate(n.created_at)}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground line-clamp-2">{n.body}</p>
-                    <p className="text-[10px] text-muted-foreground">{formatDate(n.created_at)}</p>
-                  </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteMutation.mutate(n.id);
+                      }}
+                      className="flex-shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                      aria-label="Supprimer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 ))
               ) : (
                 <p className="text-center text-sm text-muted-foreground py-8">Aucune notification</p>
               )}
             </div>
+            <Link
+              to="/dashboard/notifications"
+              onClick={() => setOpen(false)}
+              className="block text-center text-xs font-medium text-primary hover:underline py-2.5 border-t border-border"
+            >
+              Voir toutes les notifications
+            </Link>
           </div>
         </>
       )}
+
+      <NotificationDetailDialog notification={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }

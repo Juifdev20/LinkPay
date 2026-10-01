@@ -44,17 +44,26 @@ export class NotificationsService {
       .catch((err) => this.logger.error(`Push dispatch failed: ${err.message}`));
   }
 
-  async getUserNotifications(userId: string, filters?: { unread_only?: boolean }) {
+  /** Notifications are never auto-deleted or expired — this just paginates
+   * through the full archive (default 20/page) instead of the old hardcoded
+   * `.limit(50)`, which silently made anything beyond the 50 most recent
+   * permanently unreachable. The bell dropdown calls this with no page
+   * param (first page); the full-history page (Notifications.tsx) pages
+   * through with increasing `page` values. */
+  async getUserNotifications(userId: string, filters?: { unread_only?: boolean; page?: number; limit?: number }) {
     let query = this.supabaseService.getClient()
       .from('notifications')
       .select('*')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(50);
+      .order('created_at', { ascending: false });
 
     if (filters?.unread_only) {
       query = query.eq('read', false);
     }
+
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 20;
+    query = query.range((page - 1) * limit, page * limit - 1);
 
     const { data, error } = await query;
     if (error) throw new Error(`Failed to fetch notifications: ${error.message}`);
@@ -82,6 +91,20 @@ export class NotificationsService {
       .eq('read', false);
 
     if (error) throw new Error(`Failed to mark all notifications: ${error.message}`);
+    return { success: true };
+  }
+
+  /** Explicit, user-initiated deletion only — the one way a notification
+   * ever leaves the archive. Scoped to user_id so nobody can delete
+   * another user's notification by guessing an id. */
+  async deleteNotification(notificationId: string, userId: string) {
+    const { error } = await this.supabaseService.getClient()
+      .from('notifications')
+      .delete()
+      .eq('id', notificationId)
+      .eq('user_id', userId);
+
+    if (error) throw new Error(`Failed to delete notification: ${error.message}`);
     return { success: true };
   }
 

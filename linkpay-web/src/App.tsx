@@ -52,6 +52,7 @@ import StaffPage from '@/pages/organization/Staff';
 import StockPage from '@/pages/organization/Stock';
 import StaffHome from '@/pages/staff/StaffHome';
 import SettingsPage from '@/pages/Settings';
+import NotificationsPage from '@/pages/Notifications';
 import ProfilePage from '@/pages/Profile';
 import InstallPrompt from '@/components/InstallPrompt';
 import { AppLockGate } from '@/components/AppLockGate';
@@ -187,6 +188,7 @@ export default function App() {
         <Route path="wallet/pin" element={<SetPinPage />} />
         <Route path="wallet/transactions" element={<WalletTransactionsPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route
           path="admin"
