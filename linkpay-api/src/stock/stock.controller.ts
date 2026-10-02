@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, IsNumber, IsIn, MaxLength, Min } from 'class-validator';
 import { StockService } from './stock.service';
@@ -12,6 +12,18 @@ class CreateStockItemDto {
   @IsString()
   @MaxLength(255)
   name!: string;
+
+  @ApiPropertyOptional({ example: 'Boissons' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  category?: string;
+
+  @ApiPropertyOptional({ example: '6181155210001', description: 'Code-barres EAN/UPC — unique par boutique' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  barcode?: string;
 
   @ApiPropertyOptional({ example: 'Samsung' })
   @IsOptional()
@@ -114,6 +126,30 @@ export class StockController {
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
     return this.stockService.listItems(merchantId, callerId, callerRole, callerOrgId);
+  }
+
+  @Get(':id/stock-items/by-barcode/:barcode')
+  @ApiOperation({ summary: 'Look up a sellable product by barcode — POS scan (owner, magasinier, or caissier)' })
+  async getItemByBarcode(
+    @Param('id') merchantId: string,
+    @Param('barcode') barcode: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    return this.stockService.getItemByBarcode(merchantId, barcode, callerId, callerRole, callerOrgId);
+  }
+
+  @Get(':id/stock-items/search')
+  @ApiOperation({ summary: 'Search sellable products by name — POS search (owner, magasinier, or caissier)' })
+  async searchSellableItems(
+    @Param('id') merchantId: string,
+    @Query('q') query: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    return this.stockService.searchSellableItems(merchantId, query || '', callerId, callerRole, callerOrgId);
   }
 
   @Put(':id/stock-items/:itemId')

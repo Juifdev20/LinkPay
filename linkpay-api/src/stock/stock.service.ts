@@ -2,13 +2,16 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException 
 import { SupabaseService } from '../supabase/supabase.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AuditService } from '../audit/audit.service';
 import { sumByCurrency } from '../common/utils/currency';
 
-// Only 'magasinier' can manage stock today — the other enterprise-staff
-// roles (vendeur/caissier/comptable) get their own gate once their modules
-// (ventes, caisse) land, same reasoning as elsewhere in this codebase of
-// only building the access path a real feature needs right now.
+// Full stock CRUD (create/edit/delete items, record non-sale movements) is
+// still 'magasinier'-only. 'caissier' is granted a narrower slice (read a
+// sellable product by barcode/search, and record a 'sale'-type movement as
+// part of checking out a POS ticket) via the allowedRoles param threaded
+// through below — see POS_SALE_ROLES.
 const STOCK_STAFF_ROLES = ['magasinier'];
+export const POS_SALE_ROLES = ['magasinier', 'caissier'];
 
 @Injectable()
 export class StockService {
@@ -16,6 +19,7 @@ export class StockService {
     private supabaseService: SupabaseService,
     private organizationsService: OrganizationsService,
     private notificationsService: NotificationsService,
+    private auditService: AuditService,
   ) {}
 
   private isAdmin(role: string | undefined): boolean {
@@ -28,11 +32,16 @@ export class StockService {
    * so this single check covers both), an org-scoped 'magasinier' of the
    * SAME organization the store belongs to (via the JWT's organization_id —
    * see auth.service.ts), or a platform admin. */
-  private async resolveMerchantAccess(
+  /** Public (not just used internally) so other modules scoped to the same
+   * store (pos, cash-register) can reuse this exact merchant-fetch +
+   * ownership/staff-role check instead of duplicating it — pass a broader
+   * allowedRoles list (e.g. POS_SALE_ROLES) for a non-stock caller. */
+  async resolveMerchantAccess(
     merchantId: string,
     callerId: string | undefined,
     callerRole: string | undefined,
     callerOrgId: string | undefined,
+    allowedRoles: string[] = STOCK_STAFF_ROLES,
   ) {
     const { data: merchant, error } = await this.supabaseService.getClient()
       .from('merchants')
@@ -46,7 +55,7 @@ export class StockService {
 
     if (this.isAdmin(callerRole)) return merchant;
     if (callerId && merchant.owner_id === callerId) return merchant;
-    if (callerOrgId && merchant.organization_id === callerOrgId && STOCK_STAFF_ROLES.includes(callerRole || '')) {
+    if (callerOrgId && merchant.organization_id === callerOrgId && allowedRoles.includes(callerRole || '')) {
       return merchant;
     }
 
@@ -67,6 +76,8 @@ export class StockService {
     callerOrgId: string | undefined,
     data: {
       name: string;
+      category?: string;
+      barcode?: string;
       brand?: string;
       model?: string;
       serial_number?: string;
@@ -86,6 +97,8 @@ export class StockService {
       .insert({
         merchant_id: merchantId,
         name: data.name,
+        category: data.category || null,
+        barcode: data.barcode || null,
         brand: data.brand || null,
         model: data.model || null,
         serial_number: data.serial_number || null,
@@ -102,6 +115,9 @@ export class StockService {
       .single();
 
     if (error) {
+      if (error.message.includes('barcode')) {
+        throw new BadRequestException('Un article avec ce code-barres existe déjà dans cette boutique');
+      }
       if (error.message.includes('duplicate') || error.message.includes('unique')) {
         throw new BadRequestException('Un article avec ce numéro de série existe déjà');
       }
@@ -138,13 +154,20 @@ export class StockService {
     // single source of truth (enforced in the DB by the
     // trg_apply_stock_movement trigger from migration 031).
     const allowedFields = [
-      'name', 'brand', 'model', 'serial_number', 'condition', 'warranty_months',
+      'name', 'category', 'barcode', 'brand', 'model', 'serial_number', 'condition', 'warranty_months',
       'unit_price_cents', 'cost_price_cents', 'currency', 'low_stock_threshold',
     ];
     const filtered: Record<string, any> = {};
     for (const key of allowedFields) {
       if (updates[key] !== undefined) filtered[key] = updates[key];
     }
+
+    const { data: before } = await this.supabaseService.getClient()
+      .from('stock_items')
+      .select('unit_price_cents')
+      .eq('id', itemId)
+      .eq('merchant_id', merchantId)
+      .single();
 
     const { data, error } = await this.supabaseService.getClient()
       .from('stock_items')
@@ -155,6 +178,17 @@ export class StockService {
       .single();
 
     if (error) throw new Error(`Failed to update stock item: ${error.message}`);
+
+    if (before && filtered.unit_price_cents !== undefined && filtered.unit_price_cents !== before.unit_price_cents) {
+      await this.auditService.log({
+        user_id: callerId,
+        action: 'price_changed',
+        entity_type: 'stock_item',
+        entity_id: itemId,
+        changes: { old_price_cents: before.unit_price_cents, new_price_cents: filtered.unit_price_cents },
+      });
+    }
+
     return data;
   }
 
@@ -182,9 +216,13 @@ export class StockService {
     callerId: string,
     callerRole: string,
     callerOrgId: string | undefined,
-    data: { type: 'in' | 'out' | 'adjustment'; quantity_delta: number; reason?: string },
+    data: { type: 'in' | 'out' | 'adjustment' | 'sale'; quantity_delta: number; reason?: string },
   ) {
-    const merchant = await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
+    // A 'sale' movement is how a POS checkout deducts stock — the cashier
+    // role needs write access for exactly this one movement type, not the
+    // full stock-management access 'in'/'out'/'adjustment' still require.
+    const allowedRoles = data.type === 'sale' ? POS_SALE_ROLES : STOCK_STAFF_ROLES;
+    const merchant = await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId, allowedRoles);
 
     const { data: currentItem, error: itemError } = await this.supabaseService.getClient()
       .from('stock_items')
@@ -215,6 +253,16 @@ export class StockService {
 
     if (error) throw new Error(`Failed to record stock movement: ${error.message}`);
 
+    if (data.type === 'adjustment') {
+      await this.auditService.log({
+        user_id: callerId,
+        action: 'stock_adjusted',
+        entity_type: 'stock_item',
+        entity_id: itemId,
+        changes: { quantity_delta: data.quantity_delta, reason: data.reason },
+      });
+    }
+
     const { data: item } = await this.supabaseService.getClient()
       .from('stock_items')
       .select('name, quantity, low_stock_threshold')
@@ -235,6 +283,44 @@ export class StockService {
     }
 
     return movement;
+  }
+
+  /** POS barcode scan lookup — read-only, 'caissier' included on purpose
+   * (narrower than the full stock-management access below). */
+  async getItemByBarcode(merchantId: string, barcode: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
+    await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId, POS_SALE_ROLES);
+
+    const { data, error } = await this.supabaseService.getClient()
+      .from('stock_items')
+      .select('id, name, category, barcode, unit_price_cents, currency, quantity')
+      .eq('merchant_id', merchantId)
+      .eq('barcode', barcode)
+      .maybeSingle();
+
+    if (error) throw new Error(`Failed to look up stock item: ${error.message}`);
+    if (!data) throw new NotFoundException('Aucun produit avec ce code-barres dans cette boutique');
+    return data;
+  }
+
+  /** POS product search (by name) — same narrower 'caissier' access as
+   * getItemByBarcode(), and deliberately selects only the fields a cashier
+   * needs to sell (never cost_price_cents — that reveals margin and stays
+   * magasinier/owner-only via the full listItems() below). */
+  async searchSellableItems(merchantId: string, query: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
+    await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId, POS_SALE_ROLES);
+
+    const { data, error } = await this.supabaseService.getClient()
+      .from('stock_items')
+      .select('id, name, category, barcode, unit_price_cents, currency, quantity')
+      .eq('merchant_id', merchantId)
+      // Strip the chars that are meaningful inside a PostgREST ilike value
+      // so a cashier typing "%" or "," doesn't break the till's search.
+      .ilike('name', `%${query.replace(/[%_,"'()\\]/g, '')}%`)
+      .order('name', { ascending: true })
+      .limit(20);
+
+    if (error) throw new Error(`Failed to search stock items: ${error.message}`);
+    return data || [];
   }
 
   async listMovements(merchantId: string, itemId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {

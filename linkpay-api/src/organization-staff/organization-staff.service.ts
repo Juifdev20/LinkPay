@@ -167,4 +167,49 @@ export class OrganizationStaffService {
 
     return staff;
   }
+
+  /** Owner-initiated reset for a staff member who forgot their password —
+   * the once-only reprint above can't help there (it's already been used).
+   * Mints a fresh temp password in Supabase Auth, re-arms the forced
+   * first-login change, and frees the single-session slot + till PIN so the
+   * account is recoverable even if the old device is lost. Returns the same
+   * credential shape as getStaffCredential() for the PDF re-print. */
+  async resetStaffPassword(orgId: string, staffId: string) {
+    const { data: staff, error } = await this.supabaseService.getClient()
+      .from('organization_staff')
+      .select('id, user_id, nom, postnom, prenom, email')
+      .eq('id', staffId)
+      .eq('organization_id', orgId)
+      .single();
+
+    if (error || !staff) {
+      throw new NotFoundException('Utilisateur introuvable');
+    }
+
+    const tempPassword = this.generateTempPassword();
+    const { error: authError } = await this.supabaseService.getClient()
+      .auth.admin.updateUserById(staff.user_id, { password: tempPassword });
+
+    if (authError) {
+      throw new Error(`Failed to reset staff password: ${authError.message}`);
+    }
+
+    await this.supabaseService.getClient()
+      .from('organization_staff')
+      .update({ temp_password: tempPassword })
+      .eq('id', staffId);
+
+    await this.supabaseService.getClient()
+      .from('profiles')
+      .update({
+        must_change_password: true,
+        // New credentials must not let the old device's session ride along
+        // — clearing the slot also unblocks login from a different device.
+        active_session_id: null,
+        active_device_id: null,
+      })
+      .eq('id', staff.user_id);
+
+    return staff ? { ...staff, temp_password: tempPassword } : staff;
+  }
 }

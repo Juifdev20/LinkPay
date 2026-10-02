@@ -26,6 +26,8 @@ const MOVEMENT_TYPES = [
 const emptyForm = {
   merchant_id: '',
   name: '',
+  category: '',
+  barcode: '',
   brand: '',
   model: '',
   serial_number: '',
@@ -84,6 +86,8 @@ export default function StockPage() {
     mutationFn: async () =>
       (await api.post(`/merchants/${effectiveMerchantId}/stock-items`, {
         name: form.name,
+        category: form.category || undefined,
+        barcode: form.barcode || undefined,
         brand: form.brand || undefined,
         model: form.model || undefined,
         serial_number: form.serial_number || undefined,
@@ -210,6 +214,16 @@ export default function StockPage() {
                 <Label htmlFor="stock_name">Nom de l'article</Label>
                 <Input id="stock_name" placeholder="Samsung Galaxy A54" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="stock_category">Catégorie</Label>
+                  <Input id="stock_category" placeholder="Boissons" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="stock_barcode">Code-barres</Label>
+                  <Input id="stock_barcode" placeholder="Scannez ou saisissez" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
+                </div>
+              </div>
 
               {isElectronics && (
                 <>
@@ -293,6 +307,8 @@ export default function StockPage() {
                     {item.quantity <= item.low_stock_threshold && (
                       <Badge variant="error">Stock bas</Badge>
                     )}
+                    {item.category && <Badge variant="secondary">{item.category}</Badge>}
+                    {item.barcode && <Badge variant="secondary" className="font-mono">{item.barcode}</Badge>}
                     {item.condition && <Badge variant="secondary" className="capitalize">{CONDITIONS.find((c) => c.value === item.condition)?.label || item.condition}</Badge>}
                     <button
                       className="ml-auto text-sm font-medium text-primary hover:underline"

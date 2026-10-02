@@ -76,6 +76,17 @@ export class OrganizationStaffController {
     return this.staffService.getStaffCredential(id, staffId);
   }
 
+  @Post(':id/staff/:staffId/reset-password')
+  @ApiOperation({ summary: 'Reset a staff member\'s password to a new temporary one (owner only) — also frees their session slot' })
+  async resetStaffPassword(
+    @Param('id') id: string,
+    @Param('staffId') staffId: string,
+    @CurrentUser('id') callerId: string,
+  ) {
+    await this.assertOwnOrg(id, callerId);
+    return this.staffService.resetStaffPassword(id, staffId);
+  }
+
   private async assertOwnOrg(orgId: string, callerId: string | undefined) {
     const org = await this.orgsService.getOrganizationById(orgId);
     if (!callerId || callerId !== org.owner_id) {
