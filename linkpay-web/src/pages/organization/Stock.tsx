@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,7 +9,7 @@ import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/PageHeader';
 import { formatCurrency } from '@/lib/utils';
-import { Loader2, Plus, X, PackagePlus, AlertTriangle, Boxes } from 'lucide-react';
+import { Loader2, Plus, X, PackagePlus, AlertTriangle, Boxes, Search } from 'lucide-react';
 
 const CONDITIONS = [
   { value: 'neuf', label: 'Neuf' },
@@ -35,6 +35,7 @@ const emptyForm = {
   warranty_months: '',
   quantity: '',
   unit_price: '',
+  cost_price: '',
   currency: 'CDF' as 'CDF' | 'USD',
   low_stock_threshold: '5',
 };
@@ -95,6 +96,7 @@ export default function StockPage() {
         warranty_months: form.warranty_months ? Number(form.warranty_months) : undefined,
         quantity: form.quantity ? Number(form.quantity) : 0,
         unit_price_cents: form.unit_price ? Math.round(parseFloat(form.unit_price) * 100) : 0,
+        cost_price_cents: form.cost_price ? Math.round(parseFloat(form.cost_price) * 100) : undefined,
         currency: form.currency,
         low_stock_threshold: form.low_stock_threshold ? Number(form.low_stock_threshold) : 5,
       })).data,
@@ -122,10 +124,51 @@ export default function StockPage() {
     },
   });
 
-  const visibleItems = storeFilter ? (items || []).filter((i: any) => i.merchant_id === storeFilter) : (items || []);
+  const [search, setSearch] = useState('');
+  const query = search.trim().toLowerCase();
+  const visibleItems = (items || []).filter((i: any) =>
+    (!storeFilter || i.merchant_id === storeFilter) &&
+    (!query ||
+      i.name?.toLowerCase().includes(query) ||
+      i.category?.toLowerCase().includes(query) ||
+      i.barcode?.toLowerCase().includes(query)),
+  );
+
+  // Shared between the mobile card list and the desktop table row below —
+  // same state (movementItemId/movement), just inserted into a different
+  // wrapper per layout.
+  const renderMovementForm = (item: any) => (
+    <div className="rounded-xl border border-border p-3 space-y-2">
+      <Select value={movement.type} onChange={(e) => setMovement({ ...movement, type: e.target.value })}>
+        {MOVEMENT_TYPES.map((t) => (
+          <option key={t.value} value={t.value}>{t.label}</option>
+        ))}
+      </Select>
+      <Input
+        type="number"
+        placeholder="Quantité"
+        value={movement.quantity}
+        onChange={(e) => setMovement({ ...movement, quantity: e.target.value })}
+      />
+      <Input
+        placeholder="Motif (optionnel)"
+        value={movement.reason}
+        onChange={(e) => setMovement({ ...movement, reason: e.target.value })}
+      />
+      <Button
+        size="sm"
+        className="w-full"
+        disabled={!movement.quantity || movementMutation.isPending}
+        onClick={() => movementMutation.mutate(item)}
+      >
+        {movementMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
+        Confirmer
+      </Button>
+    </div>
+  );
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl mx-auto">
+    <div className="p-6 space-y-6 max-w-5xl mx-auto">
       <PageHeader title="Stock & Approvisionnement" />
 
       <div className="grid grid-cols-3 gap-3">
@@ -179,14 +222,32 @@ export default function StockPage() {
       )}
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Articles</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
+          <CardTitle className="text-base flex-shrink-0">Articles</CardTitle>
+          <div className="relative flex-1 max-w-xs hidden sm:block">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              className="pl-9 h-9"
+              placeholder="Nom, rayon, code-barres…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
           <Button size="sm" onClick={() => setShowAdd(true)} disabled={!merchants?.length}>
             <Plus className="mr-1 w-4 h-4" />
             Ajouter
           </Button>
         </CardHeader>
         <CardContent>
+          <div className="relative mb-3 sm:hidden">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              className="pl-9"
+              placeholder="Nom, rayon, code-barres…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
           {!merchants?.length && !showAdd && (
             <p className="text-muted-foreground text-center py-6">Crée d'abord une boutique pour pouvoir y ajouter du stock.</p>
           )}
@@ -216,7 +277,7 @@ export default function StockPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label htmlFor="stock_category">Catégorie</Label>
+                  <Label htmlFor="stock_category">Catégorie / rayon</Label>
                   <Input id="stock_category" placeholder="Boissons" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
                 </div>
                 <div className="space-y-2">
@@ -269,9 +330,15 @@ export default function StockPage() {
                   <Input id="stock_threshold" type="number" inputMode="numeric" value={form.low_stock_threshold} onChange={(e) => setForm({ ...form, low_stock_threshold: e.target.value })} />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="stock_price">Prix de vente unitaire</Label>
-                <Input id="stock_price" type="number" inputMode="decimal" value={form.unit_price} onChange={(e) => setForm({ ...form, unit_price: e.target.value })} />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="stock_price">Prix de vente unitaire</Label>
+                  <Input id="stock_price" type="number" inputMode="decimal" value={form.unit_price} onChange={(e) => setForm({ ...form, unit_price: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="stock_cost">Prix d'achat (pour la marge)</Label>
+                  <Input id="stock_cost" type="number" inputMode="decimal" placeholder="Optionnel" value={form.cost_price} onChange={(e) => setForm({ ...form, cost_price: e.target.value })} />
+                </div>
               </div>
 
               <Button
@@ -286,70 +353,106 @@ export default function StockPage() {
           )}
 
           {visibleItems.length ? (
-            <div>
-              {visibleItems.map((item: any) => (
-                <div key={item.id} className="py-3 border-b border-border last:border-0">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-foreground truncate">{item.name}</p>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {[item.brand, item.model].filter(Boolean).join(' ')}
-                        {item.brand || item.model ? ' · ' : ''}
-                        {item.merchant_name}
-                      </p>
+            <>
+              {/* Mobile — stacked cards, unchanged from before the desktop
+                  table was added. */}
+              <div className="md:hidden">
+                {visibleItems.map((item: any) => (
+                  <div key={item.id} className="py-3 border-b border-border last:border-0">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-foreground truncate">{item.name}</p>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {[item.brand, item.model].filter(Boolean).join(' ')}
+                          {item.brand || item.model ? ' · ' : ''}
+                          {item.merchant_name}
+                        </p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="font-semibold text-foreground">{item.quantity} unités</p>
+                        <p className="text-sm text-muted-foreground">{formatCurrency(item.unit_price_cents, item.currency)}</p>
+                      </div>
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="font-semibold text-foreground">{item.quantity} unités</p>
-                      <p className="text-sm text-muted-foreground">{formatCurrency(item.unit_price_cents, item.currency)}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    {item.quantity <= item.low_stock_threshold && (
-                      <Badge variant="error">Stock bas</Badge>
-                    )}
-                    {item.category && <Badge variant="secondary">{item.category}</Badge>}
-                    {item.barcode && <Badge variant="secondary" className="font-mono">{item.barcode}</Badge>}
-                    {item.condition && <Badge variant="secondary" className="capitalize">{CONDITIONS.find((c) => c.value === item.condition)?.label || item.condition}</Badge>}
-                    <button
-                      className="ml-auto text-sm font-medium text-primary hover:underline"
-                      onClick={() => setMovementItemId(movementItemId === item.id ? null : item.id)}
-                    >
-                      Mouvement de stock
-                    </button>
-                  </div>
-
-                  {movementItemId === item.id && (
-                    <div className="mt-3 rounded-xl border border-border p-3 space-y-2">
-                      <Select value={movement.type} onChange={(e) => setMovement({ ...movement, type: e.target.value })}>
-                        {MOVEMENT_TYPES.map((t) => (
-                          <option key={t.value} value={t.value}>{t.label}</option>
-                        ))}
-                      </Select>
-                      <Input
-                        type="number"
-                        placeholder="Quantité"
-                        value={movement.quantity}
-                        onChange={(e) => setMovement({ ...movement, quantity: e.target.value })}
-                      />
-                      <Input
-                        placeholder="Motif (optionnel)"
-                        value={movement.reason}
-                        onChange={(e) => setMovement({ ...movement, reason: e.target.value })}
-                      />
-                      <Button
-                        size="sm"
-                        className="w-full"
-                        disabled={!movement.quantity || movementMutation.isPending}
-                        onClick={() => movementMutation.mutate(item)}
+                    <div className="flex items-center gap-2 mt-2">
+                      {item.quantity <= item.low_stock_threshold && (
+                        <Badge variant="error">Stock bas</Badge>
+                      )}
+                      {item.category && <Badge variant="secondary">{item.category}</Badge>}
+                      {item.barcode && <Badge variant="secondary" className="font-mono">{item.barcode}</Badge>}
+                      {item.condition && <Badge variant="secondary" className="capitalize">{CONDITIONS.find((c) => c.value === item.condition)?.label || item.condition}</Badge>}
+                      <button
+                        className="ml-auto text-sm font-medium text-primary hover:underline"
+                        onClick={() => setMovementItemId(movementItemId === item.id ? null : item.id)}
                       >
-                        {movementMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
-                        Confirmer
-                      </Button>
+                        Mouvement de stock
+                      </button>
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
+
+                    {movementItemId === item.id && (
+                      <div className="mt-3">{renderMovementForm(item)}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop — dense table, same data/actions as the mobile
+                  cards above, just presented as rows so a long inventory
+                  stays easy to scan on a wide screen. */}
+              <table className="hidden md:table w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="py-2 pr-3 font-medium">Article</th>
+                    <th className="py-2 pr-3 font-medium">Rayon</th>
+                    <th className="py-2 pr-3 font-medium">Marque / Modèle</th>
+                    <th className="py-2 pr-3 font-medium">Boutique</th>
+                    <th className="py-2 pr-3 font-medium">Quantité</th>
+                    <th className="py-2 pr-3 font-medium">Prix</th>
+                    <th className="py-2 pr-3 font-medium">État</th>
+                    <th className="py-2 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleItems.map((item: any) => (
+                    <Fragment key={item.id}>
+                      <tr className="border-b border-border last:border-0">
+                        <td className="py-3 pr-3">
+                          <p className="font-semibold text-foreground">{item.name}</p>
+                          {item.barcode && <p className="text-xs text-muted-foreground font-mono">{item.barcode}</p>}
+                        </td>
+                        <td className="py-3 pr-3 text-muted-foreground">{item.category || '—'}</td>
+                        <td className="py-3 pr-3 text-muted-foreground">{[item.brand, item.model].filter(Boolean).join(' ') || '—'}</td>
+                        <td className="py-3 pr-3 text-muted-foreground">{item.merchant_name}</td>
+                        <td className="py-3 pr-3">
+                          <div className="flex items-center gap-2">
+                            {item.quantity}
+                            {item.quantity <= item.low_stock_threshold && <Badge variant="error">Stock bas</Badge>}
+                          </div>
+                        </td>
+                        <td className="py-3 pr-3 text-muted-foreground">{formatCurrency(item.unit_price_cents, item.currency)}</td>
+                        <td className="py-3 pr-3">
+                          {item.condition ? (
+                            <Badge variant="secondary" className="capitalize">{CONDITIONS.find((c) => c.value === item.condition)?.label || item.condition}</Badge>
+                          ) : '—'}
+                        </td>
+                        <td className="py-3">
+                          <button
+                            className="text-sm font-medium text-primary hover:underline whitespace-nowrap"
+                            onClick={() => setMovementItemId(movementItemId === item.id ? null : item.id)}
+                          >
+                            Mouvement
+                          </button>
+                        </td>
+                      </tr>
+                      {movementItemId === item.id && (
+                        <tr className="border-b border-border last:border-0">
+                          <td colSpan={8} className="pb-4">{renderMovementForm(item)}</td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </>
           ) : (
             !showAdd && merchants?.length > 0 && <p className="text-muted-foreground text-center py-6">Aucun article pour le moment</p>
           )}
