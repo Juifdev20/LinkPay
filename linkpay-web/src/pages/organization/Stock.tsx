@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -120,8 +120,41 @@ export default function StockPage() {
 
   const visibleItems = storeFilter ? (items || []).filter((i: any) => i.merchant_id === storeFilter) : (items || []);
 
+  // Shared between the mobile card list and the desktop table row below —
+  // same state (movementItemId/movement), just inserted into a different
+  // wrapper per layout.
+  const renderMovementForm = (item: any) => (
+    <div className="rounded-xl border border-border p-3 space-y-2">
+      <Select value={movement.type} onChange={(e) => setMovement({ ...movement, type: e.target.value })}>
+        {MOVEMENT_TYPES.map((t) => (
+          <option key={t.value} value={t.value}>{t.label}</option>
+        ))}
+      </Select>
+      <Input
+        type="number"
+        placeholder="Quantité"
+        value={movement.quantity}
+        onChange={(e) => setMovement({ ...movement, quantity: e.target.value })}
+      />
+      <Input
+        placeholder="Motif (optionnel)"
+        value={movement.reason}
+        onChange={(e) => setMovement({ ...movement, reason: e.target.value })}
+      />
+      <Button
+        size="sm"
+        className="w-full"
+        disabled={!movement.quantity || movementMutation.isPending}
+        onClick={() => movementMutation.mutate(item)}
+      >
+        {movementMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
+        Confirmer
+      </Button>
+    </div>
+  );
+
   return (
-    <div className="p-6 space-y-6 max-w-2xl mx-auto">
+    <div className="p-6 space-y-6 max-w-5xl mx-auto">
       <PageHeader title="Stock & Approvisionnement" />
 
       <div className="grid grid-cols-3 gap-3">
@@ -272,68 +305,99 @@ export default function StockPage() {
           )}
 
           {visibleItems.length ? (
-            <div>
-              {visibleItems.map((item: any) => (
-                <div key={item.id} className="py-3 border-b border-border last:border-0">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-foreground truncate">{item.name}</p>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {[item.brand, item.model].filter(Boolean).join(' ')}
-                        {item.brand || item.model ? ' · ' : ''}
-                        {item.merchant_name}
-                      </p>
+            <>
+              {/* Mobile — stacked cards, unchanged from before the desktop
+                  table was added. */}
+              <div className="md:hidden">
+                {visibleItems.map((item: any) => (
+                  <div key={item.id} className="py-3 border-b border-border last:border-0">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-foreground truncate">{item.name}</p>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {[item.brand, item.model].filter(Boolean).join(' ')}
+                          {item.brand || item.model ? ' · ' : ''}
+                          {item.merchant_name}
+                        </p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="font-semibold text-foreground">{item.quantity} unités</p>
+                        <p className="text-sm text-muted-foreground">{formatCurrency(item.unit_price_cents, item.currency)}</p>
+                      </div>
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="font-semibold text-foreground">{item.quantity} unités</p>
-                      <p className="text-sm text-muted-foreground">{formatCurrency(item.unit_price_cents, item.currency)}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    {item.quantity <= item.low_stock_threshold && (
-                      <Badge variant="error">Stock bas</Badge>
-                    )}
-                    {item.condition && <Badge variant="secondary" className="capitalize">{CONDITIONS.find((c) => c.value === item.condition)?.label || item.condition}</Badge>}
-                    <button
-                      className="ml-auto text-sm font-medium text-primary hover:underline"
-                      onClick={() => setMovementItemId(movementItemId === item.id ? null : item.id)}
-                    >
-                      Mouvement de stock
-                    </button>
-                  </div>
-
-                  {movementItemId === item.id && (
-                    <div className="mt-3 rounded-xl border border-border p-3 space-y-2">
-                      <Select value={movement.type} onChange={(e) => setMovement({ ...movement, type: e.target.value })}>
-                        {MOVEMENT_TYPES.map((t) => (
-                          <option key={t.value} value={t.value}>{t.label}</option>
-                        ))}
-                      </Select>
-                      <Input
-                        type="number"
-                        placeholder="Quantité"
-                        value={movement.quantity}
-                        onChange={(e) => setMovement({ ...movement, quantity: e.target.value })}
-                      />
-                      <Input
-                        placeholder="Motif (optionnel)"
-                        value={movement.reason}
-                        onChange={(e) => setMovement({ ...movement, reason: e.target.value })}
-                      />
-                      <Button
-                        size="sm"
-                        className="w-full"
-                        disabled={!movement.quantity || movementMutation.isPending}
-                        onClick={() => movementMutation.mutate(item)}
+                    <div className="flex items-center gap-2 mt-2">
+                      {item.quantity <= item.low_stock_threshold && (
+                        <Badge variant="error">Stock bas</Badge>
+                      )}
+                      {item.condition && <Badge variant="secondary" className="capitalize">{CONDITIONS.find((c) => c.value === item.condition)?.label || item.condition}</Badge>}
+                      <button
+                        className="ml-auto text-sm font-medium text-primary hover:underline"
+                        onClick={() => setMovementItemId(movementItemId === item.id ? null : item.id)}
                       >
-                        {movementMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
-                        Confirmer
-                      </Button>
+                        Mouvement de stock
+                      </button>
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
+
+                    {movementItemId === item.id && (
+                      <div className="mt-3">{renderMovementForm(item)}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop — dense table, same data/actions as the mobile
+                  cards above, just presented as rows so a long inventory
+                  stays easy to scan on a wide screen. */}
+              <table className="hidden md:table w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="py-2 pr-3 font-medium">Article</th>
+                    <th className="py-2 pr-3 font-medium">Marque / Modèle</th>
+                    <th className="py-2 pr-3 font-medium">Boutique</th>
+                    <th className="py-2 pr-3 font-medium">Quantité</th>
+                    <th className="py-2 pr-3 font-medium">Prix</th>
+                    <th className="py-2 pr-3 font-medium">État</th>
+                    <th className="py-2 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleItems.map((item: any) => (
+                    <Fragment key={item.id}>
+                      <tr className="border-b border-border last:border-0">
+                        <td className="py-3 pr-3 font-semibold text-foreground">{item.name}</td>
+                        <td className="py-3 pr-3 text-muted-foreground">{[item.brand, item.model].filter(Boolean).join(' ') || '—'}</td>
+                        <td className="py-3 pr-3 text-muted-foreground">{item.merchant_name}</td>
+                        <td className="py-3 pr-3">
+                          <div className="flex items-center gap-2">
+                            {item.quantity}
+                            {item.quantity <= item.low_stock_threshold && <Badge variant="error">Stock bas</Badge>}
+                          </div>
+                        </td>
+                        <td className="py-3 pr-3 text-muted-foreground">{formatCurrency(item.unit_price_cents, item.currency)}</td>
+                        <td className="py-3 pr-3">
+                          {item.condition ? (
+                            <Badge variant="secondary" className="capitalize">{CONDITIONS.find((c) => c.value === item.condition)?.label || item.condition}</Badge>
+                          ) : '—'}
+                        </td>
+                        <td className="py-3">
+                          <button
+                            className="text-sm font-medium text-primary hover:underline whitespace-nowrap"
+                            onClick={() => setMovementItemId(movementItemId === item.id ? null : item.id)}
+                          >
+                            Mouvement
+                          </button>
+                        </td>
+                      </tr>
+                      {movementItemId === item.id && (
+                        <tr className="border-b border-border last:border-0">
+                          <td colSpan={7} className="pb-4">{renderMovementForm(item)}</td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </>
           ) : (
             !showAdd && merchants?.length > 0 && <p className="text-muted-foreground text-center py-6">Aucun article pour le moment</p>
           )}

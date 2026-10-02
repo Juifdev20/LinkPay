@@ -35,9 +35,12 @@ const navItems = [
   { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, roles: ['merchant', 'cashier'] },
   { to: '/dashboard/settlements', label: 'Règlements', icon: Wallet, roles: ['merchant'] },
   { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'] },
-  { to: '/dashboard/client/transactions', label: 'Mes paiements', icon: Receipt, roles: ALL_ROLES },
-  { to: '/dashboard/tontines', label: 'Tontines', icon: RefreshCcw, roles: ALL_ROLES },
-  { to: '/dashboard/savings', label: 'Épargne', icon: PiggyBank, roles: ALL_ROLES },
+  // Deliberately excludes 'enterprise' — wallet/tontine/savings features are
+  // personal-account concepts; an organization has its own separate stock,
+  // expenses, etc. modules instead (see OrganizationProfile.tsx).
+  { to: '/dashboard/client/transactions', label: 'Mes paiements', icon: Receipt, roles: ALL_ROLES.filter((r) => r !== 'enterprise') },
+  { to: '/dashboard/tontines', label: 'Tontines', icon: RefreshCcw, roles: ALL_ROLES.filter((r) => r !== 'enterprise') },
+  { to: '/dashboard/savings', label: 'Épargne', icon: PiggyBank, roles: ALL_ROLES.filter((r) => r !== 'enterprise') },
   // Deliberately excludes 'enterprise' — organizations have their own,
   // separate expense feature (see OrganizationProfile.tsx's expense tile),
   // unlike tontines/savings above which enterprise can currently also see.
@@ -84,58 +87,63 @@ export default function DashboardLayout() {
   return (
     <div className="min-h-screen bg-background">
       <div className="flex h-screen">
-        {/* Desktop sidebar */}
-        <aside className={cn(
-          'hidden md:flex flex-col border-r border-border bg-card transition-all duration-300',
-          sidebarCollapsed ? 'w-20' : 'w-64'
-        )}>
-          <div className="p-6 border-b border-border flex items-center justify-between">
-            {!sidebarCollapsed && <Logo size="md" />}
-            <Button variant="ghost" size="icon" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="h-9 w-9 ml-auto">
-              {sidebarCollapsed ? <Menu className="h-4 w-4" /> : <X className="h-4 w-4" />}
-            </Button>
-          </div>
+        {/* Desktop sidebar — hidden entirely (not just dimmed) while an
+            enterprise account hasn't finished onboarding/validation, same
+            reasoning as the mobile BottomNav below: none of these
+            destinations are usable yet, so there's nothing to navigate to. */}
+        {!navLocked && (
+          <aside className={cn(
+            'hidden md:flex flex-col border-r border-border bg-card transition-all duration-300',
+            sidebarCollapsed ? 'w-20' : 'w-64'
+          )}>
+            <div className="p-6 border-b border-border flex items-center justify-between">
+              {!sidebarCollapsed && <Logo size="md" />}
+              <Button variant="ghost" size="icon" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="h-9 w-9 ml-auto">
+                {sidebarCollapsed ? <Menu className="h-4 w-4" /> : <X className="h-4 w-4" />}
+              </Button>
+            </div>
 
-          <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-            {visibleItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/dashboard'}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
-                    isActive
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                  )
-                }
-                title={sidebarCollapsed ? item.label : undefined}
-              >
-                <item.icon className="w-5 h-5 flex-shrink-0" />
-                {!sidebarCollapsed && <span>{item.label}</span>}
-              </NavLink>
-            ))}
-          </nav>
+            <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+              {visibleItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.to === '/dashboard'}
+                  className={({ isActive }) =>
+                    cn(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
+                      isActive
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                    )
+                  }
+                  title={sidebarCollapsed ? item.label : undefined}
+                >
+                  <item.icon className="w-5 h-5 flex-shrink-0" />
+                  {!sidebarCollapsed && <span>{item.label}</span>}
+                </NavLink>
+              ))}
+            </nav>
 
-          <div className="p-4 border-t border-border">
-            {!sidebarCollapsed && (
-              <div className="flex items-center gap-3 mb-3 px-3">
-                <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center">
-                  <User className="w-4 h-4 text-muted-foreground" />
+            <div className="p-4 border-t border-border">
+              {!sidebarCollapsed && (
+                <div className="flex items-center gap-3 mb-3 px-3">
+                  <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center">
+                    <User className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate text-foreground">{user?.full_name || user?.email}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate text-foreground">{user?.full_name || user?.email}</p>
-                  <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
-                </div>
-              </div>
-            )}
-            <Button variant="ghost" size="sm" className={cn('w-full justify-start text-muted-foreground', sidebarCollapsed && 'px-3')} onClick={handleLogout}>
-              <LogOut className="w-4 h-4 flex-shrink-0" />
-              {!sidebarCollapsed && <span className="ml-2">Déconnexion</span>}
-            </Button>
-          </div>
-        </aside>
+              )}
+              <Button variant="ghost" size="sm" className={cn('w-full justify-start text-muted-foreground', sidebarCollapsed && 'px-3')} onClick={handleLogout}>
+                <LogOut className="w-4 h-4 flex-shrink-0" />
+                {!sidebarCollapsed && <span className="ml-2">Déconnexion</span>}
+              </Button>
+            </div>
+          </aside>
+        )}
 
         {/* Main content */}
         <main className="flex-1 overflow-y-auto">
