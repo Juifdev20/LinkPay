@@ -13,9 +13,9 @@ import { DualCurrencyStat } from '@/components/DualCurrencyStat';
 import { TransactionItem } from '@/components/TransactionItem';
 import OnboardingWizard from '@/pages/organization/OnboardingWizard';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
-import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X, Copy, Check, XCircle, Trophy, Banknote, Smartphone, Package, MinusCircle, PiggyBank, Clock, AlertTriangle, Users, Boxes, ClipboardList, ScrollText, ShoppingCart } from 'lucide-react';
+import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X, Copy, Check, XCircle, Trophy, Banknote, Smartphone, Package, MinusCircle, PiggyBank, Clock, AlertTriangle, Maximize2 } from 'lucide-react';
 import { shareOrCopy, publicOrigin } from '@/lib/share';
-import { Link } from 'react-router-dom';
+
 
 /** Shown once the KYB onboarding is submitted, while status is still
  * 'pending' — distinct from the wizard itself (onboarding_completed_at is
@@ -71,6 +71,7 @@ export default function OrganizationProfilePage() {
   const [newStore, setNewStore] = useState({ name: '', phone: '', city: '', default_currency: 'CDF' as 'CDF' | 'USD' });
   const [enteringId, setEnteringId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showQrPresent, setShowQrPresent] = useState(false);
 
   const { data: org, isLoading } = useQuery({
     queryKey: ['my-organization'],
@@ -201,17 +202,6 @@ export default function OrganizationProfilePage() {
     return <RejectedScreen orgId={org.id} orgName={org.name} org={org} reason={org.rejection_reason} />;
   }
 
-  // Module entry tiles — the day-to-day screens of the supermarket module,
-  // also reachable from the sidebar. Shown as a compact strip on desktop.
-  const moduleLinks = [
-    { to: '/dashboard/pos', icon: ShoppingCart, title: 'Caisse', desc: 'Point de vente' },
-    { to: '/dashboard/organization/stock', icon: Boxes, title: 'Stock', desc: 'Articles & réappro' },
-    { to: '/dashboard/organization/inventory', icon: ClipboardList, title: 'Inventaires', desc: 'Comptages & démarque' },
-    { to: '/dashboard/organization/stats', icon: TrendingUp, title: 'Statistiques', desc: 'CA, marges, exports' },
-    { to: '/dashboard/organization/audit', icon: ScrollText, title: 'Journal', desc: 'Qui a fait quoi' },
-    { to: '/dashboard/organization/staff', icon: Users, title: 'Employés', desc: 'Caissier, magasinier…' },
-  ];
-
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <div className="flex items-center gap-3">
@@ -263,25 +253,6 @@ export default function OrganizationProfilePage() {
             <p className="text-xs text-muted-foreground">Échecs</p>
           </CardContent>
         </Card>
-      </div>
-
-      {/* Module tiles */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-        {moduleLinks.map((l) => (
-          <Link
-            key={l.to}
-            to={l.to}
-            className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-4 hover:border-primary hover:shadow-sm transition-all"
-          >
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-              <l.icon className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <p className="font-semibold text-foreground text-sm">{l.title}</p>
-              <p className="text-xs text-muted-foreground">{l.desc}</p>
-            </div>
-          </Link>
-        ))}
       </div>
 
       {/* Main grid — content column + right rail (QR, boutiques) on desktop */}
@@ -399,8 +370,12 @@ export default function OrganizationProfilePage() {
         <div className="space-y-6">
           {org?.scanlinkpay_number && (
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-base">Numéro ScanLinkPay</CardTitle>
+                <Button size="sm" variant="outline" onClick={() => setShowQrPresent(true)}>
+                  <Maximize2 className="mr-1 w-4 h-4" />
+                  Afficher
+                </Button>
               </CardHeader>
               <CardContent>
                 <p className="text-xs text-muted-foreground mb-4">
@@ -530,6 +505,39 @@ export default function OrganizationProfilePage() {
           </Card>
         </div>
       </div>
+
+      {/* Presentation mode — clean fullscreen QR to show to a client without
+          exposing any dashboard data. */}
+      {showQrPresent && org?.scanlinkpay_number && (
+        <div
+          className="fixed inset-0 z-50 bg-background flex flex-col items-center justify-center p-8"
+          onClick={() => setShowQrPresent(false)}
+        >
+          <button
+            className="absolute top-5 right-5 w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-foreground hover:bg-accent"
+            onClick={() => setShowQrPresent(false)}
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+            <Building2 className="w-7 h-7 text-primary" />
+          </div>
+          <h2 className="text-2xl font-bold text-foreground mb-2">{org.name}</h2>
+          <p className="text-muted-foreground mb-8">Scannez ce code pour payer</p>
+          {org.scanlinkpay_qr_url && (
+            <img
+              src={org.scanlinkpay_qr_url}
+              alt="QR ScanLinkPay"
+              className="w-72 h-72 sm:w-96 sm:h-96 rounded-3xl border border-border bg-white p-4"
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
+          <code className="mt-8 font-mono text-2xl font-bold tracking-widest text-foreground">
+            {org.scanlinkpay_number}
+          </code>
+          <p className="mt-2 text-sm text-muted-foreground">ou saisissez ce numéro dans l'application</p>
+        </div>
+      )}
     </div>
   );
 }
