@@ -118,10 +118,10 @@ export default function StaffPage() {
   const visibleStaff = roleFilter ? (staff || []).filter((s: any) => s.role === roleFilter) : (staff || []);
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl mx-auto">
+    <div className="p-6 space-y-6 max-w-4xl mx-auto">
       <PageHeader title="Utilisateurs internes" />
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {ROLES.map((r) => (
           <button
             key={r.slug}
