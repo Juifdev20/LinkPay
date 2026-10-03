@@ -29,6 +29,7 @@ export class AuditController {
   async getOrgAuditLog(
     @Param('id') orgId: string,
     @Query('action') action: string | undefined,
+    @Query('user_id') userId: string | undefined,
     @Query('page') page: string | undefined,
     @Query('limit') limit: string | undefined,
     @CurrentUser('id') callerId: string,
@@ -49,8 +50,12 @@ export class AuditController {
     const { data: staff } = await db.from('organization_staff').select('user_id').eq('organization_id', orgId);
     const userIds = [org.owner_id, ...(staff || []).map((s) => s.user_id)];
 
+    // Optional per-user filter — restricted to users who actually belong to
+    // this org (anything else matches nobody).
+    const effectiveIds = userId ? (userIds.includes(userId) ? [userId] : ['00000000-0000-0000-0000-000000000000']) : userIds;
+
     return this.auditService.getAuditLogs({
-      user_ids: userIds,
+      user_ids: effectiveIds,
       action,
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,

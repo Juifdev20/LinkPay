@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { useAuthStore } from '@/lib/auth-store';
+import { STAFF_ROLES } from './PosPage';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +16,7 @@ import { posErrorMessage } from './PosPage';
 import { formatCurrency, formatDate, formatShortDate } from '@/lib/utils';
 import {
   PauseCircle, Play, Loader2, Banknote, QrCode, Receipt,
-  DoorClosed, Vault, ChevronRight, History,
+  DoorClosed, Vault, ChevronRight, History, Percent,
 } from 'lucide-react';
 
 const METHOD_LABELS: Record<string, string> = {
@@ -149,25 +151,66 @@ export function PosSalesHistory({ merchantId }: { merchantId: string }) {
         </CardContent></Card>
       )}
 
-      {tickets.map((t) => (
-        <button key={t.id} onClick={() => openReceipt(t)} disabled={loadingReceipt} className="w-full text-left">
-          <Card className="hover:bg-accent/40 transition-colors">
-            <CardContent className="pt-4 pb-4 flex items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-foreground">Ticket #{t.ticket_number ?? '—'}</p>
-                <p className="text-xs text-muted-foreground">{formatDate(t.paid_at || t.created_at)}</p>
-              </div>
-              <Badge variant="secondary" className="flex items-center gap-1">
-                {t.payment_method === 'cash' && <Banknote className="w-3 h-3" />}
-                {t.payment_method === 'scanlinkpay' && <QrCode className="w-3 h-3" />}
-                {METHOD_LABELS[t.payment_method] || t.payment_method}
-              </Badge>
-              <p className="font-bold text-foreground flex-shrink-0">{formatCurrency(t.total_cents, t.currency)}</p>
-              <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-            </CardContent>
-          </Card>
-        </button>
-      ))}
+      {/* Mobile — cards */}
+      <div className="md:hidden space-y-3">
+        {tickets.map((t) => (
+          <button key={t.id} onClick={() => openReceipt(t)} disabled={loadingReceipt} className="w-full text-left">
+            <Card className="hover:bg-accent/40 transition-colors">
+              <CardContent className="pt-4 pb-4 flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-foreground">Ticket #{t.ticket_number ?? '—'}</p>
+                  <p className="text-xs text-muted-foreground">{formatDate(t.paid_at || t.created_at)}</p>
+                </div>
+                <Badge variant="secondary" className="flex items-center gap-1">
+                  {t.payment_method === 'cash' && <Banknote className="w-3 h-3" />}
+                  {t.payment_method === 'scanlinkpay' && <QrCode className="w-3 h-3" />}
+                  {METHOD_LABELS[t.payment_method] || t.payment_method}
+                </Badge>
+                <p className="font-bold text-foreground flex-shrink-0">{formatCurrency(t.total_cents, t.currency)}</p>
+                <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              </CardContent>
+            </Card>
+          </button>
+        ))}
+      </div>
+
+      {/* Desktop — dense table */}
+      {tickets.length > 0 && (
+        <Card className="hidden md:block">
+          <CardContent className="p-0">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-muted-foreground">
+                  <th className="py-3 pl-4 pr-3 font-medium w-28">Ticket</th>
+                  <th className="py-3 pr-3 font-medium w-48">Date</th>
+                  <th className="py-3 pr-3 font-medium w-40">Paiement</th>
+                  <th className="py-3 pr-3 font-medium text-right">Total</th>
+                  <th className="py-3 pr-4 font-medium w-24 text-right">Reçu</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tickets.map((t) => (
+                  <tr key={t.id} className="border-b border-border last:border-0 hover:bg-accent/30">
+                    <td className="py-3 pl-4 pr-3 font-semibold text-foreground">#{t.ticket_number ?? '—'}</td>
+                    <td className="py-3 pr-3 text-muted-foreground">{formatDate(t.paid_at || t.created_at)}</td>
+                    <td className="py-3 pr-3">
+                      <Badge variant="secondary" className="flex items-center gap-1 w-fit">
+                        {t.payment_method === 'cash' && <Banknote className="w-3 h-3" />}
+                        {t.payment_method === 'scanlinkpay' && <QrCode className="w-3 h-3" />}
+                        {METHOD_LABELS[t.payment_method] || t.payment_method}
+                      </Badge>
+                    </td>
+                    <td className="py-3 pr-3 text-right font-bold text-foreground">{formatCurrency(t.total_cents, t.currency)}</td>
+                    <td className="py-3 pr-4 text-right">
+                      <Button size="sm" variant="outline" disabled={loadingReceipt} onClick={() => openReceipt(t)}>Voir</Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
 
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-3 pt-2">
@@ -206,6 +249,34 @@ export function PosSessionPanel({ merchantId, session }: { merchantId: string; s
     queryFn: async () => (await api.get(`/merchants/${merchantId}/cash-register/sessions`, { params: { limit: 20 } })).data,
   });
   const pastSessions: any[] = (history?.data || []).filter((s: any) => s.id !== session?.id);
+
+  // POS settings (TVA rate) — owner/admin only; staff sell, they don't set
+  // tax policy (backend enforces the same).
+  const user = useAuthStore((s) => s.user);
+  const canEditSettings = !STAFF_ROLES.includes(user?.role || '');
+  const { data: posSettings } = useQuery({
+    queryKey: ['pos-settings', merchantId],
+    queryFn: async () => (await api.get(`/merchants/${merchantId}/pos/settings`)).data,
+    enabled: !!merchantId && canEditSettings,
+  });
+  const [tvaInput, setTvaInput] = useState('');
+  const [savingTva, setSavingTva] = useState(false);
+  useEffect(() => {
+    if (posSettings && tvaInput === '') setTvaInput(String(posSettings.pos_tva_rate_pct ?? 0));
+  }, [posSettings]);
+
+  const saveTva = async () => {
+    setSavingTva(true);
+    setError('');
+    try {
+      await api.patch(`/merchants/${merchantId}/pos/settings`, { tva_rate_pct: Number(tvaInput) });
+      queryClient.invalidateQueries({ queryKey: ['pos-settings', merchantId] });
+    } catch (err: any) {
+      setError(posErrorMessage(err, 'Taux de TVA non enregistré'));
+    } finally {
+      setSavingTva(false);
+    }
+  };
 
   const addMovement = async () => {
     setBusy(true);
@@ -313,6 +384,42 @@ export function PosSessionPanel({ merchantId, session }: { merchantId: string; s
         </CardContent>
       </Card>
 
+      {/* POS settings — TVA rate, owner/admin only */}
+      {canEditSettings && (
+        <Card>
+          <CardHeader><CardTitle className="text-base flex items-center gap-2"><Percent className="w-5 h-5" /> Réglages de caisse</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="tva-rate">Taux de TVA appliqué aux ventes (%)</Label>
+              <div className="flex gap-3">
+                <Input
+                  id="tva-rate"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  value={tvaInput}
+                  onChange={(e) => setTvaInput(e.target.value)}
+                  className="w-32"
+                />
+                <Button
+                  variant="outline"
+                  disabled={savingTva || tvaInput === '' || Number(tvaInput) < 0 || Number(tvaInput) > 100}
+                  onClick={saveTva}
+                >
+                  {savingTva && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
+                  Enregistrer
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Les prix catalogue sont TTC — la TVA est extraite sur le reçu (sous-total HT + TVA). Mettez 0 pour désactiver.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Past sessions — rapprochement history */}
       <Card>
         <CardHeader><CardTitle className="text-base flex items-center gap-2"><History className="w-5 h-5" /> Sessions passées</CardTitle></CardHeader>
@@ -321,28 +428,65 @@ export function PosSessionPanel({ merchantId, session }: { merchantId: string; s
           {!historyLoading && !pastSessions.length && (
             <p className="text-sm text-muted-foreground text-center py-2">Aucune session passée.</p>
           )}
-          {pastSessions.map((s) => (
-            <button key={s.id} onClick={() => setDetailId(s.id)} className="w-full text-left rounded-xl border border-border px-3 py-2.5 hover:bg-accent/40 transition-colors">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground">
-                    {formatShortDate(s.opened_at)} · {s.currency}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {s.cashier?.full_name || s.cashier?.email || '—'}
-                  </p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <Badge variant={s.status === 'open' ? 'secondary' : 'outline'}>{STATUS_LABELS[s.status] || s.status}</Badge>
-                  {s.status === 'closed' && (
-                    <p className={`text-xs font-semibold mt-0.5 ${s.discrepancy_cents === 0 ? 'text-success' : 'text-destructive'}`}>
-                      Écart {s.discrepancy_cents > 0 ? '+' : ''}{formatCurrency(s.discrepancy_cents, s.currency)}
+          {/* Mobile — rows */}
+          <div className="md:hidden space-y-2">
+            {pastSessions.map((s) => (
+              <button key={s.id} onClick={() => setDetailId(s.id)} className="w-full text-left rounded-xl border border-border px-3 py-2.5 hover:bg-accent/40 transition-colors">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      {formatShortDate(s.opened_at)} · {s.currency}
                     </p>
-                  )}
+                    <p className="text-xs text-muted-foreground truncate">
+                      {s.cashier?.full_name || s.cashier?.email || '—'}
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <Badge variant={s.status === 'open' ? 'secondary' : 'outline'}>{STATUS_LABELS[s.status] || s.status}</Badge>
+                    {s.status === 'closed' && (
+                      <p className={`text-xs font-semibold mt-0.5 ${s.discrepancy_cents === 0 ? 'text-success' : 'text-destructive'}`}>
+                        Écart {s.discrepancy_cents > 0 ? '+' : ''}{formatCurrency(s.discrepancy_cents, s.currency)}
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            ))}
+          </div>
+
+          {/* Desktop — dense table */}
+          {pastSessions.length > 0 && (
+            <table className="hidden md:table w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-muted-foreground">
+                  <th className="py-2.5 pr-3 font-medium w-40">Ouverte le</th>
+                  <th className="py-2.5 pr-3 font-medium">Caissier</th>
+                  <th className="py-2.5 pr-3 font-medium w-20">Devise</th>
+                  <th className="py-2.5 pr-3 font-medium w-28">Statut</th>
+                  <th className="py-2.5 pr-3 font-medium text-right w-28">Écart</th>
+                  <th className="py-2.5 font-medium w-24 text-right">Détail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pastSessions.map((s) => (
+                  <tr key={s.id} className="border-b border-border last:border-0 hover:bg-accent/30">
+                    <td className="py-2.5 pr-3 font-medium text-foreground">{formatShortDate(s.opened_at)}</td>
+                    <td className="py-2.5 pr-3 text-muted-foreground">{s.cashier?.full_name || s.cashier?.email || '—'}</td>
+                    <td className="py-2.5 pr-3 text-muted-foreground">{s.currency}</td>
+                    <td className="py-2.5 pr-3">
+                      <Badge variant={s.status === 'open' ? 'secondary' : 'outline'}>{STATUS_LABELS[s.status] || s.status}</Badge>
+                    </td>
+                    <td className={`py-2.5 pr-3 text-right font-semibold ${s.status !== 'closed' ? 'text-muted-foreground' : s.discrepancy_cents === 0 ? 'text-success' : 'text-destructive'}`}>
+                      {s.status === 'closed' ? `${s.discrepancy_cents > 0 ? '+' : ''}${formatCurrency(s.discrepancy_cents, s.currency)}` : '—'}
+                    </td>
+                    <td className="py-2.5 text-right">
+                      <Button size="sm" variant="outline" onClick={() => setDetailId(s.id)}>Voir</Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </CardContent>
       </Card>
 

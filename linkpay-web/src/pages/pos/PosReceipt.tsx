@@ -27,6 +27,7 @@ export function PosReceipt({ ticket, onClose }: { ticket: any; onClose: () => vo
   return (
     <FormSheet onClose={onClose} title="Reçu de vente">
       <div className="p-6 max-w-sm mx-auto space-y-4">
+        <div className="pos-receipt-print space-y-4">
         <div className="text-center space-y-1">
           <CheckCircle className="w-10 h-10 text-success mx-auto" />
           <p className="font-bold text-lg text-foreground">{ticket.merchant?.name || 'Boutique'}</p>
@@ -99,8 +100,9 @@ export function PosReceipt({ ticket, onClose }: { ticket: any; onClose: () => vo
         </div>
 
         <p className="text-center text-xs text-muted-foreground">Merci de votre visite — propulsé par ScanLinkPay</p>
+        </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 pos-no-print">
           <Button variant="outline" className="flex-1" onClick={() => window.print()}>
             <Printer className="mr-2 w-4 h-4" /> Imprimer
           </Button>

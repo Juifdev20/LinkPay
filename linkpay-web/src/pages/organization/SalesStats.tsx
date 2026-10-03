@@ -157,7 +157,7 @@ export default function SalesStatsPage() {
   };
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-5 max-w-3xl mx-auto">
+    <div className="p-6 pb-28 md:pb-6 space-y-5 max-w-3xl lg:max-w-6xl mx-auto">
       <PageHeader title="Statistiques de vente" />
 
       {!user?.merchant_id && merchants?.length > 1 && (
@@ -231,87 +231,89 @@ export default function SalesStatsPage() {
             ))}
           </div>
 
-          {/* CA par jour — barres CSS */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Chiffre d'affaires par jour</CardTitle></CardHeader>
-            <CardContent>
-              {(daily || []).length ? (
-                <div className="flex items-end gap-1 h-40">
-                  {(daily || []).map((d: any) => (
-                    <div key={d.date} className="flex-1 flex flex-col items-center gap-1 min-w-0" title={`${formatShortDate(d.date)} — ${formatCurrency(d.revenue_cents, currency)} (${d.tickets} tickets)`}>
-                      <div className="w-full rounded-t bg-primary/80 hover:bg-primary transition-colors" style={{ height: `${Math.max(2, (d.revenue_cents / maxDaily) * 100)}%` }} />
-                      <span className="text-[9px] text-muted-foreground truncate w-full text-center">{d.date.slice(5)}</span>
+          {/* CA par jour + répartition par moyen de paiement — côte à côte sur desktop */}
+          <div className="lg:grid lg:grid-cols-[3fr_2fr] lg:gap-5 space-y-5 lg:space-y-0">
+            <Card>
+              <CardHeader><CardTitle className="text-base">Chiffre d'affaires par jour</CardTitle></CardHeader>
+              <CardContent>
+                {(daily || []).length ? (
+                  <div className="flex items-end gap-1 h-40">
+                    {(daily || []).map((d: any) => (
+                      <div key={d.date} className="flex-1 flex flex-col items-center gap-1 min-w-0" title={`${formatShortDate(d.date)} — ${formatCurrency(d.revenue_cents, currency)} (${d.tickets} tickets)`}>
+                        <div className="w-full rounded-t bg-primary/80 hover:bg-primary transition-colors" style={{ height: `${Math.max(2, (d.revenue_cents / maxDaily) * 100)}%` }} />
+                        <span className="text-[9px] text-muted-foreground truncate w-full text-center">{d.date.slice(5)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-6">Aucune vente sur la période.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle className="text-base">Encaissements par moyen de paiement</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {Object.entries(summary.by_method || {}).map(([method, v]: [string, any]) => {
+                  const M = METHOD_LABELS[method] || { label: method, icon: Receipt };
+                  const share = summary.revenue_cents > 0 ? Math.round((v.amount_cents / summary.revenue_cents) * 100) : 0;
+                  return (
+                    <div key={method} className="flex items-center gap-3">
+                      <M.icon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm text-foreground w-28 truncate">{M.label}</span>
+                      <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden">
+                        <div className="h-full bg-primary" style={{ width: `${share}%` }} />
+                      </div>
+                      <span className="text-sm font-medium text-foreground w-28 text-right">{formatCurrency(v.amount_cents, currency)}</span>
+                      <Badge variant="outline" className="w-10 justify-center">{share}%</Badge>
                     </div>
-                  ))}
+                  );
+                })}
+                {summary.tickets_count === 0 && <p className="text-sm text-muted-foreground text-center py-2">Aucun encaissement.</p>}
+                <div className="flex justify-between text-xs text-muted-foreground pt-2 border-t border-border">
+                  <span>dont TVA collectée</span>
+                  <span>{formatCurrency(summary.tva_cents, currency)}</span>
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-6">Aucune vente sur la période.</p>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
 
-          {/* Répartition par moyen de paiement */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Encaissements par moyen de paiement</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              {Object.entries(summary.by_method || {}).map(([method, v]: [string, any]) => {
-                const M = METHOD_LABELS[method] || { label: method, icon: Receipt };
-                const share = summary.revenue_cents > 0 ? Math.round((v.amount_cents / summary.revenue_cents) * 100) : 0;
-                return (
-                  <div key={method} className="flex items-center gap-3">
-                    <M.icon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                    <span className="text-sm text-foreground w-28 truncate">{M.label}</span>
-                    <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden">
-                      <div className="h-full bg-primary" style={{ width: `${share}%` }} />
+          {/* Palmarès + dead stock — côte à côte sur desktop */}
+          <div className="lg:grid lg:grid-cols-2 lg:gap-5 space-y-5 lg:space-y-0">
+            <Card>
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><Trophy className="w-5 h-5" /> Top ventes</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {(top || []).map((p: any, i: number) => (
+                  <div key={p.stock_item_id} className="flex items-center gap-3">
+                    <span className="w-6 h-6 rounded-full bg-secondary text-xs font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground truncate">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">{p.qty} vendu(s) · marge {formatCurrency(p.margin_cents, currency)}</p>
                     </div>
-                    <span className="text-sm font-medium text-foreground w-28 text-right">{formatCurrency(v.amount_cents, currency)}</span>
-                    <Badge variant="outline" className="w-10 justify-center">{share}%</Badge>
+                    <p className="text-sm font-semibold text-foreground flex-shrink-0">{formatCurrency(p.revenue_cents, currency)}</p>
                   </div>
-                );
-              })}
-              {summary.tickets_count === 0 && <p className="text-sm text-muted-foreground text-center py-2">Aucun encaissement.</p>}
-              <div className="flex justify-between text-xs text-muted-foreground pt-2 border-t border-border">
-                <span>dont TVA collectée</span>
-                <span>{formatCurrency(summary.tva_cents, currency)}</span>
-              </div>
-            </CardContent>
-          </Card>
+                ))}
+                {!(top || []).length && <p className="text-sm text-muted-foreground text-center py-2">Aucune vente sur la période.</p>}
+              </CardContent>
+            </Card>
 
-          {/* Palmarès */}
-          <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><Trophy className="w-5 h-5" /> Top ventes</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              {(top || []).map((p: any, i: number) => (
-                <div key={p.stock_item_id} className="flex items-center gap-3">
-                  <span className="w-6 h-6 rounded-full bg-secondary text-xs font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground truncate">{p.name}</p>
-                    <p className="text-xs text-muted-foreground">{p.qty} vendu(s) · marge {formatCurrency(p.margin_cents, currency)}</p>
+            <Card>
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><PackageX className="w-5 h-5" /> Rotation lente</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-xs text-muted-foreground">Produits en rayon sans aucune vente sur la période — classés par valeur immobilisée.</p>
+                {(dead || []).map((d: any) => (
+                  <div key={d.stock_item_id} className="flex items-center justify-between gap-3 text-sm">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-foreground truncate">{d.name}</p>
+                      <p className="text-xs text-muted-foreground">{d.category || 'Sans rayon'} · {d.quantity} en stock</p>
+                    </div>
+                    <p className="font-semibold text-foreground flex-shrink-0">{formatCurrency(d.tied_up_value_cents, d.currency)}</p>
                   </div>
-                  <p className="text-sm font-semibold text-foreground flex-shrink-0">{formatCurrency(p.revenue_cents, currency)}</p>
-                </div>
-              ))}
-              {!(top || []).length && <p className="text-sm text-muted-foreground text-center py-2">Aucune vente sur la période.</p>}
-            </CardContent>
-          </Card>
-
-          {/* Dead stock */}
-          <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><PackageX className="w-5 h-5" /> Rotation lente</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              <p className="text-xs text-muted-foreground">Produits en rayon sans aucune vente sur la période — classés par valeur immobilisée.</p>
-              {(dead || []).map((d: any) => (
-                <div key={d.stock_item_id} className="flex items-center justify-between gap-3 text-sm">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-foreground truncate">{d.name}</p>
-                    <p className="text-xs text-muted-foreground">{d.category || 'Sans rayon'} · {d.quantity} en stock</p>
-                  </div>
-                  <p className="font-semibold text-foreground flex-shrink-0">{formatCurrency(d.tied_up_value_cents, d.currency)}</p>
-                </div>
-              ))}
-              {!(dead || []).length && <p className="text-sm text-muted-foreground text-center py-2">Tous les produits en rayon ont vendu sur la période.</p>}
-            </CardContent>
-          </Card>
+                ))}
+                {!(dead || []).length && <p className="text-sm text-muted-foreground text-center py-2">Tous les produits en rayon ont vendu sur la période.</p>}
+              </CardContent>
+            </Card>
+          </div>
         </>
       )}
     </div>

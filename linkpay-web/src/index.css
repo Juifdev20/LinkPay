@@ -89,3 +89,27 @@
     padding-top: env(safe-area-inset-top);
   }
 }
+
+/* Receipt printing — `Imprimer` on the POS receipt should output just the
+   ticket, not the whole dashboard. The receipt body gets `pos-receipt-print`,
+   every interactive element (buttons, sheet chrome) gets `pos-no-print`. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .pos-receipt-print,
+  .pos-receipt-print * {
+    visibility: visible;
+  }
+  .pos-receipt-print {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    max-width: 80mm;
+    margin: 0;
+    padding: 0;
+  }
+  .pos-no-print {
+    display: none !important;
+  }
+}

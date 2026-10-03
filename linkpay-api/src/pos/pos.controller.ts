@@ -29,6 +29,13 @@ class AddTicketItemDto {
   quantity!: number;
 }
 
+class UpdateItemQuantityDto {
+  @ApiProperty({ example: 3, description: 'Nouvelle quantité de la ligne (min 1 — zéro passe par le void autorisé)' })
+  @IsNumber()
+  @Min(1)
+  quantity!: number;
+}
+
 class VoidItemDto {
   @ApiPropertyOptional({ example: 'Erreur de scan' })
   @IsOptional()
@@ -182,6 +189,20 @@ export class PosController {
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
     return this.posService.addItem(merchantId, ticketId, callerId, callerRole, callerOrgId, dto);
+  }
+
+  @Patch('tickets/:ticketId/items/:itemRowId')
+  @ApiOperation({ summary: 'Update a line quantity in place (till steppers) — increases still validate stock; use void to reach zero' })
+  async updateItemQuantity(
+    @Param('id') merchantId: string,
+    @Param('ticketId') ticketId: string,
+    @Param('itemRowId') itemRowId: string,
+    @Body() dto: UpdateItemQuantityDto,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    return this.posService.updateItemQuantity(merchantId, ticketId, itemRowId, callerId, callerRole, callerOrgId, dto.quantity);
   }
 
   @Post('tickets/:ticketId/items/:itemRowId/void')

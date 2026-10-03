@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
@@ -13,15 +13,16 @@ import { PosPaymentSheet } from './PosPayment';
 import { PosReceipt } from './PosReceipt';
 import { posErrorMessage } from './PosPage';
 import { formatCurrency } from '@/lib/utils';
-import { Search, Trash2, PauseCircle, Loader2, ShieldAlert } from 'lucide-react';
+import { Search, Trash2, PauseCircle, Loader2, ShieldAlert, Minus, Plus, PackageX } from 'lucide-react';
 
 const STAFF_ROLES = ['magasinier', 'vendeur', 'caissier', 'comptable'];
 
 /**
- * The selling screen itself: product search/barcode → ticket lines
- * (same product merges, lines are voided — not deleted — with an
- * authorization PIN for staff) → HT/TVA/TTC totals → payment sheet
- * (cash, ScanLinkPay, or a mix) → receipt.
+ * The selling screen itself. Desktop (lg+) is a real till: product catalog
+ * with rayon chips on the left, ticket (lines, steppers, HT/TVA/TTC, pay)
+ * sticky on the right — everything reachable without scrolling. Mobile keeps
+ * the single-column search-first flow. Same product merges, lines are
+ * voided — not deleted — with an authorization PIN for staff.
  */
 export function PosTill({
   merchantId,
@@ -55,10 +56,13 @@ export function PosTill({
 
   // ------------------------------------------------------------------
   // Product lookup: live name search, Enter = barcode (USB scanners type
-  // the code then send Enter — same handler serves both).
+  // the code then send Enter — same handler serves both). The search box
+  // keeps/regains focus after every add so a scanner-driven cashier never
+  // needs to touch the mouse.
   // ------------------------------------------------------------------
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query.trim()), 300);
     return () => clearTimeout(t);
@@ -74,6 +78,18 @@ export function PosTill({
     select: (items: any[]) => items.filter((i) => i.currency === ticketCurrency),
   });
 
+  // Full catalog for the quick-pick grid (desktop) — filtered by rayon chip
+  // and ticket currency client-side; also feeds the mobile grid.
+  const { data: catalog } = useQuery({
+    queryKey: ['pos-catalog', merchantId],
+    queryFn: async () => (await api.get(`/merchants/${merchantId}/stock-items`)).data,
+    enabled: !!merchantId,
+  });
+  const [category, setCategory] = useState('');
+  const catalogItems: any[] = (catalog || []).filter((i: any) => i.currency === ticketCurrency);
+  const categories = [...new Set(catalogItems.map((i) => i.category).filter(Boolean))] as string[];
+  const gridItems = category ? catalogItems.filter((i) => i.category === category) : catalogItems;
+
   const [adding, setAdding] = useState(false);
   const addProduct = async (item: any) => {
     setAdding(true);
@@ -85,10 +101,12 @@ export function PosTill({
         quantity: 1,
       });
       setTicket(data);
+      setQuery('');
     } catch (err: any) {
       setError(posErrorMessage(err, "Impossible d'ajouter l'article"));
     } finally {
       setAdding(false);
+      searchRef.current?.focus();
     }
   };
 
@@ -103,6 +121,24 @@ export function PosTill({
       setQuery('');
     } catch {
       // Not a registered barcode — leave the name-search results visible.
+    }
+  };
+
+  // ------------------------------------------------------------------
+  // Quantity steppers: − reduces in place (zero goes through the
+  // authorized void below); + reuses the same patch with stock checks.
+  // ------------------------------------------------------------------
+  const setQuantity = async (item: any, quantity: number) => {
+    setError('');
+    try {
+      const { data } = await api.patch(
+        `/merchants/${merchantId}/pos/tickets/${ticket.id}/items/${item.id}`,
+        { quantity },
+      );
+      setTicket(data);
+      searchRef.current?.focus();
+    } catch (err: any) {
+      setError(posErrorMessage(err, 'Quantité impossible'));
     }
   };
 
@@ -135,18 +171,24 @@ export function PosTill({
   };
 
   // ------------------------------------------------------------------
-  // Hold / cancel / payment.
+  // Hold (with an optional note) / cancel / payment.
   // ------------------------------------------------------------------
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paidTicket, setPaidTicket] = useState<any>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [holdOpen, setHoldOpen] = useState(false);
+  const [holdNote, setHoldNote] = useState('');
   const [holding, setHolding] = useState(false);
 
   const holdTicket = async () => {
     setHolding(true);
     setError('');
     try {
-      await api.post(`/merchants/${merchantId}/pos/tickets/${ticket.id}/hold`, {});
+      await api.post(`/merchants/${merchantId}/pos/tickets/${ticket.id}/hold`, {
+        note: holdNote || undefined,
+      });
+      setHoldOpen(false);
+      setHoldNote('');
       onHeld();
     } catch (err: any) {
       setError(posErrorMessage(err, 'Impossible de mettre en attente'));
@@ -169,6 +211,7 @@ export function PosTill({
     setPaidTicket(t);
     setPaymentOpen(false);
     queryClient.invalidateQueries({ queryKey: ['pos-search'] });
+    queryClient.invalidateQueries({ queryKey: ['pos-catalog', merchantId] });
     queryClient.invalidateQueries({ queryKey: ['pos-sales', merchantId] });
   };
 
@@ -176,6 +219,25 @@ export function PosTill({
   const activeItems = items.filter((i) => i.status !== 'voided');
   const voidedItems = items.filter((i) => i.status === 'voided');
   const tvaRate = Number(ticket?.merchant?.pos_tva_rate_pct ?? 0);
+  const searching = query.trim().length >= 2;
+
+  const resultRow = (item: any) => (
+    <button
+      key={item.id}
+      disabled={adding || item.quantity <= 0}
+      onClick={() => addProduct(item)}
+      className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-accent/50 disabled:opacity-50"
+    >
+      <div className="min-w-0">
+        <p className="font-medium text-foreground truncate">{item.name}</p>
+        {item.category && <p className="text-xs text-muted-foreground">{item.category}</p>}
+      </div>
+      <div className="text-right flex-shrink-0">
+        <p className="text-sm font-semibold text-foreground">{formatCurrency(item.unit_price_cents, item.currency)}</p>
+        <p className="text-xs text-muted-foreground">{item.quantity > 0 ? `${item.quantity} en stock` : 'Rupture'}</p>
+      </div>
+    </button>
+  );
 
   return (
     <div className="space-y-5">
@@ -185,31 +247,14 @@ export function PosTill({
         </div>
       )}
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-base">
-            {ticket ? `Ticket #${ticket.ticket_number ?? '—'}` : 'Nouvelle vente'}
-          </CardTitle>
-          {ticket && (
-            <div className="flex items-center gap-3">
-              <button
-                onClick={holdTicket}
-                disabled={holding || !activeItems.length}
-                className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-40"
-              >
-                <PauseCircle className="w-4 h-4" /> Attente
-              </button>
-              <button onClick={() => setConfirmCancel(true)} className="text-sm font-medium text-destructive hover:underline">
-                Annuler
-              </button>
-            </div>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <div className="lg:grid lg:grid-cols-[1fr_400px] lg:gap-6 lg:items-start space-y-5 lg:space-y-0">
+        {/* ============================== Catalog ============================== */}
+        <div className="space-y-4 min-w-0">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              className="pl-9"
+              ref={searchRef}
+              className="pl-9 h-11 text-base"
               placeholder="Rechercher un produit ou scanner un code-barres…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -218,89 +263,175 @@ export function PosTill({
             />
           </div>
 
-          {query.trim().length >= 2 && results && (
-            <div className="rounded-xl border border-border divide-y divide-border max-h-56 overflow-y-auto">
+          {searching && results && (
+            <div className="rounded-xl border border-border divide-y divide-border max-h-72 overflow-y-auto bg-card">
               {results.length ? (
-                results.map((item: any) => (
-                  <button
-                    key={item.id}
-                    disabled={adding}
-                    onClick={() => addProduct(item)}
-                    className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-accent/50 disabled:opacity-50"
-                  >
-                    <div className="min-w-0">
-                      <p className="font-medium text-foreground truncate">{item.name}</p>
-                      {item.category && <p className="text-xs text-muted-foreground">{item.category}</p>}
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-sm font-semibold text-foreground">{formatCurrency(item.unit_price_cents, item.currency)}</p>
-                      <p className="text-xs text-muted-foreground">{item.quantity} en stock</p>
-                    </div>
-                  </button>
-                ))
+                results.map(resultRow)
               ) : (
                 <p className="px-3 py-3 text-sm text-muted-foreground">Aucun produit « {debouncedQuery} »</p>
               )}
             </div>
           )}
 
-          {activeItems.length > 0 && (
-            <div className="divide-y divide-border">
-              {activeItems.map((item: any) => (
-                <div key={item.id} className="flex items-center gap-3 py-2.5">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-foreground truncate">{item.product_name_snapshot}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {item.quantity} × {formatCurrency(item.unit_price_cents_snapshot, ticket.currency)}
-                    </p>
-                  </div>
-                  <p className="font-semibold text-foreground flex-shrink-0">{formatCurrency(item.line_total_cents, ticket.currency)}</p>
-                  <button onClick={() => setVoidTarget(item)} className="text-muted-foreground hover:text-destructive flex-shrink-0" title="Annuler la ligne">
-                    <Trash2 className="w-4 h-4" />
+          {/* Quick-pick grid — shown when not searching. Desktop gets rayon
+              chips + a dense grid; mobile/tablet gets a compact 3-col grid. */}
+          {!searching && (
+            <>
+              {categories.length > 1 && (
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  <button
+                    onClick={() => setCategory('')}
+                    className={`flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-medium border ${!category ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'}`}
+                  >
+                    Tous
                   </button>
+                  {categories.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setCategory(category === c ? '' : c)}
+                      className={`flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-medium border ${category === c ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'}`}
+                    >
+                      {c}
+                    </button>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
+
+              {gridItems.length ? (
+                <div className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-5 gap-2 lg:max-h-[calc(100vh-300px)] lg:overflow-y-auto lg:pr-1">
+                  {gridItems.map((item: any) => (
+                    <button
+                      key={item.id}
+                      disabled={adding || item.quantity <= 0}
+                      onClick={() => addProduct(item)}
+                      className="rounded-xl border border-border bg-card p-3 text-left hover:border-primary hover:shadow-sm transition-all disabled:opacity-50 flex flex-col gap-1 min-h-[86px]"
+                    >
+                      <p className="text-sm font-medium text-foreground leading-tight line-clamp-2">{item.name}</p>
+                      <div className="mt-auto flex items-end justify-between gap-1">
+                        <p className="text-sm font-bold text-primary truncate">{formatCurrency(item.unit_price_cents, item.currency)}</p>
+                        {item.quantity <= 0 ? (
+                          <Badge variant="error" className="text-[10px] gap-0.5"><PackageX className="w-3 h-3" />0</Badge>
+                        ) : item.quantity <= (item.low_stock_threshold ?? 5) ? (
+                          <Badge variant="secondary" className="text-[10px]">{item.quantity}</Badge>
+                        ) : null}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                !catalogItems.length && (
+                  <p className="text-sm text-muted-foreground text-center py-6">
+                    Aucun produit en {ticketCurrency} dans cette boutique — ajoutez-en depuis la page Stock.
+                  </p>
+                )
+              )}
+            </>
           )}
+        </div>
 
-          {/* Voided lines stay visible — struck through — so the operator
-              sees exactly what was removed from this ticket. */}
-          {voidedItems.map((item: any) => (
-            <div key={item.id} className="flex items-center gap-3 py-1.5 opacity-50">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm line-through text-muted-foreground truncate">{item.product_name_snapshot}</p>
-                <p className="text-xs text-muted-foreground">
-                  Annulée{item.voided_reason ? ` — ${item.voided_reason}` : ''}
-                </p>
+        {/* ============================== Ticket ============================== */}
+        <Card className="lg:sticky lg:top-20">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">
+              {ticket ? `Ticket #${ticket.ticket_number ?? '—'}` : 'Nouvelle vente'}
+            </CardTitle>
+            {ticket && (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setHoldOpen(true)}
+                  disabled={!activeItems.length}
+                  className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-40"
+                >
+                  <PauseCircle className="w-4 h-4" /> Attente
+                </button>
+                <button onClick={() => setConfirmCancel(true)} className="text-sm font-medium text-destructive hover:underline">
+                  Annuler
+                </button>
               </div>
-              <Badge variant="outline" className="text-xs">Annulée</Badge>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {!activeItems.length && !voidedItems.length && (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                Scannez un code-barres ou touchez un produit pour démarrer la vente.
+              </p>
+            )}
 
-      {/* Totals HT / TVA / TTC */}
-      {ticket && (
-        <Card>
-          <CardContent className="pt-6 space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <p className="text-muted-foreground">Sous-total HT</p>
-              <p className="font-medium text-foreground">{formatCurrency(ticket.subtotal_cents || 0, ticketCurrency)}</p>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <p className="text-muted-foreground">TVA ({tvaRate}%)</p>
-              <p className="font-medium text-foreground">{formatCurrency(ticket.tva_cents || 0, ticketCurrency)}</p>
-            </div>
-            <div className="flex items-center justify-between border-t border-border pt-2">
-              <p className="text-muted-foreground">Total TTC</p>
-              <p className="text-2xl font-bold text-foreground">{formatCurrency(ticket.total_cents || 0, ticketCurrency)}</p>
-            </div>
-            <Button className="w-full mt-2" size="lg" onClick={() => setPaymentOpen(true)} disabled={!activeItems.length}>
-              Encaisser
-            </Button>
+            {activeItems.length > 0 && (
+              <div className="divide-y divide-border max-h-[40vh] lg:max-h-[32vh] overflow-y-auto -mx-1 px-1">
+                {activeItems.map((item: any) => (
+                  <div key={item.id} className="flex items-center gap-2 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-foreground truncate">{item.product_name_snapshot}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatCurrency(item.unit_price_cents_snapshot, ticket.currency)} / u
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => (item.quantity <= 1 ? setVoidTarget(item) : setQuantity(item, item.quantity - 1))}
+                        className="w-7 h-7 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent"
+                        title={item.quantity <= 1 ? 'Annuler la ligne' : 'Réduire'}
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="w-7 text-center text-sm font-semibold text-foreground">{item.quantity}</span>
+                      <button
+                        onClick={() => setQuantity(item, item.quantity + 1)}
+                        className="w-7 h-7 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent"
+                        title="Augmenter"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <p className="font-semibold text-foreground flex-shrink-0 w-20 text-right">
+                      {formatCurrency(item.line_total_cents, ticket.currency)}
+                    </p>
+                    <button onClick={() => setVoidTarget(item)} className="text-muted-foreground hover:text-destructive flex-shrink-0" title="Annuler la ligne">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Voided lines stay visible — struck through — so the operator
+                sees exactly what was removed from this ticket. */}
+            {voidedItems.map((item: any) => (
+              <div key={item.id} className="flex items-center gap-3 py-1.5 opacity-50">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm line-through text-muted-foreground truncate">{item.product_name_snapshot}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Annulée{item.voided_reason ? ` — ${item.voided_reason}` : ''}
+                  </p>
+                </div>
+                <Badge variant="outline" className="text-xs">Annulée</Badge>
+              </div>
+            ))}
+
+            {/* Totals HT / TVA / TTC + pay — always in view on desktop */}
+            {ticket && (
+              <div className="border-t border-border pt-3 space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <p className="text-muted-foreground">Sous-total HT</p>
+                  <p className="font-medium text-foreground">{formatCurrency(ticket.subtotal_cents || 0, ticketCurrency)}</p>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <p className="text-muted-foreground">TVA ({tvaRate}%)</p>
+                  <p className="font-medium text-foreground">{formatCurrency(ticket.tva_cents || 0, ticketCurrency)}</p>
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <p className="text-muted-foreground">Total TTC</p>
+                  <p className="text-2xl font-bold text-foreground">{formatCurrency(ticket.total_cents || 0, ticketCurrency)}</p>
+                </div>
+                <Button className="w-full mt-1" size="lg" onClick={() => setPaymentOpen(true)} disabled={!activeItems.length}>
+                  Encaisser
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
-      )}
+      </div>
 
       {/* Paid ticket confirmation → receipt */}
       {paidTicket && (
@@ -315,6 +446,34 @@ export function PosTill({
           onPaid={finishPaidTicket}
           onClose={() => setPaymentOpen(false)}
         />
+      )}
+
+      {/* Hold sheet — optional note so the next cashier knows why it's parked */}
+      {holdOpen && (
+        <FormSheet onClose={() => setHoldOpen(false)} title="Mettre en attente">
+          <div className="p-6 max-w-lg mx-auto space-y-4">
+            <div className="flex items-center gap-2">
+              <PauseCircle className="w-5 h-5 text-primary" />
+              <p className="font-semibold text-foreground">Mettre le ticket en attente ?</p>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Il sera récupérable depuis l'onglet « En attente » — pratique quand le client revient plus tard.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="hold-note">Note (optionnel)</Label>
+              <Input
+                id="hold-note"
+                placeholder="Ex : cliente partie chercher sa carte"
+                value={holdNote}
+                onChange={(e) => setHoldNote(e.target.value)}
+              />
+            </div>
+            <Button className="w-full" disabled={holding} onClick={holdTicket}>
+              {holding && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
+              Mettre en attente
+            </Button>
+          </div>
+        </FormSheet>
       )}
 
       {/* Void line dialog — staff must get a colleague's PIN */}

@@ -73,7 +73,7 @@ export default function InventoryPage() {
   const counting = counts.find((c) => c.status === 'counting');
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-5 max-w-3xl mx-auto">
+    <div className="p-6 pb-28 md:pb-6 space-y-5 max-w-3xl lg:max-w-5xl mx-auto">
       <PageHeader title="Inventaires" />
 
       {!user?.merchant_id && merchants?.length > 1 && (
@@ -303,7 +303,8 @@ function CountingView({ merchantId, countId }: { merchantId: string; countId: st
         <Input className="pl-9" placeholder="Filtrer les produits…" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
 
-      <div className="space-y-2">
+      {/* Mobile — one card per product */}
+      <div className="space-y-2 md:hidden">
         {filtered.map((l) => {
           const current = draft[l.id] ?? (l.counted_qty !== null ? String(l.counted_qty) : '');
           const diff = current !== '' ? Number(current) - l.expected_qty : null;
@@ -335,6 +336,62 @@ function CountingView({ merchantId, countId }: { merchantId: string; countId: st
           );
         })}
       </div>
+
+      {/* Desktop — dense table; Enter moves to the next product so a full
+          count can be typed keyboard-only. */}
+      <Card className="hidden md:block">
+        <CardContent className="p-0">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-muted-foreground">
+                <th className="py-3 pl-4 pr-3 font-medium">Produit</th>
+                <th className="py-3 pr-3 font-medium">Rayon</th>
+                <th className="py-3 pr-3 font-medium text-right w-24">Théorique</th>
+                <th className="py-3 pr-3 font-medium text-center w-28">Compté</th>
+                <th className="py-3 pr-4 font-medium text-right w-20">Écart</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((l, idx) => {
+                const current = draft[l.id] ?? (l.counted_qty !== null ? String(l.counted_qty) : '');
+                const diff = current !== '' ? Number(current) - l.expected_qty : null;
+                return (
+                  <tr key={l.id} className="border-b border-border last:border-0 hover:bg-accent/30">
+                    <td className="py-2 pl-4 pr-3 font-medium text-foreground">{l.product_name_snapshot}</td>
+                    <td className="py-2 pr-3 text-muted-foreground">{l.category_snapshot || '—'}</td>
+                    <td className="py-2 pr-3 text-right text-muted-foreground">{l.expected_qty}</td>
+                    <td className="py-2 pr-3">
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        className="w-24 mx-auto text-center h-9"
+                        placeholder="Qté"
+                        value={current}
+                        data-count-idx={idx}
+                        onChange={(e) => setDraft({ ...draft, [l.id]: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const next = document.querySelector<HTMLInputElement>(`[data-count-idx="${idx + 1}"]`);
+                            if (next) { next.focus(); next.select(); }
+                          }
+                        }}
+                      />
+                    </td>
+                    <td className={`py-2 pr-4 text-right font-bold ${diff === null || diff === 0 ? 'text-muted-foreground' : diff < 0 ? 'text-destructive' : 'text-success'}`}>
+                      {diff !== null && diff !== 0 ? `${diff > 0 ? '+' : ''}${diff}` : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {!filtered.length && (
+            <p className="text-sm text-muted-foreground text-center py-6">Aucun produit ne correspond au filtre.</p>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="sticky bottom-20 md:bottom-6 grid grid-cols-2 gap-3">
         <Button variant="outline" onClick={save} disabled={busy || !dirtyLines.length}>
@@ -408,19 +465,48 @@ function CountReport({ count }: { count: any }) {
       {varianceLines.length > 0 && (
         <Card>
           <CardHeader><CardTitle className="text-base">Détail des écarts</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
-            {varianceLines.map((l) => (
-              <div key={l.id} className="flex items-center justify-between gap-3 text-sm">
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-foreground truncate">{l.product_name_snapshot}</p>
-                  <p className="text-xs text-muted-foreground">théorique {l.expected_qty} → compté {l.counted_qty}</p>
+          <CardContent className="space-y-2 md:space-y-0 md:p-0">
+            {/* Mobile rows */}
+            <div className="md:hidden space-y-2">
+              {varianceLines.map((l) => (
+                <div key={l.id} className="flex items-center justify-between gap-3 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-foreground truncate">{l.product_name_snapshot}</p>
+                    <p className="text-xs text-muted-foreground">théorique {l.expected_qty} → compté {l.counted_qty}</p>
+                  </div>
+                  <span className={`flex items-center gap-1 font-bold flex-shrink-0 ${l.variance < 0 ? 'text-destructive' : 'text-success'}`}>
+                    {l.variance < 0 ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
+                    {l.variance > 0 ? '+' : ''}{l.variance}
+                  </span>
                 </div>
-                <span className={`flex items-center gap-1 font-bold flex-shrink-0 ${l.variance < 0 ? 'text-destructive' : 'text-success'}`}>
-                  {l.variance < 0 ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
-                  {l.variance > 0 ? '+' : ''}{l.variance}
-                </span>
-              </div>
-            ))}
+              ))}
+            </div>
+            {/* Desktop table */}
+            <table className="hidden md:table w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-muted-foreground">
+                  <th className="py-2.5 pl-4 pr-3 font-medium">Produit</th>
+                  <th className="py-2.5 pr-3 font-medium text-right w-24">Théorique</th>
+                  <th className="py-2.5 pr-3 font-medium text-right w-24">Compté</th>
+                  <th className="py-2.5 pr-4 font-medium text-right w-24">Écart</th>
+                </tr>
+              </thead>
+              <tbody>
+                {varianceLines.map((l) => (
+                  <tr key={l.id} className="border-b border-border last:border-0">
+                    <td className="py-2.5 pl-4 pr-3 font-medium text-foreground">{l.product_name_snapshot}</td>
+                    <td className="py-2.5 pr-3 text-right text-muted-foreground">{l.expected_qty}</td>
+                    <td className="py-2.5 pr-3 text-right text-foreground">{l.counted_qty}</td>
+                    <td className={`py-2.5 pr-4 text-right font-bold ${l.variance < 0 ? 'text-destructive' : 'text-success'}`}>
+                      <span className="inline-flex items-center gap-1">
+                        {l.variance < 0 ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
+                        {l.variance > 0 ? '+' : ''}{l.variance}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </CardContent>
         </Card>
       )}

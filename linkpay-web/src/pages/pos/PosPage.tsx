@@ -16,7 +16,7 @@ import {
   Receipt, Vault, DoorClosed, DoorOpen,
 } from 'lucide-react';
 
-const STAFF_ROLES = ['magasinier', 'vendeur', 'caissier', 'comptable'];
+export const STAFF_ROLES = ['magasinier', 'vendeur', 'caissier', 'comptable'];
 
 export function posErrorMessage(err: any, fallback: string) {
   const msg = err?.response?.data?.message;
@@ -160,7 +160,7 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
   const heldCount = heldData?.total || 0;
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-5 max-w-2xl mx-auto">
+    <div className="p-6 pb-28 md:pb-6 space-y-5 max-w-2xl lg:max-w-7xl mx-auto">
       <PageHeader title="Caisse" />
 
       {!user?.merchant_id && merchants?.length > 1 && (

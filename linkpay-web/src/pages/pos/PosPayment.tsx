@@ -161,6 +161,25 @@ export function PosPaymentSheet({
                 onChange={(e) => setReceived(e.target.value)}
                 autoFocus
               />
+              {/* Quick tender — "Appoint" fills the exact remaining; bill
+                  buttons accumulate (a customer often hands several notes). */}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setReceived(String(remainingUnits))}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-accent"
+                >
+                  Appoint
+                </button>
+                {(ticket.currency === 'USD' ? [1, 5, 10, 20, 50] : [500, 1000, 2000, 5000, 10000, 20000]).map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setReceived(String((parseFloat(received || '0') || 0) + d))}
+                    className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-accent"
+                  >
+                    +{d.toLocaleString('fr-CD')}
+                  </button>
+                ))}
+              </div>
               {change > 0 && (
                 <p className="text-sm font-semibold text-success">
                   Monnaie à rendre : {formatCurrency(change, ticket.currency)}

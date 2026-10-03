@@ -432,6 +432,52 @@ export class PosService {
     return this.getTicket(merchantId, ticketId, callerId, callerRole, callerOrgId);
   }
 
+  /** Change a line's quantity in place (+/− steppers on the till). Same
+   * guardrails as addItem for increases; dropping to zero is NOT allowed
+   * here — that's a void, which goes through voidItem's authorization
+   * flow instead. */
+  async updateItemQuantity(
+    merchantId: string,
+    ticketId: string,
+    itemRowId: string,
+    callerId: string,
+    callerRole: string,
+    callerOrgId: string | undefined,
+    quantity: number,
+  ) {
+    await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
+    const ticket = await this.getOwnTicket(merchantId, ticketId);
+    if (ticket.status !== 'open') {
+      throw new BadRequestException('Ce ticket est déjà clôturé.');
+    }
+
+    const items = await this.getTicketItems(ticketId);
+    const line = items.find((i) => i.id === itemRowId);
+    if (!line || line.status !== 'active') {
+      throw new NotFoundException('Ligne introuvable sur ce ticket');
+    }
+
+    const { data: stockItem } = await this.db
+      .from('stock_items')
+      .select('quantity, unit_price_cents')
+      .eq('id', line.stock_item_id)
+      .single();
+    if (!stockItem) throw new NotFoundException('Produit introuvable dans cette boutique');
+
+    if (quantity > stockItem.quantity) {
+      throw new BadRequestException(`Stock insuffisant : il ne reste que ${stockItem.quantity} unité(s).`);
+    }
+
+    const { error } = await this.db
+      .from('pos_ticket_items')
+      .update({ quantity, line_total_cents: stockItem.unit_price_cents * quantity })
+      .eq('id', itemRowId);
+    if (error) throw new Error(`Failed to update ticket item: ${error.message}`);
+
+    await this.recomputeTotals(ticket);
+    return this.getTicket(merchantId, ticketId, callerId, callerRole, callerOrgId);
+  }
+
   /** Park / resume a ticket — the cashier puts a sale on hold (e.g. customer
    * forgot their wallet) and picks it back up later from the held list. */
   async setHeld(
