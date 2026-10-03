@@ -50,6 +50,9 @@ import AdminOrganizationsPage from '@/pages/admin/Organizations';
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
 import StaffPage from '@/pages/organization/Staff';
 import StockPage from '@/pages/organization/Stock';
+import InventoryPage from '@/pages/organization/Inventory';
+import SalesStatsPage from '@/pages/organization/SalesStats';
+import AuditLogPage from '@/pages/organization/AuditLog';
 import PosPage from '@/pages/pos/PosPage';
 import StaffHome from '@/pages/staff/StaffHome';
 import SettingsPage from '@/pages/Settings';
@@ -264,9 +267,33 @@ export default function App() {
           }
         />
         <Route
+          path="organization/inventory"
+          element={
+            <ProtectedRoute roles={['enterprise', 'magasinier']}>
+              <InventoryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/stats"
+          element={
+            <ProtectedRoute roles={['enterprise', 'comptable']}>
+              <SalesStatsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/audit"
+          element={
+            <ProtectedRoute roles={['enterprise', 'comptable']}>
+              <AuditLogPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="pos"
           element={
-            <ProtectedRoute roles={['enterprise', 'caissier']}>
+            <ProtectedRoute roles={['enterprise', 'caissier', 'magasinier']}>
               <PosPage />
             </ProtectedRoute>
           }

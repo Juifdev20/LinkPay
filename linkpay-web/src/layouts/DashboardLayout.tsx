@@ -10,7 +10,7 @@ import { TopBar } from '@/components/TopBar';
 import { NotificationsBell } from '@/components/NotificationsBell';
 import { useTheme } from '@/hooks/useTheme';
 import { usePaymentReceivedAlert } from '@/hooks/usePaymentReceivedAlert';
-import { LayoutDashboard, QrCode, Receipt, Wallet, LogOut, Users, UserCog, ShieldCheck, User, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Sun, Moon, Menu, Search, X, Bell, ShoppingCart } from 'lucide-react';
+import { LayoutDashboard, QrCode, Receipt, Wallet, LogOut, Users, UserCog, ShieldCheck, User, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Sun, Moon, Menu, Search, X, Bell, ShoppingCart, Boxes, ClipboardList, BarChart3, ScrollText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const ALL_ROLES = ['merchant', 'cashier', 'enterprise', 'client', 'admin', 'super_admin'];
@@ -52,7 +52,11 @@ const navItems = [
   // The till: org owners (role 'enterprise' — backend resolves the store via
   // merchant.owner_id) and org-scoped cashiers. Plain 'merchant' isn't in
   // the POS controller's @Roles list, so it's not listed here either.
-  { to: '/dashboard/pos', label: 'Caisse', icon: ShoppingCart, roles: ['enterprise', 'caissier'] },
+  { to: '/dashboard/pos', label: 'Caisse', icon: ShoppingCart, roles: ['enterprise', 'caissier', 'magasinier'] },
+  { to: '/dashboard/organization/stock', label: 'Stock', icon: Boxes, roles: ['enterprise', 'magasinier'] },
+  { to: '/dashboard/organization/inventory', label: 'Inventaire', icon: ClipboardList, roles: ['enterprise', 'magasinier'] },
+  { to: '/dashboard/organization/stats', label: 'Statistiques', icon: BarChart3, roles: ['enterprise', 'comptable'] },
+  { to: '/dashboard/organization/audit', label: 'Journal', icon: ScrollText, roles: ['enterprise', 'comptable'] },
   { to: '/dashboard/organization', label: 'Mon organisation', icon: Building2, roles: ['enterprise'] },
   { to: '/dashboard/notifications', label: 'Notifications', icon: Bell, roles: [...ALL_ROLES, ...STAFF_ROLES] },
   { to: '/dashboard/settings', label: 'Paramètres', icon: Settings, roles: [...ALL_ROLES, ...STAFF_ROLES] },

@@ -44,10 +44,26 @@ class CloseSessionDto {
 @ApiTags('Cash Register')
 @ApiBearerAuth()
 @Controller('merchants/:id/cash-register')
-@Roles('enterprise', 'caissier', 'admin', 'super_admin')
+@Roles('enterprise', 'caissier', 'magasinier', 'admin', 'super_admin')
 @UseGuards(RolesGuard)
 export class CashRegisterController {
   constructor(private cashRegisterService: CashRegisterService) {}
+
+  @Get('sessions')
+  @ApiOperation({ summary: 'Past sessions, newest first — for reviewing rapprochements after the fact' })
+  async listSessions(
+    @Param('id') merchantId: string,
+    @Query('page') page: string | undefined,
+    @Query('limit') limit: string | undefined,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    return this.cashRegisterService.listSessions(merchantId, callerId, callerRole, callerOrgId, {
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
 
   @Get('sessions/current')
   @ApiOperation({ summary: 'The currently open cash-register session for a currency, if any' })
@@ -59,6 +75,18 @@ export class CashRegisterController {
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
     return this.cashRegisterService.getCurrentSession(merchantId, currency || 'CDF', callerId, callerRole, callerOrgId);
+  }
+
+  @Get('sessions/:sessionId')
+  @ApiOperation({ summary: 'Session detail — movements, tickets, live expected drawer amount' })
+  async getSessionDetail(
+    @Param('id') merchantId: string,
+    @Param('sessionId') sessionId: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    return this.cashRegisterService.getSessionDetail(merchantId, sessionId, callerId, callerRole, callerOrgId);
   }
 
   @Post('sessions')

@@ -35,6 +35,7 @@ export class AuditService {
 
   async getAuditLogs(filters?: {
     user_id?: string;
+    user_ids?: string[];
     entity_type?: string;
     action?: string;
     page?: number;
@@ -46,6 +47,7 @@ export class AuditService {
       .order('created_at', { ascending: false });
 
     if (filters?.user_id) query = query.eq('user_id', filters.user_id);
+    if (filters?.user_ids?.length) query = query.in('user_id', filters.user_ids);
     if (filters?.entity_type) query = query.eq('entity_type', filters.entity_type);
     if (filters?.action) query = query.eq('action', filters.action);
 

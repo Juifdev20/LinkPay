@@ -13,7 +13,7 @@ import { DualCurrencyStat } from '@/components/DualCurrencyStat';
 import { TransactionItem } from '@/components/TransactionItem';
 import OnboardingWizard from '@/pages/organization/OnboardingWizard';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
-import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X, Copy, Check, XCircle, Trophy, Banknote, Smartphone, Package, MinusCircle, PiggyBank, Clock, AlertTriangle, Users, Boxes } from 'lucide-react';
+import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X, Copy, Check, XCircle, Trophy, Banknote, Smartphone, Package, MinusCircle, PiggyBank, Clock, AlertTriangle, Users, Boxes, ClipboardList, ScrollText } from 'lucide-react';
 import { shareOrCopy, publicOrigin } from '@/lib/share';
 import { Link } from 'react-router-dom';
 
@@ -331,6 +331,48 @@ export default function OrganizationProfilePage() {
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-foreground">Stock & Approvisionnement</p>
           <p className="text-sm text-muted-foreground">Gérer les articles et le réapprovisionnement</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+      </Link>
+
+      <Link
+        to="/dashboard/organization/inventory"
+        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 hover:bg-primary/10 transition-colors"
+      >
+        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
+          <ClipboardList className="w-5 h-5 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-foreground">Inventaires</p>
+          <p className="text-sm text-muted-foreground">Comptages physiques, écarts et démarque</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+      </Link>
+
+      <Link
+        to="/dashboard/organization/stats"
+        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 hover:bg-primary/10 transition-colors"
+      >
+        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
+          <TrendingUp className="w-5 h-5 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-foreground">Statistiques de vente</p>
+          <p className="text-sm text-muted-foreground">CA, marges, top produits — exports CSV/PDF</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+      </Link>
+
+      <Link
+        to="/dashboard/organization/audit"
+        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 hover:bg-primary/10 transition-colors"
+      >
+        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
+          <ScrollText className="w-5 h-5 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-foreground">Journal d'activité</p>
+          <p className="text-sm text-muted-foreground">Qui a fait quoi : annulations, prix, stock, caisse</p>
         </div>
         <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
       </Link>

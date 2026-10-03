@@ -99,4 +99,41 @@ export class CashierPinService {
         .eq('user_id', userId);
     }
   }
+
+  /**
+   * Verifies that a PIN belongs to ANOTHER staff member of the same
+   * organization — used for "avec autorisation" actions at the till (voiding
+   * a ticket line): the operating cashier has a colleague/supervisor present
+   * type their own till PIN. Returns the authorizing staff member's user_id.
+   */
+  async verifyOtherStaffPin(organizationId: string, pin: string, excludeUserId: string): Promise<string> {
+    if (!PIN_REGEX.test(pin || '')) {
+      throw new BadRequestException('Le code PIN doit comporter entre 4 et 6 chiffres.');
+    }
+
+    const { data: staffRows } = await this.supabaseService.getClient()
+      .from('organization_staff')
+      .select('user_id, pos_pin_hash, pos_pin_locked_until')
+      .eq('organization_id', organizationId)
+      .neq('user_id', excludeUserId)
+      .not('pos_pin_hash', 'is', null);
+
+    const candidates = (staffRows || []).filter(
+      (s) => !s.pos_pin_locked_until || new Date(s.pos_pin_locked_until) <= new Date(),
+    );
+
+    for (const staff of candidates) {
+      if (await bcrypt.compare(pin, staff.pos_pin_hash)) {
+        await this.supabaseService.getClient()
+          .from('organization_staff')
+          .update({ pos_pin_attempts: 0, pos_pin_locked_until: null })
+          .eq('user_id', staff.user_id);
+        return staff.user_id;
+      }
+    }
+
+    throw new ForbiddenException(
+      "PIN d'autorisation invalide — un autre employé avec un code PIN de caisse doit autoriser cette action.",
+    );
+  }
 }
