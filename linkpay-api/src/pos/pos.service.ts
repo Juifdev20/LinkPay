@@ -1,4 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { writeFile, unlink } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { SupabaseService } from '../supabase/supabase.service';
 import { StockService, POS_SALE_ROLES } from '../stock/stock.service';
 import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
@@ -30,6 +35,7 @@ const STAFF_JOB_ROLES = ['magasinier', 'vendeur', 'caissier', 'comptable'];
 @Injectable()
 export class PosService {
   private readonly logger = new Logger(PosService.name);
+  private readonly execFileAsync = promisify(execFile);
 
   constructor(
     private supabaseService: SupabaseService,
@@ -120,13 +126,73 @@ export class PosService {
     return data as number;
   }
 
+  /** Lists the printers installed on the machine running this API — the
+   *  till machine is also where the thermal printer is plugged in. Used by
+   *  the UI so the cashier picks the printer ONCE; the choice is then kept
+   *  in the browser and sent back on each print. */
+  async listPrinters(
+    merchantId: string,
+    callerId: string,
+    callerRole: string,
+    callerOrgId: string | undefined,
+  ) {
+    await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
+    const { stdout } = await this.execFileAsync('powershell', [
+      '-NoProfile', '-Command',
+      "Get-Printer | Select-Object -ExpandProperty Name",
+    ]);
+    return {
+      printers: stdout.split(/\r?\n/).map((n) => n.trim()).filter(Boolean),
+    };
+  }
+
+  /** Sends pre-formatted receipt text straight to the local thermal printer —
+   *  the cashier clicks "Imprimer" and the ticket comes out, no print dialog.
+   *  Uses Windows' raw `print /D:` spooler call, which passes the text through
+   *  to "Generic / Text Only" drivers byte-for-byte. The printer name comes
+   *  from POS_PRINTER_NAME (env) — the UI falls back to window.print() when
+   *  this throws (no printer configured on this machine). */
+  async printReceipt(
+    merchantId: string,
+    callerId: string,
+    callerRole: string,
+    callerOrgId: string | undefined,
+    text: string,
+    printerName?: string,
+  ) {
+    await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
+    const printer = printerName || process.env.POS_PRINTER_NAME || 'POS-Thermique';
+    const file = join(tmpdir(), `linkpay-receipt-${Date.now()}.txt`);
+    await writeFile(file, text, 'ascii');
+    try {
+      await this.execFileAsync('print', [`/D:${printer}`, file]);
+    } catch (err: any) {
+      throw new BadRequestException(`Imprimante "${printer}" indisponible : ${err.message}`);
+    } finally {
+      unlink(file).catch(() => {});
+    }
+    return { printed: true };
+  }
+
   private async withDetails(ticket: any) {
     const [items, payments, merchantRes] = await Promise.all([
       this.getTicketItems(ticket.id),
       this.getTicketPayments(ticket.id),
-      this.db.from('merchants').select('name, phone, address, logo_url, pos_tva_rate_pct').eq('id', ticket.merchant_id).single(),
+      this.db
+        .from('merchants')
+        .select('name, phone, address, logo_url, pos_tva_rate_pct, organizations(name)')
+        .eq('id', ticket.merchant_id)
+        .single(),
     ]);
-    return { ...ticket, items, payments, merchant: merchantRes.data || null };
+    const merchant: any = merchantRes.data || null;
+    // Flatten the org join — the receipt header shows the organization name
+    // (multi-tenant: many stores can share one org identity).
+    if (merchant) {
+      const org = merchant.organizations;
+      merchant.organization_name = (Array.isArray(org) ? org[0]?.name : org?.name) ?? null;
+      delete merchant.organizations;
+    }
+    return { ...ticket, items, payments, merchant };
   }
 
   async createTicket(merchantId: string, callerId: string, callerRole: string, callerOrgId: string | undefined, currency: string) {
@@ -244,7 +310,9 @@ export class PosService {
           .maybeSingle();
 
         if (claimed) {
-          await this.deductStockForTicket(claimed, callerId, callerRole, callerOrgId);
+          this.deductStockForTicket(claimed, callerId, callerRole, callerOrgId).catch((err) =>
+            this.logger.error(`Stock deduction crashed for ticket ${claimed.id}: ${err.message}`),
+          );
           return claimed;
         }
       }
@@ -279,27 +347,38 @@ export class PosService {
 
     if (!claimed) return ticket; // someone else already settled it
 
-    await this.deductStockForTicket(claimed, callerId, callerRole, callerOrgId);
+    // Stock deduction is a best-effort side effect (it already swallows
+    // per-line failures) — don't make the cashier wait for its ~5 DB
+    // round-trips PER ITEM before the receipt shows. It settles in the
+    // background right after the response goes out.
+    this.deductStockForTicket(claimed, callerId, callerRole, callerOrgId).catch((err) =>
+      this.logger.error(`Stock deduction crashed for ticket ${claimed.id}: ${err.message}`),
+    );
     return claimed;
   }
 
   private async deductStockForTicket(ticket: any, callerId: string, callerRole: string, callerOrgId: string | undefined) {
     const items = await this.getTicketItems(ticket.id);
-    for (const item of items.filter((i) => i.status === 'active')) {
-      try {
-        await this.stockService.createMovement(ticket.merchant_id, item.stock_item_id, callerId, callerRole, callerOrgId, {
-          type: 'sale',
-          quantity_delta: -item.quantity,
-          reason: `Vente ticket ${ticket.ticket_number ? `#${ticket.ticket_number}` : ticket.id}`,
-        });
-      } catch (err: any) {
-        // Never block a confirmed sale on a stock hiccup (e.g. the item was
-        // deleted after the ticket was built) — log and move on, same
-        // "best-effort side effect" philosophy as the low-stock notification
-        // inside createMovement() itself.
-        this.logger.error(`Stock deduction failed for ticket ${ticket.id}, item ${item.stock_item_id}: ${err.message}`);
-      }
-    }
+    // Parallel per-line deductions — sequential awaits made checkout take
+    // several seconds on multi-line tickets (each movement is a handful of
+    // DB round-trips of its own).
+    await Promise.all(
+      items.filter((i) => i.status === 'active').map(async (item) => {
+        try {
+          await this.stockService.createMovement(ticket.merchant_id, item.stock_item_id, callerId, callerRole, callerOrgId, {
+            type: 'sale',
+            quantity_delta: -item.quantity,
+            reason: `Vente ticket ${ticket.ticket_number ? `#${ticket.ticket_number}` : ticket.id}`,
+          });
+        } catch (err: any) {
+          // Never block a confirmed sale on a stock hiccup (e.g. the item was
+          // deleted after the ticket was built) — log and move on, same
+          // "best-effort side effect" philosophy as the low-stock notification
+          // inside createMovement() itself.
+          this.logger.error(`Stock deduction failed for ticket ${ticket.id}, item ${item.stock_item_id}: ${err.message}`);
+        }
+      }),
+    );
   }
 
   async addItem(
@@ -527,12 +606,15 @@ export class PosService {
     data: { amount_cents?: number; received_cents?: number } = {},
   ) {
     await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
-    const ticket = await this.getOwnTicket(merchantId, ticketId);
+    // Ticket + payments fetches don't depend on each other — run them together.
+    const [ticket, payments] = await Promise.all([
+      this.getOwnTicket(merchantId, ticketId),
+      this.getTicketPayments(ticketId),
+    ]);
     if (ticket.status !== 'open') {
       throw new BadRequestException('Ce ticket est déjà clôturé.');
     }
 
-    const payments = await this.getTicketPayments(ticketId);
     const remaining = this.remainingCents(ticket, payments);
     const amount = data.amount_cents ?? remaining;
 
@@ -554,8 +636,10 @@ export class PosService {
     });
     if (error) throw new Error(`Failed to record cash payment: ${error.message}`);
 
-    await this.settleIfFullyPaid(ticket, callerId, callerRole, callerOrgId);
-    return this.getTicket(merchantId, ticketId, callerId, callerRole, callerOrgId);
+    // settleIfFullyPaid returns the claimed (paid) ticket — enrich it
+    // directly instead of re-running access checks + a full re-fetch.
+    const settled = await this.settleIfFullyPaid(ticket, callerId, callerRole, callerOrgId);
+    return this.withDetails(settled);
   }
 
   /** ScanLinkPay payment — full or the remaining part after a cash part.

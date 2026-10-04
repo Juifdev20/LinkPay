@@ -46,12 +46,24 @@ export function PosTill({
   const isStaff = STAFF_ROLES.includes(user?.role || '');
   const [error, setError] = useState('');
 
-  const ensureTicket = async () => {
-    if (ticket?.status === 'open') return ticket;
-    const { data } = await api.post(`/merchants/${merchantId}/pos/tickets`, { currency });
-    localStorage.setItem(ticketKey, data.id);
-    setTicket(data);
-    return data;
+  // Ticket creation is single-flight: rapid adds before the first ticket
+  // exists must all land on the SAME ticket, never spawn several.
+  const creatingTicket = useRef<Promise<any> | null>(null);
+  const ensureTicket = () => {
+    if (ticket?.status === 'open') return Promise.resolve(ticket);
+    if (!creatingTicket.current) {
+      creatingTicket.current = api
+        .post(`/merchants/${merchantId}/pos/tickets`, { currency })
+        .then(({ data }) => {
+          localStorage.setItem(ticketKey, data.id);
+          setTicket(data);
+          return data;
+        })
+        .finally(() => {
+          creatingTicket.current = null;
+        });
+    }
+    return creatingTicket.current;
   };
 
   // ------------------------------------------------------------------
@@ -90,24 +102,53 @@ export function PosTill({
   const categories = [...new Set(catalogItems.map((i) => i.category).filter(Boolean))] as string[];
   const gridItems = category ? catalogItems.filter((i) => i.category === category) : catalogItems;
 
-  const [adding, setAdding] = useState(false);
-  const addProduct = async (item: any) => {
-    setAdding(true);
+  // ------------------------------------------------------------------
+  // Adding a product is optimistic: the click shows the line instantly
+  // (as +1 on an existing line, or a pending line for a new product)
+  // while the POSTs run serialized per product — the server merges
+  // same-product adds, and serializing avoids two concurrent "does the
+  // line exist?" reads racing each other. pendingAdds tracks clicks not
+  // yet confirmed by the server; the render merges them into displayed
+  // quantities so the till never waits on the network.
+  // ------------------------------------------------------------------
+  const pendingAdds = useRef<Record<string, { count: number; item: any }>>({});
+  const addQueues = useRef<Record<string, Promise<void>>>({});
+  const [, bumpAdds] = useState(0);
+  const bump = () => bumpAdds((n) => n + 1);
+
+  const addProduct = (item: any) => {
     setError('');
-    try {
-      const t = await ensureTicket();
-      const { data } = await api.post(`/merchants/${t.merchant_id}/pos/tickets/${t.id}/items`, {
-        stock_item_id: item.id,
-        quantity: 1,
-      });
-      setTicket(data);
-      setQuery('');
-    } catch (err: any) {
-      setError(posErrorMessage(err, "Impossible d'ajouter l'article"));
-    } finally {
-      setAdding(false);
-      searchRef.current?.focus();
-    }
+    const rec = (pendingAdds.current[item.id] ??= { count: 0, item });
+    rec.count += 1;
+    bump();
+    setQuery('');
+    searchRef.current?.focus();
+
+    addQueues.current[item.id] = (addQueues.current[item.id] || Promise.resolve())
+      .then(async () => {
+        try {
+          const t = await ensureTicket();
+          const { data } = await api.post(`/merchants/${t.merchant_id}/pos/tickets/${t.id}/items`, {
+            stock_item_id: item.id,
+            quantity: 1,
+          });
+          setTicket(data);
+        } catch (err: any) {
+          setError(posErrorMessage(err, "Impossible d'ajouter l'article"));
+          // Resync the ticket so a refused add can't linger on screen.
+          const tid = localStorage.getItem(ticketKey);
+          if (tid) {
+            api.get(`/merchants/${merchantId}/pos/tickets/${tid}`)
+              .then(({ data }) => setTicket(data))
+              .catch(() => {});
+          }
+        } finally {
+          rec.count -= 1;
+          if (rec.count <= 0) delete pendingAdds.current[item.id];
+          bump();
+        }
+      })
+      .catch(() => {});
   };
 
   const scanBarcode = async () => {
@@ -117,29 +158,91 @@ export function PosTill({
       const { data: item } = await api.get(
         `/merchants/${merchantId}/stock-items/by-barcode/${encodeURIComponent(code)}`,
       );
-      await addProduct(item);
-      setQuery('');
+      addProduct(item);
     } catch {
       // Not a registered barcode — leave the name-search results visible.
     }
   };
 
   // ------------------------------------------------------------------
+  // Ticket panel height: on desktop it must show its totals + Encaisser
+  // WITHOUT any page scroll, whatever the window height or whatever sits
+  // above it (header, banners, tabs). So instead of a fixed vh cap we
+  // measure the space actually left under the card's top edge and update
+  // it on scroll (the card sticks at top:16 once the page scrolls, which
+  // legitimately gives it more room) and on resize.
+  // ------------------------------------------------------------------
+  const ticketCardRef = useRef<HTMLDivElement>(null);
+  const [ticketMaxH, setTicketMaxH] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = ticketCardRef.current;
+    const scroller = el?.closest('main');
+    const update = () => {
+      if (!el || window.innerWidth < 1024) {
+        setTicketMaxH(null); // mobile: natural flow, no cap
+        return;
+      }
+      setTicketMaxH(Math.max(320, window.innerHeight - el.getBoundingClientRect().top - 16));
+    };
+    update();
+    window.addEventListener('resize', update);
+    scroller?.addEventListener('scroll', update, { passive: true });
+    return () => {
+      window.removeEventListener('resize', update);
+      scroller?.removeEventListener('scroll', update);
+    };
+  }, []);
+
+  // ------------------------------------------------------------------
   // Quantity steppers: − reduces in place (zero goes through the
   // authorized void below); + reuses the same patch with stock checks.
+  // Optimistic: the display updates instantly (line + ticket totals are
+  // recomputed client-side at the same TTC-extraction rule), while the
+  // API call is debounced per line so rapid +/- clicks collapse into a
+  // single request — a till can't wait on the network per tap.
   // ------------------------------------------------------------------
-  const setQuantity = async (item: any, quantity: number) => {
+  const qtyTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const latestQty = useRef<Record<string, number>>({});
+
+  const setQuantity = (item: any, quantity: number) => {
     setError('');
-    try {
-      const { data } = await api.patch(
-        `/merchants/${merchantId}/pos/tickets/${ticket.id}/items/${item.id}`,
-        { quantity },
+    latestQty.current[item.id] = quantity;
+
+    if (ticket) {
+      const rate = Number(ticket.merchant?.pos_tva_rate_pct ?? 0);
+      const items = ticket.items.map((it: any) =>
+        it.id === item.id
+          ? { ...it, quantity, line_total_cents: it.unit_price_cents_snapshot * quantity }
+          : it,
       );
-      setTicket(data);
-      searchRef.current?.focus();
-    } catch (err: any) {
-      setError(posErrorMessage(err, 'Quantité impossible'));
+      const total = items
+        .filter((i: any) => i.status !== 'voided')
+        .reduce((s: number, i: any) => s + i.line_total_cents, 0);
+      const tva = rate > 0 ? Math.round(total - total / (1 + rate / 100)) : 0;
+      setTicket({ ...ticket, items, total_cents: total, tva_cents: tva, subtotal_cents: total - tva });
     }
+
+    clearTimeout(qtyTimers.current[item.id]);
+    qtyTimers.current[item.id] = setTimeout(async () => {
+      const sent = latestQty.current[item.id];
+      try {
+        const { data } = await api.patch(
+          `/merchants/${merchantId}/pos/tickets/${ticket.id}/items/${item.id}`,
+          { quantity: sent },
+        );
+        // A newer click is already queued for this line — its own response
+        // will reconcile the ticket, so skip the stale one.
+        if (latestQty.current[item.id] === sent) setTicket(data);
+      } catch (err: any) {
+        setError(posErrorMessage(err, 'Quantité impossible'));
+        // Restore the server truth so a refused quantity can't linger.
+        api.get(`/merchants/${merchantId}/pos/tickets/${ticket.id}`)
+          .then(({ data }) => setTicket(data))
+          .catch(() => {});
+      }
+      searchRef.current?.focus();
+    }, 250);
   };
 
   // ------------------------------------------------------------------
@@ -216,15 +319,48 @@ export function PosTill({
   };
 
   const items: any[] = ticket?.items || [];
-  const activeItems = items.filter((i) => i.status !== 'voided');
   const voidedItems = items.filter((i) => i.status === 'voided');
   const tvaRate = Number(ticket?.merchant?.pos_tva_rate_pct ?? 0);
   const searching = query.trim().length >= 2;
 
+  // Merge not-yet-confirmed adds into the displayed lines: an existing
+  // line shows its pending +N, a new product shows a greyed pending row.
+  const pending = pendingAdds.current;
+  const anyPending = Object.values(pending).some((p) => p.count > 0);
+  const activeItems = items
+    .filter((i) => i.status !== 'voided')
+    .map((i) => {
+      const extra = pending[i.stock_item_id]?.count || 0;
+      return extra
+        ? { ...i, quantity: i.quantity + extra, line_total_cents: i.line_total_cents + i.unit_price_cents_snapshot * extra, pendingAdd: true }
+        : i;
+    })
+    .concat(
+      Object.values(pending)
+        .filter((p) => p.count > 0 && !items.some((i) => i.stock_item_id === p.item.id && i.status !== 'voided'))
+        .map((p) => ({
+          id: `pending-${p.item.id}`,
+          pendingAdd: true,
+          status: 'active',
+          product_name_snapshot: p.item.name,
+          quantity: p.count,
+          unit_price_cents_snapshot: p.item.unit_price_cents,
+          line_total_cents: p.item.unit_price_cents * p.count,
+        })),
+    );
+
+  // While adds are in flight the server totals lag behind — recompute
+  // display totals client-side at the same TTC-extraction rule.
+  const shownTotal = anyPending ? activeItems.reduce((s, i) => s + i.line_total_cents, 0) : ticket?.total_cents || 0;
+  const shownTva = anyPending
+    ? tvaRate > 0 ? Math.round(shownTotal - shownTotal / (1 + tvaRate / 100)) : 0
+    : ticket?.tva_cents || 0;
+  const shownHt = shownTotal - shownTva;
+
   const resultRow = (item: any) => (
     <button
       key={item.id}
-      disabled={adding || item.quantity <= 0}
+      disabled={item.quantity <= 0}
       onClick={() => addProduct(item)}
       className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-accent/50 disabled:opacity-50"
     >
@@ -302,7 +438,7 @@ export function PosTill({
                   {gridItems.map((item: any) => (
                     <button
                       key={item.id}
-                      disabled={adding || item.quantity <= 0}
+                      disabled={item.quantity <= 0}
                       onClick={() => addProduct(item)}
                       className="rounded-xl border border-border bg-card p-3 text-left hover:border-primary hover:shadow-sm transition-all disabled:opacity-50 flex flex-col gap-1 min-h-[86px]"
                     >
@@ -330,7 +466,14 @@ export function PosTill({
         </div>
 
         {/* ============================== Ticket ============================== */}
-        <Card className="lg:sticky lg:top-20">
+        {/* On desktop the card is sticky and capped to the space actually
+            left below it: lines scroll internally while the totals +
+            Encaisser stay pinned at the bottom — no page scroll needed. */}
+        <Card
+          ref={ticketCardRef}
+          style={ticketMaxH ? { maxHeight: ticketMaxH } : undefined}
+          className="lg:sticky lg:top-4 lg:flex lg:flex-col lg:max-h-[calc(100vh-2rem)]"
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">
               {ticket ? `Ticket #${ticket.ticket_number ?? '—'}` : 'Nouvelle vente'}
@@ -350,7 +493,7 @@ export function PosTill({
               </div>
             )}
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 lg:flex lg:flex-col lg:flex-1 lg:min-h-0">
             {!activeItems.length && !voidedItems.length && (
               <p className="text-sm text-muted-foreground text-center py-6">
                 Scannez un code-barres ou touchez un produit pour démarrer la vente.
@@ -358,7 +501,7 @@ export function PosTill({
             )}
 
             {activeItems.length > 0 && (
-              <div className="divide-y divide-border max-h-[40vh] lg:max-h-[32vh] overflow-y-auto -mx-1 px-1">
+              <div className="divide-y divide-border max-h-[40vh] lg:max-h-none lg:flex-1 lg:min-h-0 overflow-y-auto -mx-1 px-1">
                 {activeItems.map((item: any) => (
                   <div key={item.id} className="flex items-center gap-2 py-2.5">
                     <div className="min-w-0 flex-1">
@@ -370,24 +513,33 @@ export function PosTill({
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={() => (item.quantity <= 1 ? setVoidTarget(item) : setQuantity(item, item.quantity - 1))}
-                        className="w-7 h-7 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent"
+                        disabled={item.pendingAdd}
+                        className="w-7 h-7 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-30"
                         title={item.quantity <= 1 ? 'Annuler la ligne' : 'Réduire'}
                       >
                         <Minus className="w-3.5 h-3.5" />
                       </button>
-                      <span className="w-7 text-center text-sm font-semibold text-foreground">{item.quantity}</span>
+                      <span className={`w-7 text-center text-sm font-semibold ${item.pendingAdd ? 'text-muted-foreground' : 'text-foreground'}`}>
+                        {item.quantity}
+                      </span>
                       <button
                         onClick={() => setQuantity(item, item.quantity + 1)}
-                        className="w-7 h-7 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent"
+                        disabled={item.pendingAdd}
+                        className="w-7 h-7 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-30"
                         title="Augmenter"
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    <p className="font-semibold text-foreground flex-shrink-0 w-20 text-right">
-                      {formatCurrency(item.line_total_cents, ticket.currency)}
+                    <p className={`font-semibold flex-shrink-0 w-20 text-right ${item.pendingAdd ? 'text-muted-foreground' : 'text-foreground'}`}>
+                      {formatCurrency(item.line_total_cents, ticket?.currency || ticketCurrency)}
                     </p>
-                    <button onClick={() => setVoidTarget(item)} className="text-muted-foreground hover:text-destructive flex-shrink-0" title="Annuler la ligne">
+                    <button
+                      onClick={() => setVoidTarget(item)}
+                      disabled={item.pendingAdd}
+                      className="text-muted-foreground hover:text-destructive flex-shrink-0 disabled:opacity-30"
+                      title="Annuler la ligne"
+                    >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -414,17 +566,17 @@ export function PosTill({
               <div className="border-t border-border pt-3 space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <p className="text-muted-foreground">Sous-total HT</p>
-                  <p className="font-medium text-foreground">{formatCurrency(ticket.subtotal_cents || 0, ticketCurrency)}</p>
+                  <p className="font-medium text-foreground">{formatCurrency(shownHt, ticketCurrency)}</p>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <p className="text-muted-foreground">TVA ({tvaRate}%)</p>
-                  <p className="font-medium text-foreground">{formatCurrency(ticket.tva_cents || 0, ticketCurrency)}</p>
+                  <p className="font-medium text-foreground">{formatCurrency(shownTva, ticketCurrency)}</p>
                 </div>
                 <div className="flex items-center justify-between pt-1">
                   <p className="text-muted-foreground">Total TTC</p>
-                  <p className="text-2xl font-bold text-foreground">{formatCurrency(ticket.total_cents || 0, ticketCurrency)}</p>
+                  <p className="text-2xl font-bold text-foreground">{formatCurrency(shownTotal, ticketCurrency)}</p>
                 </div>
-                <Button className="w-full mt-1" size="lg" onClick={() => setPaymentOpen(true)} disabled={!activeItems.length}>
+                <Button className="w-full mt-1" size="lg" onClick={() => setPaymentOpen(true)} disabled={!activeItems.length || anyPending}>
                   Encaisser
                 </Button>
               </div>

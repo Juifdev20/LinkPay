@@ -135,9 +135,36 @@ export function PosPaymentSheet({
                   {p.method === 'cash' ? 'Espèces' : 'ScanLinkPay'}
                   {p.status === 'pending' && <Badge variant="outline" className="text-[10px] gap-1"><Clock className="w-3 h-3" /> en attente</Badge>}
                 </span>
-                <span className="font-medium text-foreground">{formatCurrency(p.amount_cents, ticket.currency)}</span>
+                <span className="flex items-center gap-2">
+                  <span className="font-medium text-foreground">{formatCurrency(p.amount_cents, ticket.currency)}</span>
+                  {p.status === 'pending' && (
+                    <button
+                      onClick={voidPendingSlp}
+                      disabled={busy}
+                      className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
+                      title="Retirer ce paiement en attente"
+                    >
+                      Retirer
+                    </button>
+                  )}
+                </span>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* A pending ScanLinkPay part locks the remaining amount — offer the
+            escape hatch even when the QR view was closed and reopened. */}
+        {hasPendingSlp && !qrRequest && (
+          <div className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm space-y-2">
+            <p className="text-foreground font-medium">Un paiement ScanLinkPay est en attente</p>
+            <p className="text-muted-foreground text-xs">
+              Si le client ne va pas payer par QR, retirez-le pour régler autrement.
+            </p>
+            <Button variant="outline" size="sm" className="w-full" disabled={busy} onClick={voidPendingSlp}>
+              {busy && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
+              Retirer le ScanLinkPay en attente
+            </Button>
           </div>
         )}
 

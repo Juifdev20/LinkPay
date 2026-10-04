@@ -79,6 +79,19 @@ class PayScanlinkpayDto {
   amount_cents?: number;
 }
 
+class PrintReceiptDto {
+  @ApiProperty({ description: 'Texte du ticket pré-formaté (ASCII, largeur fixe)' })
+  @IsString()
+  @MaxLength(8000)
+  text!: string;
+
+  @ApiPropertyOptional({ description: "Imprimante choisie par le caissier (défaut : POS_PRINTER_NAME)" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  printer?: string;
+}
+
 class CancelTicketDto {
   @ApiPropertyOptional({ example: 'Client a changé d\'avis' })
   @IsOptional()
@@ -268,6 +281,29 @@ export class PosController {
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
     return this.posService.payScanlinkpay(merchantId, ticketId, callerId, callerRole, callerOrgId, dto);
+  }
+
+  @Get('printers')
+  @ApiOperation({ summary: 'Liste les imprimantes installées sur la machine caisse — le choix est fait une fois puis mémorisé côté navigateur' })
+  async listPrinters(
+    @Param('id') merchantId: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    return this.posService.listPrinters(merchantId, callerId, callerRole, callerOrgId);
+  }
+
+  @Post('print-receipt')
+  @ApiOperation({ summary: 'Imprime un ticket directement sur l\'imprimante thermique locale — aucun dialogue navigateur' })
+  async printReceipt(
+    @Param('id') merchantId: string,
+    @Body() dto: PrintReceiptDto,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    return this.posService.printReceipt(merchantId, callerId, callerRole, callerOrgId, dto.text, dto.printer);
   }
 
   @Post('tickets/:ticketId/payments/:paymentId/void')

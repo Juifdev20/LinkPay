@@ -1,4 +1,4 @@
-import { Outlet, NavLink, Link, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -41,7 +41,7 @@ const navItems = [
   { to: '/dashboard/organization/inventory', label: 'Inventaire', icon: ClipboardList, roles: ['enterprise', 'magasinier'] },
   { to: '/dashboard/organization/stats', label: 'Statistiques', icon: BarChart3, roles: ['enterprise', 'comptable'] },
   { to: '/dashboard/organization/audit', label: 'Journal', icon: ScrollText, roles: ['enterprise', 'comptable'] },
-  { to: '/dashboard/organization', label: 'Mon organisation', icon: Building2, roles: ['enterprise'] },
+
   { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: QrCode, roles: ['merchant', 'cashier'] },
   { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, roles: ['merchant', 'cashier'] },
   { to: '/dashboard/settlements', label: 'Règlements', icon: Wallet, roles: ['merchant'] },
@@ -72,6 +72,7 @@ export default function DashboardLayout() {
   const logout = useAuthStore((s) => s.logout);
   const exitStore = useAuthStore((s) => s.exitStore);
   const navigate = useNavigate();
+  const location = useLocation();
   const { toggleTheme, effectiveTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -92,7 +93,12 @@ export default function DashboardLayout() {
     navigate('/');
   };
 
-  const visibleItems = user ? navItems.filter((item) => item.roles.includes(user.role)) : [];
+  // An org owner "acting as" one of their stores carries role 'merchant' +
+  // acting_as_org_id (auth-store enterStore). For navigation purposes they
+  // keep the enterprise/supermarket menu — they are the owner inside their
+  // store, not a standalone merchant.
+  const navRole = user?.acting_as_org_id ? 'enterprise' : user?.role;
+  const visibleItems = user && navRole ? navItems.filter((item) => item.roles.includes(navRole)) : [];
 
   return (
     <div className="min-h-screen bg-background">
@@ -143,7 +149,11 @@ export default function DashboardLayout() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold truncate text-foreground">{user?.full_name || user?.email}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
+                    {/* role 'merchant' here would be misleading — an org
+                        owner inside a store still IS the enterprise owner. */}
+                    <p className="text-xs text-muted-foreground capitalize">
+                      {user?.acting_as_org_id ? 'Entreprise · en boutique' : user?.role}
+                    </p>
                   </div>
                 </div>
               )}
@@ -197,8 +207,10 @@ export default function DashboardLayout() {
             {/* Only shown while "acting as" a store entered from the org
                 dashboard (acting_as_org_id) — not role-based, since role is
                 'merchant' in that state, indistinguishable from a real
-                merchant account otherwise. The only way back. */}
-            {user?.acting_as_org_id && (
+                merchant account otherwise. Kept on the dashboard page only:
+                on work screens (caisse, stock, …) it would just eat ~60px
+                of vertical space on every visit. */}
+            {user?.acting_as_org_id && location.pathname.startsWith('/dashboard/organization') && (
               <div className="px-6 pt-4 md:px-4 md:pt-4">
                 <button
                   onClick={() => {

@@ -49,6 +49,7 @@ import ExpenseTrackerSettingsPage from '@/pages/admin/ExpenseTrackerSettings';
 import AdminOrganizationsPage from '@/pages/admin/Organizations';
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
 import StaffPage from '@/pages/organization/Staff';
+import StoresPage from '@/pages/organization/Stores';
 import StockPage from '@/pages/organization/Stock';
 import InventoryPage from '@/pages/organization/Inventory';
 import SalesStatsPage from '@/pages/organization/SalesStats';
@@ -92,6 +93,10 @@ function DashboardIndex() {
   // Enterprise-internal staff (organization-staff module) have no
   // merchant_id either — same reasoning as enterprise above.
   if (STAFF_ROLES.includes(user.role)) return <StaffHome />;
+  // An org owner acting as one of their stores: "Tableau de bord" shows the
+  // organization overview — also where the "Retour à l'organisation" exit
+  // banner lives.
+  if (user.acting_as_org_id) return <Navigate to="/dashboard/organization" replace />;
   return <MerchantDashboard />;
 }
 
@@ -103,7 +108,10 @@ function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?
     return <Navigate to="/login" replace />;
   }
 
-  if (roles && user && !roles.includes(user.role)) {
+  // An org owner acting as one of their stores keeps enterprise-level
+  // access to the org module (role is 'merchant' + acting_as_org_id).
+  const effectiveRole = user?.acting_as_org_id ? 'enterprise' : user?.role;
+  if (roles && user && effectiveRole && !roles.includes(effectiveRole)) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -247,6 +255,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={['enterprise']}>
               <OrganizationProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/stores"
+          element={
+            <ProtectedRoute roles={['enterprise']}>
+              <StoresPage />
             </ProtectedRoute>
           }
         />

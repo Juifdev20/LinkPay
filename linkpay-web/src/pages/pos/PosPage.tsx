@@ -177,30 +177,32 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
         </div>
       )}
 
-      {merchantName && (
-        <p className="text-sm text-muted-foreground flex items-center gap-1.5 -mt-2">
-          <Store className="w-4 h-4" /> {merchantName}
-        </p>
-      )}
-
-      {/* Currency — locked while a ticket is open (tickets are single-currency) */}
-      <div className="flex gap-2 items-center">
-        {(['CDF', 'USD'] as const).map((c) => (
-          <button
-            key={c}
-            disabled={!!ticket}
-            onClick={() => setCurrency(c)}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium border disabled:opacity-50 ${(ticket?.currency || currency) === c ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'}`}
-          >
-            {c}
-          </button>
-        ))}
-        <div className="flex-1" />
-        {onLock && (
-          <button onClick={onLock} className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground">
-            <Lock className="w-4 h-4" /> Verrouiller
-          </button>
+      {/* Store + currency + lock — one compact row on desktop so the till
+          itself gets the maximum vertical space. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {merchantName && (
+          <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+            <Store className="w-4 h-4" /> {merchantName}
+          </p>
         )}
+        {/* Currency — locked while a ticket is open (tickets are single-currency) */}
+        <div className="flex gap-2 items-center ml-auto">
+          {(['CDF', 'USD'] as const).map((c) => (
+            <button
+              key={c}
+              disabled={!!ticket}
+              onClick={() => setCurrency(c)}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium border disabled:opacity-50 ${(ticket?.currency || currency) === c ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'}`}
+            >
+              {c}
+            </button>
+          ))}
+          {onLock && (
+            <button onClick={onLock} className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground ml-2">
+              <Lock className="w-4 h-4" /> Verrouiller
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -248,29 +250,30 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
 
       {canSell && (
         <>
-          {/* Tabs */}
-          <div className="grid grid-cols-4 gap-1 rounded-xl bg-secondary p-1">
-            {TABS.map(({ key, label, icon: Icon }) => (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                className={`relative flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs sm:text-sm font-medium transition-colors ${tab === key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate">{label}</span>
-                {key === 'attente' && heldCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
-                    {heldCount}
-                  </span>
-                )}
-              </button>
-            ))}
+          {/* Tabs + session info — one row on desktop */}
+          <div className="space-y-3 lg:space-y-0 lg:flex lg:items-center lg:gap-4">
+            <div className="grid grid-cols-4 gap-1 rounded-xl bg-secondary p-1 lg:w-[440px] lg:flex-shrink-0">
+              {TABS.map(({ key, label, icon: Icon }) => (
+                <button
+                  key={key}
+                  onClick={() => setTab(key)}
+                  className={`relative flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs sm:text-sm font-medium transition-colors ${tab === key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  <Icon className="w-4 h-4 flex-shrink-0" />
+                  <span className="truncate">{label}</span>
+                  {key === 'attente' && heldCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
+                      {heldCount}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Vault className="w-3.5 h-3.5" />
+              Session {session.currency} ouverte le {formatDate(session.opened_at)} · Fond : {formatCurrency(session.opening_float_cents, session.currency)}
+            </p>
           </div>
-
-          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-            <Vault className="w-3.5 h-3.5" />
-            Session {session.currency} ouverte le {formatDate(session.opened_at)} · Fond : {formatCurrency(session.opening_float_cents, session.currency)}
-          </p>
 
           {tab === 'vente' && (
             <PosTill
