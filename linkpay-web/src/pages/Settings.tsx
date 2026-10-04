@@ -121,11 +121,12 @@ export default function SettingsPage() {
     { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: ShieldCheck, roles: ['merchant', 'cashier'] },
     { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'] },
     { to: '/dashboard/client/transactions', label: 'Mes paiements', icon: Receipt, roles: ['merchant', 'cashier', 'client', 'admin', 'super_admin'] },
-    // Account configuration only — business modules (Stock &
-    // Approvisionnement, Transactions, Utilisateurs internes) live in the
-    // sidebar/MobileNavDrawer instead, not here (product decision: a
-    // module isn't "settings").
+    // Stock & Approvisionnement is the one module left in the
+    // sidebar/MobileNavDrawer — Transactions and Utilisateurs internes
+    // live here instead, per product decision.
     { to: '/dashboard/organization/profile', label: 'Profil entreprise', icon: Building2, roles: ['enterprise'] },
+    { to: '/dashboard/organization/transactions', label: 'Transactions', icon: Receipt, roles: ['enterprise'] },
+    { to: '/dashboard/organization/staff', label: 'Utilisateurs internes', icon: Users, roles: ['enterprise'] },
     { to: '/dashboard/admin', label: 'Administration', icon: ShieldCheck, roles: ['admin', 'super_admin'] },
     { to: '/dashboard/admin/merchants', label: 'Commerçants', icon: Users, roles: ['admin', 'super_admin'] },
     { to: '/dashboard/admin/settlements', label: 'Règlements (admin)', icon: Wallet, roles: ['admin', 'super_admin'] },

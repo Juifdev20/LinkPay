@@ -53,12 +53,11 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/admin/users', label: 'Utilisateurs', icon: UserCog, roles: ['super_admin'] },
   { to: '/dashboard/admin/commissions', label: 'Commissions', icon: Percent, roles: ['super_admin'] },
   { to: '/dashboard/admin/expense-tracker-settings', label: 'Dépenses — Config.', icon: Receipt, roles: ['super_admin'] },
-  // Enterprise modules — full business features, not account config (that's
-  // Settings.tsx's "Profil entreprise" instead). Routes under
-  // /dashboard/organization/*.
-  { to: '/dashboard/organization/transactions', label: 'Transactions', icon: Receipt, roles: ['enterprise'] },
+  // The one enterprise module kept at this top level — Transactions and
+  // Utilisateurs internes moved to Settings.tsx's secondaryLinks instead
+  // per product decision (only Stock & Approvisionnement stays a
+  // first-level module in the sidebar/drawer).
   { to: '/dashboard/organization/stock', label: 'Stock & Approvisionnement', icon: Boxes, roles: ['enterprise'] },
-  { to: '/dashboard/organization/staff', label: 'Utilisateurs internes', icon: Users, roles: ['enterprise'] },
   { to: '/dashboard/notifications', label: 'Notifications', icon: Bell, roles: [...ALL_ROLES, ...STAFF_ROLES] },
   { to: '/dashboard/settings', label: 'Paramètres', icon: Settings, roles: [...ALL_ROLES, ...STAFF_ROLES] },
 ];
