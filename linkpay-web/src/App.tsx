@@ -50,6 +50,9 @@ import AdminOrganizationsPage from '@/pages/admin/Organizations';
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
 import StaffPage from '@/pages/organization/Staff';
 import StockPage from '@/pages/organization/Stock';
+import CompanyProfilePage from '@/pages/organization/CompanyProfile';
+import OrganizationTransactionsPage from '@/pages/organization/Transactions';
+import OrganizationReceivePage from '@/pages/organization/Receive';
 import StaffHome from '@/pages/staff/StaffHome';
 import SettingsPage from '@/pages/Settings';
 import NotificationsPage from '@/pages/Notifications';
@@ -82,9 +85,12 @@ function DashboardIndex() {
   if (!user) return null;
   if (user.role === 'client') return <ClientDashboard />;
   if (user.role === 'admin' || user.role === 'super_admin') return <Navigate to="/dashboard/admin" replace />;
-  // Enterprise accounts aren't linked to a merchant_id yet (no multi-store
-  // support), so MerchantDashboard's stats calls would 404 for them.
-  if (user.role === 'enterprise') return <Navigate to="/dashboard/organization" replace />;
+  // Enterprise accounts land directly on their dashboard here (not a
+  // redirect to /dashboard/organization) so "Tableau de bord" in the
+  // sidebar — which links to plain /dashboard — highlights correctly.
+  // OrganizationProfilePage itself still branches internally on org status
+  // (onboarding wizard / pending / rejected / active dashboard).
+  if (user.role === 'enterprise') return <OrganizationProfilePage />;
   // Enterprise-internal staff (organization-staff module) have no
   // merchant_id either — same reasoning as enterprise above.
   if (STAFF_ROLES.includes(user.role)) return <StaffHome />;
@@ -259,6 +265,30 @@ export default function App() {
           element={
             <ProtectedRoute roles={['enterprise', 'magasinier']}>
               <StockPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/profile"
+          element={
+            <ProtectedRoute roles={['enterprise']}>
+              <CompanyProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/transactions"
+          element={
+            <ProtectedRoute roles={['enterprise']}>
+              <OrganizationTransactionsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/receive"
+          element={
+            <ProtectedRoute roles={['enterprise']}>
+              <OrganizationReceivePage />
             </ProtectedRoute>
           }
         />

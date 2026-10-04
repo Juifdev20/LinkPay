@@ -13,9 +13,7 @@ import { DualCurrencyStat } from '@/components/DualCurrencyStat';
 import { TransactionItem } from '@/components/TransactionItem';
 import OnboardingWizard from '@/pages/organization/OnboardingWizard';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
-import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X, Copy, Check, XCircle, Trophy, Banknote, Smartphone, Package, MinusCircle, PiggyBank, Clock, AlertTriangle, Users, Boxes } from 'lucide-react';
-import { shareOrCopy, publicOrigin } from '@/lib/share';
-import { Link } from 'react-router-dom';
+import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X, XCircle, Trophy, Banknote, Smartphone, Package, MinusCircle, PiggyBank, Clock, AlertTriangle } from 'lucide-react';
 
 /** Shown once the KYB onboarding is submitted, while status is still
  * 'pending' — distinct from the wizard itself (onboarding_completed_at is
@@ -67,10 +65,7 @@ export default function OrganizationProfilePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const enterStore = useAuthStore((s) => s.enterStore);
-  const [showCreateStore, setShowCreateStore] = useState(false);
-  const [newStore, setNewStore] = useState({ name: '', phone: '', city: '', default_currency: 'CDF' as 'CDF' | 'USD' });
   const [enteringId, setEnteringId] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const { data: org, isLoading } = useQuery({
     queryKey: ['my-organization'],
@@ -146,16 +141,6 @@ export default function OrganizationProfilePage() {
     onSettled: () => setEnteringId(null),
   });
 
-  const createStoreMutation = useMutation({
-    mutationFn: async () => (await api.post(`/organizations/${org.id}/merchants`, newStore)).data,
-    onSuccess: (data) => {
-      setShowCreateStore(false);
-      setNewStore({ name: '', phone: '', city: '', default_currency: 'CDF' });
-      queryClient.invalidateQueries({ queryKey: ['org-merchants', org.id] });
-      enterMutation.mutate(data.merchant.id);
-    },
-  });
-
   // "Espèces" and "Articles vendus" have no data source yet (no caisse, no
   // stock/ventes module) — shown as honest placeholders rather than fake
   // numbers, filled in automatically once those tranches land.
@@ -216,45 +201,6 @@ export default function OrganizationProfilePage() {
           )}
         </div>
       </div>
-
-      {org?.scanlinkpay_number && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Numéro ScanLinkPay</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground mb-4">
-              Vos clients peuvent vous payer directement en scannant ce QR ou en saisissant ce numéro, sans facture préétablie.
-            </p>
-            {org.scanlinkpay_qr_url && (
-              <div className="flex justify-center mb-4">
-                <img src={org.scanlinkpay_qr_url} alt="QR ScanLinkPay" className="w-48 h-48 rounded-2xl border border-border" />
-              </div>
-            )}
-            <div className="rounded-xl bg-secondary p-3 text-left">
-              <p className="text-sm text-muted-foreground mb-1">Votre numéro</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 font-mono text-lg font-bold tracking-wider text-foreground">{org.scanlinkpay_number}</code>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={async () => {
-                    await shareOrCopy({
-                      title: 'Payez-moi via ScanLinkPay',
-                      text: `Payez ${org.name} via ScanLinkPay`,
-                      url: `${publicOrigin()}/pay/${org.scanlinkpay_number}`,
-                    });
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 2000);
-                  }}
-                >
-                  {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardHeader>
@@ -320,34 +266,6 @@ export default function OrganizationProfilePage() {
           )}
         </CardContent>
       </Card>
-
-      <Link
-        to="/dashboard/organization/stock"
-        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 hover:bg-primary/10 transition-colors"
-      >
-        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
-          <Boxes className="w-5 h-5 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-foreground">Stock & Approvisionnement</p>
-          <p className="text-sm text-muted-foreground">Gérer les articles et le réapprovisionnement</p>
-        </div>
-        <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-      </Link>
-
-      <Link
-        to="/dashboard/organization/staff"
-        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 hover:bg-primary/10 transition-colors"
-      >
-        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
-          <Users className="w-5 h-5 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-foreground">Utilisateurs internes</p>
-          <p className="text-sm text-muted-foreground">Magasinier, Vendeur, Caissier, Comptable...</p>
-        </div>
-        <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-      </Link>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((c) => (
@@ -431,64 +349,10 @@ export default function OrganizationProfilePage() {
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader>
           <CardTitle className="text-base">Boutiques</CardTitle>
-          <Button size="sm" onClick={() => setShowCreateStore(true)}>
-            <Plus className="mr-1 w-4 h-4" />
-            Créer une boutique
-          </Button>
         </CardHeader>
         <CardContent>
-          {showCreateStore && (
-            <div className="rounded-xl border border-border p-4 mb-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="font-semibold text-foreground text-sm">Nouvelle boutique</p>
-                <button onClick={() => setShowCreateStore(false)} className="text-muted-foreground hover:text-foreground">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new_store_name">Nom de la boutique</Label>
-                <Input
-                  id="new_store_name"
-                  placeholder="Boutique Mukendi"
-                  value={newStore.name}
-                  onChange={(e) => setNewStore({ ...newStore, name: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new_store_phone">Téléphone</Label>
-                <Input
-                  id="new_store_phone"
-                  placeholder="+243 8XX XXX XXX"
-                  value={newStore.phone}
-                  onChange={(e) => setNewStore({ ...newStore, phone: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new_store_city">Ville</Label>
-                <Input
-                  id="new_store_city"
-                  placeholder="Kinshasa"
-                  value={newStore.city}
-                  onChange={(e) => setNewStore({ ...newStore, city: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Devise par défaut</Label>
-                <CurrencySelector value={newStore.default_currency} onChange={(c) => setNewStore({ ...newStore, default_currency: c })} />
-              </div>
-              <Button
-                className="w-full"
-                disabled={!newStore.name || createStoreMutation.isPending}
-                onClick={() => createStoreMutation.mutate()}
-              >
-                {createStoreMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
-                Créer et ouvrir
-              </Button>
-            </div>
-          )}
-
           {merchants?.length ? (
             <div>
               {merchants.map((m: any) => (
@@ -518,7 +382,7 @@ export default function OrganizationProfilePage() {
               ))}
             </div>
           ) : (
-            !showCreateStore && <p className="text-muted-foreground text-center py-6">Aucune boutique pour le moment</p>
+            <p className="text-muted-foreground text-center py-6">Aucune boutique pour le moment</p>
           )}
         </CardContent>
       </Card>

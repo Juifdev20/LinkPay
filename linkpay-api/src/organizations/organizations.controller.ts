@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OrganizationsService } from './organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -211,6 +211,26 @@ export class OrganizationsController {
     const org = await this.orgsService.getOrganizationById(id);
     this.assertOwnOrg(org.owner_id, callerId);
     return this.orgsService.getOrganizationRecentTransactions(id);
+  }
+
+  @Get(':id/transactions')
+  @ApiOperation({ summary: 'Full paginated sales history across every store in this organization, optionally date-filtered (owner only)' })
+  async getOrgTransactions(
+    @Param('id') id: string,
+    @CurrentUser('id') callerId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.getOrganizationTransactions(id, {
+      from,
+      to,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
   }
 
   @Post(':id/expenses')

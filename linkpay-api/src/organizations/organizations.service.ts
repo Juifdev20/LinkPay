@@ -230,6 +230,40 @@ export class OrganizationsService {
     return data || [];
   }
 
+  /** Full, paginated sales history across every store this organization
+   * owns, with an optional [from, to) date range — the "Transactions" tab
+   * for an enterprise account (unlike getOrganizationRecentTransactions
+   * above, which is just the last 10 for the dashboard widget). Only one
+   * store exists per organization in practice (see validateOrganization's
+   * auto-created default store), but this still fans out across every
+   * merchant_id the org owns rather than assuming exactly one, same
+   * reasoning as the rest of this service. */
+  async getOrganizationTransactions(orgId: string, options: { from?: string; to?: string; page?: number; limit?: number }) {
+    const merchants = await this.getOrganizationMerchants(orgId);
+    const merchantIds = merchants.map((m) => m.id);
+    if (!merchantIds.length) return { items: [], total: 0 };
+
+    const page = Math.max(1, options.page || 1);
+    const limit = Math.min(100, options.limit || 20);
+
+    let query = this.supabaseService.getClient()
+      .from('transactions')
+      .select('id, amount_cents, currency, status, created_at, merchant:merchants(name)', { count: 'exact' })
+      .in('merchant_id', merchantIds)
+      .order('created_at', { ascending: false })
+      .range((page - 1) * limit, page * limit - 1);
+
+    if (options.from) query = query.gte('created_at', options.from);
+    if (options.to) query = query.lt('created_at', options.to);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      throw new Error(`Failed to fetch organization transactions: ${error.message}`);
+    }
+    return { items: data || [], total: count || 0 };
+  }
+
   /** Mints a merchant-scoped token pair for one of this organization's
    * stores — the owner's canonical role/user_roles row is never touched;
    * see JwtPayload.acting_as_org_id and AuthService.refresh() for how this
@@ -348,6 +382,21 @@ export class OrganizationsService {
 
     if (error) {
       throw new Error(`Failed to validate organization: ${error.message}`);
+    }
+
+    // The organization IS its first store — no separate "create a boutique"
+    // step for the owner. Guarded on zero existing merchants so this never
+    // duplicates a store on a re-validate call, and never touches orgs that
+    // already created additional stores manually before this changed.
+    const existingMerchants = await this.getOrganizationMerchants(id);
+    if (existingMerchants.length === 0) {
+      await this.createOrganizationMerchant(id, org.owner_id, '', {
+        name: org.name,
+        legal_name: org.legal_name,
+        city: org.contact?.address?.city,
+        address: [org.contact?.address?.avenue, org.contact?.address?.commune].filter(Boolean).join(', ') || undefined,
+        default_currency: org.currency,
+      });
     }
 
     await this.notificationsService.create({

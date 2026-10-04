@@ -1,8 +1,13 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { StockPasswordService } from './stock-password.service';
 import { sumByCurrency } from '../common/utils/currency';
+
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 // Only 'magasinier' can manage stock today — the other enterprise-staff
 // roles (vendeur/caissier/comptable) get their own gate once their modules
@@ -16,6 +21,7 @@ export class StockService {
     private supabaseService: SupabaseService,
     private organizationsService: OrganizationsService,
     private notificationsService: NotificationsService,
+    private stockPasswordService: StockPasswordService,
   ) {}
 
   private isAdmin(role: string | undefined): boolean {
@@ -67,6 +73,11 @@ export class StockService {
     callerOrgId: string | undefined,
     data: {
       name: string;
+      category?: string;
+      item_type?: string;
+      attributes?: Record<string, any>;
+      image_url?: string;
+      description?: string;
       brand?: string;
       model?: string;
       serial_number?: string;
@@ -86,6 +97,11 @@ export class StockService {
       .insert({
         merchant_id: merchantId,
         name: data.name,
+        category: data.category || null,
+        item_type: data.item_type || null,
+        attributes: data.attributes || {},
+        image_url: data.image_url || null,
+        description: data.description || null,
         brand: data.brand || null,
         model: data.model || null,
         serial_number: data.serial_number || null,
@@ -123,6 +139,20 @@ export class StockService {
     return data || [];
   }
 
+  /** Both edit and delete are gated behind the organization's shared stock
+   * password (StockPasswordService) — consulting the list stays open, but
+   * changing anything requires it, verified server-side so a direct API
+   * call can't skip the UI prompt. */
+  private async assertStockPassword(merchant: any, stockPassword: string | undefined) {
+    if (!merchant.organization_id) {
+      throw new BadRequestException('Cette boutique ne fait partie d\'aucune entreprise');
+    }
+    if (!stockPassword) {
+      throw new BadRequestException('Mot de passe de gestion de stock requis');
+    }
+    await this.stockPasswordService.verifyPassword(merchant.organization_id, stockPassword);
+  }
+
   async updateItem(
     merchantId: string,
     itemId: string,
@@ -130,15 +160,18 @@ export class StockService {
     callerRole: string,
     callerOrgId: string | undefined,
     updates: Record<string, any>,
+    stockPassword: string | undefined,
   ) {
-    await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
+    const merchant = await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
+    await this.assertStockPassword(merchant, stockPassword);
 
     // quantity is deliberately not in this list — it only ever changes
     // through createMovement() below, which keeps stock_movements as the
     // single source of truth (enforced in the DB by the
     // trg_apply_stock_movement trigger from migration 031).
     const allowedFields = [
-      'name', 'brand', 'model', 'serial_number', 'condition', 'warranty_months',
+      'name', 'category', 'item_type', 'attributes', 'image_url', 'description',
+      'brand', 'model', 'serial_number', 'condition', 'warranty_months',
       'unit_price_cents', 'cost_price_cents', 'currency', 'low_stock_threshold',
     ];
     const filtered: Record<string, any> = {};
@@ -158,8 +191,16 @@ export class StockService {
     return data;
   }
 
-  async deleteItem(merchantId: string, itemId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
-    await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
+  async deleteItem(
+    merchantId: string,
+    itemId: string,
+    callerId: string,
+    callerRole: string,
+    callerOrgId: string | undefined,
+    stockPassword: string | undefined,
+  ) {
+    const merchant = await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
+    await this.assertStockPassword(merchant, stockPassword);
 
     const { error } = await this.supabaseService.getClient()
       .from('stock_items')
@@ -169,6 +210,48 @@ export class StockService {
 
     if (error) throw new Error(`Failed to delete stock item: ${error.message}`);
     return { success: true };
+  }
+
+  /** Uploads a product image to the public 'product-images' bucket (see
+   * migration 033) and returns its URL — mirrors
+   * OrganizationsService.ensureScanLinkPayQr's upload shape, just for a
+   * user-supplied file instead of a server-generated one. Called before
+   * create/update, not as part of them, so the frontend can preview the
+   * image immediately and retry the upload independently of the rest of
+   * the form. */
+  async uploadItemImage(
+    merchantId: string,
+    callerId: string,
+    callerRole: string,
+    callerOrgId: string | undefined,
+    file: Express.Multer.File | undefined,
+  ) {
+    await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
+
+    if (!file) {
+      throw new BadRequestException('Aucun fichier reçu');
+    }
+    if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException('Format d\'image non supporté (JPEG, PNG ou WebP uniquement)');
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      throw new BadRequestException('L\'image ne doit pas dépasser 2 Mo');
+    }
+
+    const ext = file.mimetype === 'image/png' ? 'png' : file.mimetype === 'image/webp' ? 'webp' : 'jpg';
+    const fileName = `${merchantId}/${randomUUID()}.${ext}`;
+
+    const { error: uploadError } = await this.supabaseService.getClient()
+      .storage
+      .from('product-images')
+      .upload(fileName, file.buffer, { contentType: file.mimetype });
+
+    if (uploadError) {
+      throw new Error(`Failed to upload product image: ${uploadError.message}`);
+    }
+
+    const { data: urlData } = this.supabaseService.getClient().storage.from('product-images').getPublicUrl(fileName);
+    return { url: urlData.publicUrl };
   }
 
   /** Records a restock ('in'), a loss/breakage/manual removal ('out') or a

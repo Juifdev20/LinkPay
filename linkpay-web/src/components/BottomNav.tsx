@@ -22,17 +22,28 @@ export function BottomNav() {
   // focusable/tappable underneath.
   const hidden = useSheetStore((s) => s.isOpen);
   const hasMerchantId = useAuthStore((s) => !!s.user?.merchant_id);
+  const isEnterprise = useAuthStore((s) => s.user?.role === 'enterprise');
 
   // A plain client has no merchant_id — "Créer une demande de paiement"
   // (the merchant-only endpoint) would 400 with "No merchant account
   // associated" for them. Their central action is showing their own QR/
   // number to get paid (same screen as the "Recevoir" quick action on the
   // dashboard) — scanning someone else's QR to pay remains available from
-  // that same quick-action grid, this tab just isn't it.
-  const qrTab = hasMerchantId
+  // that same quick-action grid, this tab just isn't it. An enterprise
+  // owner has neither merchant_id (unless "acting as" a store) nor a
+  // personal wallet relevant here — their QR/number is the organization's,
+  // not /dashboard/wallet/receive's personal one, and their "Transactions"
+  // tab means the whole business's sales, not a single store's (which
+  // /dashboard/transactions would 400 on anyway, no merchant_id).
+  const qrTab = isEnterprise
+    ? { to: '/dashboard/organization/receive', label: 'Recevoir', icon: QrCode, end: false, central: true }
+    : hasMerchantId
     ? { to: '/dashboard/payment-requests/new', label: 'QR', icon: QrCode, end: false, central: true }
     : { to: '/dashboard/wallet/receive', label: 'Recevoir', icon: QrCode, end: false, central: true };
-  const allTabs = [tabs[0], tabs[1], qrTab, tabs[2]];
+  const transactionsTab = isEnterprise
+    ? { ...tabs[1], to: '/dashboard/organization/transactions' }
+    : tabs[1];
+  const allTabs = [tabs[0], transactionsTab, qrTab, tabs[2]];
 
   return (
     <nav

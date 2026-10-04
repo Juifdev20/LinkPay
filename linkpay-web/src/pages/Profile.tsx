@@ -1,17 +1,20 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/lib/auth-store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
+import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
 import { User, Phone, KeyRound, ArrowLeftRight, ChevronRight, LogOut } from 'lucide-react';
 
 export default function ProfilePage() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/');
   };
 
@@ -74,11 +77,20 @@ export default function ProfilePage() {
       <Button
         variant="outline"
         className="w-full border-destructive/20 text-destructive hover:bg-destructive/5"
-        onClick={handleLogout}
+        onClick={() => setShowLogoutConfirm(true)}
       >
         <LogOut className="w-4 h-4 mr-2" />
         Déconnexion
       </Button>
+
+      <LogoutConfirmDialog
+        open={showLogoutConfirm}
+        onOpenChange={setShowLogoutConfirm}
+        onConfirm={() => {
+          setShowLogoutConfirm(false);
+          handleLogout();
+        }}
+      />
     </div>
   );
 }

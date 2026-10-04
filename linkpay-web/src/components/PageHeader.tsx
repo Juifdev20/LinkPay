@@ -1,5 +1,6 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface PageHeaderAction {
@@ -12,6 +13,9 @@ interface PageHeaderAction {
 interface PageHeaderProps {
   title: string;
   action?: PageHeaderAction;
+  /** Hide the back button — only for true landing pages (a role's default
+   * "Tableau de bord") where there's nothing meaningful to return to. */
+  hideBack?: boolean;
 }
 
 /**
@@ -20,13 +24,32 @@ interface PageHeaderProps {
  * button on tablet/desktop (`md:` and up) but a floating icon-only round
  * button on phones — same raised-FAB language BottomNav already uses for
  * its central QR action, just applied to each page's primary action.
+ *
+ * Also carries the back button for every page that uses this header (same
+ * component on mobile and desktop) — navigate(-1) returns to wherever the
+ * user actually came from (sidebar, a tile, a notification), unlike a
+ * fixed `to` which would ignore how they got here.
  */
-export function PageHeader({ title, action }: PageHeaderProps) {
+export function PageHeader({ title, action, hideBack }: PageHeaderProps) {
   const Icon = action?.icon;
+  const navigate = useNavigate();
 
   return (
     <div className="flex items-center justify-between gap-3">
-      <h1 className="text-2xl font-bold text-foreground truncate min-w-0 flex-1">{title}</h1>
+      <div className="flex items-center gap-2 min-w-0 flex-1">
+        {!hideBack && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate(-1)}
+            className="h-9 w-9 flex-shrink-0 -ml-2"
+            aria-label="Retour"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+        )}
+        <h1 className="text-2xl font-bold text-foreground truncate min-w-0">{title}</h1>
+      </div>
 
       {action && Icon && (
         action.to ? (

@@ -8,54 +8,14 @@ import { Logo } from '@/components/Logo';
 import { BottomNav } from '@/components/BottomNav';
 import { TopBar } from '@/components/TopBar';
 import { NotificationsBell } from '@/components/NotificationsBell';
+import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
+import { MobileNavDrawer } from '@/components/MobileNavDrawer';
 import { useTheme } from '@/hooks/useTheme';
 import { usePaymentReceivedAlert } from '@/hooks/usePaymentReceivedAlert';
-import { LayoutDashboard, QrCode, Receipt, Wallet, LogOut, Users, UserCog, ShieldCheck, User, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Sun, Moon, Menu, Search, X, Bell } from 'lucide-react';
+import { LogOut, User, Building2, Sun, Moon, Menu, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-const ALL_ROLES = ['merchant', 'cashier', 'enterprise', 'client', 'admin', 'super_admin'];
-
-// Enterprise-internal staff (created via OrganizationStaffController, see
-// organization-staff module) — no wallet, no stock/caisse/ventes module
-// exists yet for them to use, so they deliberately get only a minimal nav
-// (dashboard + settings), not the full ALL_ROLES set (which includes
-// wallet-dependent items like Tontines/Épargne/Mes paiements they can't
-// actually use yet).
-const STAFF_ROLES = ['magasinier', 'vendeur', 'caissier', 'comptable'];
-
-// Merchant-scoped pages (payment-requests, transactions, settlements) need
-// the JWT's merchant_id claim — an enterprise account only gets one while
-// "acting as" a specific store (role becomes 'merchant' then; see
-// auth-store.ts enterStore()), never at the plain org level, so 'enterprise'
-// deliberately isn't listed on these — org-level enterprise instead gets
-// its own "Boutiques" section on /dashboard/organization.
-const navItems = [
-  { to: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: [...ALL_ROLES, ...STAFF_ROLES] },
-  { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: QrCode, roles: ['merchant', 'cashier'] },
-  { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, roles: ['merchant', 'cashier'] },
-  { to: '/dashboard/settlements', label: 'Règlements', icon: Wallet, roles: ['merchant'] },
-  { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'] },
-  // Deliberately excludes 'enterprise' — wallet/tontine/savings features are
-  // personal-account concepts; an organization has its own separate stock,
-  // expenses, etc. modules instead (see OrganizationProfile.tsx).
-  { to: '/dashboard/client/transactions', label: 'Mes paiements', icon: Receipt, roles: ALL_ROLES.filter((r) => r !== 'enterprise') },
-  { to: '/dashboard/tontines', label: 'Tontines', icon: RefreshCcw, roles: ALL_ROLES.filter((r) => r !== 'enterprise') },
-  { to: '/dashboard/savings', label: 'Épargne', icon: PiggyBank, roles: ALL_ROLES.filter((r) => r !== 'enterprise') },
-  // Deliberately excludes 'enterprise' — organizations have their own,
-  // separate expense feature (see OrganizationProfile.tsx's expense tile),
-  // unlike tontines/savings above which enterprise can currently also see.
-  { to: '/dashboard/expenses', label: 'Mes dépenses', icon: Receipt, roles: ['client', 'merchant', 'cashier', 'admin', 'super_admin'] },
-  { to: '/dashboard/admin', label: 'Administration', icon: ShieldCheck, roles: ['admin', 'super_admin'] },
-  { to: '/dashboard/admin/merchants', label: 'Commerçants', icon: Users, roles: ['admin', 'super_admin'] },
-  { to: '/dashboard/admin/organizations', label: 'Entreprises', icon: Building2, roles: ['admin', 'super_admin'] },
-  { to: '/dashboard/admin/settlements', label: 'Règlements (admin)', icon: Wallet, roles: ['admin', 'super_admin'] },
-  { to: '/dashboard/admin/users', label: 'Utilisateurs', icon: UserCog, roles: ['super_admin'] },
-  { to: '/dashboard/admin/commissions', label: 'Commissions', icon: Percent, roles: ['super_admin'] },
-  { to: '/dashboard/admin/expense-tracker-settings', label: 'Dépenses — Config.', icon: Receipt, roles: ['super_admin'] },
-  { to: '/dashboard/organization', label: 'Mon organisation', icon: Building2, roles: ['enterprise'] },
-  { to: '/dashboard/notifications', label: 'Notifications', icon: Bell, roles: [...ALL_ROLES, ...STAFF_ROLES] },
-  { to: '/dashboard/settings', label: 'Paramètres', icon: Settings, roles: [...ALL_ROLES, ...STAFF_ROLES] },
-];
+import { SECTORS } from '@/pages/organization/OnboardingWizard';
+import { navItems } from '@/lib/nav-items';
 
 export default function DashboardLayout() {
   const user = useAuthStore((s) => s.user);
@@ -70,15 +30,23 @@ export default function DashboardLayout() {
   // Same query key as OrganizationProfile.tsx's `my-organization` — react-query
   // dedupes/shares the cache, so this doesn't add a second network call once
   // that page (or the onboarding wizard it renders) has already fetched it.
+  // Enabled for org-staff too (not just the owner) — /organizations/me
+  // resolves for them via their organization_id claim, and they should see
+  // which company they belong to in the sidebar just like the owner does.
   const { data: org } = useQuery({
     queryKey: ['my-organization'],
     queryFn: async () => (await api.get('/organizations/me')).data,
-    enabled: user?.role === 'enterprise',
+    enabled: user?.role === 'enterprise' || !!user?.organization_id,
   });
   const navLocked = user?.role === 'enterprise' && !!org && org.status !== 'active';
 
-  const handleLogout = () => {
-    logout();
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const handleLogout = async () => {
+    // Must await — logout() is async (it clears auth state only after its
+    // own API call settles). Firing navigate('/') right away raced that:
+    // RootRedirect would still see isAuthenticated === true for a moment
+    // and bounce straight back to /dashboard, making the button look dead.
+    await logout();
     navigate('/');
   };
 
@@ -96,11 +64,29 @@ export default function DashboardLayout() {
             'hidden md:flex flex-col border-r border-border bg-card transition-all duration-300',
             sidebarCollapsed ? 'w-20' : 'w-64'
           )}>
-            <div className="p-6 border-b border-border flex items-center justify-between">
-              {!sidebarCollapsed && <Logo size="md" />}
-              <Button variant="ghost" size="icon" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="h-9 w-9 ml-auto">
-                {sidebarCollapsed ? <Menu className="h-4 w-4" /> : <X className="h-4 w-4" />}
-              </Button>
+            <div className="p-6 border-b border-border">
+              <div className="flex items-center justify-between">
+                {!sidebarCollapsed && <Logo size="md" />}
+                <Button variant="ghost" size="icon" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="h-9 w-9 ml-auto">
+                  {sidebarCollapsed ? <Menu className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                </Button>
+              </div>
+              {/* Which organization/store this sidebar belongs to — pulled
+                  live from the org query below, never hardcoded, since the
+                  same layout serves every enterprise account. */}
+              {!sidebarCollapsed && org && (
+                <div className="mt-3 flex items-center gap-2 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <Building2 className="w-4 h-4 text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">{org.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {SECTORS.find((s) => s.value === org.sector)?.label || org.sector}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
@@ -137,7 +123,7 @@ export default function DashboardLayout() {
                   </div>
                 </div>
               )}
-              <Button variant="ghost" size="sm" className={cn('w-full justify-start text-muted-foreground', sidebarCollapsed && 'px-3')} onClick={handleLogout}>
+              <Button variant="ghost" size="sm" className={cn('w-full justify-start text-muted-foreground', sidebarCollapsed && 'px-3')} onClick={() => setShowLogoutConfirm(true)}>
                 <LogOut className="w-4 h-4 flex-shrink-0" />
                 {!sidebarCollapsed && <span className="ml-2">Déconnexion</span>}
               </Button>
@@ -193,7 +179,7 @@ export default function DashboardLayout() {
                 <button
                   onClick={() => {
                     exitStore();
-                    navigate('/dashboard/organization');
+                    navigate('/dashboard');
                   }}
                   className="w-full flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10 transition-colors"
                 >
@@ -207,10 +193,20 @@ export default function DashboardLayout() {
         </main>
       </div>
 
-      {/* Mobile bottom nav — hidden entirely (not just dimmed) while an
-          enterprise account hasn't finished onboarding, since none of these
-          destinations are usable yet. */}
+      {/* Mobile bottom nav + nav drawer — both hidden entirely (not just
+          dimmed) while an enterprise account hasn't finished onboarding,
+          since none of these destinations are usable yet. */}
       {!navLocked && <BottomNav />}
+      {!navLocked && <MobileNavDrawer org={org} />}
+
+      <LogoutConfirmDialog
+        open={showLogoutConfirm}
+        onOpenChange={setShowLogoutConfirm}
+        onConfirm={() => {
+          setShowLogoutConfirm(false);
+          handleLogout();
+        }}
+      />
     </div>
   );
 }
