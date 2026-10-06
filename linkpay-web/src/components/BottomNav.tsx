@@ -1,8 +1,10 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Receipt, QrCode, Settings, ShoppingCart, Boxes, BarChart3, Bell } from 'lucide-react';
+import { Home, Receipt, QrCode, Settings, ShoppingCart, Boxes, BarChart3, Bell, MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSheetStore } from '@/lib/sheet-store';
+import { useDrawerStore } from '@/lib/drawer-store';
 import { useAuthStore } from '@/lib/auth-store';
+import { navItems } from '@/lib/nav-items';
 
 // "Profil" moved to TopBar.tsx (top-right icon) — this slot is now the app
 // Settings destination, matching what the desktop sidebar already calls it
@@ -36,6 +38,11 @@ const staffTabs: Record<string, Tab[]> = {
   comptable: [homeTab, orgTransactionsTab, financeTab, settingsTab],
   magasinier: [homeTab, stockTab, alertsTab, settingsTab],
 };
+
+// Entries that are navigation chrome, not business modules — the Plus tab
+// appears only when the role has more than 3 *business* destinations,
+// otherwise Paramètres keeps its own slot in the bar.
+const NAV_CHROME_PATHS = ['/dashboard', '/dashboard/notifications', '/dashboard/settings'];
 
 export function BottomNav() {
   // Hidden while a FormSheet is open — the sheet owns the keyboard-aware
@@ -71,6 +78,30 @@ export function BottomNav() {
     : tabs[1];
   const allTabs = staffTabs[role || ''] ?? [tabs[0], transactionsTab, qrTab, tabs[2]];
 
+  // Modules riches (entreprise et son staff, marchand…) : le dernier onglet
+  // devient "Plus" et ouvre le drawer latéral — Paramètres et les autres
+  // destinations s'y trouvent déjà (lib/nav-items.ts, même source que la
+  // sidebar desktop). Roles simples : Paramètres garde sa place.
+  const openDrawer = useDrawerStore((s) => s.open);
+  const businessItemCount = role
+    ? navItems.filter((i) => i.roles.includes(role) && !NAV_CHROME_PATHS.includes(i.to)).length
+    : 0;
+  const usePlusTab = businessItemCount > 3;
+  const displayTabs = usePlusTab
+    ? allTabs.filter((t) => t.to !== '/dashboard/settings')
+    : allTabs;
+  // "Plus" stays lit while a page reachable only through it is open —
+  // otherwise the bar would show nothing selected on those screens.
+  const plusActive =
+    usePlusTab &&
+    (pathname === '/dashboard/settings' ||
+      navItems.some(
+        (i) =>
+          i.roles.includes(role || '') &&
+          !displayTabs.some((t) => t.to === i.to) &&
+          (i.to === '/dashboard' ? pathname === i.to : pathname.startsWith(i.to)),
+      ));
+
   return (
     <nav
       className={cn(
@@ -79,7 +110,7 @@ export function BottomNav() {
       )}
     >
       <div className="flex items-center justify-around h-16 px-2">
-        {allTabs.map((tab) => {
+        {displayTabs.map((tab) => {
           // Accueil is also the staff's sales dashboard, so it lights up there.
           const forceActive = tab.to === '/dashboard' && onSalesDashboard;
           return (
@@ -131,6 +162,25 @@ export function BottomNav() {
             </NavLink>
           );
         })}
+
+        {usePlusTab && (
+          <button
+            type="button"
+            onClick={openDrawer}
+            aria-label="Plus"
+            className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg transition-colors min-w-[60px]"
+          >
+            <div
+              className={cn(
+                'w-9 h-9 rounded-full flex items-center justify-center transition-colors',
+                plusActive && 'bg-primary',
+              )}
+            >
+              <MoreHorizontal className={cn('w-5 h-5', plusActive ? 'text-primary-foreground' : 'text-muted-foreground')} />
+            </div>
+            <span className={cn('text-[10px] font-medium', plusActive ? 'text-primary' : 'text-muted-foreground')}>Plus</span>
+          </button>
+        )}
       </div>
     </nav>
   );
