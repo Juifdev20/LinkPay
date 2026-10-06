@@ -19,9 +19,14 @@ import { cn } from '@/lib/utils';
  * not in Settings — Settings is for account configuration only (e.g.
  * "Profil entreprise"), per product decision: a module isn't "config".
  *
- * Opened by TopBar.tsx's hamburger button via drawer-store.ts, same
- * on/off-tree decoupling as FormSheet.tsx/sheet-store.ts. `org` is passed
- * in from DashboardLayout (already fetched there) rather than re-queried.
+ * Rendered as a BOTTOM SHEET, not a left drawer — this is the "Plus" tab's
+ * content (BottomNav.tsx), and a slide-in sidebar is exactly what mobile
+ * users recognize as "the desktop menu", which this app deliberately
+ * doesn't have.
+ *
+ * Opened by BottomNav's "Plus" tab and TopBar.tsx's hamburger button via
+ * drawer-store.ts. `org` is passed in from DashboardLayout (already
+ * fetched there) rather than re-queried.
  */
 export function MobileNavDrawer({ org }: { org?: any }) {
   const isOpen = useDrawerStore((s) => s.isOpen);
@@ -58,10 +63,15 @@ export function MobileNavDrawer({ org }: { org?: any }) {
       <DialogPrimitive.Root open={isOpen} onOpenChange={(open) => !open && close()}>
         <DialogPrimitive.Portal>
           <DialogPrimitive.Overlay className="md:hidden fixed inset-0 z-[60] bg-black/50 data-[state=open]:animate-in data-[state=open]:fade-in data-[state=closed]:animate-out data-[state=closed]:fade-out" />
-          <DialogPrimitive.Content className="md:hidden fixed inset-y-0 left-0 z-[60] w-[82vw] max-w-xs bg-card border-r border-border flex flex-col safe-area-top safe-area-bottom data-[state=open]:animate-in data-[state=open]:slide-in-from-left data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left">
-            <DialogPrimitive.Title className="sr-only">Menu</DialogPrimitive.Title>
+          <DialogPrimitive.Content className="md:hidden fixed inset-x-0 bottom-0 z-[60] max-h-[85vh] bg-card border-t border-border rounded-t-3xl flex flex-col safe-area-bottom data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom">
+            <DialogPrimitive.Title className="sr-only">Plus</DialogPrimitive.Title>
 
-            <div className="p-6 border-b border-border flex-shrink-0">
+            {/* Drag-handle look — the visual cue for a bottom sheet. */}
+            <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+              <div className="w-10 h-1 rounded-full bg-border" />
+            </div>
+
+            <div className="px-6 pb-4 border-b border-border flex-shrink-0">
               <div className="flex items-center justify-between">
                 <Logo size="md" />
                 <DialogPrimitive.Close className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent transition-colors" aria-label="Fermer">
