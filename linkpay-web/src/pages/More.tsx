@@ -18,8 +18,8 @@ import { SECTORS } from '@/pages/organization/OnboardingWizard';
  * chevrons below — the classic mobile "More" screen.
  */
 
-// Sections keep the navItems order; each path lands in the first group it
-// belongs to. Anything not listed goes in "Compte" so nothing is lost.
+// Sections keep the navItems order; each item lands in the FIRST section
+// it matches only — otherwise the same entry renders twice.
 const SECTIONS: { title: string; match: (to: string) => boolean }[] = [
   {
     title: 'Modules',
@@ -58,10 +58,11 @@ export default function MorePage() {
     ? navItems.filter((i) => i.roles.includes(role) && !visiblePaths.has(i.to))
     : [];
 
-  const sections = SECTIONS.map(({ title, match }) => ({
-    title,
-    items: moreItems.filter((i) => match(i.to)),
-  })).filter((s) => s.items.length > 0);
+  const sections = SECTIONS.map((s) => ({ ...s, items: [] as typeof moreItems }));
+  for (const item of moreItems) {
+    sections.find((s) => s.match(item.to))?.items.push(item);
+  }
+  const filledSections = sections.filter((s) => s.items.length > 0);
 
   const displayName = org?.name || user?.full_name || user?.email || '?';
   const displaySub = org
@@ -83,7 +84,7 @@ export default function MorePage() {
         </div>
       </div>
 
-      {sections.map((section) => (
+      {filledSections.map((section) => (
         <div key={section.title}>
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 px-1">
             {section.title}
