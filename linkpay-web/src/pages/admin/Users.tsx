@@ -6,21 +6,25 @@ import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/utils';
-import { Loader2, KeyRound } from 'lucide-react';
+import { Loader2, KeyRound, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const ROLES = ['client', 'cashier', 'merchant', 'enterprise', 'admin', 'super_admin'];
+const PAGE_SIZE = 20;
 
 export default function AdminUsersPage() {
   const queryClient = useQueryClient();
   const [selectedRole, setSelectedRole] = useState<Record<string, string>>({});
+  const [page, setPage] = useState(1);
 
   const { data } = useQuery({
-    queryKey: ['admin-users'],
+    queryKey: ['admin-users', page],
     queryFn: async () => {
-      const { data } = await api.get('/admin/users');
+      const { data } = await api.get('/admin/users', { params: { page, limit: PAGE_SIZE } });
       return data;
     },
   });
+
+  const totalPages = Math.max(1, Math.ceil((data?.total || 0) / PAGE_SIZE));
 
   const assignMutation = useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
@@ -94,6 +98,32 @@ export default function AdminUsersPage() {
             </div>
           ) : (
             <p className="text-muted-foreground text-center py-6">Aucun utilisateur</p>
+          )}
+
+          {(data?.total || 0) > PAGE_SIZE && (
+            <div className="flex items-center justify-between pt-4 border-t border-border mt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                Précédent
+              </Button>
+              <p className="text-sm text-muted-foreground">
+                Page {page} / {totalPages} — {data.total} utilisateur(s)
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Suivant
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>
