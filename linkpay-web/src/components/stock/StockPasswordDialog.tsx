@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, Lock, Eye, EyeOff } from 'lucide-react';
+import { PasswordStrength } from '@/components/PasswordStrength';
 
 /**
  * Gate shown before an edit/delete goes through — consulting the stock list
@@ -122,15 +123,18 @@ export function StockPasswordDialog({
           </div>
 
           {!isSet && (
-            <div className="space-y-2">
-              <Label htmlFor="stock_pwd_confirm">Confirmer le mot de passe</Label>
-              <Input
-                id="stock_pwd_confirm"
-                type={showPassword ? 'text' : 'password'}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-              />
-            </div>
+            <>
+              <PasswordStrength password={password} />
+              <div className="space-y-2">
+                <Label htmlFor="stock_pwd_confirm">Confirmer le mot de passe</Label>
+                <Input
+                  id="stock_pwd_confirm"
+                  type={showPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </div>
+            </>
           )}
 
           {error && <p className="text-sm text-destructive">{error}</p>}

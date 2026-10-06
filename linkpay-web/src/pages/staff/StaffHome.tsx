@@ -1,21 +1,16 @@
 import { useAuthStore } from '@/lib/auth-store';
 import StockPage from '@/pages/organization/Stock';
-import { UserCircle } from 'lucide-react';
-
-const ROLE_LABELS: Record<string, string> = {
-  magasinier: 'Magasinier',
-  vendeur: 'Vendeur',
-  caissier: 'Caissier',
-  comptable: 'Comptable',
-};
+import SalesDashboardPage from '@/pages/organization/SalesDashboard';
 
 /**
- * Landing dashboard for enterprise-internal staff accounts (magasinier/
- * vendeur/caissier/comptable — see organization-staff module). Magasinier
- * already has a real module (Stock & Approvisionnement, backend-gated via
- * StockService.resolveMerchantAccess()) so gets it directly here; the other
- * roles stay on the placeholder until their own modules (ventes, caisse)
- * land.
+ * Landing screen for enterprise-internal staff (organization-staff module).
+ * Each role gets the screen built for its job, with the sidebar entries
+ * defined per role in lib/nav-items.ts:
+ *  - magasinier → Stock & Approvisionnement (full stock management)
+ *  - vendeur    → sales dashboard in its light variant (volume and revenue,
+ *                 no margins — the API strips those for this role)
+ *  - caissier   → sales dashboard (full revenue view, transactions, receive)
+ *  - comptable  → sales dashboard (full financial view, margins and fees)
  */
 export default function StaffHome() {
   const user = useAuthStore((s) => s.user);
@@ -24,16 +19,5 @@ export default function StaffHome() {
     return <StockPage />;
   }
 
-  return (
-    <div className="p-6 flex flex-col items-center justify-center min-h-[70vh] text-center max-w-md mx-auto">
-      <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-        <UserCircle className="w-8 h-8 text-primary" />
-      </div>
-      <h1 className="text-xl font-bold text-foreground mb-1">{user?.full_name || user?.email}</h1>
-      <p className="text-muted-foreground">{user ? ROLE_LABELS[user.role] || user.role : ''}</p>
-      <p className="text-sm text-muted-foreground mt-4">
-        Vos fonctionnalités seront bientôt disponibles ici.
-      </p>
-    </div>
-  );
+  return <SalesDashboardPage variant={user?.role === 'vendeur' ? 'light' : 'full'} />;
 }

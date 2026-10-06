@@ -203,7 +203,7 @@ export class StockController {
   }
 
   @Put(':id/stock-items/:itemId')
-  @ApiOperation({ summary: 'Update a stock item (owner or magasinier) — quantity is read-only here, use movements. Requires the stock password.' })
+  @ApiOperation({ summary: 'Update a stock item (owner or magasinier). A changed quantity is recorded as an adjustment movement. Requires the stock password.' })
   async updateItem(
     @Param('id') merchantId: string,
     @Param('itemId') itemId: string,

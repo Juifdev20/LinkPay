@@ -1,4 +1,4 @@
-import { LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, type LucideIcon } from 'lucide-react';
 
 export const ALL_ROLES = ['merchant', 'cashier', 'enterprise', 'client', 'admin', 'super_admin'];
 
@@ -57,7 +57,14 @@ export const navItems: NavItem[] = [
   // Utilisateurs internes moved to Settings.tsx's secondaryLinks instead
   // per product decision (only Stock & Approvisionnement stays a
   // first-level module in the sidebar/drawer).
-  { to: '/dashboard/organization/stock', label: 'Stock & Approvisionnement', icon: Boxes, roles: ['enterprise'] },
+  { to: '/dashboard/organization/sales', label: 'Ventes', icon: ShoppingCart, roles: ['enterprise', 'vendeur', 'caissier'] },
+  { to: '/dashboard/organization/sales/history', label: 'Historique', icon: History, roles: ['enterprise', 'vendeur', 'caissier', 'comptable'] },
+  { to: '/dashboard/organization/stock', label: 'Stock & Approvisionnement', icon: Boxes, roles: ['enterprise', 'magasinier', 'vendeur'] },
+  // Staff-only finance entries (the enterprise owner reaches the same screens
+  // from its own Settings → Gestion, so they aren't duplicated for enterprise).
+  { to: '/dashboard/organization/sales/dashboard', label: 'Tableau de bord ventes', icon: BarChart3, roles: ['vendeur', 'caissier', 'comptable'] },
+  { to: '/dashboard/organization/transactions', label: 'Transactions', icon: Receipt, roles: ['caissier', 'comptable'] },
+  { to: '/dashboard/organization/receive', label: 'Recevoir', icon: QrCode, roles: ['caissier'] },
   { to: '/dashboard/notifications', label: 'Notifications', icon: Bell, roles: [...ALL_ROLES, ...STAFF_ROLES] },
   { to: '/dashboard/settings', label: 'Paramètres', icon: Settings, roles: [...ALL_ROLES, ...STAFF_ROLES] },
 ];

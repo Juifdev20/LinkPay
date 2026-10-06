@@ -72,7 +72,7 @@ export class OrganizationsService {
       throw new NotFoundException('Organization not found');
     }
 
-    return data;
+    return this.withOwnerPhone(data);
   }
 
   async getOrganizationByOwner(ownerId: string) {
@@ -86,7 +86,18 @@ export class OrganizationsService {
       throw new NotFoundException('No organization account found');
     }
 
-    return this.ensureScanLinkPayQr(data);
+    return this.withOwnerPhone(await this.ensureScanLinkPayQr(data));
+  }
+
+  /** The business phone shown on invoices is the owner account's phone (the
+   * number the owner registered with). Read from profiles, never stored twice. */
+  private async withOwnerPhone(org: any) {
+    const { data } = await this.supabaseService.getClient()
+      .from('profiles')
+      .select('phone')
+      .eq('id', org.owner_id)
+      .maybeSingle();
+    return { ...org, owner_phone: data?.phone ?? null };
   }
 
   /** Public lookup for the "pay by ScanLinkPay number" flow — anyone with

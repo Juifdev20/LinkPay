@@ -10,6 +10,6 @@ import { NotificationsModule } from '../notifications/notifications.module';
   imports: [SupabaseModule, OrganizationsModule, NotificationsModule],
   controllers: [StockController, OrganizationStockController],
   providers: [StockService, StockPasswordService],
-  exports: [StockService],
+  exports: [StockService, StockPasswordService],
 })
 export class StockModule {}

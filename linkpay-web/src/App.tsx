@@ -50,6 +50,9 @@ import AdminOrganizationsPage from '@/pages/admin/Organizations';
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
 import StaffPage from '@/pages/organization/Staff';
 import StockPage from '@/pages/organization/Stock';
+import SalesPage from '@/pages/organization/Sales';
+import SalesDashboardPage from '@/pages/organization/SalesDashboard';
+import SalesHistoryPage from '@/pages/organization/SalesHistory';
 import CompanyProfilePage from '@/pages/organization/CompanyProfile';
 import OrganizationTransactionsPage from '@/pages/organization/Transactions';
 import OrganizationReceivePage from '@/pages/organization/Receive';
@@ -261,9 +264,33 @@ export default function App() {
           }
         />
         <Route
+          path="organization/sales"
+          element={
+            <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier']}>
+              <SalesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/sales/history"
+          element={
+            <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier', 'comptable']}>
+              <SalesHistoryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/sales/dashboard"
+          element={
+            <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier', 'comptable']}>
+              <SalesDashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="organization/stock"
           element={
-            <ProtectedRoute roles={['enterprise', 'magasinier']}>
+            <ProtectedRoute roles={['enterprise', 'magasinier', 'vendeur']}>
               <StockPage />
             </ProtectedRoute>
           }
@@ -279,7 +306,7 @@ export default function App() {
         <Route
           path="organization/transactions"
           element={
-            <ProtectedRoute roles={['enterprise']}>
+            <ProtectedRoute roles={['enterprise', 'caissier', 'comptable']}>
               <OrganizationTransactionsPage />
             </ProtectedRoute>
           }
@@ -287,7 +314,7 @@ export default function App() {
         <Route
           path="organization/receive"
           element={
-            <ProtectedRoute roles={['enterprise']}>
+            <ProtectedRoute roles={['enterprise', 'caissier']}>
               <OrganizationReceivePage />
             </ProtectedRoute>
           }

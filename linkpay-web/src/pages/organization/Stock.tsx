@@ -15,6 +15,9 @@ import { StockPasswordResetDialog } from '@/components/stock/StockPasswordResetD
 export default function StockPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  // Vendeur sees the stock read-only (what can be sold, what is low); the
+  // backend enforces the same rule on every write endpoint.
+  const canManage = user?.role !== 'vendeur';
   const [storeFilter, setStoreFilter] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [lowStockOnly, setLowStockOnly] = useState(false);
@@ -28,7 +31,7 @@ export default function StockPage() {
     queryFn: async () => (await api.get('/organizations/me')).data,
   });
 
-  const { data: merchants } = useQuery({
+  const { data: merchants, isFetched: merchantsFetched } = useQuery({
     queryKey: ['org-merchants', org?.id],
     queryFn: async () => (await api.get(`/organizations/${org.id}/merchants`)).data,
     enabled: !!org?.id,
@@ -120,7 +123,7 @@ export default function StockPage() {
       <div className="sticky top-20 md:top-0 z-10 bg-background px-6 pt-6 pb-4 space-y-4">
         <PageHeader
           title="Stock & Approvisionnement"
-          action={{ label: 'Ajouter', icon: Plus, onClick: openCreateForm }}
+          action={canManage ? { label: 'Ajouter', icon: Plus, onClick: openCreateForm } : undefined}
         />
 
         <div className="grid grid-cols-3 gap-2">
@@ -221,7 +224,11 @@ export default function StockPage() {
       </div>
 
       <div className="px-6 pb-6 space-y-4">
-        {!merchants?.length ? (
+        {!merchantsFetched ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : !merchants?.length ? (
           <p className="text-muted-foreground text-center py-12">Crée d'abord une boutique pour pouvoir y ajouter du stock.</p>
         ) : !visibleItems.length ? (
           <p className="text-muted-foreground text-center py-12">

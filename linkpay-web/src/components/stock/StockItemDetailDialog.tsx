@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { useAuthStore } from '@/lib/auth-store';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +15,7 @@ const CONDITIONS: Record<string, string> = { neuf: 'Neuf', occasion: 'Occasion',
 const MOVEMENT_TYPES = [
   { value: 'in', label: 'Réapprovisionnement (+)' },
   { value: 'out', label: 'Perte / casse (-)' },
-  { value: 'adjustment', label: 'Correction' },
+  { value: 'adjustment', label: 'Correction (saisir un nombre négatif pour diminuer)' },
 ];
 
 const ATTRIBUTE_LABELS: Record<string, string> = Object.fromEntries(
@@ -35,6 +36,7 @@ export function StockItemDetailDialog({
   onDelete: (item: any) => void;
 }) {
   const queryClient = useQueryClient();
+  const canManage = useAuthStore((s) => s.user?.role) !== 'vendeur';
   const [showMovement, setShowMovement] = useState(false);
   const [movement, setMovement] = useState({ type: 'in', quantity: '', reason: '' });
 
@@ -145,23 +147,25 @@ export function StockItemDetailDialog({
               </Button>
             </div>
           </div>
-        ) : (
+        ) : canManage ? (
           <Button variant="outline" className="w-full mb-4" onClick={() => setShowMovement(true)}>
             <Boxes className="mr-2 w-4 h-4" />
             Mouvement de stock
           </Button>
-        )}
+        ) : null}
 
-        <div className="flex gap-2">
-          <Button variant="outline" className="flex-1" onClick={() => onEdit(item)}>
-            <Pencil className="mr-2 w-4 h-4" />
-            Modifier
-          </Button>
-          <Button variant="outline" className="flex-1 text-destructive hover:text-destructive" onClick={() => onDelete(item)}>
-            <Trash2 className="mr-2 w-4 h-4" />
-            Supprimer
-          </Button>
-        </div>
+        {canManage && (
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => onEdit(item)}>
+              <Pencil className="mr-2 w-4 h-4" />
+              Modifier
+            </Button>
+            <Button variant="outline" className="flex-1 text-destructive hover:text-destructive" onClick={() => onDelete(item)}>
+              <Trash2 className="mr-2 w-4 h-4" />
+              Supprimer
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

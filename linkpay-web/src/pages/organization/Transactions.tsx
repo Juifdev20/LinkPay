@@ -11,9 +11,9 @@ import { Loader2 } from 'lucide-react';
 
 const PAGE_SIZE = 20;
 
-type Preset = 'today' | 'week' | 'month' | 'year' | 'all' | 'custom';
+export type Preset = 'today' | 'week' | 'month' | 'year' | 'all' | 'custom';
 
-const PRESETS: { value: Preset; label: string }[] = [
+export const PRESETS: { value: Preset; label: string }[] = [
   { value: 'all', label: 'Tout' },
   { value: 'today', label: "Aujourd'hui" },
   { value: 'week', label: 'Cette semaine' },
@@ -25,7 +25,7 @@ const PRESETS: { value: Preset; label: string }[] = [
 /** [from, to) bounds for a preset, in local time — `to` is exclusive (the
  * instant the next period starts), matching the backend's `.lt('created_at',
  * to)` so the boundary day is never double-counted or dropped. */
-function presetRange(preset: Preset, customDate: string): { from?: string; to?: string } {
+export function presetRange(preset: Preset, customDate: string): { from?: string; to?: string } {
   const now = new Date();
   const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const addDays = (d: Date, n: number) => new Date(d.getTime() + n * 86400000);

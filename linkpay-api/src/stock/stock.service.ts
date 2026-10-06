@@ -14,6 +14,9 @@ const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 // (ventes, caisse) land, same reasoning as elsewhere in this codebase of
 // only building the access path a real feature needs right now.
 const STOCK_STAFF_ROLES = ['magasinier'];
+// Read-only stock access (lists, movement history, org summary) — vendeur and
+// caissier need it to know what they can sell, but never to change anything.
+const STOCK_READ_ROLES = ['magasinier', 'vendeur', 'caissier'];
 
 @Injectable()
 export class StockService {
@@ -39,6 +42,7 @@ export class StockService {
     callerId: string | undefined,
     callerRole: string | undefined,
     callerOrgId: string | undefined,
+    readOnly = false,
   ) {
     const { data: merchant, error } = await this.supabaseService.getClient()
       .from('merchants')
@@ -52,17 +56,19 @@ export class StockService {
 
     if (this.isAdmin(callerRole)) return merchant;
     if (callerId && merchant.owner_id === callerId) return merchant;
-    if (callerOrgId && merchant.organization_id === callerOrgId && STOCK_STAFF_ROLES.includes(callerRole || '')) {
+    const allowedRoles = readOnly ? STOCK_READ_ROLES : STOCK_STAFF_ROLES;
+    if (callerOrgId && merchant.organization_id === callerOrgId && allowedRoles.includes(callerRole || '')) {
       return merchant;
     }
 
     throw new ForbiddenException('You do not manage this store\'s stock');
   }
 
-  private assertOrgAccess(org: any, callerId: string | undefined, callerRole: string | undefined, callerOrgId: string | undefined) {
+  private assertOrgAccess(org: any, callerId: string | undefined, callerRole: string | undefined, callerOrgId: string | undefined, readOnly = false) {
     if (this.isAdmin(callerRole)) return;
     if (callerId && org.owner_id === callerId) return;
-    if (callerOrgId && org.id === callerOrgId && STOCK_STAFF_ROLES.includes(callerRole || '')) return;
+    const allowedRoles = readOnly ? STOCK_READ_ROLES : STOCK_STAFF_ROLES;
+    if (callerOrgId && org.id === callerOrgId && allowedRoles.includes(callerRole || '')) return;
     throw new ForbiddenException('You do not manage this organization\'s stock');
   }
 
@@ -127,7 +133,7 @@ export class StockService {
   }
 
   async listItems(merchantId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
-    await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
+    await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId, true);
 
     const { data, error } = await this.supabaseService.getClient()
       .from('stock_items')
@@ -165,10 +171,11 @@ export class StockService {
     const merchant = await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
     await this.assertStockPassword(merchant, stockPassword);
 
-    // quantity is deliberately not in this list — it only ever changes
-    // through createMovement() below, which keeps stock_movements as the
-    // single source of truth (enforced in the DB by the
-    // trg_apply_stock_movement trigger from migration 031).
+    // quantity is not written directly. When the product sheet sends a new
+    // quantity, the difference is recorded as an 'adjustment' movement via
+    // createMovement() below, so stock_movements stays the single source of
+    // truth (enforced in the DB by the trg_apply_stock_movement trigger from
+    // migration 031).
     const allowedFields = [
       'name', 'category', 'item_type', 'attributes', 'image_url', 'description',
       'brand', 'model', 'serial_number', 'condition', 'warranty_months',
@@ -179,6 +186,15 @@ export class StockService {
       if (updates[key] !== undefined) filtered[key] = updates[key];
     }
 
+    const { data: current, error: currentError } = await this.supabaseService.getClient()
+      .from('stock_items')
+      .select('quantity')
+      .eq('id', itemId)
+      .eq('merchant_id', merchantId)
+      .single();
+
+    if (currentError || !current) throw new NotFoundException('Stock item not found');
+
     const { data, error } = await this.supabaseService.getClient()
       .from('stock_items')
       .update(filtered)
@@ -188,6 +204,17 @@ export class StockService {
       .single();
 
     if (error) throw new Error(`Failed to update stock item: ${error.message}`);
+
+    const newQuantity = updates.quantity;
+    if (typeof newQuantity === 'number' && newQuantity !== current.quantity) {
+      await this.createMovement(merchantId, itemId, callerId, callerRole, callerOrgId, {
+        type: 'adjustment',
+        quantity_delta: newQuantity - current.quantity,
+        reason: 'Modifiée depuis la fiche produit',
+      });
+      return { ...data, quantity: newQuantity };
+    }
+
     return data;
   }
 
@@ -321,7 +348,7 @@ export class StockService {
   }
 
   async listMovements(merchantId: string, itemId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
-    await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
+    await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId, true);
 
     const { data, error } = await this.supabaseService.getClient()
       .from('stock_movements')
@@ -340,7 +367,7 @@ export class StockService {
    * stores first, then query stock_items with merchant_id IN (...). */
   async getOrgStockItems(orgId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
     const org = await this.organizationsService.getOrganizationById(orgId);
-    this.assertOrgAccess(org, callerId, callerRole, callerOrgId);
+    this.assertOrgAccess(org, callerId, callerRole, callerOrgId, true);
 
     const merchants = await this.organizationsService.getOrganizationMerchants(orgId);
     const merchantIds = merchants.map((m) => m.id);

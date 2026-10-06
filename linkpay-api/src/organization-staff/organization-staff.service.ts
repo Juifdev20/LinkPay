@@ -49,6 +49,29 @@ export class OrganizationStaffService {
       throw new NotFoundException(`Rôle "${data.role_slug}" introuvable`);
     }
 
+    // Check phone and email up front so the admin gets a readable reason
+    // instead of Supabase's raw "already registered" message.
+    if (data.telephone) {
+      const normalizedPhone = data.telephone.replace(/[^\d]/g, '');
+      const { data: phoneTaken } = await this.supabaseService.getClient()
+        .from('profiles')
+        .select('id, phone')
+        .like('phone', `%${normalizedPhone.slice(-9)}`)
+        .limit(1);
+      if (phoneTaken && phoneTaken.length > 0) {
+        throw new ConflictException('Ce numéro de téléphone est déjà utilisé par un autre compte');
+      }
+    }
+
+    const { data: emailTaken } = await this.supabaseService.getClient()
+      .from('profiles')
+      .select('id')
+      .ilike('email', data.email)
+      .limit(1);
+    if (emailTaken && emailTaken.length > 0) {
+      throw new ConflictException('Un compte existe déjà avec cet email');
+    }
+
     const tempPassword = this.generateTempPassword();
     const fullName = `${data.prenom} ${data.nom}`.trim();
 

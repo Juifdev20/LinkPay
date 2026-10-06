@@ -11,6 +11,7 @@ import { WalletPinService } from '../wallets/wallet-pin.service';
 import { WalletLimitsService } from '../wallets/wallet-limits.service';
 import { AuditService } from '../audit/audit.service';
 import { SavingsService } from '../savings/savings.service';
+import { SalesService } from '../sales/sales.service';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
 
@@ -31,6 +32,7 @@ export class PaymentsService {
     private walletLimitsService: WalletLimitsService,
     private auditService: AuditService,
     private savingsService: SavingsService,
+    private salesService: SalesService,
   ) {}
 
   async createPayment(data: {
@@ -335,6 +337,8 @@ export class PaymentsService {
 
     try {
       const transaction = await this.handleSuccessfulPayment(intent, { psp_intent_id: pspIntentId });
+
+      await this.salesService.markPaidByPaymentRequest(request.id, transaction?.id);
 
       await this.auditService.log({
         user_id: userId,

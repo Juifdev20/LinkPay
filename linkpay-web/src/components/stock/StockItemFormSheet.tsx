@@ -133,7 +133,10 @@ export function StockItemFormSheet({
         serial_number: form.serial_number || undefined,
         condition: form.condition || undefined,
         warranty_months: form.warranty_months ? Number(form.warranty_months) : undefined,
-        quantity: form.quantity ? Number(form.quantity) : 0,
+        // Editing: an empty field means "leave the stock as it is", never 0.
+        quantity: isEditing
+          ? (form.quantity === '' ? undefined : Number(form.quantity))
+          : (form.quantity ? Number(form.quantity) : 0),
         unit_price_cents: form.unit_price ? Math.round(parseFloat(form.unit_price) * 100) : 0,
         currency: form.currency,
         low_stock_threshold: form.low_stock_threshold ? Number(form.low_stock_threshold) : 5,
@@ -319,11 +322,11 @@ export function StockItemFormSheet({
             id="stock_quantity"
             type="number"
             inputMode="numeric"
-            disabled={isEditing}
+            min={0}
             value={form.quantity}
             onChange={(e) => set('quantity', e.target.value)}
           />
-          {isEditing && <p className="text-xs text-muted-foreground">Utilise "Mouvement de stock" pour ajuster la quantité.</p>}
+          {isEditing && <p className="text-xs text-muted-foreground">Modifier ce champ ajuste le stock (enregistré dans l'historique des mouvements).</p>}
         </div>
 
         <div className="space-y-2">
