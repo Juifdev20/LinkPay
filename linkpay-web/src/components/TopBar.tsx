@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom';
-import { User } from 'lucide-react';
+import { Menu, User } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import { NotificationsBell } from '@/components/NotificationsBell';
+import { useDrawerStore } from '@/lib/drawer-store';
 
 /**
  * Fixed (not just sticky) top bar for mobile — stays perfectly still while
@@ -15,6 +16,8 @@ import { NotificationsBell } from '@/components/NotificationsBell';
  * spot for it being left as its own independent quick-access affordance.
  */
 export function TopBar() {
+  const openDrawer = useDrawerStore((s) => s.open);
+
   return (
     // Two layers, same convention as BottomNav's `safe-area-bottom`: the
     // outer element only carries the safe-area inset (0 on non-notched
@@ -23,7 +26,20 @@ export function TopBar() {
     // on ordinary devices.
     <div className="md:hidden fixed top-0 left-0 right-0 z-50 border-b border-border bg-card shadow-nav rounded-b-3xl safe-area-top">
       <div className="flex items-center justify-between px-4 py-3">
-        <Logo size="sm" />
+        <div className="flex items-center gap-1">
+          {/* Mobile equivalent of the desktop sidebar — opens
+              MobileNavDrawer.tsx (business modules: Stock &
+              Approvisionnement, Transactions, Utilisateurs internes...),
+              distinct from the profile icon's Paramètres destination. */}
+          <button
+            onClick={openDrawer}
+            className="w-10 h-10 rounded-xl hover:bg-accent flex items-center justify-center transition-colors"
+            aria-label="Menu"
+          >
+            <Menu className="w-5 h-5 text-muted-foreground" />
+          </button>
+          <Logo size="sm" />
+        </div>
         <div className="flex items-center gap-1">
           <NotificationsBell />
           <Link

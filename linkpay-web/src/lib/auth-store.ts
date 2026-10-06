@@ -172,8 +172,19 @@ export const useAuthStore = create<AuthState>((set) => ({
         applySupabaseSession({ access_token: supaAccess, refresh_token: supaRefresh });
       }
       set({ user: data, isAuthenticated: true, isLoading: false });
-    } catch {
-      set({ user: null, isAuthenticated: false, isLoading: false });
+    } catch (err: any) {
+      // Only a real 401 means "this session is genuinely dead" — the axios
+      // interceptor already retried with the refresh token by then (and
+      // clears tokens + redirects itself if that also failed). Anything
+      // else — backend restarting, offline, timeout, 5xx — is transient:
+      // keep the stored session instead of throwing the user back to the
+      // login page for a hiccup. Same philosophy as the interceptor's own
+      // "a network failure must not wipe the session" fix.
+      if (err?.response?.status === 401) {
+        set({ user: null, isAuthenticated: false, isLoading: false });
+      } else {
+        set({ isLoading: false });
+      }
     }
   },
 }));

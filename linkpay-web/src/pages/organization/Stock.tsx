@@ -1,56 +1,37 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
+import { useAuthStore } from '@/lib/auth-store';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/PageHeader';
-import { formatCurrency } from '@/lib/utils';
-import { Loader2, Plus, X, PackagePlus, AlertTriangle, Boxes } from 'lucide-react';
-
-const CONDITIONS = [
-  { value: 'neuf', label: 'Neuf' },
-  { value: 'occasion', label: 'Occasion' },
-  { value: 'reconditionne', label: 'Reconditionné' },
-];
-
-const MOVEMENT_TYPES = [
-  { value: 'in', label: 'Réapprovisionnement (+)' },
-  { value: 'out', label: 'Perte / casse (-)' },
-  { value: 'adjustment', label: 'Correction' },
-];
-
-const emptyForm = {
-  merchant_id: '',
-  name: '',
-  brand: '',
-  model: '',
-  serial_number: '',
-  condition: '',
-  warranty_months: '',
-  quantity: '',
-  unit_price: '',
-  currency: 'CDF' as 'CDF' | 'USD',
-  low_stock_threshold: '5',
-};
+import { formatCurrency, cn } from '@/lib/utils';
+import { Plus, PackagePlus, AlertTriangle, Boxes, KeyRound, Loader2, ChevronRight, X } from 'lucide-react';
+import { STOCK_CATEGORIES, getCategoryIcon } from '@/lib/stock-categories';
+import { StockItemFormSheet, emptyStockItemForm, type StockItemFormValues } from '@/components/stock/StockItemFormSheet';
+import { StockItemDetailDialog } from '@/components/stock/StockItemDetailDialog';
+import { StockPasswordDialog } from '@/components/stock/StockPasswordDialog';
+import { StockPasswordResetDialog } from '@/components/stock/StockPasswordResetDialog';
 
 export default function StockPage() {
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  // Vendeur sees the stock read-only (what can be sold, what is low); the
+  // backend enforces the same rule on every write endpoint.
+  const canManage = user?.role !== 'vendeur';
   const [storeFilter, setStoreFilter] = useState<string | null>(null);
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState(emptyForm);
-  const [movementItemId, setMovementItemId] = useState<string | null>(null);
-  const [movement, setMovement] = useState({ type: 'in', quantity: '', reason: '' });
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [detailItem, setDetailItem] = useState<any | null>(null);
+  const [formState, setFormState] = useState<{ initial: StockItemFormValues; itemId?: string; stockPassword?: string } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ type: 'edit' | 'delete'; item: any } | null>(null);
+  const [showResetPassword, setShowResetPassword] = useState(false);
 
   const { data: org } = useQuery({
     queryKey: ['my-organization'],
     queryFn: async () => (await api.get('/organizations/me')).data,
   });
 
-  const { data: merchants } = useQuery({
+  const { data: merchants, isFetched: merchantsFetched } = useQuery({
     queryKey: ['org-merchants', org?.id],
     queryFn: async () => (await api.get(`/organizations/${org.id}/merchants`)).data,
     enabled: !!org?.id,
@@ -62,283 +43,287 @@ export default function StockPage() {
     enabled: !!org?.id,
   });
 
-  const { data: summary } = useQuery({
-    queryKey: ['org-stock-summary', org?.id],
-    queryFn: async () => (await api.get(`/organizations/${org.id}/stock-summary`)).data,
-    enabled: !!org?.id,
+  const deleteMutation = useMutation({
+    mutationFn: async ({ item, stockPassword }: { item: any; stockPassword: string }) =>
+      api.delete(`/merchants/${item.merchant_id}/stock-items/${item.id}`, { data: { stock_password: stockPassword } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-stock-items', org.id] });
+      setDetailItem(null);
+    },
+    onError: (err: any) => {
+      // Wrong/expired password — reopen the prompt instead of failing silently.
+      setPendingAction({ type: 'delete', item: deleteMutation.variables!.item });
+      void err;
+    },
   });
 
-  const isElectronics = org?.sector === 'electronique';
-  const invalidateStock = () => {
-    queryClient.invalidateQueries({ queryKey: ['org-stock-items', org.id] });
-    queryClient.invalidateQueries({ queryKey: ['org-stock-summary', org.id] });
+  // Store + category define the scope the top stat cards summarize — both
+  // react live to a single click, per the "tableau de bord dynamique"
+  // request. lowStockOnly is a separate, further narrowing applied only to
+  // the grid below (triggered from the "Stock bas" card itself), so the
+  // stat cards keep showing the real totals for the current store/category
+  // scope even while that narrower view is active.
+  let scopedItems = storeFilter ? (items || []).filter((i: any) => i.merchant_id === storeFilter) : (items || []);
+  if (categoryFilter) scopedItems = scopedItems.filter((i: any) => i.category === categoryFilter);
+
+  const totalItems = scopedItems.length;
+  const totalUnits = scopedItems.reduce((sum: number, i: any) => sum + (i.quantity || 0), 0);
+  const lowStockItems = scopedItems.filter((i: any) => i.quantity <= i.low_stock_threshold);
+
+  const visibleItems = lowStockOnly ? lowStockItems : scopedItems;
+
+  const openCreateForm = () => {
+    const effectiveMerchantId = merchants?.length === 1 ? merchants[0].id : '';
+    setFormState({ initial: { ...emptyStockItemForm, merchant_id: effectiveMerchantId } });
   };
 
-  // The store picker only renders when there's more than one boutique (see
-  // JSX below) — with exactly one, form.merchant_id is never set by the
-  // user, so fall back to it automatically here rather than leaving the
-  // create button silently broken for the common single-store case.
-  const effectiveMerchantId = form.merchant_id || (merchants?.length === 1 ? merchants[0].id : '');
+  const openEditForm = (item: any, stockPassword: string) => {
+    setDetailItem(null);
+    setFormState({
+      itemId: item.id,
+      stockPassword,
+      initial: {
+        merchant_id: item.merchant_id,
+        category: item.category || '',
+        item_type: item.item_type || '',
+        name: item.name || '',
+        brand: item.brand || '',
+        model: item.model || '',
+        serial_number: item.serial_number || '',
+        condition: item.condition || '',
+        warranty_months: item.warranty_months != null ? String(item.warranty_months) : '',
+        attributes: item.attributes || {},
+        description: item.description || '',
+        quantity: String(item.quantity ?? ''),
+        unit_price: item.unit_price_cents != null ? String(item.unit_price_cents / 100) : '',
+        currency: item.currency || 'CDF',
+        low_stock_threshold: item.low_stock_threshold != null ? String(item.low_stock_threshold) : '5',
+        image_url: item.image_url || '',
+      },
+    });
+  };
 
-  const createMutation = useMutation({
-    mutationFn: async () =>
-      (await api.post(`/merchants/${effectiveMerchantId}/stock-items`, {
-        name: form.name,
-        brand: form.brand || undefined,
-        model: form.model || undefined,
-        serial_number: form.serial_number || undefined,
-        condition: form.condition || undefined,
-        warranty_months: form.warranty_months ? Number(form.warranty_months) : undefined,
-        quantity: form.quantity ? Number(form.quantity) : 0,
-        unit_price_cents: form.unit_price ? Math.round(parseFloat(form.unit_price) * 100) : 0,
-        currency: form.currency,
-        low_stock_threshold: form.low_stock_threshold ? Number(form.low_stock_threshold) : 5,
-      })).data,
-    onSuccess: () => {
-      setShowAdd(false);
-      setForm(emptyForm);
-      invalidateStock();
-    },
-  });
-
-  const movementMutation = useMutation({
-    mutationFn: async (item: any) => {
-      const qty = Math.abs(Number(movement.quantity) || 0);
-      const quantity_delta = movement.type === 'out' ? -qty : movement.type === 'in' ? qty : (Number(movement.quantity) || 0);
-      return (await api.post(`/merchants/${item.merchant_id}/stock-items/${item.id}/movements`, {
-        type: movement.type,
-        quantity_delta,
-        reason: movement.reason || undefined,
-      })).data;
-    },
-    onSuccess: () => {
-      setMovementItemId(null);
-      setMovement({ type: 'in', quantity: '', reason: '' });
-      invalidateStock();
-    },
-  });
-
-  const visibleItems = storeFilter ? (items || []).filter((i: any) => i.merchant_id === storeFilter) : (items || []);
+  const handlePasswordUnlocked = (password: string) => {
+    if (!pendingAction) return;
+    const { type, item } = pendingAction;
+    setPendingAction(null);
+    if (type === 'edit') {
+      openEditForm(item, password);
+    } else {
+      deleteMutation.mutate({ item, stockPassword: password });
+    }
+  };
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl mx-auto">
-      <PageHeader title="Stock & Approvisionnement" />
+    <div className="max-w-6xl mx-auto">
+      {/* Fixed while the rest of the page scrolls underneath — top-20 on
+          mobile clears DashboardLayout's fixed TopBar, top-0 on desktop
+          stacks right below its own sticky header (same convention as
+          OnboardingWizard.tsx). */}
+      <div className="sticky top-20 md:top-0 z-10 bg-background px-6 pt-6 pb-4 space-y-4">
+        <PageHeader
+          title="Stock & Approvisionnement"
+          action={canManage ? { label: 'Ajouter', icon: Plus, onClick: openCreateForm } : undefined}
+        />
 
-      <div className="grid grid-cols-3 gap-3">
-        <Card>
-          <CardContent className="pt-5">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-2">
-              <Boxes className="w-5 h-5 text-primary" />
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-xl border border-border bg-card px-2 py-2 flex items-center gap-1.5">
+            <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <Boxes className="w-3.5 h-3.5 text-primary" />
             </div>
-            <p className="text-xl font-bold text-foreground">{summary?.total_items || 0}</p>
-            <p className="text-sm text-muted-foreground">Articles</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-2">
-              <PackagePlus className="w-5 h-5 text-primary" />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-foreground leading-tight">{totalItems}</p>
+              <p className="text-[10px] leading-tight text-muted-foreground">Articles</p>
             </div>
-            <p className="text-xl font-bold text-foreground">{summary?.total_units || 0}</p>
-            <p className="text-sm text-muted-foreground">Unités en stock</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center mb-2">
-              <AlertTriangle className="w-5 h-5 text-destructive" />
+          </div>
+          <div className="rounded-xl border border-border bg-card px-2 py-2 flex items-center gap-1.5">
+            <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <PackagePlus className="w-3.5 h-3.5 text-primary" />
             </div>
-            <p className="text-xl font-bold text-foreground">{summary?.low_stock_count || 0}</p>
-            <p className="text-sm text-muted-foreground">Stock bas</p>
-          </CardContent>
-        </Card>
-      </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-foreground leading-tight">{totalUnits}</p>
+              <p className="text-[10px] leading-tight text-muted-foreground">En stock</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setLowStockOnly((v) => !v)}
+            className={cn(
+              'rounded-xl border px-2 py-2 flex items-center gap-1.5 text-left transition-colors',
+              lowStockOnly ? 'border-destructive bg-destructive/5' : 'border-border bg-card hover:border-destructive/30',
+            )}
+          >
+            <div className="w-7 h-7 rounded-lg bg-destructive/10 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle className="w-3.5 h-3.5 text-destructive" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-foreground leading-tight">{lowStockItems.length}</p>
+              <p className="text-[10px] leading-tight text-muted-foreground">Stock bas</p>
+            </div>
+          </button>
+        </div>
 
-      {merchants?.length > 1 && (
+        {merchants?.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            <button
+              onClick={() => setStoreFilter(null)}
+              className={cn('flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-medium border', !storeFilter ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground')}
+            >
+              Toutes les boutiques
+            </button>
+            {merchants.map((m: any) => (
+              <button
+                key={m.id}
+                onClick={() => setStoreFilter(m.id)}
+                className={cn('flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-medium border', storeFilter === m.id ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground')}
+              >
+                {m.name}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex gap-2 overflow-x-auto pb-1">
           <button
-            onClick={() => setStoreFilter(null)}
-            className={`flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-medium border ${!storeFilter ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'}`}
+            onClick={() => setCategoryFilter(null)}
+            className={cn('flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-medium border', !categoryFilter ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground')}
           >
-            Toutes les boutiques
+            Toutes catégories
           </button>
-          {merchants.map((m: any) => (
+          {STOCK_CATEGORIES.map((c) => (
             <button
-              key={m.id}
-              onClick={() => setStoreFilter(m.id)}
-              className={`flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-medium border ${storeFilter === m.id ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'}`}
+              key={c.value}
+              onClick={() => setCategoryFilter(c.value)}
+              className={cn('flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border', categoryFilter === c.value ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground')}
             >
-              {m.name}
+              <c.icon className="w-3.5 h-3.5" />
+              {c.label}
             </button>
           ))}
         </div>
-      )}
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Articles</CardTitle>
-          <Button size="sm" onClick={() => setShowAdd(true)} disabled={!merchants?.length}>
-            <Plus className="mr-1 w-4 h-4" />
-            Ajouter
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {!merchants?.length && !showAdd && (
-            <p className="text-muted-foreground text-center py-6">Crée d'abord une boutique pour pouvoir y ajouter du stock.</p>
-          )}
+        {lowStockOnly && (
+          <div className="flex items-center gap-2 rounded-xl bg-destructive/5 border border-destructive/20 px-3 py-2">
+            <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0" />
+            <p className="text-sm text-destructive flex-1">Affichage : articles en stock bas uniquement — à réapprovisionner.</p>
+            <button onClick={() => setLowStockOnly(false)} className="text-destructive hover:text-destructive/80 flex-shrink-0">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
-          {showAdd && (
-            <div className="rounded-xl border border-border p-4 mb-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="font-semibold text-foreground text-sm">Nouvel article</p>
-                <button onClick={() => setShowAdd(false)} className="text-muted-foreground hover:text-foreground">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              {merchants?.length > 1 && (
-                <div className="space-y-2">
-                  <Label htmlFor="stock_merchant">Boutique</Label>
-                  <Select id="stock_merchant" value={form.merchant_id} onChange={(e) => setForm({ ...form, merchant_id: e.target.value })}>
-                    <option value="">Sélectionner...</option>
-                    {merchants.map((m: any) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </Select>
-                </div>
-              )}
-              <div className="space-y-2">
-                <Label htmlFor="stock_name">Nom de l'article</Label>
-                <Input id="stock_name" placeholder="Samsung Galaxy A54" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-              </div>
+        {user?.role === 'enterprise' && org?.id && (
+          <button
+            onClick={() => setShowResetPassword(true)}
+            className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            Réinitialiser le mot de passe de gestion de stock
+          </button>
+        )}
+      </div>
 
-              {isElectronics && (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="stock_brand">Marque</Label>
-                      <Input id="stock_brand" placeholder="Samsung" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="stock_model">Modèle</Label>
-                      <Input id="stock_model" placeholder="Galaxy A54" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="stock_serial">Numéro de série / IMEI</Label>
-                    <Input id="stock_serial" value={form.serial_number} onChange={(e) => setForm({ ...form, serial_number: e.target.value })} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="stock_condition">État</Label>
-                      <Select id="stock_condition" value={form.condition} onChange={(e) => setForm({ ...form, condition: e.target.value })}>
-                        <option value="">Sélectionner...</option>
-                        {CONDITIONS.map((c) => (
-                          <option key={c.value} value={c.value}>{c.label}</option>
-                        ))}
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="stock_warranty">Garantie (mois)</Label>
-                      <Input id="stock_warranty" type="number" inputMode="numeric" value={form.warranty_months} onChange={(e) => setForm({ ...form, warranty_months: e.target.value })} />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="stock_quantity">Quantité initiale</Label>
-                  <Input id="stock_quantity" type="number" inputMode="numeric" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="stock_threshold">Seuil d'alerte</Label>
-                  <Input id="stock_threshold" type="number" inputMode="numeric" value={form.low_stock_threshold} onChange={(e) => setForm({ ...form, low_stock_threshold: e.target.value })} />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="stock_price">Prix de vente unitaire</Label>
-                <Input id="stock_price" type="number" inputMode="decimal" value={form.unit_price} onChange={(e) => setForm({ ...form, unit_price: e.target.value })} />
-              </div>
-
-              <Button
-                className="w-full"
-                disabled={!form.name || !effectiveMerchantId || createMutation.isPending}
-                onClick={() => createMutation.mutate()}
-              >
-                {createMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
-                Enregistrer
-              </Button>
-            </div>
-          )}
-
-          {visibleItems.length ? (
-            <div>
-              {visibleItems.map((item: any) => (
-                <div key={item.id} className="py-3 border-b border-border last:border-0">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-foreground truncate">{item.name}</p>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {[item.brand, item.model].filter(Boolean).join(' ')}
-                        {item.brand || item.model ? ' · ' : ''}
-                        {item.merchant_name}
-                      </p>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="font-semibold text-foreground">{item.quantity} unités</p>
-                      <p className="text-sm text-muted-foreground">{formatCurrency(item.unit_price_cents, item.currency)}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    {item.quantity <= item.low_stock_threshold && (
-                      <Badge variant="error">Stock bas</Badge>
+      <div className="px-6 pb-6 space-y-4">
+        {!merchantsFetched ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : !merchants?.length ? (
+          <p className="text-muted-foreground text-center py-12">Crée d'abord une boutique pour pouvoir y ajouter du stock.</p>
+        ) : !visibleItems.length ? (
+          <p className="text-muted-foreground text-center py-12">
+            {lowStockOnly ? 'Aucun article en stock bas dans cette sélection.' : 'Aucun article pour le moment.'}
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {visibleItems.map((item: any) => {
+              const CategoryIcon = getCategoryIcon(item.category);
+              const lowStock = item.quantity <= item.low_stock_threshold;
+              return (
+                <div
+                  key={item.id}
+                  className="rounded-2xl border border-border bg-card overflow-hidden hover:shadow-card-hover hover:border-primary/30 transition-all"
+                >
+                  <div className="aspect-square bg-secondary flex items-center justify-center relative overflow-hidden">
+                    {item.image_url ? (
+                      <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <CategoryIcon className="w-10 h-10 text-muted-foreground" />
                     )}
-                    {item.condition && <Badge variant="secondary" className="capitalize">{CONDITIONS.find((c) => c.value === item.condition)?.label || item.condition}</Badge>}
+                    {lowStock && (
+                      <span className="absolute top-2 right-2">
+                        <Badge variant="error">Stock bas</Badge>
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-3">
+                    <p className="font-semibold text-foreground text-sm truncate">{item.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {[item.brand, item.model].filter(Boolean).join(' ') || (item.item_type || '—')}
+                    </p>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-sm font-semibold text-foreground">{formatCurrency(item.unit_price_cents, item.currency)}</span>
+                      <span className="text-xs text-muted-foreground">{item.quantity} u.</span>
+                    </div>
                     <button
-                      className="ml-auto text-sm font-medium text-primary hover:underline"
-                      onClick={() => setMovementItemId(movementItemId === item.id ? null : item.id)}
+                      type="button"
+                      onClick={() => setDetailItem(item)}
+                      className="flex items-center justify-center gap-1 w-full mt-3 pt-2 border-t border-border text-xs font-semibold text-primary hover:underline"
                     >
-                      Mouvement de stock
+                      Voir plus d'informations
+                      <ChevronRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
-
-                  {movementItemId === item.id && (
-                    <div className="mt-3 rounded-xl border border-border p-3 space-y-2">
-                      <Select value={movement.type} onChange={(e) => setMovement({ ...movement, type: e.target.value })}>
-                        {MOVEMENT_TYPES.map((t) => (
-                          <option key={t.value} value={t.value}>{t.label}</option>
-                        ))}
-                      </Select>
-                      <Input
-                        type="number"
-                        placeholder="Quantité"
-                        value={movement.quantity}
-                        onChange={(e) => setMovement({ ...movement, quantity: e.target.value })}
-                      />
-                      <Input
-                        placeholder="Motif (optionnel)"
-                        value={movement.reason}
-                        onChange={(e) => setMovement({ ...movement, reason: e.target.value })}
-                      />
-                      <Button
-                        size="sm"
-                        className="w-full"
-                        disabled={!movement.quantity || movementMutation.isPending}
-                        onClick={() => movementMutation.mutate(item)}
-                      >
-                        {movementMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
-                        Confirmer
-                      </Button>
-                    </div>
-                  )}
                 </div>
-              ))}
-            </div>
-          ) : (
-            !showAdd && merchants?.length > 0 && <p className="text-muted-foreground text-center py-6">Aucun article pour le moment</p>
-          )}
-        </CardContent>
-      </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {detailItem && (
+        <StockItemDetailDialog
+          item={detailItem}
+          orgId={org.id}
+          onClose={() => setDetailItem(null)}
+          onEdit={(item) => setPendingAction({ type: 'edit', item })}
+          onDelete={(item) => setPendingAction({ type: 'delete', item })}
+        />
+      )}
+
+      {formState && merchants && (
+        <StockItemFormSheet
+          orgId={org.id}
+          merchants={merchants}
+          initial={formState.initial}
+          itemId={formState.itemId}
+          stockPassword={formState.stockPassword}
+          onClose={() => setFormState(null)}
+          onSaved={() => setFormState(null)}
+        />
+      )}
+
+      {pendingAction && org?.id && (
+        <StockPasswordDialog
+          orgId={org.id}
+          open
+          onClose={() => setPendingAction(null)}
+          onUnlocked={handlePasswordUnlocked}
+        />
+      )}
+
+      {showResetPassword && org?.id && (
+        <StockPasswordResetDialog orgId={org.id} open onClose={() => setShowResetPassword(false)} />
+      )}
+
+      {deleteMutation.isPending && (
+        <div className="fixed inset-0 z-[70] bg-black/30 flex items-center justify-center">
+          <div className="bg-card rounded-2xl p-6 flex items-center gap-3 shadow-lg">
+            <Loader2 className="w-5 h-5 animate-spin text-primary" />
+            <span className="text-sm font-medium text-foreground">Suppression...</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

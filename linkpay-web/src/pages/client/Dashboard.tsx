@@ -47,7 +47,7 @@ export default function ClientDashboard() {
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
-      <PageHeader title="Mon compte" />
+      <PageHeader title="Mon compte" hideBack />
 
       <BalanceCard
         balances={wallet?.balances || { CDF: 0, USD: 0 }}

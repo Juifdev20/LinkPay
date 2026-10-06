@@ -21,7 +21,7 @@ const STEPS: { id: Step; label: string }[] = [
 ];
 
 const LEGAL_FORMS = ['Ets', 'SARL', 'SUARL', 'SA', 'Association/ONG', 'Autre'];
-const SECTORS = [
+export const SECTORS = [
   { value: 'electronique', label: "Shop d'appareils électroniques", icon: Smartphone },
   { value: 'supermarche', label: 'Supermarché', icon: ShoppingCart },
   { value: 'alimentation', label: 'Alimentation', icon: ShoppingBasket },

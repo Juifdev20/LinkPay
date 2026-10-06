@@ -120,8 +120,11 @@ export default function SettingsPage() {
     { to: '/dashboard/settlements', label: 'Règlements', icon: Wallet, roles: ['merchant'] },
     { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: ShieldCheck, roles: ['merchant', 'cashier'] },
     { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'] },
-    { to: '/dashboard/client/transactions', label: 'Mes paiements', icon: Receipt, roles: ['merchant', 'cashier', 'enterprise', 'client', 'admin', 'super_admin'] },
-    { to: '/dashboard/organization', label: 'Mon organisation', icon: Building2, roles: ['enterprise'] },
+    { to: '/dashboard/client/transactions', label: 'Mes paiements', icon: Receipt, roles: ['merchant', 'cashier', 'client', 'admin', 'super_admin'] },
+    { to: '/dashboard/organization/profile', label: 'Profil entreprise', icon: Building2, roles: ['enterprise'] },
+    { to: '/dashboard/organization/stores', label: 'Boutiques', icon: Store, roles: ['enterprise'] },
+    { to: '/dashboard/organization/transactions', label: 'Transactions', icon: Receipt, roles: ['enterprise'] },
+    { to: '/dashboard/organization/staff', label: 'Utilisateurs internes', icon: Users, roles: ['enterprise'] },
     { to: '/dashboard/admin', label: 'Administration', icon: ShieldCheck, roles: ['admin', 'super_admin'] },
     { to: '/dashboard/admin/merchants', label: 'Commerçants', icon: Users, roles: ['admin', 'super_admin'] },
     { to: '/dashboard/admin/settlements', label: 'Règlements (admin)', icon: Wallet, roles: ['admin', 'super_admin'] },
@@ -132,9 +135,11 @@ export default function SettingsPage() {
   const visibleSecondary = secondaryLinks.filter((l) => !user || l.roles.includes(user.role));
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl mx-auto">
+    <div className="p-6 space-y-6 max-w-5xl mx-auto">
       <PageHeader title="Paramètres" />
 
+      <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start space-y-6 lg:space-y-0">
+        <div className="space-y-6 min-w-0">
       {/* Become a merchant */}
       {user?.role === 'client' && (
         <Card>
@@ -287,7 +292,9 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       )}
+        </div>
 
+        <div className="space-y-6 min-w-0">
       {/* General settings */}
       <Card>
         <CardHeader>
@@ -369,6 +376,8 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
+        </div>
+      </div>
 
       {/* Footer logo */}
       <div className="flex justify-center pt-4">

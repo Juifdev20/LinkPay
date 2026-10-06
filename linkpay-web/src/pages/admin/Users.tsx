@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { formatDate } from '@/lib/utils';
 import { Loader2, KeyRound, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -15,6 +16,7 @@ export default function AdminUsersPage() {
   const queryClient = useQueryClient();
   const [selectedRole, setSelectedRole] = useState<Record<string, string>>({});
   const [page, setPage] = useState(1);
+  const [resetTarget, setResetTarget] = useState<any>(null);
 
   const { data } = useQuery({
     queryKey: ['admin-users', page],
@@ -83,7 +85,7 @@ export default function AdminUsersPage() {
                         variant="ghost"
                         title="Réinitialiser la session (libère l'appareil connecté)"
                         disabled={resetSessionMutation.isPending && resetSessionMutation.variables === u.id}
-                        onClick={() => resetSessionMutation.mutate(u.id)}
+                        onClick={() => setResetTarget(u)}
                       >
                         {resetSessionMutation.isPending && resetSessionMutation.variables === u.id ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
@@ -100,26 +102,16 @@ export default function AdminUsersPage() {
             <p className="text-muted-foreground text-center py-6">Aucun utilisateur</p>
           )}
 
-          {(data?.total || 0) > PAGE_SIZE && (
-            <div className="flex items-center justify-between pt-4 border-t border-border mt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-4 border-t border-border">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
                 <ChevronLeft className="w-4 h-4 mr-1" />
                 Précédent
               </Button>
               <p className="text-sm text-muted-foreground">
-                Page {page} / {totalPages} — {data.total} utilisateur(s)
+                Page {page} / {totalPages}
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => p + 1)}
-              >
+              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
                 Suivant
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
@@ -127,6 +119,15 @@ export default function AdminUsersPage() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={!!resetTarget}
+        onOpenChange={(open) => !open && setResetTarget(null)}
+        title="Réinitialiser la session ?"
+        description={`L'appareil actuellement connecté au compte ${resetTarget?.full_name || resetTarget?.email || ''} sera déconnecté.`}
+        confirmLabel="Réinitialiser"
+        onConfirm={() => resetSessionMutation.mutate(resetTarget.id)}
+      />
     </div>
   );
 }

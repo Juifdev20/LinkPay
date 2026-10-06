@@ -56,18 +56,19 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-background">
+    // The page itself never scrolls: only the form area does, so the branding
+    // panel and the browser frame stay fixed (same split as RegisterPage).
+    <div className="h-[100dvh] overflow-hidden flex flex-col md:flex-row bg-background">
       <AuthBrandingPanel
         headline="Bienvenue"
         tagline="ScanLinkPay simplifie vos paiements en RDC avec toute sécurité."
-        className="h-48 md:h-auto md:w-1/2"
+        className="h-48 shrink-0 md:h-full md:w-1/2"
       />
 
-      {/* Form section */}
-      <div className="flex-1 flex items-center justify-center p-4 md:p-12 lg:p-16 md:overflow-y-auto">
-        {/* Short form, never actually needs to scroll — plain card, no
-            max-height/scroll split (that's reserved for RegisterPage,
-            which genuinely overflows with its extra fields). */}
+      {/* Form section — the only scrollable area. The inner wrapper centres
+          the card vertically when there is room and lets it scroll when not. */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-12 lg:p-16">
+        <div className="min-h-full flex items-center justify-center">
         <div className="w-full max-w-md bg-card backdrop-blur-lg rounded-2xl p-6 md:p-8 border border-border shadow-2xl">
           <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Connexion</h2>
           <p className="text-muted-foreground mb-8 text-sm">
@@ -165,6 +166,7 @@ export default function LoginPage() {
               Créer un compte
             </Link>
           </p>
+        </div>
         </div>
       </div>
     </div>

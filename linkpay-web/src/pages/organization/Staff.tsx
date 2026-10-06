@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { PageHeader } from '@/components/PageHeader';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { downloadStaffCredentialPdf } from '@/lib/staff-credential-pdf';
-import { Loader2, Plus, X, Printer, Warehouse, ShoppingBag, Wallet, Calculator } from 'lucide-react';
+import { Loader2, Plus, X, Printer, KeyRound, Warehouse, ShoppingBag, Wallet, Calculator } from 'lucide-react';
 
 const ROLES = [
   { slug: 'magasinier', label: 'Magasinier', icon: Warehouse },
@@ -66,26 +67,46 @@ export default function StaffPage() {
     },
   });
 
+  const [resetTarget, setResetTarget] = useState<any>(null);
+
+  const printCredential = async (data: any, member: any) => {
+    const role = ROLES.find((r) => r.slug === member.role);
+    try {
+      await downloadStaffCredentialPdf({
+        nom: data.nom,
+        postnom: data.postnom,
+        prenom: data.prenom,
+        email: data.email,
+        temp_password: data.temp_password,
+        role_name: role?.label,
+        orgName: org.name,
+      });
+    } catch {
+      // Cancelled share sheet — nothing else depends on it here.
+    }
+  };
+
   const reprint = async (member: any) => {
     setReprintingId(member.id);
     try {
       const { data } = await api.get(`/organizations/${org.id}/staff/${member.id}/reprint`);
-      const role = ROLES.find((r) => r.slug === member.role);
-      try {
-        await downloadStaffCredentialPdf({
-          nom: data.nom,
-          postnom: data.postnom,
-          prenom: data.prenom,
-          email: data.email,
-          temp_password: data.temp_password,
-          role_name: role?.label,
-          orgName: org.name,
-        });
-      } catch {
-        // Cancelled share sheet — nothing else depends on it here.
-      }
+      await printCredential(data, member);
     } finally {
       setReprintingId(null);
+    }
+  };
+
+  // Forgotten-password path — the temp password was already used (so
+  // reprint is gone), this mints a fresh one and re-arms the forced change.
+  const resetPassword = async (member: any) => {
+    setReprintingId(member.id);
+    try {
+      const { data } = await api.post(`/organizations/${org.id}/staff/${member.id}/reset-password`);
+      queryClient.invalidateQueries({ queryKey: ['org-staff', org.id] });
+      await printCredential(data, member);
+    } finally {
+      setReprintingId(null);
+      setResetTarget(null);
     }
   };
 
@@ -97,10 +118,10 @@ export default function StaffPage() {
   const visibleStaff = roleFilter ? (staff || []).filter((s: any) => s.role === roleFilter) : (staff || []);
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl mx-auto">
+    <div className="p-6 space-y-6 max-w-4xl mx-auto">
       <PageHeader title="Utilisateurs internes" />
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {ROLES.map((r) => (
           <button
             key={r.slug}
@@ -166,6 +187,11 @@ export default function StaffPage() {
                   ))}
                 </Select>
               </div>
+              {createMutation.isError && (
+                <p className="text-sm text-destructive font-medium rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3">
+                  {(createMutation.error as any)?.response?.data?.message || "Échec de la création — réessayez."}
+                </p>
+              )}
               <Button
                 className="w-full"
                 disabled={!form.nom || !form.prenom || !form.email || createMutation.isPending}
@@ -186,11 +212,13 @@ export default function StaffPage() {
                     <p className="text-sm text-muted-foreground truncate">{s.role_name || s.role} · {s.email}</p>
                   </div>
                   {s.has_temp_password ? (
-                    <Button variant="ghost" size="icon" disabled={reprintingId === s.id} onClick={() => reprint(s)}>
+                    <Button variant="ghost" size="icon" title="Ré-imprimer le mot de passe temporaire" disabled={reprintingId === s.id} onClick={() => reprint(s)}>
                       {reprintingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4 text-muted-foreground" />}
                     </Button>
                   ) : (
-                    <span className="text-xs text-muted-foreground flex-shrink-0">Mot de passe défini</span>
+                    <Button variant="ghost" size="icon" title="Réinitialiser le mot de passe (génère un nouveau mot de passe temporaire)" disabled={reprintingId === s.id} onClick={() => setResetTarget(s)}>
+                      {reprintingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4 text-muted-foreground" />}
+                    </Button>
                   )}
                 </div>
               ))}
@@ -200,6 +228,15 @@ export default function StaffPage() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={!!resetTarget}
+        onOpenChange={(open) => !open && setResetTarget(null)}
+        title="Réinitialiser le mot de passe ?"
+        description={`Un nouveau mot de passe temporaire sera généré pour ${[resetTarget?.prenom, resetTarget?.nom].filter(Boolean).join(' ')}, qui devra le changer à la prochaine connexion. Sa session actuelle (autre appareil) sera libérée.`}
+        confirmLabel="Réinitialiser"
+        onConfirm={() => resetPassword(resetTarget)}
+      />
     </div>
   );
 }
