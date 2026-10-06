@@ -14,6 +14,7 @@ import { AuditModule } from '../audit/audit.module';
 import { WalletPinService } from '../wallets/wallet-pin.service';
 import { WalletLimitsService } from '../wallets/wallet-limits.service';
 import { SavingsModule } from '../savings/savings.module';
+import { SalesModule } from '../sales/sales.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { SavingsModule } from '../savings/savings.module';
     NotificationsModule,
     AuditModule,
     SavingsModule,
+    SalesModule,
   ],
   controllers: [PaymentsController],
   // WalletPinService/WalletLimitsService are also provided by WalletsModule

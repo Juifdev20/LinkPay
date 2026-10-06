@@ -25,7 +25,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
-      <PageHeader title="Administration" />
+      <PageHeader title="Administration" hideBack />
 
       <button
         onClick={() => navigate('/dashboard/expenses')}

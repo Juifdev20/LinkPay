@@ -127,6 +127,7 @@ export default function OrganizationProfilePage() {
   // means the dashboard also refetches on unrelated merchants' activity.
   useRealtimeInvalidate('transactions', undefined, [['org-stats', org?.id], ['org-stores-breakdown', org?.id], ['org-recent-transactions', org?.id]], !!org?.id);
 
+
   // "Espèces" and "Articles vendus" have no data source yet (no caisse, no
   // stock/ventes module) — shown as honest placeholders rather than fake
   // numbers, filled in automatically once those tranches land.
@@ -297,6 +298,7 @@ export default function OrganizationProfilePage() {
           )}
         </CardContent>
       </Card>
+
 
       {storesBreakdown && storesBreakdown.length > 1 && (
         <Card>

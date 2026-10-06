@@ -187,6 +187,11 @@ export default function StaffPage() {
                   ))}
                 </Select>
               </div>
+              {createMutation.isError && (
+                <p className="text-sm text-destructive font-medium rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3">
+                  {(createMutation.error as any)?.response?.data?.message || "Échec de la création — réessayez."}
+                </p>
+              )}
               <Button
                 className="w-full"
                 disabled={!form.nom || !form.prenom || !form.email || createMutation.isPending}

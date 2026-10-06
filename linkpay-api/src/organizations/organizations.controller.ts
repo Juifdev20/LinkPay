@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OrganizationsService } from './organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -213,6 +213,28 @@ export class OrganizationsController {
     return this.orgsService.getOrganizationRecentTransactions(id);
   }
 
+  @Get(':id/transactions')
+  @ApiOperation({ summary: 'Full paginated sales history across every store in this organization, optionally date-filtered (owner only)' })
+  async getOrgTransactions(
+    @Param('id') id: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('organization_id') callerOrgId: string | undefined,
+    @CurrentUser('role') callerRole: string | undefined,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnerOrStaffRole(org, callerId, callerOrgId, callerRole, ['caissier', 'comptable']);
+    return this.orgsService.getOrganizationTransactions(id, {
+      from,
+      to,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
+
   @Post(':id/expenses')
   @ApiOperation({ summary: 'Record a manual expense (owner only)' })
   async createOrgExpense(
@@ -272,6 +294,20 @@ export class OrganizationsController {
   private assertOwnOrgOrStaff(org: { id: string; owner_id: string }, callerId: string | undefined, callerOrgId: string | undefined) {
     if (callerId && org.owner_id === callerId) return;
     if (callerOrgId && callerOrgId === org.id) return;
+    throw new ForbiddenException('You do not have access to this organization');
+  }
+
+  // Owner, or an internal staff member whose role is in `allowedRoles` and who
+  // belongs to this organization. Used for the staff-facing finance screens.
+  private assertOwnerOrStaffRole(
+    org: { id: string; owner_id: string },
+    callerId: string | undefined,
+    callerOrgId: string | undefined,
+    callerRole: string | undefined,
+    allowedRoles: string[],
+  ) {
+    if (callerId && org.owner_id === callerId) return;
+    if (callerOrgId === org.id && callerRole && allowedRoles.includes(callerRole)) return;
     throw new ForbiddenException('You do not have access to this organization');
   }
 

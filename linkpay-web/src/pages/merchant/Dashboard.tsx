@@ -66,6 +66,7 @@ export default function MerchantDashboard() {
     <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-4xl mx-auto">
       <PageHeader
         title="Tableau de bord"
+        hideBack
         action={{ label: 'Nouvelle demande', icon: Plus, to: '/dashboard/payment-requests/new' }}
       />
 
