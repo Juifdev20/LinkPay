@@ -19,7 +19,7 @@ export interface NavItem {
 
 // Single source of truth for "where can this role go" — consumed by both
 // the desktop sidebar (DashboardLayout.tsx) and its mobile equivalent
-// (MobileNavDrawer.tsx), so the two never drift out of sync. Settings.tsx
+// (pages/More.tsx, the "Plus" tab), so the two never drift out of sync. Settings.tsx
 // keeps its own, separate secondaryLinks list for genuine account
 // configuration (e.g. "Profil entreprise") — only full modules belong
 // here.

@@ -9,7 +9,6 @@ import { BottomNav } from '@/components/BottomNav';
 import { TopBar } from '@/components/TopBar';
 import { NotificationsBell } from '@/components/NotificationsBell';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
-import { MobileNavDrawer } from '@/components/MobileNavDrawer';
 import { useTheme } from '@/hooks/useTheme';
 import { usePaymentReceivedAlert } from '@/hooks/usePaymentReceivedAlert';
 import { LogOut, User, Building2, Sun, Moon, Menu, Search, X } from 'lucide-react';
@@ -205,11 +204,10 @@ export default function DashboardLayout() {
         </main>
       </div>
 
-      {/* Mobile bottom nav + nav drawer — both hidden entirely (not just
-          dimmed) while an enterprise account hasn't finished onboarding,
-          since none of these destinations are usable yet. */}
+      {/* Mobile bottom nav — hidden entirely (not just dimmed) while an
+          enterprise account hasn't finished onboarding, since none of
+          these destinations are usable yet. */}
       {!navLocked && <BottomNav />}
-      {!navLocked && <MobileNavDrawer org={org} />}
 
       <LogoutConfirmDialog
         open={showLogoutConfirm}
