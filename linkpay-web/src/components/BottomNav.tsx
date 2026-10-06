@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Receipt, QrCode, Settings, ShoppingCart, Boxes, BarChart3, Bell, MoreHorizontal } from 'lucide-react';
+import { Home, Receipt, QrCode, Settings, ShoppingCart, Boxes, BarChart3, Bell, Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSheetStore } from '@/lib/sheet-store';
 import { useAuthStore } from '@/lib/auth-store';
@@ -44,7 +44,9 @@ const staffTabs: Record<string, Tab[]> = {
 const NAV_CHROME_PATHS = ['/dashboard', '/dashboard/notifications', '/dashboard/settings'];
 
 const MORE_PATH = '/dashboard/more';
-const plusTab: Tab = { to: MORE_PATH, label: 'Plus', icon: MoreHorizontal, end: false };
+// Three bars — the mobile "More" convention (same icon as the reference
+// screens this replaces), not the ⋯ ellipsis which reads as "options".
+const plusTab: Tab = { to: MORE_PATH, label: 'Plus', icon: Menu, end: false };
 
 /** Which tabs a given user sees in the bottom bar — shared with More.tsx so
  * the "Plus" page can list exactly what the bar does NOT already show
