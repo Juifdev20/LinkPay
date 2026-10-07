@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Logo } from '@/components/Logo';
 import { PageHeader } from '@/components/PageHeader';
 import { CurrencySelector } from '@/components/CurrencySelector';
-import { Wallet, ShieldCheck, Users, UserCog, Percent, Building2, UsersRound, Receipt, HelpCircle, FileText, ChevronRight, Store, Loader2, Bell, Moon, Fingerprint } from 'lucide-react';
+import { Building2, HelpCircle, FileText, ChevronRight, Store, Loader2, Bell, Moon, Fingerprint } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getCurrentPushPermission, hasActiveSubscription, subscribeToPush, unsubscribeFromPush, type PushPermissionStatus } from '@/lib/app-push';
 import { useTheme } from '@/hooks/useTheme';
@@ -115,24 +115,6 @@ export default function SettingsPage() {
       setOrgError(err.response?.data?.message || "Échec de la création de l'organisation");
     },
   });
-
-  const secondaryLinks = [
-    { to: '/dashboard/settlements', label: 'Règlements', icon: Wallet, roles: ['merchant'] },
-    { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: ShieldCheck, roles: ['merchant', 'cashier'] },
-    { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'] },
-    { to: '/dashboard/client/transactions', label: 'Mes paiements', icon: Receipt, roles: ['merchant', 'cashier', 'client', 'admin', 'super_admin'] },
-    { to: '/dashboard/organization/profile', label: 'Profil entreprise', icon: Building2, roles: ['enterprise'] },
-    { to: '/dashboard/organization/stores', label: 'Boutiques', icon: Store, roles: ['enterprise'] },
-    { to: '/dashboard/organization/transactions', label: 'Transactions', icon: Receipt, roles: ['enterprise'] },
-    { to: '/dashboard/organization/staff', label: 'Utilisateurs internes', icon: Users, roles: ['enterprise'] },
-    { to: '/dashboard/admin', label: 'Administration', icon: ShieldCheck, roles: ['admin', 'super_admin'] },
-    { to: '/dashboard/admin/merchants', label: 'Commerçants', icon: Users, roles: ['admin', 'super_admin'] },
-    { to: '/dashboard/admin/settlements', label: 'Règlements (admin)', icon: Wallet, roles: ['admin', 'super_admin'] },
-    { to: '/dashboard/admin/users', label: 'Utilisateurs', icon: UserCog, roles: ['super_admin'] },
-    { to: '/dashboard/admin/commissions', label: 'Commissions', icon: Percent, roles: ['super_admin'] },
-  ];
-
-  const visibleSecondary = secondaryLinks.filter((l) => !user || l.roles.includes(user.role));
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
@@ -268,30 +250,6 @@ export default function SettingsPage() {
         </Card>
       )}
 
-      {/* Secondary navigation */}
-      {visibleSecondary.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Gestion</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {visibleSecondary.map((link, i) => (
-              <button
-                key={link.to}
-                onClick={() => navigate(link.to)}
-                className={cn(
-                  'flex items-center gap-3 w-full px-6 py-3.5 hover:bg-accent transition-colors text-left',
-                  i !== visibleSecondary.length - 1 && 'border-b border-border',
-                )}
-              >
-                <link.icon className="w-5 h-5 text-primary" />
-                <span className="flex-1 font-medium text-sm text-foreground">{link.label}</span>
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
-              </button>
-            ))}
-          </CardContent>
-        </Card>
-      )}
         </div>
 
         <div className="space-y-6 min-w-0">

@@ -71,8 +71,13 @@ export const navItems: NavItem[] = [
   // Staff-only finance entries (the enterprise owner reaches the same screens
   // from its own Settings → Gestion, so they aren't duplicated for enterprise).
   { to: '/dashboard/organization/sales/dashboard', label: 'Tableau de bord ventes', icon: BarChart3, roles: ['vendeur', 'caissier', 'comptable'] },
-  { to: '/dashboard/organization/transactions', label: 'Transactions', icon: Receipt, roles: ['caissier', 'comptable'] },
+  { to: '/dashboard/organization/transactions', label: 'Transactions', icon: Receipt, roles: ['enterprise', 'caissier', 'comptable'] },
   { to: '/dashboard/organization/receive', label: 'Recevoir', icon: QrCode, roles: ['caissier'] },
+  // Org management — business modules, not account config, so they live
+  // in the nav (sidebar/desktop, Plus/mobile) rather than Settings.
+  { to: '/dashboard/organization/profile', label: 'Profil entreprise', icon: Building2, roles: ['enterprise'] },
+  { to: '/dashboard/organization/stores', label: 'Boutiques', icon: Store, roles: ['enterprise'] },
+  { to: '/dashboard/organization/staff', label: 'Utilisateurs internes', icon: Users, roles: ['enterprise'] },
   { to: '/dashboard/notifications', label: 'Notifications', icon: Bell, roles: [...ALL_ROLES, ...STAFF_ROLES] },
   { to: '/dashboard/settings', label: 'Paramètres', icon: Settings, roles: [...ALL_ROLES, ...STAFF_ROLES] },
 ];

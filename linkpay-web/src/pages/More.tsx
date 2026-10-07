@@ -19,12 +19,42 @@ import { SECTORS } from '@/pages/organization/OnboardingWizard';
  */
 
 // Sections keep the navItems order; each item lands in the FIRST section
-// it matches only — otherwise the same entry renders twice.
+// it matches only — otherwise the same entry renders twice. Grouped by
+// business domain so a rich module (enterprise) stays scannable.
 const SECTIONS: { title: string; match: (to: string) => boolean }[] = [
   {
-    title: 'Modules',
+    title: 'Ventes & stock',
     match: (to) =>
-      !['/dashboard', '/dashboard/settings', '/dashboard/notifications', '/dashboard/profile'].includes(to),
+      to.startsWith('/dashboard/organization/sales') ||
+      to === '/dashboard/organization/stock' ||
+      to === '/dashboard/organization/inventory' ||
+      to === '/dashboard/pos',
+  },
+  {
+    title: 'Rapports',
+    match: (to) =>
+      to === '/dashboard/organization/stats' ||
+      to === '/dashboard/organization/audit' ||
+      to === '/dashboard/organization/transactions',
+  },
+  {
+    title: 'Services',
+    match: (to) =>
+      to.startsWith('/dashboard/tontines') ||
+      to.startsWith('/dashboard/savings') ||
+      to.startsWith('/dashboard/expenses') ||
+      to.startsWith('/dashboard/payment-requests') ||
+      to.startsWith('/dashboard/settlements') ||
+      to.startsWith('/dashboard/team') ||
+      to.startsWith('/dashboard/wallet') ||
+      to.startsWith('/dashboard/client/'),
+  },
+  {
+    title: 'Organisation',
+    match: (to) =>
+      to === '/dashboard/organization/profile' ||
+      to === '/dashboard/organization/stores' ||
+      to === '/dashboard/organization/staff',
   },
   { title: 'Compte', match: () => true },
 ];
