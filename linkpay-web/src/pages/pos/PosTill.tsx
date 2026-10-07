@@ -507,7 +507,7 @@ export function PosTill({
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-foreground truncate">{item.product_name_snapshot}</p>
                       <p className="text-xs text-muted-foreground">
-                        {formatCurrency(item.unit_price_cents_snapshot, ticket.currency)} / u
+                        {formatCurrency(item.unit_price_cents_snapshot, ticket?.currency || ticketCurrency)} / u
                       </p>
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
@@ -637,7 +637,7 @@ export function PosTill({
               <p className="font-semibold text-foreground">Annuler cette ligne ?</p>
             </div>
             <p className="text-sm text-muted-foreground">
-              {voidTarget.quantity} × {voidTarget.product_name_snapshot} — {formatCurrency(voidTarget.line_total_cents, ticket.currency)}
+              {voidTarget.quantity} × {voidTarget.product_name_snapshot} — {formatCurrency(voidTarget.line_total_cents, ticket?.currency || ticketCurrency)}
             </p>
             <div className="space-y-2">
               <Label htmlFor="void-reason">Motif (optionnel)</Label>
