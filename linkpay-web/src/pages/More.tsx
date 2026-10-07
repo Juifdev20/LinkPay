@@ -48,7 +48,7 @@ export default function MorePage() {
     enabled: user?.role === 'enterprise' || !!user?.organization_id,
   });
 
-  const { displayTabs } = computeVisibleTabs(user);
+  const { displayTabs } = computeVisibleTabs(user, org?.sector);
   const visiblePaths = new Set([
     ...displayTabs.map((t) => t.to),
     '/dashboard/notifications', // already one tap away via the TopBar bell
