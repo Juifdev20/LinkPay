@@ -1,17 +1,22 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '@/lib/auth-store';
+import { FormSheet } from '@/components/FormSheet';
+import { useHomeData, type Currency } from '@/components/home/useHomeData';
+import {
+  HomeHero, QuickActions, SalesChart, AlertsList, TopProducts, RecentSales, OnlinePaymentsLine,
+  type QuickAction, type HomeAlert,
+} from '@/components/home/HomeWidgets';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { DualCurrencyStat } from '@/components/DualCurrencyStat';
-import { TransactionItem } from '@/components/TransactionItem';
 import OnboardingWizard from '@/pages/organization/OnboardingWizard';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
-import { Building2, Loader2, Plus, TrendingUp, Receipt, QrCode, Wallet, X, Copy, Check, XCircle, Trophy, Banknote, Smartphone, Package, MinusCircle, PiggyBank, Clock, AlertTriangle } from 'lucide-react';
+import { Building2, Loader2, QrCode, X, Copy, Check, Trophy, MinusCircle, Clock, AlertTriangle, ShoppingCart, PackagePlus, PauseCircle } from 'lucide-react';
 import { shareOrCopy, publicOrigin } from '@/lib/share';
 
 
@@ -92,18 +97,6 @@ export default function OrganizationProfilePage() {
     enabled: !!org?.id && (merchants?.length || 0) > 1,
   });
 
-  const { data: recentTransactions } = useQuery({
-    queryKey: ['org-recent-transactions', org?.id],
-    queryFn: async () => (await api.get(`/organizations/${org.id}/recent-transactions`)).data,
-    enabled: !!org?.id,
-  });
-
-  const { data: expensesSummary } = useQuery({
-    queryKey: ['org-expenses-summary', org?.id],
-    queryFn: async () => (await api.get(`/organizations/${org.id}/expenses-summary`)).data,
-    enabled: !!org?.id,
-  });
-
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [newExpense, setNewExpense] = useState({ amount: '', description: '', currency: 'CDF' as 'CDF' | 'USD' });
   const addExpenseMutation = useMutation({
@@ -125,32 +118,45 @@ export default function OrganizationProfilePage() {
   // merchant ids, so we can't scope the subscription itself. The REST
   // refetch this triggers stays correctly scoped server-side; this just
   // means the dashboard also refetches on unrelated merchants' activity.
-  useRealtimeInvalidate('transactions', undefined, [['org-stats', org?.id], ['org-stores-breakdown', org?.id], ['org-recent-transactions', org?.id]], !!org?.id);
+  useRealtimeInvalidate('transactions', undefined, [['org-stats', org?.id], ['org-stores-breakdown', org?.id]], !!org?.id);
 
 
-  // "Espèces" and "Articles vendus" have no data source yet (no caisse, no
-  // stock/ventes module) — shown as honest placeholders rather than fake
-  // numbers, filled in automatically once those tranches land.
-  const cashReceived = { CDF: 0, USD: 0 };
-  const electronicReceived = stats?.volume || { CDF: 0, USD: 0 };
-  const expenses = expensesSummary || { CDF: 0, USD: 0 };
-  const netCashReconciliation = {
-    CDF: electronicReceived.CDF + cashReceived.CDF - expenses.CDF,
-    USD: electronicReceived.USD + cashReceived.USD - expenses.USD,
+  // ------------------------------------------------------------------
+  // Home dashboard data — the till (supermarket) or Ventes module sales,
+  // stock alerts and held tickets (see components/home/useHomeData).
+  // ------------------------------------------------------------------
+  const user = useAuthStore((st) => st.user);
+  const navigate = useNavigate();
+  const [currency, setCurrencyState] = useState<Currency>(() => {
+    try { return localStorage.getItem('pos-currency') === 'USD' ? 'USD' : 'CDF'; } catch { return 'CDF'; }
+  });
+  const setCurrency = (c: Currency) => {
+    setCurrencyState(c);
+    try { localStorage.setItem('pos-currency', c); } catch { /* not persisted */ }
   };
+  const home = useHomeData(org, merchants, currency);
+  const usesPos = org?.sector === 'supermarche';
 
-  const recapCards = [
-    { label: 'Perçu électronique', money: electronicReceived, icon: Smartphone },
-    { label: 'Perçu en espèces', money: cashReceived, icon: Banknote, note: 'Bientôt disponible — via la Caisse' },
-    { label: 'Articles vendus', value: '—', icon: Package, note: 'Bientôt disponible — via Stock & Ventes' },
-    { label: 'Dépenses', money: expenses, icon: MinusCircle },
-    { label: 'Montant réel encaissé', money: netCashReconciliation, icon: PiggyBank },
-  ];
+  // Same query as the Stock page — usually already in the cache.
+  const { data: stockItems } = useQuery({
+    queryKey: ['org-stock-items', org?.id],
+    queryFn: async () => (await api.get(`/organizations/${org.id}/stock-items`)).data,
+    enabled: !!org?.id,
+  });
+  const lowStock = ((stockItems as any[]) || []).filter((i) => i.quantity <= (i.low_stock_threshold ?? 5)).length;
 
-  const statCards = [
-    { label: 'Transactions', value: String(stats?.total_transactions || 0), icon: Receipt },
-    { label: "Aujourd'hui", value: String(stats?.today_transactions || 0), icon: QrCode },
-    { label: 'En attente', money: stats?.pending, icon: Wallet },
+  const alerts: HomeAlert[] = [];
+  if (lowStock) alerts.push({ icon: AlertTriangle, tone: 'warning', to: '/dashboard/organization/stock', label: `${lowStock} produit${lowStock > 1 ? 's' : ''} en stock bas — à réapprovisionner` });
+  if (home.held) alerts.push({ icon: PauseCircle, tone: 'info', to: '/dashboard/pos', label: `${home.held} ticket${home.held > 1 ? 's' : ''} en attente à la caisse` });
+
+  const sellPath = usesPos ? '/dashboard/pos' : '/dashboard/organization/sales';
+  const actions: QuickAction[] = [
+    { label: 'Vendre', icon: ShoppingCart, onClick: () => navigate(sellPath), tone: 'bg-primary text-primary-foreground shadow-primary/30' },
+    { label: 'Produit', icon: PackagePlus, onClick: () => navigate('/dashboard/organization/stock?ajouter=1'), tone: 'bg-emerald-500/15 text-emerald-600' },
+    ...(org?.scanlinkpay_number
+      ? [{ label: 'Recevoir', icon: QrCode, onClick: () => setShowQrPresent(true), tone: 'bg-sky-500/15 text-sky-600' }]
+      : []),
+    { label: 'Dépense', icon: MinusCircle, onClick: () => setShowAddExpense(true), tone: 'bg-rose-500/15 text-rose-600' },
   ];
 
   if (isLoading) {
@@ -174,174 +180,89 @@ export default function OrganizationProfilePage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-            <Building2 className="w-6 h-6 text-primary" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-foreground truncate">{org?.name || 'Dashboard'}</h1>
-            {org?.status && (
-              <Badge variant={org.status === 'active' ? 'success' : 'warning'} className="mt-1 capitalize">
-                {org.status}
-              </Badge>
-            )}
-          </div>
+    <div className="px-4 pt-4 pb-28 md:pb-6 lg:p-6 space-y-5 max-w-6xl mx-auto">
+      <HomeHero
+        firstName={user?.full_name?.split(' ')[0]}
+        orgName={org?.name}
+        currency={currency}
+        onCurrency={setCurrency}
+        today={home.today}
+        yesterday={home.yesterday}
+        loading={home.loading}
+        onOpenTill={() => navigate(sellPath)}
+      />
+
+      <QuickActions actions={actions} />
+
+      <AlertsList alerts={alerts} />
+
+      <div className="space-y-5 lg:grid lg:grid-cols-2 lg:gap-5 lg:space-y-0 lg:items-start">
+        <div className="space-y-5">
+          <SalesChart days={home.days} currency={currency} loading={home.loading} />
+          <TopProducts top={home.top} currency={currency} loading={home.loading} />
         </div>
-        {org?.scanlinkpay_number && (
-          <Button variant="outline" className="flex-shrink-0" onClick={() => setShowQrPresent(true)}>
-            <QrCode className="mr-2 w-4 h-4" />
-            Afficher le QR
-          </Button>
-        )}
-      </div>
-
-      {/* KPI strip — activity at a glance, full width on desktop */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        {statCards.map((c) => (
-          <Card key={c.label}>
-            <CardContent className="pt-4 pb-4">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center mb-2">
-                <c.icon className="w-4 h-4 text-primary" />
-              </div>
-              {c.money ? (
-                <DualCurrencyStat amounts={c.money} />
-              ) : (
-                <p className="text-xl font-bold text-foreground">{c.value}</p>
-              )}
-              <p className="text-xs text-muted-foreground">{c.label}</p>
-            </CardContent>
-          </Card>
-        ))}
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center mb-2">
-              <TrendingUp className="w-4 h-4 text-primary" />
-            </div>
-            <DualCurrencyStat amounts={stats?.net} />
-            <p className="text-xs text-muted-foreground">Net perçu</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            <div className="w-9 h-9 rounded-xl bg-destructive/10 flex items-center justify-center mb-2">
-              <XCircle className="w-4 h-4 text-destructive" />
-            </div>
-            <p className="text-xl font-bold text-foreground">{stats?.failed_count || 0}</p>
-            <p className="text-xs text-muted-foreground">Échecs</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Récapitulatif</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-4">
-            {recapCards.map((c) => (
-              <div key={c.label} className="rounded-xl border border-border p-4">
-                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center mb-2">
-                  <c.icon className="w-4 h-4 text-primary" />
+        <div className="space-y-5">
+          <RecentSales
+            sales={home.recent}
+            currency={currency}
+            loading={home.loading}
+            moreTo={usesPos ? '/dashboard/pos' : '/dashboard/organization/sales/history'}
+          />
+          {storesBreakdown && storesBreakdown.length > 1 && (
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <p className="mb-2 text-sm font-semibold text-foreground">Meilleures boutiques</p>
+              {storesBreakdown.map((st: any, i: number) => (
+                <div key={st.merchant_id} className="flex items-center gap-3 border-b border-border py-2.5 last:border-0">
+                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                    {i === 0 ? <Trophy className="h-4 w-4" /> : i + 1}
+                  </div>
+                  <p className="min-w-0 flex-1 truncate font-medium text-foreground">{st.merchant_name}</p>
+                  <DualCurrencyStat amounts={st.volume} />
                 </div>
-                {c.money ? <DualCurrencyStat amounts={c.money} /> : <p className="text-xl font-bold text-foreground">{c.value}</p>}
-                <p className="text-sm text-muted-foreground">{c.label}</p>
-                {c.note && <p className="text-xs text-muted-foreground/70 mt-0.5">{c.note}</p>}
-              </div>
-            ))}
-          </div>
-
-          {showAddExpense ? (
-            <div className="rounded-xl border border-border p-4 space-y-3 max-w-md">
-              <div className="flex items-center justify-between">
-                <p className="font-semibold text-foreground text-sm">Nouvelle dépense</p>
-                <button onClick={() => setShowAddExpense(false)} className="text-muted-foreground hover:text-foreground">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="expense_amount">Montant</Label>
-                <Input
-                  id="expense_amount"
-                  type="number"
-                  inputMode="decimal"
-                  placeholder="0"
-                  value={newExpense.amount}
-                  onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })}
-                />
-              </div>
-              <CurrencySelector value={newExpense.currency} onChange={(c) => setNewExpense({ ...newExpense, currency: c })} />
-              <div className="space-y-2">
-                <Label htmlFor="expense_description">Description</Label>
-                <Input
-                  id="expense_description"
-                  placeholder="Achat de fournitures"
-                  value={newExpense.description}
-                  onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
-                />
-              </div>
-              <Button
-                className="w-full"
-                disabled={!newExpense.amount || addExpenseMutation.isPending}
-                onClick={() => addExpenseMutation.mutate()}
-              >
-                {addExpenseMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
-                Enregistrer la dépense
-              </Button>
+              ))}
             </div>
-          ) : (
-            <Button variant="outline" className="w-full sm:w-auto" onClick={() => setShowAddExpense(true)}>
-              <Plus className="mr-1 w-4 h-4" />
-              Ajouter une dépense
-            </Button>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
+      <OnlinePaymentsLine amounts={stats?.net} onClick={() => navigate('/dashboard/organization/transactions')} />
 
-      {storesBreakdown && storesBreakdown.length > 1 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Meilleures boutiques</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {storesBreakdown.map((s: any, i: number) => (
-              <div key={s.merchant_id} className="flex items-center gap-3 py-3 border-b border-border last:border-0">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary">
-                  {i === 0 ? <Trophy className="w-4 h-4" /> : i + 1}
-                </div>
-                <p className="font-semibold text-foreground truncate flex-1 min-w-0">{s.merchant_name}</p>
-                <DualCurrencyStat amounts={s.volume} />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Activity feed — full width, at the bottom of the page */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Transactions récentes</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {recentTransactions?.length ? (
-            recentTransactions.map((t: any) => (
-              <TransactionItem
-                key={t.id}
-                name={t.merchant?.name || 'Boutique'}
-                amountCents={t.amount_cents}
-                currency={t.currency}
-                status={t.status}
-                date={t.created_at}
-                type="in"
+      {/* Expense — behind the "Dépense" quick action instead of a form on the page */}
+      {showAddExpense && (
+        <FormSheet onClose={() => setShowAddExpense(false)} title="Nouvelle dépense">
+          <div className="p-6 space-y-4">
+            <h2 className="text-xl font-bold text-foreground">Nouvelle dépense</h2>
+            <div className="space-y-2">
+              <Label htmlFor="expense_amount">Montant</Label>
+              <Input
+                id="expense_amount"
+                type="number"
+                inputMode="decimal"
+                placeholder="0"
+                value={newExpense.amount}
+                onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })}
               />
-            ))
-          ) : (
-            <p className="text-muted-foreground text-center py-6">Aucune transaction pour le moment</p>
-          )}
-        </CardContent>
-      </Card>
+            </div>
+            <CurrencySelector value={newExpense.currency} onChange={(c) => setNewExpense({ ...newExpense, currency: c })} />
+            <div className="space-y-2">
+              <Label htmlFor="expense_description">Description</Label>
+              <Input
+                id="expense_description"
+                placeholder="Achat de fournitures"
+                value={newExpense.description}
+                onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+              />
+            </div>
+            {addExpenseMutation.isError && (
+              <p className="text-sm text-destructive text-center">Échec de l'enregistrement — réessayez.</p>
+            )}
+            <Button className="w-full" size="lg" disabled={!newExpense.amount || addExpenseMutation.isPending} onClick={() => addExpenseMutation.mutate()}>
+              {addExpenseMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
+              Enregistrer la dépense
+            </Button>
+          </div>
+        </FormSheet>
+      )}
 
       {/* Presentation mode — clean fullscreen QR to show to a client without
           exposing any dashboard data. */}

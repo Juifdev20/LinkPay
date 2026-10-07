@@ -62,6 +62,42 @@ export function clearTokens() {
     localStorage.removeItem(k);
     sessionStorage.removeItem(k);
   });
+  // The cached profile and data belong to this session — they go with it
+  // (logout, or a dead session caught by the api.ts interceptor).
+  [CACHED_USER_KEY, QUERY_CACHE_KEY].forEach((k) => {
+    localStorage.removeItem(k);
+    sessionStorage.removeItem(k);
+  });
+}
+
+// ------------------------------------------------------------------
+// Instant start: the last known profile (and, in main.tsx, the last
+// fetched data) are kept next to the tokens — same storage, same lifetime
+// — so the app shows its screens immediately on launch and refreshes them
+// in the background, instead of a blank screen until the server answers.
+// ------------------------------------------------------------------
+const CACHED_USER_KEY = 'linkpay_cached_user';
+export const QUERY_CACHE_KEY = 'linkpay_query_cache';
+
+export function getCachedUser<T>(): T | null {
+  try {
+    const raw = activeStore().getItem(CACHED_USER_KEY);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setCachedUser(user: unknown) {
+  try {
+    if (user) activeStore().setItem(CACHED_USER_KEY, JSON.stringify(user));
+    else activeStore().removeItem(CACHED_USER_KEY);
+  } catch { /* storage full or blocked — just no instant start */ }
+}
+
+/** Storage the data cache should use — follows "Se souvenir de moi". */
+export function cacheStorage(): Storage {
+  return activeStore();
 }
 
 export const TOKEN_ACCESS_KEY = ACCESS_KEY;

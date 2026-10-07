@@ -34,6 +34,7 @@ import { WebauthnModule } from './webauthn/webauthn.module';
 import { TontinesModule } from './tontines/tontines.module';
 import { SavingsModule } from './savings/savings.module';
 import { ExpenseTrackerModule } from './expense-tracker/expense-tracker.module';
+import { PlatformSettingsModule } from './platform-settings/platform-settings.module';
 import { SalesModule } from './sales/sales.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 
@@ -79,6 +80,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     TontinesModule,
     SavingsModule,
     ExpenseTrackerModule,
+    PlatformSettingsModule,
     SalesModule,
   ],
   providers: [

@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatCurrency, cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
 import { Search, ShoppingCart, Plus, Minus, Trash2, Package, CheckCircle2, Loader2, Banknote, BarChart3, Printer, ListOrdered } from 'lucide-react';
-import { STOCK_CATEGORIES, getCategoryIcon } from '@/lib/stock-categories';
+import { getSectorConfig, getCategoryIcon } from '@/lib/stock-categories';
 
 type Currency = 'CDF' | 'USD';
 
@@ -327,7 +327,7 @@ export default function SalesPage() {
           >
             Tous
           </button>
-          {STOCK_CATEGORIES.map((c) => (
+          {getSectorConfig(org?.sector).categories.map((c) => (
             <button
               key={c.value}
               onClick={() => setCategoryFilter(c.value)}

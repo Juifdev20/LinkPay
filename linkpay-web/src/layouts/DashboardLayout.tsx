@@ -1,5 +1,6 @@
 import { Outlet, NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
+import { PageFallback } from '@/lib/lazy-page';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
@@ -199,7 +200,10 @@ export default function DashboardLayout() {
                 </button>
               </div>
             )}
-            <Outlet />
+            {/* Only the page area waits for a split page — header and nav stay. */}
+            <Suspense fallback={<PageFallback />}>
+              <Outlet />
+            </Suspense>
           </div>
         </main>
       </div>

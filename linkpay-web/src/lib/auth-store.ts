@@ -12,8 +12,11 @@ import {
   popOrgContextTokens,
   TOKEN_ACCESS_KEY,
   TOKEN_REFRESH_KEY,
+  getCachedUser,
+  setCachedUser,
 } from './token-storage';
 import { clearAppLockLocal } from './webauthn';
+import { queryClient } from './query-client';
 
 interface User {
   id: string;
@@ -78,13 +81,18 @@ function clearSupabaseSession() {
   supabase?.auth.signOut().catch(() => null);
 }
 
+const hasSession = !!getToken(TOKEN_ACCESS_KEY);
+
 export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  isAuthenticated: !!getToken(TOKEN_ACCESS_KEY),
+  // Last known profile: screens render at once on launch while
+  // fetchProfile() refreshes it in the background (App.tsx).
+  user: hasSession ? getCachedUser<User>() : null,
+  isAuthenticated: hasSession,
   isLoading: false,
 
   login: async (email: string, password: string, rememberMe = true) => {
     const { data } = await api.post('/auth/login', { email, password, device_id: getDeviceId() });
+    queryClient.clear(); // never show another account's cached data
     setRememberMe(rememberMe);
     setTokens(data.access_token, data.refresh_token);
     applySupabaseSession(data.supabase_session);
@@ -93,6 +101,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   register: async (data, rememberMe = true) => {
     const res = await api.post('/auth/register', { ...data, device_id: getDeviceId() });
+    queryClient.clear();
     setRememberMe(rememberMe);
     setTokens(res.data.access_token, res.data.refresh_token);
     applySupabaseSession(res.data.supabase_session);
@@ -159,6 +168,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     // must never inherit a stale "locked" state or attempt a WebAuthn
     // ceremony tied to the previous user's credential.
     clearAppLockLocal();
+    // In-memory data too, or the persister would write it back.
+    queryClient.clear();
     set({ user: null, isAuthenticated: false });
   },
 
@@ -188,3 +199,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 }));
+
+// Keep the cached profile in step with every change (login, refresh, store
+// switch, password change…) — and drop it when the user is cleared.
+useAuthStore.subscribe((state, prev) => {
+  if (state.user !== prev.user) setCachedUser(state.user);
+});

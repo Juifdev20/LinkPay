@@ -86,27 +86,77 @@ export class PosService {
   /** HT / TVA / TTC — prices on the shelf are TTC, so the tax is extracted:
    * tva = total × rate / (100 + rate). Only 'active' lines count (voided
    * lines stay on the ticket for traceability but don't add to the bill). */
-  private async recomputeTotals(ticket: any) {
-    const items = await this.getTicketItems(ticket.id);
+  private computeTotals(items: any[], tvaRatePct: unknown) {
     const total = items.filter((i) => i.status === 'active').reduce((sum, i) => sum + i.line_total_cents, 0);
-
-    const { data: merchant } = await this.db
-      .from('merchants')
-      .select('pos_tva_rate_pct')
-      .eq('id', ticket.merchant_id)
-      .single();
-    const rate = Number(merchant?.pos_tva_rate_pct ?? 0);
+    const rate = Number(tvaRatePct ?? 0);
     const tva = rate > 0 ? Math.round((total * rate) / (100 + rate)) : 0;
+    return { subtotal_cents: total - tva, tva_cents: tva, total_cents: total };
+  }
 
-    await this.db
-      .from('pos_tickets')
-      .update({
-        subtotal_cents: total - tva,
-        tva_cents: tva,
-        total_cents: total,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', ticket.id);
+  /** Re-reads the lines AFTER a line write and stores fresh totals. Reading
+   * after our own write (not reusing the pre-write list) keeps concurrent
+   * adds of different products from saving each other's stale sums; the
+   * pay endpoints re-check totals anyway (see syncTotals). */
+  private async saveTotals(ticket: any, tvaRatePct: unknown) {
+    const items = await this.getTicketItems(ticket.id);
+    const totals = this.computeTotals(items, tvaRatePct);
+    const updated_at = new Date().toISOString();
+    await this.db.from('pos_tickets').update({ ...totals, updated_at }).eq('id', ticket.id);
+    return { ticket: { ...ticket, ...totals, updated_at }, items };
+  }
+
+  /** Before money is taken: make sure the stored total matches the lines
+   * (guards against a total saved by an overlapping line change). */
+  private async syncTotals(ticket: any, items: any[], tvaRatePct: unknown) {
+    const totals = this.computeTotals(items, tvaRatePct);
+    if (totals.total_cents === ticket.total_cents && totals.tva_cents === ticket.tva_cents) return ticket;
+    const updated_at = new Date().toISOString();
+    await this.db.from('pos_tickets').update({ ...totals, updated_at }).eq('id', ticket.id);
+    return { ...ticket, ...totals, updated_at };
+  }
+
+  /** Store identity printed on the receipt (org name flattened in). */
+  private async getReceiptMerchant(merchantId: string) {
+    const { data } = await this.db
+      .from('merchants')
+      .select('name, phone, address, logo_url, pos_tva_rate_pct, organizations(name)')
+      .eq('id', merchantId)
+      .single();
+    const merchant: any = data || null;
+    // Multi-tenant: many stores can share one org identity.
+    if (merchant) {
+      const org = merchant.organizations;
+      merchant.organization_name = (Array.isArray(org) ? org[0]?.name : org?.name) ?? null;
+      delete merchant.organizations;
+    }
+    return merchant;
+  }
+
+  /**
+   * Everything a till action on an OPEN ticket needs, read in ONE parallel
+   * round-trip (access, ticket, lines, payments, store) instead of the
+   * sequential chain each action used to do — the till must answer fast.
+   * The access check still wins: its error is thrown before any other.
+   */
+  private async loadOpenTicket(merchantId: string, ticketId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
+    const [access, ticket, items, payments, merchant] = await Promise.allSettled([
+      this.assertAccess(merchantId, callerId, callerRole, callerOrgId),
+      this.getOwnTicket(merchantId, ticketId),
+      this.getTicketItems(ticketId),
+      this.getTicketPayments(ticketId),
+      this.getReceiptMerchant(merchantId),
+    ]);
+    for (const r of [access, ticket, items, payments, merchant]) {
+      if (r.status === 'rejected') throw r.reason;
+    }
+    const t = (ticket as PromiseFulfilledResult<any>).value;
+    if (t.status !== 'open') throw new BadRequestException('Ce ticket est déjà clôturé.');
+    return {
+      ticket: t,
+      items: (items as PromiseFulfilledResult<any[]>).value,
+      payments: (payments as PromiseFulfilledResult<any[]>).value,
+      merchant: (merchant as PromiseFulfilledResult<any>).value,
+    };
   }
 
   private async findOpenSession(merchantId: string, currency: string) {
@@ -137,13 +187,21 @@ export class PosService {
     callerOrgId: string | undefined,
   ) {
     await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
-    const { stdout } = await this.execFileAsync('powershell', [
-      '-NoProfile', '-Command',
-      "Get-Printer | Select-Object -ExpandProperty Name",
-    ]);
-    return {
-      printers: stdout.split(/\r?\n/).map((n) => n.trim()).filter(Boolean),
-    };
+    // Hosted API (Render, Linux): no printer is attached to that server —
+    // an empty list makes the UI fall back to the browser print dialog.
+    if (process.platform !== 'win32') return { printers: [] };
+    try {
+      const { stdout } = await this.execFileAsync('powershell', [
+        '-NoProfile', '-Command',
+        "Get-Printer | Select-Object -ExpandProperty Name",
+      ]);
+      return {
+        printers: stdout.split(/\r?\n/).map((n) => n.trim()).filter(Boolean),
+      };
+    } catch (err: any) {
+      this.logger.warn(`Listing printers failed: ${err.message}`);
+      return { printers: [] };
+    }
   }
 
   /** Sends pre-formatted receipt text straight to the local thermal printer —
@@ -161,6 +219,9 @@ export class PosService {
     printerName?: string,
   ) {
     await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
+    if (process.platform !== 'win32') {
+      throw new BadRequestException("Aucune imprimante n'est reliée au serveur — utilisez l'impression du navigateur");
+    }
     const printer = printerName || process.env.POS_PRINTER_NAME || 'POS-Thermique';
     const file = join(tmpdir(), `linkpay-receipt-${Date.now()}.txt`);
     await writeFile(file, text, 'ascii');
@@ -175,30 +236,27 @@ export class PosService {
   }
 
   private async withDetails(ticket: any) {
-    const [items, payments, merchantRes] = await Promise.all([
+    const [items, payments, merchant] = await Promise.all([
       this.getTicketItems(ticket.id),
       this.getTicketPayments(ticket.id),
-      this.db
-        .from('merchants')
-        .select('name, phone, address, logo_url, pos_tva_rate_pct, organizations(name)')
-        .eq('id', ticket.merchant_id)
-        .single(),
+      this.getReceiptMerchant(ticket.merchant_id),
     ]);
-    const merchant: any = merchantRes.data || null;
-    // Flatten the org join — the receipt header shows the organization name
-    // (multi-tenant: many stores can share one org identity).
-    if (merchant) {
-      const org = merchant.organizations;
-      merchant.organization_name = (Array.isArray(org) ? org[0]?.name : org?.name) ?? null;
-      delete merchant.organizations;
-    }
     return { ...ticket, items, payments, merchant };
   }
 
-  async createTicket(merchantId: string, callerId: string, callerRole: string, callerOrgId: string | undefined, currency: string) {
-    await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
-
-    const session = await this.findOpenSession(merchantId, currency);
+  async createTicket(
+    merchantId: string,
+    callerId: string,
+    callerRole: string,
+    callerOrgId: string | undefined,
+    currency: string,
+    firstStockItemId?: string,
+  ) {
+    // Access check and open-session lookup are independent — one round-trip.
+    const [, session] = await Promise.all([
+      this.assertAccess(merchantId, callerId, callerRole, callerOrgId),
+      this.findOpenSession(merchantId, currency),
+    ]);
     if (!session) {
       throw new BadRequestException(`Aucune session de caisse ouverte en ${currency} pour cette boutique — ouvrez la caisse avant de vendre.`);
     }
@@ -217,7 +275,20 @@ export class PosService {
       .single();
 
     if (error) throw new Error(`Failed to create ticket: ${error.message}`);
-    return { ...ticket, items: [], payments: [] };
+    if (!firstStockItemId) return { ...ticket, items: [], payments: [] };
+
+    // First tap of a sale: create + first line in one client request (the
+    // phone→API hop is the slow one). A refused line (out of stock…) must
+    // not lose the ticket that now exists — report it alongside instead.
+    try {
+      return await this.addItem(merchantId, ticket.id, callerId, callerRole, callerOrgId, {
+        stock_item_id: firstStockItemId,
+        quantity: 1,
+      });
+    } catch (err: any) {
+      const message = err?.response?.message ?? err?.message ?? "Impossible d'ajouter l'article";
+      return { ...ticket, items: [], payments: [], first_item_error: message };
+    }
   }
 
   /** List tickets — held tickets for the till resume UI, paid tickets for
@@ -251,8 +322,13 @@ export class PosService {
   }
 
   async getTicket(merchantId: string, ticketId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
-    await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
-    let ticket = await this.getOwnTicket(merchantId, ticketId);
+    // Access check and ticket read are independent — one round-trip (this
+    // is what reopening the till waits on to restore the open ticket).
+    const [, found] = await Promise.all([
+      this.assertAccess(merchantId, callerId, callerRole, callerOrgId),
+      this.getOwnTicket(merchantId, ticketId),
+    ]);
+    let ticket = found;
 
     if (ticket.status === 'open') {
       ticket = await this.trySettleScanlinkpayTicket(ticket, callerId, callerRole, callerOrgId);
@@ -324,8 +400,8 @@ export class PosService {
   /** Marks the ticket paid once confirmed payments cover the total — the
    * compare-and-swap on status='open' makes this safe to call from both the
    * cashier's own action and the poll-driven ScanLinkPay check. */
-  private async settleIfFullyPaid(ticket: any, callerId: string, callerRole: string, callerOrgId: string | undefined) {
-    const payments = await this.getTicketPayments(ticket.id);
+  private async settleIfFullyPaid(ticket: any, callerId: string, callerRole: string, callerOrgId: string | undefined, knownPayments?: any[]) {
+    const payments = knownPayments ?? (await this.getTicketPayments(ticket.id));
     const confirmed = payments.filter((p) => p.status === 'confirmed');
     const paidSum = confirmed.reduce((sum, p) => sum + p.amount_cents, 0);
 
@@ -389,24 +465,25 @@ export class PosService {
     callerOrgId: string | undefined,
     data: { stock_item_id?: string; barcode?: string; quantity: number },
   ) {
-    await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
-    const ticket = await this.getOwnTicket(merchantId, ticketId);
-    if (ticket.status !== 'open') {
-      throw new BadRequestException('Ce ticket est déjà clôturé.');
-    }
-
-    let stockItem: any;
-    if (data.barcode) {
-      stockItem = await this.stockService.getItemByBarcode(merchantId, data.barcode, callerId, callerRole, callerOrgId);
-    } else if (data.stock_item_id) {
+    // Ticket context and product lookup in parallel — one round-trip.
+    const fetchProduct = async () => {
+      if (data.barcode) {
+        return this.stockService.getItemByBarcode(merchantId, data.barcode, callerId, callerRole, callerOrgId);
+      }
+      if (!data.stock_item_id) return null;
       const { data: item } = await this.db
         .from('stock_items')
         .select('id, name, unit_price_cents, cost_price_cents, currency, quantity')
         .eq('id', data.stock_item_id)
         .eq('merchant_id', merchantId)
         .single();
-      stockItem = item;
-    }
+      return item;
+    };
+    const [ctx, stockItem]: [Awaited<ReturnType<PosService['loadOpenTicket']>>, any] = await Promise.all([
+      this.loadOpenTicket(merchantId, ticketId, callerId, callerRole, callerOrgId),
+      fetchProduct(),
+    ]);
+    const { ticket, items, payments, merchant } = ctx;
 
     if (!stockItem) throw new NotFoundException('Produit introuvable dans cette boutique');
     if (stockItem.currency !== ticket.currency) {
@@ -415,7 +492,6 @@ export class PosService {
 
     // Scanning/adding the same product twice merges into the existing active
     // line instead of stacking duplicate rows on the receipt.
-    const items = await this.getTicketItems(ticketId);
     const existing = items.find((i) => i.stock_item_id === stockItem.id && i.status === 'active');
     const newQty = (existing?.quantity || 0) + data.quantity;
 
@@ -442,8 +518,8 @@ export class PosService {
       if (error) throw new Error(`Failed to add ticket item: ${error.message}`);
     }
 
-    await this.recomputeTotals(ticket);
-    return this.getTicket(merchantId, ticketId, callerId, callerRole, callerOrgId);
+    const saved = await this.saveTotals(ticket, merchant?.pos_tva_rate_pct);
+    return { ...saved.ticket, items: saved.items, payments, merchant };
   }
 
   /** "Annulation de lignes avec autorisation" — the line is VOIDED (kept on
@@ -460,13 +536,7 @@ export class PosService {
     callerOrgId: string | undefined,
     data: { reason?: string; supervisor_pin?: string },
   ) {
-    await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
-    const ticket = await this.getOwnTicket(merchantId, ticketId);
-    if (ticket.status !== 'open') {
-      throw new BadRequestException('Ce ticket est déjà clôturé.');
-    }
-
-    const items = await this.getTicketItems(ticketId);
+    const { ticket, items, payments, merchant } = await this.loadOpenTicket(merchantId, ticketId, callerId, callerRole, callerOrgId);
     const line = items.find((i) => i.id === itemRowId);
     if (!line || line.status !== 'active') {
       throw new NotFoundException('Ligne introuvable sur ce ticket');
@@ -493,8 +563,9 @@ export class PosService {
       .eq('id', itemRowId);
     if (error) throw new Error(`Failed to void ticket item: ${error.message}`);
 
-    await this.recomputeTotals(ticket);
-    await this.auditService.log({
+    const saved = await this.saveTotals(ticket, merchant?.pos_tva_rate_pct);
+    // Audit trail doesn't change what the cashier sees — don't wait on it.
+    this.auditService.log({
       user_id: callerId,
       action: 'pos_line_voided',
       entity_type: 'pos_ticket',
@@ -506,9 +577,9 @@ export class PosService {
         reason: data.reason || null,
         authorized_by: authorizedBy,
       },
-    });
+    }).catch((err: any) => this.logger.error(`Audit log failed (pos_line_voided ${ticketId}): ${err.message}`));
 
-    return this.getTicket(merchantId, ticketId, callerId, callerRole, callerOrgId);
+    return { ...saved.ticket, items: saved.items, payments, merchant };
   }
 
   /** Change a line's quantity in place (+/− steppers on the till). Same
@@ -524,23 +595,25 @@ export class PosService {
     callerOrgId: string | undefined,
     quantity: number,
   ) {
-    await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
-    const ticket = await this.getOwnTicket(merchantId, ticketId);
-    if (ticket.status !== 'open') {
-      throw new BadRequestException('Ce ticket est déjà clôturé.');
-    }
-
-    const items = await this.getTicketItems(ticketId);
+    // The line's product (stock + price) comes in the same parallel batch
+    // through the ticket-item → stock-item relation.
+    const [ctx, lineRes] = await Promise.all([
+      this.loadOpenTicket(merchantId, ticketId, callerId, callerRole, callerOrgId),
+      this.db
+        .from('pos_ticket_items')
+        .select('id, stock_items(quantity, unit_price_cents)')
+        .eq('id', itemRowId)
+        .eq('ticket_id', ticketId)
+        .maybeSingle(),
+    ]);
+    const { ticket, items, payments, merchant } = ctx;
     const line = items.find((i) => i.id === itemRowId);
     if (!line || line.status !== 'active') {
       throw new NotFoundException('Ligne introuvable sur ce ticket');
     }
 
-    const { data: stockItem } = await this.db
-      .from('stock_items')
-      .select('quantity, unit_price_cents')
-      .eq('id', line.stock_item_id)
-      .single();
+    const joined: any = (lineRes.data as any)?.stock_items;
+    const stockItem = Array.isArray(joined) ? joined[0] : joined;
     if (!stockItem) throw new NotFoundException('Produit introuvable dans cette boutique');
 
     if (quantity > stockItem.quantity) {
@@ -553,8 +626,8 @@ export class PosService {
       .eq('id', itemRowId);
     if (error) throw new Error(`Failed to update ticket item: ${error.message}`);
 
-    await this.recomputeTotals(ticket);
-    return this.getTicket(merchantId, ticketId, callerId, callerRole, callerOrgId);
+    const saved = await this.saveTotals(ticket, merchant?.pos_tva_rate_pct);
+    return { ...saved.ticket, items: saved.items, payments, merchant };
   }
 
   /** Park / resume a ticket — the cashier puts a sale on hold (e.g. customer
@@ -568,8 +641,10 @@ export class PosService {
     callerOrgId: string | undefined,
     note?: string,
   ) {
-    await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
-    const ticket = await this.getOwnTicket(merchantId, ticketId);
+    const [, ticket] = await Promise.all([
+      this.assertAccess(merchantId, callerId, callerRole, callerOrgId),
+      this.getOwnTicket(merchantId, ticketId),
+    ]);
     if (ticket.status !== 'open') {
       throw new BadRequestException('Seul un ticket en cours peut être mis en attente ou repris.');
     }
@@ -605,15 +680,9 @@ export class PosService {
     callerOrgId: string | undefined,
     data: { amount_cents?: number; received_cents?: number } = {},
   ) {
-    await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
-    // Ticket + payments fetches don't depend on each other — run them together.
-    const [ticket, payments] = await Promise.all([
-      this.getOwnTicket(merchantId, ticketId),
-      this.getTicketPayments(ticketId),
-    ]);
-    if (ticket.status !== 'open') {
-      throw new BadRequestException('Ce ticket est déjà clôturé.');
-    }
+    const ctx = await this.loadOpenTicket(merchantId, ticketId, callerId, callerRole, callerOrgId);
+    const { items, payments, merchant } = ctx;
+    const ticket = await this.syncTotals(ctx.ticket, items, merchant?.pos_tva_rate_pct);
 
     const remaining = this.remainingCents(ticket, payments);
     const amount = data.amount_cents ?? remaining;
@@ -626,20 +695,20 @@ export class PosService {
       throw new BadRequestException('Le montant remis est inférieur à la part en espèces.');
     }
 
-    const { error } = await this.db.from('pos_ticket_payments').insert({
+    const { data: payment, error } = await this.db.from('pos_ticket_payments').insert({
       ticket_id: ticketId,
       method: 'cash',
       amount_cents: amount,
       received_cents: data.received_cents ?? amount,
       status: 'confirmed',
       created_by: callerId,
-    });
+    }).select().single();
     if (error) throw new Error(`Failed to record cash payment: ${error.message}`);
 
-    // settleIfFullyPaid returns the claimed (paid) ticket — enrich it
-    // directly instead of re-running access checks + a full re-fetch.
-    const settled = await this.settleIfFullyPaid(ticket, callerId, callerRole, callerOrgId);
-    return this.withDetails(settled);
+    // Everything is already in hand — no re-fetch before the receipt shows.
+    const allPayments = [...payments, payment];
+    const settled = await this.settleIfFullyPaid(ticket, callerId, callerRole, callerOrgId, allPayments);
+    return { ...settled, items, payments: allPayments, merchant };
   }
 
   /** ScanLinkPay payment — full or the remaining part after a cash part.
@@ -653,13 +722,9 @@ export class PosService {
     callerOrgId: string | undefined,
     data: { amount_cents?: number } = {},
   ) {
-    await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
-    const ticket = await this.getOwnTicket(merchantId, ticketId);
-    if (ticket.status !== 'open') {
-      throw new BadRequestException('Ce ticket est déjà clôturé.');
-    }
+    const ctx = await this.loadOpenTicket(merchantId, ticketId, callerId, callerRole, callerOrgId);
+    const { items, payments, merchant } = ctx;
 
-    const payments = await this.getTicketPayments(ticketId);
     const existingPending = payments.find((p) => p.method === 'scanlinkpay' && p.status === 'pending');
     if (existingPending) {
       // Already minted — return the existing QR instead of a duplicate.
@@ -668,8 +733,9 @@ export class PosService {
         .select('*')
         .eq('id', existingPending.payment_request_id)
         .single();
-      return { ticket: await this.withDetails(ticket), payment_request: existing };
+      return { ticket: { ...ctx.ticket, items, payments, merchant }, payment_request: existing };
     }
+    const ticket = await this.syncTotals(ctx.ticket, items, merchant?.pos_tva_rate_pct);
 
     const remaining = this.remainingCents(ticket, payments);
     const amount = data.amount_cents ?? remaining;
@@ -684,24 +750,27 @@ export class PosService {
       description: `Ticket POS ${ticket.ticket_number ? `#${ticket.ticket_number}` : ticketId.slice(0, 8)}`,
     });
 
-    const { error } = await this.db.from('pos_ticket_payments').insert({
-      ticket_id: ticketId,
-      method: 'scanlinkpay',
-      amount_cents: amount,
-      status: 'pending',
-      payment_request_id: request.id,
-      created_by: callerId,
-    });
+    // The payment row and the legacy pos_tickets.payment_request_id mirror
+    // (kept for anything still reading it, the legacy settle path included)
+    // are independent writes — run them together.
+    const updated_at = new Date().toISOString();
+    const [{ data: payment, error }] = await Promise.all([
+      this.db.from('pos_ticket_payments').insert({
+        ticket_id: ticketId,
+        method: 'scanlinkpay',
+        amount_cents: amount,
+        status: 'pending',
+        payment_request_id: request.id,
+        created_by: callerId,
+      }).select().single(),
+      this.db.from('pos_tickets').update({ payment_request_id: request.id, updated_at }).eq('id', ticketId),
+    ]);
     if (error) throw new Error(`Failed to record ScanLinkPay payment: ${error.message}`);
 
-    // Kept in sync for backward compatibility with anything still reading
-    // pos_tickets.payment_request_id (the legacy settle path included).
-    await this.db
-      .from('pos_tickets')
-      .update({ payment_request_id: request.id, updated_at: new Date().toISOString() })
-      .eq('id', ticketId);
-
-    return { ticket: await this.getTicket(merchantId, ticketId, callerId, callerRole, callerOrgId), payment_request: request };
+    return {
+      ticket: { ...ticket, payment_request_id: request.id, updated_at, items, payments: [...payments, payment], merchant },
+      payment_request: request,
+    };
   }
 
   /** Drop a pending ScanLinkPay part — the minted QR can't be un-minted,
@@ -709,40 +778,45 @@ export class PosService {
    * linked payment_request just expires unpaid). Only 'pending' rows can
    * go: a confirmed payment is real money already in. */
   async voidPayment(merchantId: string, ticketId: string, paymentId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
-    await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
-    const ticket = await this.getOwnTicket(merchantId, ticketId);
-    if (ticket.status !== 'open') {
-      throw new BadRequestException('Ce ticket est déjà clôturé.');
-    }
-
-    const payments = await this.getTicketPayments(ticketId);
+    const { ticket, items, payments, merchant } = await this.loadOpenTicket(merchantId, ticketId, callerId, callerRole, callerOrgId);
     const payment = payments.find((p) => p.id === paymentId);
     if (!payment) throw new NotFoundException('Paiement introuvable sur ce ticket');
     if (payment.status !== 'pending') {
       throw new BadRequestException('Seul un paiement ScanLinkPay en attente peut être retiré.');
     }
 
-    const { error } = await this.db.from('pos_ticket_payments').delete().eq('id', paymentId);
+    const clearsMirror = ticket.payment_request_id === payment.payment_request_id;
+    const [{ error }] = await Promise.all([
+      this.db.from('pos_ticket_payments').delete().eq('id', paymentId),
+      clearsMirror
+        ? this.db.from('pos_tickets').update({ payment_request_id: null, updated_at: new Date().toISOString() }).eq('id', ticketId)
+        : Promise.resolve(null),
+    ]);
     if (error) throw new Error(`Failed to void payment: ${error.message}`);
 
-    if (ticket.payment_request_id === payment.payment_request_id) {
-      await this.db.from('pos_tickets').update({ payment_request_id: null, updated_at: new Date().toISOString() }).eq('id', ticketId);
-    }
-
-    await this.auditService.log({
+    this.auditService.log({
       user_id: callerId,
       action: 'pos_payment_voided',
       entity_type: 'pos_ticket',
       entity_id: ticketId,
       changes: { method: payment.method, amount_cents: payment.amount_cents },
-    });
+    }).catch((err: any) => this.logger.error(`Audit log failed (pos_payment_voided ${ticketId}): ${err.message}`));
 
-    return this.getTicket(merchantId, ticketId, callerId, callerRole, callerOrgId);
+    return {
+      ...ticket,
+      ...(clearsMirror ? { payment_request_id: null } : {}),
+      items,
+      payments: payments.filter((p) => p.id !== paymentId),
+      merchant,
+    };
   }
 
   async cancelTicket(merchantId: string, ticketId: string, callerId: string, callerRole: string, callerOrgId: string | undefined, reason?: string) {
-    await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
-    const ticket = await this.getOwnTicket(merchantId, ticketId);
+    const [, ticket, payments] = await Promise.all([
+      this.assertAccess(merchantId, callerId, callerRole, callerOrgId),
+      this.getOwnTicket(merchantId, ticketId),
+      this.getTicketPayments(ticketId),
+    ]);
     if (ticket.status === 'paid') {
       throw new BadRequestException('Un ticket déjà payé ne peut pas être annulé.');
     }
@@ -753,7 +827,6 @@ export class PosService {
     // A pending ScanLinkPay QR could still be paid by the customer after the
     // cancel — refusing while any payment row exists avoids a paid-cancelled
     // limbo (money in, no stock out, no receipt).
-    const payments = await this.getTicketPayments(ticketId);
     if (payments.length) {
       throw new BadRequestException('Ce ticket a déjà un paiement enregistré — il ne peut plus être annulé.');
     }

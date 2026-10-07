@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
@@ -7,13 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/PageHeader';
+import { FormSheet } from '@/components/FormSheet';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { CashierPinGate } from './CashierPinGate';
 import { PosTill } from './PosTill';
 import { PosHeldTickets, PosSalesHistory, PosSessionPanel } from './PosPanels';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   Lock, Store, Loader2, ShoppingCart, PauseCircle,
-  Receipt, Vault, DoorClosed, DoorOpen,
+  Receipt, Vault, DoorClosed, DoorOpen, MoreHorizontal, ChevronRight,
 } from 'lucide-react';
 
 export const STAFF_ROLES = ['magasinier', 'vendeur', 'caissier', 'comptable'];
@@ -78,7 +80,15 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
   const merchantId = user?.merchant_id || pickedMerchant || (merchants?.length === 1 ? merchants[0].id : '');
   const merchantName = merchants?.find((m: any) => m.id === merchantId)?.name;
 
-  const [currency, setCurrency] = useState<'CDF' | 'USD'>('CDF');
+  // Remembered per device — the till always reopening on CDF made a USD
+  // session look closed ("ouvrez la caisse" again) on every visit.
+  const [currency, setCurrencyState] = useState<'CDF' | 'USD'>(() => {
+    try { return localStorage.getItem('pos-currency') === 'USD' ? 'USD' : 'CDF'; } catch { return 'CDF'; }
+  });
+  const setCurrency = (c: 'CDF' | 'USD') => {
+    setCurrencyState(c);
+    try { localStorage.setItem('pos-currency', c); } catch { /* not persisted */ }
+  };
   const [error, setError] = useState('');
 
   // ------------------------------------------------------------------
@@ -90,6 +100,25 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
     enabled: !!merchantId,
   });
   const session = sessionData?.session;
+
+  // On arrival only: if this currency's till is closed but the other one is
+  // open, land on the open one. Once — afterwards the cashier must stay free
+  // to switch to the closed currency to open it too.
+  const otherCurrency = currency === 'CDF' ? 'USD' : 'CDF';
+  const autoPicked = useRef(false);
+  const { data: otherSessionData } = useQuery({
+    queryKey: ['cash-session', merchantId, otherCurrency],
+    queryFn: async () => (await api.get(`/merchants/${merchantId}/cash-register/sessions/current`, { params: { currency: otherCurrency } })).data,
+    enabled: !!merchantId && !autoPicked.current && !sessionLoading && !session,
+  });
+  useEffect(() => {
+    if (autoPicked.current || !merchantId || sessionLoading) return;
+    if (session) { autoPicked.current = true; return; }
+    if (otherSessionData === undefined) return;
+    autoPicked.current = true;
+    if (otherSessionData.session) setCurrency(otherCurrency);
+  }, [merchantId, sessionLoading, session, otherSessionData]);
+
   const [openingFloat, setOpeningFloat] = useState('');
   const [opening, setOpening] = useState(false);
 
@@ -141,6 +170,7 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
       localStorage.setItem(ticketKey, data.id);
       setTicket(data);
       setTab('vente');
+      setMobileSheet(null);
       queryClient.invalidateQueries({ queryKey: ['pos-held', merchantId] });
     } catch (err: any) {
       setError(posErrorMessage(err, 'Impossible de reprendre ce ticket'));
@@ -149,6 +179,12 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
 
   const [tab, setTab] = useState<Tab>('vente');
   const canSell = !!merchantId && !!session;
+
+  // Mobile/tablet: the till is the whole screen; the secondary tabs live in
+  // a "⋯" menu opening as bottom sheets instead of a permanent tab bar.
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const [mobileSheet, setMobileSheet] = useState<null | 'menu' | 'attente' | 'ventes' | 'caisse'>(null);
+  const activeTab: Tab = isDesktop ? tab : 'vente';
 
   // Held tickets count for the tab badge.
   const { data: heldData } = useQuery({
@@ -160,8 +196,11 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
   const heldCount = heldData?.total || 0;
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-5 max-w-2xl lg:max-w-7xl mx-auto">
-      <PageHeader title="Caisse" />
+    <div className="px-4 pt-4 pb-28 md:pb-6 lg:p-6 space-y-4 lg:space-y-5 max-w-2xl lg:max-w-7xl mx-auto">
+      {/* Reached from the bottom "Vente" tab on mobile — no back arrow/title there. */}
+      <div className="hidden lg:block">
+        <PageHeader title="Caisse" />
+      </div>
 
       {!user?.merchant_id && merchants?.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-1">
@@ -179,27 +218,40 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
 
       {/* Store + currency + lock — one compact row on desktop so the till
           itself gets the maximum vertical space. */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div className="flex items-center gap-2 lg:gap-4">
         {merchantName && (
-          <p className="text-sm text-muted-foreground flex items-center gap-1.5">
-            <Store className="w-4 h-4" /> {merchantName}
+          <p className="min-w-0 text-sm text-muted-foreground flex items-center gap-1.5">
+            <Store className="w-4 h-4 flex-shrink-0" /> <span className="truncate">{merchantName}</span>
           </p>
         )}
         {/* Currency — locked while a ticket is open (tickets are single-currency) */}
-        <div className="flex gap-2 items-center ml-auto">
+        <div className="flex gap-1.5 lg:gap-2 items-center ml-auto flex-shrink-0">
           {(['CDF', 'USD'] as const).map((c) => (
             <button
               key={c}
               disabled={!!ticket}
               onClick={() => setCurrency(c)}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium border disabled:opacity-50 ${(ticket?.currency || currency) === c ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'}`}
+              className={`rounded-full px-3 lg:px-4 py-1 lg:py-1.5 text-xs lg:text-sm font-medium border disabled:opacity-50 ${(ticket?.currency || currency) === c ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'}`}
             >
               {c}
             </button>
           ))}
           {onLock && (
-            <button onClick={onLock} className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground ml-2">
+            <button onClick={onLock} className="hidden lg:flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground ml-2">
               <Lock className="w-4 h-4" /> Verrouiller
+            </button>
+          )}
+          {/* Mobile: everything secondary behind one button */}
+          {canSell && (
+            <button
+              onClick={() => setMobileSheet('menu')}
+              className="lg:hidden relative w-9 h-9 rounded-full border border-border flex items-center justify-center text-muted-foreground"
+              aria-label="Plus d'options de caisse"
+            >
+              <MoreHorizontal className="w-5 h-5" />
+              {heldCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-destructive ring-2 ring-background" />
+              )}
             </button>
           )}
         </div>
@@ -250,8 +302,8 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
 
       {canSell && (
         <>
-          {/* Tabs + session info — one row on desktop */}
-          <div className="space-y-3 lg:space-y-0 lg:flex lg:items-center lg:gap-4">
+          {/* Tabs + session info — desktop only (mobile: the "⋯" menu) */}
+          <div className="hidden lg:flex lg:items-center lg:gap-4">
             <div className="grid grid-cols-4 gap-1 rounded-xl bg-secondary p-1 lg:w-[440px] lg:flex-shrink-0">
               {TABS.map(({ key, label, icon: Icon }) => (
                 <button
@@ -275,7 +327,7 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
             </p>
           </div>
 
-          {tab === 'vente' && (
+          {activeTab === 'vente' && (
             <PosTill
               merchantId={merchantId}
               currency={currency}
@@ -286,21 +338,78 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
               onHeld={() => {
                 clearTicket();
                 queryClient.invalidateQueries({ queryKey: ['pos-held', merchantId] });
+                // Desktop shows the held list; on mobile the till stays up
+                // for the next customer (the "⋯" dot signals held tickets).
                 setTab('attente');
               }}
             />
           )}
 
-          {tab === 'attente' && (
+          {activeTab === 'attente' && (
             <PosHeldTickets merchantId={merchantId} onResume={resumeTicket} />
           )}
 
-          {tab === 'ventes' && (
+          {activeTab === 'ventes' && (
             <PosSalesHistory merchantId={merchantId} />
           )}
 
-          {tab === 'caisse' && (
+          {activeTab === 'caisse' && (
             <PosSessionPanel merchantId={merchantId} session={session} />
+          )}
+
+          {/* Mobile "⋯" menu and the secondary panels it opens */}
+          {mobileSheet === 'menu' && (
+            <FormSheet onClose={() => setMobileSheet(null)} title="Options de caisse">
+              <div className="p-4 pb-6 space-y-1">
+                {[
+                  { key: 'attente' as const, label: 'Tickets en attente', icon: PauseCircle, badge: heldCount || undefined },
+                  { key: 'ventes' as const, label: 'Ventes du jour', icon: Receipt },
+                  { key: 'caisse' as const, label: 'Caisse', icon: Vault, hint: `Session ${session.currency} · Fond ${formatCurrency(session.opening_float_cents, session.currency)}` },
+                ].map(({ key, label, icon: Icon, badge, hint }) => (
+                  <button
+                    key={key}
+                    onClick={() => setMobileSheet(key)}
+                    className="w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left hover:bg-accent"
+                  >
+                    <Icon className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-medium text-foreground">{label}</span>
+                      {hint && <span className="block text-xs text-muted-foreground truncate">{hint}</span>}
+                    </span>
+                    {badge && (
+                      <span className="min-w-6 h-6 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center">
+                        {badge}
+                      </span>
+                    )}
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                ))}
+                {onLock && (
+                  <button
+                    onClick={() => { setMobileSheet(null); onLock(); }}
+                    className="w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left hover:bg-accent"
+                  >
+                    <Lock className="w-5 h-5 text-muted-foreground" />
+                    <span className="flex-1 font-medium text-foreground">Verrouiller la caisse</span>
+                  </button>
+                )}
+              </div>
+            </FormSheet>
+          )}
+          {mobileSheet && mobileSheet !== 'menu' && (
+            <FormSheet
+              onClose={() => setMobileSheet(null)}
+              title={mobileSheet === 'attente' ? 'Tickets en attente' : mobileSheet === 'ventes' ? 'Ventes du jour' : 'Caisse'}
+            >
+              <div className="p-4 pb-6 space-y-4">
+                <h2 className="text-lg font-bold text-foreground">
+                  {mobileSheet === 'attente' ? 'Tickets en attente' : mobileSheet === 'ventes' ? 'Ventes du jour' : 'Caisse'}
+                </h2>
+                {mobileSheet === 'attente' && <PosHeldTickets merchantId={merchantId} onResume={resumeTicket} />}
+                {mobileSheet === 'ventes' && <PosSalesHistory merchantId={merchantId} />}
+                {mobileSheet === 'caisse' && <PosSessionPanel merchantId={merchantId} session={session} />}
+              </div>
+            </FormSheet>
           )}
         </>
       )}

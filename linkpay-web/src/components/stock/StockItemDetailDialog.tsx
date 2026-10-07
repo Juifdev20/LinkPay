@@ -8,8 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency } from '@/lib/utils';
-import { Loader2, Pencil, Trash2, Boxes } from 'lucide-react';
-import { getCategoryLabel, getCategoryIcon, STOCK_CATEGORIES } from '@/lib/stock-categories';
+import { Loader2, Pencil, Trash2, Boxes, Printer } from 'lucide-react';
+import { getCategoryLabel, STOCK_CATEGORIES } from '@/lib/stock-categories';
+import { ProductLabelSheet } from './ProductLabelSheet';
 
 const CONDITIONS: Record<string, string> = { neuf: 'Neuf', occasion: 'Occasion', reconditionne: 'Reconditionné' };
 const MOVEMENT_TYPES = [
@@ -31,6 +32,8 @@ export function StockItemDetailDialog({
 }: {
   item: any;
   orgId: string;
+  /** organizations.sector — the technical fields only exist for electronics. */
+  sector?: string | null;
   onClose: () => void;
   onEdit: (item: any) => void;
   onDelete: (item: any) => void;
@@ -38,6 +41,7 @@ export function StockItemDetailDialog({
   const queryClient = useQueryClient();
   const canManage = useAuthStore((s) => s.user?.role) !== 'vendeur';
   const [showMovement, setShowMovement] = useState(false);
+  const [labelOpen, setLabelOpen] = useState(false);
   const [movement, setMovement] = useState({ type: 'in', quantity: '', reason: '' });
 
   const movementMutation = useMutation({
@@ -59,7 +63,6 @@ export function StockItemDetailDialog({
     },
   });
 
-  const CategoryIcon = getCategoryIcon(item.category);
   const attributeEntries = Object.entries(item.attributes || {}).filter(([, v]) => v !== '' && v != null);
   const lowStock = item.quantity <= item.low_stock_threshold;
 
@@ -70,19 +73,11 @@ export function StockItemDetailDialog({
           <DialogTitle className="sr-only">{item.name}</DialogTitle>
         </DialogHeader>
 
-        <div className="flex justify-center mb-4">
-          {item.image_url ? (
-            <img src={item.image_url} alt={item.name} className="w-40 h-40 rounded-2xl object-cover border border-border" />
-          ) : (
-            <div className="w-40 h-40 rounded-2xl bg-secondary flex items-center justify-center">
-              <CategoryIcon className="w-14 h-14 text-muted-foreground" />
-            </div>
-          )}
-        </div>
-
         <div className="text-center mb-4">
           <h2 className="text-xl font-bold text-foreground">{item.name}</h2>
-          <p className="text-sm text-muted-foreground">{[item.brand, item.model].filter(Boolean).join(' ') || '—'}</p>
+          {(item.brand || item.model) && (
+            <p className="text-sm text-muted-foreground">{[item.brand, item.model].filter(Boolean).join(' ')}</p>
+          )}
           <div className="flex items-center justify-center gap-1.5 flex-wrap mt-2">
             {item.category && <Badge variant="secondary">{getCategoryLabel(item.category)}</Badge>}
             {item.item_type && <Badge variant="secondary">{item.item_type}</Badge>}
@@ -101,6 +96,22 @@ export function StockItemDetailDialog({
             <p className="text-xs text-muted-foreground">Prix de vente</p>
           </div>
         </div>
+
+        {item.barcode && (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-border p-3 mb-4">
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">Code-barres</p>
+              <p className="font-mono text-sm text-foreground truncate">{item.barcode}</p>
+            </div>
+            {/* Reprint (new carton…) — only for a priced, saved product. */}
+            {item.unit_price_cents > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setLabelOpen(true)}>
+                <Printer className="mr-2 w-4 h-4" />
+                Étiquette
+              </Button>
+            )}
+          </div>
+        )}
 
         {(attributeEntries.length > 0 || item.serial_number || item.warranty_months || item.description) && (
           <div className="space-y-1 text-sm rounded-xl border border-border p-4 mb-4">
@@ -165,6 +176,14 @@ export function StockItemDetailDialog({
               Supprimer
             </Button>
           </div>
+        )}
+
+        {labelOpen && (
+          <ProductLabelSheet
+            product={{ name: item.name, barcode: item.barcode, unit_price_cents: item.unit_price_cents, currency: item.currency }}
+            stockQuantity={item.quantity}
+            onClose={() => setLabelOpen(false)}
+          />
         )}
       </DialogContent>
     </Dialog>

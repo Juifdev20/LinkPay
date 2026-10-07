@@ -80,6 +80,15 @@ export class StockService {
     throw new ForbiddenException('You do not manage this organization\'s stock');
   }
 
+  /** Unique-constraint violation → a message naming the field that clashes. */
+  private throwIfDuplicate(error: { code?: string; message: string }) {
+    if (error.code !== '23505' && !/duplicate|unique/i.test(error.message)) return;
+    if (error.message.includes('barcode')) {
+      throw new BadRequestException('Ce code-barres est déjà utilisé par un autre article de cette boutique.');
+    }
+    throw new BadRequestException('Un article avec ce numéro de série existe déjà');
+  }
+
   async createItem(
     merchantId: string,
     callerId: string,
@@ -117,7 +126,7 @@ export class StockService {
         attributes: data.attributes || {},
         image_url: data.image_url || null,
         description: data.description || null,
-        barcode: data.barcode || null,
+        barcode: data.barcode?.trim() || null,
         brand: data.brand || null,
         model: data.model || null,
         serial_number: data.serial_number || null,
@@ -134,9 +143,7 @@ export class StockService {
       .single();
 
     if (error) {
-      if (error.message.includes('duplicate') || error.message.includes('unique')) {
-        throw new BadRequestException('Un article avec ce numéro de série existe déjà');
-      }
+      this.throwIfDuplicate(error);
       throw new Error(`Failed to create stock item: ${error.message}`);
     }
     return item;
@@ -195,6 +202,10 @@ export class StockService {
     for (const key of allowedFields) {
       if (updates[key] !== undefined) filtered[key] = updates[key];
     }
+    // An emptied barcode field means "no code" — stored as NULL, never '',
+    // or two code-less products would collide on the (merchant, barcode)
+    // unique constraint.
+    if (filtered.barcode !== undefined) filtered.barcode = String(filtered.barcode).trim() || null;
 
     const { data: current, error: currentError } = await this.supabaseService.getClient()
       .from('stock_items')
@@ -213,7 +224,10 @@ export class StockService {
       .select()
       .single();
 
-    if (error) throw new Error(`Failed to update stock item: ${error.message}`);
+    if (error) {
+      this.throwIfDuplicate(error);
+      throw new Error(`Failed to update stock item: ${error.message}`);
+    }
 
     const newQuantity = updates.quantity;
     if (typeof newQuantity === 'number' && newQuantity !== current.quantity) {

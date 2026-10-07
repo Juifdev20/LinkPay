@@ -1,71 +1,74 @@
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { useAuthStore } from '@/lib/auth-store';
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
+import { lazyPage, prefetchPages, PageFallback } from '@/lib/lazy-page';
+import { startScreenProtection } from '@/lib/screen-protection';
 import { initNativePushNavigation } from '@/lib/native-push';
 
 import LoginPage from '@/pages/auth/LoginPage';
-import RegisterPage from '@/pages/auth/RegisterPage';
+const RegisterPage = lazyPage(() => import('@/pages/auth/RegisterPage'));
 import WelcomePage from '@/pages/WelcomePage';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 
-import PaymentLinkPage from '@/pages/public/PaymentLinkPage';
-import PaymentResultPage from '@/pages/public/PaymentResultPage';
-import PayByNumber from '@/pages/public/PayByNumber';
+const PaymentLinkPage = lazyPage(() => import('@/pages/public/PaymentLinkPage'));
+const PaymentResultPage = lazyPage(() => import('@/pages/public/PaymentResultPage'));
+const PayByNumber = lazyPage(() => import('@/pages/public/PayByNumber'));
 
 import DashboardLayout from '@/layouts/DashboardLayout';
 import MerchantDashboard from '@/pages/merchant/Dashboard';
-import PaymentRequestsPage from '@/pages/merchant/PaymentRequests';
-import CreatePaymentRequestPage from '@/pages/merchant/CreatePaymentRequest';
-import MerchantTransactionsPage from '@/pages/merchant/Transactions';
-import SettlementsPage from '@/pages/merchant/Settlements';
-import TeamPage from '@/pages/merchant/Team';
+const PaymentRequestsPage = lazyPage(() => import('@/pages/merchant/PaymentRequests'));
+const CreatePaymentRequestPage = lazyPage(() => import('@/pages/merchant/CreatePaymentRequest'));
+const MerchantTransactionsPage = lazyPage(() => import('@/pages/merchant/Transactions'));
+const SettlementsPage = lazyPage(() => import('@/pages/merchant/Settlements'));
+const TeamPage = lazyPage(() => import('@/pages/merchant/Team'));
 
 import ClientDashboard from '@/pages/client/Dashboard';
-import ClientTransactionsPage from '@/pages/client/Transactions';
-import TopupPage from '@/pages/wallet/Topup';
-import TopupResultPage from '@/pages/wallet/TopupResult';
-import SendPage from '@/pages/wallet/Send';
-import ReceivePage from '@/pages/wallet/Receive';
-import SavingsPotPage from '@/pages/wallet/SavingsPot';
-import ExpenseTrackerPage from '@/pages/expense-tracker/ExpenseTracker';
-import ProActivationResultPage from '@/pages/expense-tracker/ProActivationResult';
-import TontinesListPage from '@/pages/client/tontines/TontinesList';
-import CreateTontinePage from '@/pages/client/tontines/CreateTontine';
-import TontineDetailPage from '@/pages/client/tontines/TontineDetail';
-import TontineSettingsPage from '@/pages/client/tontines/TontineSettings';
-import PayInvoicePage from '@/pages/wallet/Pay';
-import ScanQrPage from '@/pages/wallet/ScanQr';
-import WithdrawPage from '@/pages/wallet/Withdraw';
-import SetPinPage from '@/pages/wallet/SetPin';
-import WalletTransactionsPage from '@/pages/wallet/Transactions';
+const ClientTransactionsPage = lazyPage(() => import('@/pages/client/Transactions'));
+const TopupPage = lazyPage(() => import('@/pages/wallet/Topup'));
+const TopupResultPage = lazyPage(() => import('@/pages/wallet/TopupResult'));
+const SendPage = lazyPage(() => import('@/pages/wallet/Send'));
+const ReceivePage = lazyPage(() => import('@/pages/wallet/Receive'));
+const SavingsPotPage = lazyPage(() => import('@/pages/wallet/SavingsPot'));
+const ExpenseTrackerPage = lazyPage(() => import('@/pages/expense-tracker/ExpenseTracker'));
+const ProActivationResultPage = lazyPage(() => import('@/pages/expense-tracker/ProActivationResult'));
+const TontinesListPage = lazyPage(() => import('@/pages/client/tontines/TontinesList'));
+const CreateTontinePage = lazyPage(() => import('@/pages/client/tontines/CreateTontine'));
+const TontineDetailPage = lazyPage(() => import('@/pages/client/tontines/TontineDetail'));
+const TontineSettingsPage = lazyPage(() => import('@/pages/client/tontines/TontineSettings'));
+const PayInvoicePage = lazyPage(() => import('@/pages/wallet/Pay'));
+const ScanQrPage = lazyPage(() => import('@/pages/wallet/ScanQr'));
+const WithdrawPage = lazyPage(() => import('@/pages/wallet/Withdraw'));
+const SetPinPage = lazyPage(() => import('@/pages/wallet/SetPin'));
+const WalletTransactionsPage = lazyPage(() => import('@/pages/wallet/Transactions'));
 
-import AdminDashboard from '@/pages/admin/Dashboard';
-import AdminMerchantsPage from '@/pages/admin/Merchants';
-import AdminUsersPage from '@/pages/admin/Users';
-import AdminSettlementsPage from '@/pages/admin/Settlements';
-import AdminCommissionsPage from '@/pages/admin/Commissions';
-import ExpenseTrackerSettingsPage from '@/pages/admin/ExpenseTrackerSettings';
-import AdminOrganizationsPage from '@/pages/admin/Organizations';
+const AdminDashboard = lazyPage(() => import('@/pages/admin/Dashboard'));
+const AdminMerchantsPage = lazyPage(() => import('@/pages/admin/Merchants'));
+const AdminUsersPage = lazyPage(() => import('@/pages/admin/Users'));
+const AdminSettlementsPage = lazyPage(() => import('@/pages/admin/Settlements'));
+const AdminCommissionsPage = lazyPage(() => import('@/pages/admin/Commissions'));
+const ExpenseTrackerSettingsPage = lazyPage(() => import('@/pages/admin/ExpenseTrackerSettings'));
+const AppSecurityPage = lazyPage(() => import('@/pages/admin/AppSecurity'));
+const AdminOrganizationsPage = lazyPage(() => import('@/pages/admin/Organizations'));
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
-import StaffPage from '@/pages/organization/Staff';
-import StoresPage from '@/pages/organization/Stores';
-import StockPage from '@/pages/organization/Stock';
-import InventoryPage from '@/pages/organization/Inventory';
-import SalesStatsPage from '@/pages/organization/SalesStats';
-import AuditLogPage from '@/pages/organization/AuditLog';
-import PosPage from '@/pages/pos/PosPage';
-import SalesPage from '@/pages/organization/Sales';
-import SalesDashboardPage from '@/pages/organization/SalesDashboard';
-import SalesHistoryPage from '@/pages/organization/SalesHistory';
-import CompanyProfilePage from '@/pages/organization/CompanyProfile';
-import OrganizationTransactionsPage from '@/pages/organization/Transactions';
-import OrganizationReceivePage from '@/pages/organization/Receive';
+const StaffPage = lazyPage(() => import('@/pages/organization/Staff'));
+const StoresPage = lazyPage(() => import('@/pages/organization/Stores'));
+const StockPage = lazyPage(() => import('@/pages/organization/Stock'));
+const InventoryPage = lazyPage(() => import('@/pages/organization/Inventory'));
+const SalesStatsPage = lazyPage(() => import('@/pages/organization/SalesStats'));
+const AuditLogPage = lazyPage(() => import('@/pages/organization/AuditLog'));
+const PosPage = lazyPage(() => import('@/pages/pos/PosPage'));
+const SalesPage = lazyPage(() => import('@/pages/organization/Sales'));
+const SalesDashboardPage = lazyPage(() => import('@/pages/organization/SalesDashboard'));
+const SalesHistoryPage = lazyPage(() => import('@/pages/organization/SalesHistory'));
+const CompanyProfilePage = lazyPage(() => import('@/pages/organization/CompanyProfile'));
+const OrganizationTransactionsPage = lazyPage(() => import('@/pages/organization/Transactions'));
+const OrganizationReceivePage = lazyPage(() => import('@/pages/organization/Receive'));
 import StaffHome from '@/pages/staff/StaffHome';
-import SettingsPage from '@/pages/Settings';
-import NotificationsPage from '@/pages/Notifications';
-import MorePage from '@/pages/More';
-import ProfilePage from '@/pages/Profile';
+const SettingsPage = lazyPage(() => import('@/pages/Settings'));
+const NotificationsPage = lazyPage(() => import('@/pages/Notifications'));
+const MorePage = lazyPage(() => import('@/pages/More'));
+const ProfilePage = lazyPage(() => import('@/pages/Profile'));
 import InstallPrompt from '@/components/InstallPrompt';
 import { AppLockGate } from '@/components/AppLockGate';
 import { ForcePasswordChangeGate } from '@/components/ForcePasswordChangeGate';
@@ -139,6 +142,11 @@ export default function App() {
     }
   }, [fetchProfile, isAuthenticated]);
 
+  useEffect(() => prefetchPages(), []);
+
+  // Super admin switch: black screenshots in the Android app (FLAG_SECURE).
+  useEffect(() => startScreenProtection(), []);
+
   // Deep-link into the app when a delivered push notification is tapped —
   // the native counterpart of sw.ts's notificationclick handler, which only
   // runs in a real service worker context. Native-only: on web/iOS the
@@ -153,6 +161,7 @@ export default function App() {
       <InstallPrompt />
       <AppLockGate />
       <ForcePasswordChangeGate />
+      <Suspense fallback={<PageFallback fullScreen />}>
       <Routes>
       <Route path="/" element={<RootRedirect />} />
 
@@ -250,6 +259,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={['super_admin']}>
               <AdminCommissionsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/app-security"
+          element={
+            <ProtectedRoute roles={['super_admin']}>
+              <AppSecurityPage />
             </ProtectedRoute>
           }
         />
@@ -385,6 +402,7 @@ export default function App() {
 
       <Route path="*" element={<RootRedirect />} />
     </Routes>
+      </Suspense>
     </>
   );
 }

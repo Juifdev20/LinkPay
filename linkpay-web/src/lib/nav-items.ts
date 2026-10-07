@@ -53,6 +53,7 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/admin/users', label: 'Utilisateurs', icon: UserCog, roles: ['super_admin'] },
   { to: '/dashboard/admin/commissions', label: 'Commissions', icon: Percent, roles: ['super_admin'] },
   { to: '/dashboard/admin/expense-tracker-settings', label: 'Dépenses — Config.', icon: Receipt, roles: ['super_admin'] },
+  { to: '/dashboard/admin/app-security', label: "Sécurité de l'application", icon: ShieldCheck, roles: ['super_admin'] },
   // The one enterprise module kept at this top level — Transactions and
   // Utilisateurs internes moved to Settings.tsx's secondaryLinks instead
   // per product decision (only Stock & Approvisionnement stays a
