@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useSheetStore } from '@/lib/sheet-store';
 import { useAuthStore } from '@/lib/auth-store';
-import { navItems } from '@/lib/nav-items';
+import { navItemsFor } from '@/lib/nav-items';
 
 // "Profil" moved to TopBar.tsx (top-right icon) — this slot is now the app
 // Settings destination, matching what the desktop sidebar already calls it
@@ -84,8 +84,9 @@ export function computeVisibleTabs(
     : tabs[1];
   const allTabs = staffTabsFor(role || '', orgSector) ?? [tabs[0], transactionsTab, qrTab, tabs[2]];
 
-  const businessItemCount = role
-    ? navItems.filter((i) => i.roles.includes(role) && !NAV_CHROME_PATHS.includes(i.to)).length
+  const navRole = isEnterprise ? 'enterprise' : role;
+  const businessItemCount = navRole
+    ? navItemsFor(navRole, orgSector).filter((i) => !NAV_CHROME_PATHS.includes(i.to)).length
     : 0;
   const usePlusTab = businessItemCount > 3;
   const displayTabs = usePlusTab
@@ -118,11 +119,11 @@ export function BottomNav() {
   const { displayTabs, usePlusTab } = computeVisibleTabs(user, org?.sector);
   // "Plus" stays lit while a page reachable only through it is open —
   // otherwise the bar would show nothing selected on those screens.
+  const navRole = user?.acting_as_org_id || role === 'enterprise' ? 'enterprise' : role;
   const plusActive =
     usePlusTab &&
-    navItems.some(
+    navItemsFor(navRole || '', org?.sector).some(
       (i) =>
-        i.roles.includes(role || '') &&
         !displayTabs.some((t) => t.to === i.to) &&
         (i.to === '/dashboard' ? pathname === i.to : pathname.startsWith(i.to)),
     );

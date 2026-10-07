@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, LogOut } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
-import { navItems } from '@/lib/nav-items';
+import { navItemsFor } from '@/lib/nav-items';
 import { computeVisibleTabs } from '@/components/BottomNav';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
 import { SECTORS } from '@/pages/organization/OnboardingWizard';
@@ -85,7 +85,7 @@ export default function MorePage() {
   ]);
 
   const moreItems = role
-    ? navItems.filter((i) => i.roles.includes(role) && !visiblePaths.has(i.to))
+    ? navItemsFor(role, org?.sector).filter((i) => !visiblePaths.has(i.to))
     : [];
 
   const sections = SECTIONS.map((s) => ({ ...s, items: [] as typeof moreItems }));

@@ -81,3 +81,19 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/notifications', label: 'Notifications', icon: Bell, roles: [...ALL_ROLES, ...STAFF_ROLES] },
   { to: '/dashboard/settings', label: 'Paramètres', icon: Settings, roles: [...ALL_ROLES, ...STAFF_ROLES] },
 ];
+
+// Sector-conditional entries — a supermarket sells at the POS till, so
+// the Ventes sales form + its history/dashboard (the electronics flow)
+// are redundant for that sector and hidden from the nav entirely.
+const SECTOR_HIDDEN: Record<string, string[]> = {
+  supermarche: [
+    '/dashboard/organization/sales',
+    '/dashboard/organization/sales/history',
+    '/dashboard/organization/sales/dashboard',
+  ],
+};
+
+export function navItemsFor(role: string, sector?: string): NavItem[] {
+  const hidden = new Set(sector ? SECTOR_HIDDEN[sector] ?? [] : []);
+  return navItems.filter((i) => i.roles.includes(role) && !hidden.has(i.to));
+}

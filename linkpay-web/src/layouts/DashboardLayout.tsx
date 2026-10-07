@@ -14,7 +14,7 @@ import { usePaymentReceivedAlert } from '@/hooks/usePaymentReceivedAlert';
 import { LogOut, User, Building2, Sun, Moon, Menu, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SECTORS } from '@/pages/organization/OnboardingWizard';
-import { navItems } from '@/lib/nav-items';
+import { navItemsFor } from '@/lib/nav-items';
 
 export default function DashboardLayout() {
   const user = useAuthStore((s) => s.user);
@@ -55,7 +55,7 @@ export default function DashboardLayout() {
   // keep the enterprise/supermarket menu — they are the owner inside their
   // store, not a standalone merchant.
   const navRole = user?.acting_as_org_id ? 'enterprise' : user?.role;
-  const visibleItems = user && navRole ? navItems.filter((item) => item.roles.includes(navRole)) : [];
+  const visibleItems = user && navRole ? navItemsFor(navRole, org?.sector) : [];
 
   return (
     <div className="min-h-screen bg-background">
