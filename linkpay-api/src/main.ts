@@ -62,14 +62,10 @@ async function bootstrap() {
   app.use(helmet());
   const frontendUrl = configService.get<string>('FRONTEND_URL');
   const allowedOrigins = [
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:5175',
-    'http://localhost:5176',
-    'http://localhost:5177',
-    'http://localhost:5178',
-    'http://localhost:5179',
-    'http://localhost:5180',
+    // Any local dev/preview port on localhost or 127.0.0.1 — Vite picks
+    // 5173+ and browser-preview proxies use ephemeral ports, so matching
+    // by host instead of an enumerated port list keeps local login working.
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
     // Capacitor's Android WebView serves the bundled app from this origin.
     'https://localhost',
   ];

@@ -1,8 +1,11 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Receipt, QrCode, Settings, ShoppingCart, Boxes, BarChart3, Bell } from 'lucide-react';
+import { Home, Receipt, QrCode, Settings, ShoppingCart, Boxes, BarChart3, Bell, Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/api';
 import { useSheetStore } from '@/lib/sheet-store';
 import { useAuthStore } from '@/lib/auth-store';
+import { navItemsFor } from '@/lib/nav-items';
 
 // "Profil" moved to TopBar.tsx (top-right icon) — this slot is now the app
 // Settings destination, matching what the desktop sidebar already calls it
@@ -30,15 +33,71 @@ const orgTransactionsTab: Tab = { to: '/dashboard/organization/transactions', la
 const financeTab: Tab = { to: SALES_DASHBOARD_PATH, label: 'Finances', icon: BarChart3, end: true, central: true };
 const alertsTab: Tab = { to: '/dashboard/notifications', label: 'Alertes', icon: Bell, end: true, central: true };
 
-// The seller runs sales and the cash desk: Accueil, Transactions, Ventes, Paramètres.
-const sellerTabs = [homeTab, orgTransactionsTab, salesTab, settingsTab];
+// Selling is the daily business activity — the supermarket cashier lands on
+// the POS till; the electronics vendeur (who also runs the cash desk for
+// the Ventes flow) keeps the Ventes form as their central tab. Transactions
+// stays one tap away via the sidebar/"Plus" page for roles with more than
+// 3 business destinations (see computeVisibleTabs below), rather than
+// fighting Stock for the 4th fixed slot.
+const venteTab: Tab = { to: '/dashboard/pos', label: 'Vente', icon: ShoppingCart, end: false, central: true };
 
-const staffTabs: Record<string, Tab[]> = {
-  vendeur: sellerTabs,
-  caissier: sellerTabs,
-  comptable: [homeTab, orgTransactionsTab, financeTab, settingsTab],
-  magasinier: [homeTab, stockTab, alertsTab, settingsTab],
+const staffTabsFor = (role: string, orgSector?: string): Tab[] | undefined => {
+  const caissierSale = orgSector === 'supermarche' ? venteTab : salesTab;
+  const map: Record<string, Tab[]> = {
+    vendeur: [homeTab, stockTab, salesTab, settingsTab],
+    caissier: [homeTab, orgTransactionsTab, caissierSale, settingsTab],
+    comptable: [homeTab, orgTransactionsTab, financeTab, settingsTab],
+    magasinier: [homeTab, stockTab, alertsTab, settingsTab],
+  };
+  return map[role];
 };
+
+// Entries that are navigation chrome, not business modules — the Plus tab
+// appears only when the role has more than 3 *business* destinations,
+// otherwise Paramètres keeps its own slot in the bar.
+const NAV_CHROME_PATHS = ['/dashboard', '/dashboard/notifications', '/dashboard/settings'];
+
+const MORE_PATH = '/dashboard/more';
+// Three bars — the mobile "More" convention (same icon as the reference
+// screens this replaces), not the ⋯ ellipsis which reads as "options".
+const plusTab: Tab = { to: MORE_PATH, label: 'Plus', icon: Menu, end: false };
+
+/** Which tabs a given user sees in the bottom bar — shared with More.tsx so
+ * the "Plus" page can list exactly what the bar does NOT already show
+ * (no duplicated entries: tautologies are the enemy of a clean mobile UX). */
+export function computeVisibleTabs(
+  user: { role?: string | null; merchant_id?: string | null; acting_as_org_id?: string | null } | null,
+  orgSector?: string,
+) {
+  const role = user?.role;
+  // "Acting as" a store swaps role to 'merchant' (auth-store.enterStore) —
+  // the enterprise check must cover that, so the Vente tab survives it.
+  const isEnterprise = role === 'enterprise' || !!user?.acting_as_org_id;
+  const hasMerchantId = !!user?.merchant_id;
+
+  // Business accounts sell daily — the central tab is "Vente" → the POS
+  // till for enterprise, "QR" → payment request for plain merchants,
+  // "Recevoir" → own QR for clients who can only receive.
+  const qrTab = isEnterprise
+    ? venteTab
+    : hasMerchantId
+    ? { to: '/dashboard/payment-requests/new', label: 'QR', icon: QrCode, end: false, central: true }
+    : { to: '/dashboard/wallet/receive', label: 'Recevoir', icon: QrCode, end: false, central: true };
+  const transactionsTab = isEnterprise
+    ? { ...tabs[1], to: '/dashboard/organization/transactions' }
+    : tabs[1];
+  const allTabs = staffTabsFor(role || '', orgSector) ?? [tabs[0], transactionsTab, qrTab, tabs[2]];
+
+  const navRole = isEnterprise ? 'enterprise' : role;
+  const businessItemCount = navRole
+    ? navItemsFor(navRole, orgSector).filter((i) => !NAV_CHROME_PATHS.includes(i.to)).length
+    : 0;
+  const usePlusTab = businessItemCount > 3;
+  const displayTabs = usePlusTab
+    ? [...allTabs.filter((t) => t.to !== '/dashboard/settings'), plusTab]
+    : allTabs;
+  return { displayTabs, usePlusTab };
+}
 
 export function BottomNav() {
   // Hidden while a FormSheet is open — the sheet owns the keyboard-aware
@@ -47,32 +106,31 @@ export function BottomNav() {
   // bar, but sliding it fully out of the way too avoids leaving its links
   // focusable/tappable underneath.
   const hidden = useSheetStore((s) => s.isOpen);
-  const hasMerchantId = useAuthStore((s) => !!s.user?.merchant_id);
-  const isEnterprise = useAuthStore((s) => s.user?.role === 'enterprise');
-  const role = useAuthStore((s) => s.user?.role);
+  const user = useAuthStore((s) => s.user);
+  const role = user?.role;
   const { pathname } = useLocation();
   const onSalesDashboard = pathname === SALES_DASHBOARD_PATH;
 
-  // A plain client has no merchant_id — "Créer une demande de paiement"
-  // (the merchant-only endpoint) would 400 with "No merchant account
-  // associated" for them. Their central action is showing their own QR/
-  // number to get paid (same screen as the "Recevoir" quick action on the
-  // dashboard) — scanning someone else's QR to pay remains available from
-  // that same quick-action grid, this tab just isn't it. An enterprise
-  // owner has neither merchant_id (unless "acting as" a store) nor a
-  // personal wallet relevant here — their QR/number is the organization's,
-  // not /dashboard/wallet/receive's personal one, and their "Transactions"
-  // tab means the whole business's sales, not a single store's (which
-  // /dashboard/transactions would 400 on anyway, no merchant_id).
-  const qrTab = isEnterprise
-    ? { to: '/dashboard/organization/receive', label: 'Recevoir', icon: QrCode, end: false, central: true }
-    : hasMerchantId
-    ? { to: '/dashboard/payment-requests/new', label: 'QR', icon: QrCode, end: false, central: true }
-    : { to: '/dashboard/wallet/receive', label: 'Recevoir', icon: QrCode, end: false, central: true };
-  const transactionsTab = isEnterprise
-    ? { ...tabs[1], to: '/dashboard/organization/transactions' }
-    : tabs[1];
-  const allTabs = staffTabs[role || ''] ?? [tabs[0], transactionsTab, qrTab, tabs[2]];
+  // Org sector drives the caissier's sale tab (POS vs Ventes) — same
+  // queryKey/enabled as DashboardLayout, so the response is shared cache,
+  // not an extra request. Until it resolves, caissier keeps salesTab.
+  const { data: org } = useQuery({
+    queryKey: ['my-organization'],
+    queryFn: async () => (await api.get('/organizations/me')).data,
+    enabled: role === 'enterprise' || !!user?.organization_id,
+  });
+
+  const { displayTabs, usePlusTab } = computeVisibleTabs(user, org?.sector);
+  // "Plus" stays lit while a page reachable only through it is open —
+  // otherwise the bar would show nothing selected on those screens.
+  const navRole = user?.acting_as_org_id || role === 'enterprise' ? 'enterprise' : role;
+  const plusActive =
+    usePlusTab &&
+    navItemsFor(navRole || '', org?.sector).some(
+      (i) =>
+        !displayTabs.some((t) => t.to === i.to) &&
+        (i.to === '/dashboard' ? pathname === i.to : pathname.startsWith(i.to)),
+    );
 
   return (
     <nav
@@ -82,9 +140,11 @@ export function BottomNav() {
       )}
     >
       <div className="flex items-center justify-around h-16 px-2">
-        {allTabs.map((tab) => {
+        {displayTabs.map((tab) => {
           // Accueil is also the staff's sales dashboard, so it lights up there.
-          const forceActive = tab.to === '/dashboard' && onSalesDashboard;
+          const forceActive =
+            (tab.to === '/dashboard' && onSalesDashboard) ||
+            (tab.to === MORE_PATH && plusActive);
           return (
             <NavLink
               key={tab.to}

@@ -1,4 +1,4 @@
-import { Outlet, NavLink, Link, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -9,19 +9,19 @@ import { BottomNav } from '@/components/BottomNav';
 import { TopBar } from '@/components/TopBar';
 import { NotificationsBell } from '@/components/NotificationsBell';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
-import { MobileNavDrawer } from '@/components/MobileNavDrawer';
 import { useTheme } from '@/hooks/useTheme';
 import { usePaymentReceivedAlert } from '@/hooks/usePaymentReceivedAlert';
 import { LogOut, User, Building2, Sun, Moon, Menu, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SECTORS } from '@/pages/organization/OnboardingWizard';
-import { navItems } from '@/lib/nav-items';
+import { navItemsFor } from '@/lib/nav-items';
 
 export default function DashboardLayout() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const exitStore = useAuthStore((s) => s.exitStore);
   const navigate = useNavigate();
+  const location = useLocation();
   const { toggleTheme, effectiveTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -50,7 +50,12 @@ export default function DashboardLayout() {
     navigate('/');
   };
 
-  const visibleItems = user ? navItems.filter((item) => item.roles.includes(user.role)) : [];
+  // An org owner "acting as" one of their stores carries role 'merchant' +
+  // acting_as_org_id (auth-store enterStore). For navigation purposes they
+  // keep the enterprise/supermarket menu — they are the owner inside their
+  // store, not a standalone merchant.
+  const navRole = user?.acting_as_org_id ? 'enterprise' : user?.role;
+  const visibleItems = user && navRole ? navItemsFor(navRole, org?.sector) : [];
 
   return (
     <div className="min-h-screen bg-background">
@@ -119,7 +124,11 @@ export default function DashboardLayout() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold truncate text-foreground">{user?.full_name || user?.email}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
+                    {/* role 'merchant' here would be misleading — an org
+                        owner inside a store still IS the enterprise owner. */}
+                    <p className="text-xs text-muted-foreground capitalize">
+                      {user?.acting_as_org_id ? 'Entreprise · en boutique' : user?.role}
+                    </p>
                   </div>
                 </div>
               )}
@@ -173,8 +182,10 @@ export default function DashboardLayout() {
             {/* Only shown while "acting as" a store entered from the org
                 dashboard (acting_as_org_id) — not role-based, since role is
                 'merchant' in that state, indistinguishable from a real
-                merchant account otherwise. The only way back. */}
-            {user?.acting_as_org_id && (
+                merchant account otherwise. Kept on the dashboard page only:
+                on work screens (caisse, stock, …) it would just eat ~60px
+                of vertical space on every visit. */}
+            {user?.acting_as_org_id && location.pathname.startsWith('/dashboard/organization') && (
               <div className="px-6 pt-4 md:px-4 md:pt-4">
                 <button
                   onClick={() => {
@@ -193,11 +204,10 @@ export default function DashboardLayout() {
         </main>
       </div>
 
-      {/* Mobile bottom nav + nav drawer — both hidden entirely (not just
-          dimmed) while an enterprise account hasn't finished onboarding,
-          since none of these destinations are usable yet. */}
+      {/* Mobile bottom nav — hidden entirely (not just dimmed) while an
+          enterprise account hasn't finished onboarding, since none of
+          these destinations are usable yet. */}
       {!navLocked && <BottomNav />}
-      {!navLocked && <MobileNavDrawer org={org} />}
 
       <LogoutConfirmDialog
         open={showLogoutConfirm}

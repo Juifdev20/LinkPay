@@ -49,7 +49,12 @@ import ExpenseTrackerSettingsPage from '@/pages/admin/ExpenseTrackerSettings';
 import AdminOrganizationsPage from '@/pages/admin/Organizations';
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
 import StaffPage from '@/pages/organization/Staff';
+import StoresPage from '@/pages/organization/Stores';
 import StockPage from '@/pages/organization/Stock';
+import InventoryPage from '@/pages/organization/Inventory';
+import SalesStatsPage from '@/pages/organization/SalesStats';
+import AuditLogPage from '@/pages/organization/AuditLog';
+import PosPage from '@/pages/pos/PosPage';
 import SalesPage from '@/pages/organization/Sales';
 import SalesDashboardPage from '@/pages/organization/SalesDashboard';
 import SalesHistoryPage from '@/pages/organization/SalesHistory';
@@ -59,6 +64,7 @@ import OrganizationReceivePage from '@/pages/organization/Receive';
 import StaffHome from '@/pages/staff/StaffHome';
 import SettingsPage from '@/pages/Settings';
 import NotificationsPage from '@/pages/Notifications';
+import MorePage from '@/pages/More';
 import ProfilePage from '@/pages/Profile';
 import InstallPrompt from '@/components/InstallPrompt';
 import { AppLockGate } from '@/components/AppLockGate';
@@ -97,6 +103,10 @@ function DashboardIndex() {
   // Enterprise-internal staff (organization-staff module) have no
   // merchant_id either — same reasoning as enterprise above.
   if (STAFF_ROLES.includes(user.role)) return <StaffHome />;
+  // An org owner acting as one of their stores: "Tableau de bord" shows the
+  // organization overview — also where the "Retour à l'organisation" exit
+  // banner lives.
+  if (user.acting_as_org_id) return <Navigate to="/dashboard/organization" replace />;
   return <MerchantDashboard />;
 }
 
@@ -108,7 +118,10 @@ function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?
     return <Navigate to="/login" replace />;
   }
 
-  if (roles && user && !roles.includes(user.role)) {
+  // An org owner acting as one of their stores keeps enterprise-level
+  // access to the org module (role is 'merchant' + acting_as_org_id).
+  const effectiveRole = user?.acting_as_org_id ? 'enterprise' : user?.role;
+  if (roles && user && effectiveRole && !roles.includes(effectiveRole)) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -198,6 +211,7 @@ export default function App() {
         <Route path="wallet/transactions" element={<WalletTransactionsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="more" element={<MorePage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route
           path="admin"
@@ -256,6 +270,14 @@ export default function App() {
           }
         />
         <Route
+          path="organization/stores"
+          element={
+            <ProtectedRoute roles={['enterprise']}>
+              <StoresPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="organization/staff"
           element={
             <ProtectedRoute roles={['enterprise']}>
@@ -296,10 +318,26 @@ export default function App() {
           }
         />
         <Route
+          path="organization/inventory"
+          element={
+            <ProtectedRoute roles={['enterprise', 'magasinier']}>
+              <InventoryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="organization/profile"
           element={
             <ProtectedRoute roles={['enterprise']}>
               <CompanyProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/stats"
+          element={
+            <ProtectedRoute roles={['enterprise', 'comptable']}>
+              <SalesStatsPage />
             </ProtectedRoute>
           }
         />
@@ -312,10 +350,26 @@ export default function App() {
           }
         />
         <Route
+          path="organization/audit"
+          element={
+            <ProtectedRoute roles={['enterprise', 'comptable']}>
+              <AuditLogPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="organization/receive"
           element={
             <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier']}>
               <OrganizationReceivePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="pos"
+          element={
+            <ProtectedRoute roles={['enterprise', 'caissier', 'magasinier']}>
+              <PosPage />
             </ProtectedRoute>
           }
         />

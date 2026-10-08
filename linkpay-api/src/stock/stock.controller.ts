@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseInterceptors, UploadedFile, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseInterceptors, UploadedFile, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiConsumes, ApiBody } from '@nestjs/swagger';
@@ -19,10 +19,20 @@ class CreateStockItemDto {
   @MaxLength(255)
   name!: string;
 
-  @ApiPropertyOptional({ enum: STOCK_CATEGORIES })
+  // Free text, not the electronics-sector enum — the supermarket module
+  // uses open rayon names ("Boulangerie", "Hygiène"…). STOCK_CATEGORIES
+  // values stay valid; the enum is a frontend suggestion list only.
+  @ApiPropertyOptional({ example: 'Boissons' })
   @IsOptional()
-  @IsIn(STOCK_CATEGORIES)
+  @IsString()
+  @MaxLength(100)
   category?: string;
+
+  @ApiPropertyOptional({ example: '6181155210001', description: 'Code-barres EAN/UPC — unique par boutique' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  barcode?: string;
 
   @ApiPropertyOptional({ example: 'Smartphone', description: "Sous-type libre à l'intérieur de la catégorie" })
   @IsOptional()
@@ -185,6 +195,30 @@ export class StockController {
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
     return this.stockService.listItems(merchantId, callerId, callerRole, callerOrgId);
+  }
+
+  @Get(':id/stock-items/by-barcode/:barcode')
+  @ApiOperation({ summary: 'Look up a sellable product by barcode — POS scan (owner, magasinier, vendeur or caissier)' })
+  async getItemByBarcode(
+    @Param('id') merchantId: string,
+    @Param('barcode') barcode: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    return this.stockService.getItemByBarcode(merchantId, barcode, callerId, callerRole, callerOrgId);
+  }
+
+  @Get(':id/stock-items/search')
+  @ApiOperation({ summary: 'Search sellable products by name — POS search (owner, magasinier, vendeur or caissier)' })
+  async searchSellableItems(
+    @Param('id') merchantId: string,
+    @Query('q') query: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    return this.stockService.searchSellableItems(merchantId, query || '', callerId, callerRole, callerOrgId);
   }
 
   @Post(':id/stock-items/image')

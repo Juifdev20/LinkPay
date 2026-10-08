@@ -28,7 +28,13 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('No role assigned');
     }
 
-    const hasRole = requiredRoles.includes(user.role);
+    // An enterprise owner acting as one of their stores authenticates with
+    // role 'merchant' + acting_as_org_id — for role checks they keep their
+    // enterprise privileges (they own the org behind the store).
+    const effectiveRole =
+      user.role === 'merchant' && user.acting_as_org_id ? 'enterprise' : user.role;
+
+    const hasRole = requiredRoles.includes(effectiveRole);
     if (!hasRole) {
       throw new ForbiddenException(
         `Required role: ${requiredRoles.join(' or ')}`,

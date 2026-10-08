@@ -2,6 +2,8 @@
 
 Plateforme de paiement PWA (mobile-first) permettant aux commerçants de créer des demandes de paiement instantanées via lien et QR code, avec règlements, remboursements, gestion d'équipe, temps réel et administration multi-rôles. Inclut aussi un portefeuille LinkPay (transferts P2P, recharge, retrait), des comptes Entreprise multi-boutiques (KYB, numéro ScanLinkPay pour être payé directement sans facture, tableau de bord récapitulatif), et un module Tontines (épargne collective).
 
+Pour les entreprises du secteur supermarché : un module métier complet — Stock & Approvisionnement (catégories, codes-barres, seuils d'alerte), Caisse/POS (tickets avec TVA, mise en attente, annulation de ligne autorisée par PIN, multi-paiement espèces + ScanLinkPay, reçus numérotés), gestion de caisse (sessions ouverture/fermeture avec rapprochement d'écarts), inventaires physiques (comptages par rayon ou totaux, rapport de démarque), statistiques de vente (CA, marges, top produits, dead stock, exports CSV/PDF) et journal d'activité (traçabilité des actions critiques).
+
 ## Architecture
 
 ```
@@ -105,6 +107,22 @@ LinkPay/
    - `017_organization_kyb.sql` — profil KYB complet de l'entreprise (identité légale, activité, règlement, représentant légal)
    - `018_organization_scanlinkpay_number.sql` — numéro ScanLinkPay unique par entreprise (paiement direct sans facture)
    - `019_organization_expenses.sql` — suivi manuel des dépenses (tableau de bord Entreprise)
+   - `020_tontine_settings.sql` — paramètres de groupe de tontine
+   - `021_tontine_custom_frequency.sql` — fréquence personnalisée (tous les N jours)
+   - `022_savings_pots.sql` — épargne par arrondi
+   - `023_savings_multi_currency.sql` — épargne CDF/USD indépendante
+   - `024_merchants_no_approval.sql` — suppression de l'approbation admin des commerçants
+   - `025_personal_expense_tracker.sql` — suivi des dépenses personnelles
+   - `026_expense_tracker_report_limit.sql` — limite de rapports (essai/Pro)
+   - `027_org_status_rejected.sql` — statut « rejetée » pour les entreprises
+   - `028_org_submission_review.sql` — revue KYB des entreprises par le super admin
+   - `029_staff_roles_seed.sql` — rôles employés (magasinier, vendeur, caissier, comptable)
+   - `030_organization_staff.sql` — comptes employés internes à l'entreprise
+   - `031_stock_management.sql` — Stock & Approvisionnement
+   - `032_notifications_delete_policy.sql` — suppression des notifications
+   - `033_pos_cash_register.sql` — POS/caisse phase 1 (tickets, sessions, PIN caissier)
+   - `034_pos_phase2.sql` — POS phase 2 (TVA, attente, void autorisé, multi-paiement)
+   - `035_inventory_counts.sql` — inventaires physiques (démarque)
 3. Récupérer dans **Project Settings → API** : l'URL du projet, la clé `anon`/`public`, et la clé `service_role`.
 
 ⚠️ Chaque nouvelle migration ajoutée au projet doit être exécutée manuellement de la même façon — elles ne s'appliquent jamais automatiquement.

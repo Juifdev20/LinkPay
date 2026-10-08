@@ -12,6 +12,9 @@ import { MerchantsModule } from './merchants/merchants.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { OrganizationStaffModule } from './organization-staff/organization-staff.module';
 import { StockModule } from './stock/stock.module';
+import { PosModule } from './pos/pos.module';
+import { CashRegisterModule } from './cash-register/cash-register.module';
+import { InventoryModule } from './inventory/inventory.module';
 import { PaymentRequestsModule } from './payment-requests/payment-requests.module';
 import { PaymentsModule } from './payments/payments.module';
 import { TransactionsModule } from './transactions/transactions.module';
@@ -54,6 +57,9 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     OrganizationsModule,
     OrganizationStaffModule,
     StockModule,
+    PosModule,
+    CashRegisterModule,
+    InventoryModule,
     PaymentRequestsModule,
     PaymentsModule,
     TransactionsModule,
