@@ -22,7 +22,11 @@ import { printHtmlInIframe, receiptToHtml } from './html';
  *   web, Android's PrintManager in the app).
  */
 
-export type PrinterKind = 'bt-classic' | 'usb' | 'network' | 'serial' | 'ble' | 'system';
+export type PrinterKind =
+  | 'bt-classic' | 'usb' | 'network' | 'serial' | 'ble' | 'system'
+  // ScanLinkPay for Windows (linkpay-desktop): a printer installed in
+  // Windows (silent, via its driver — any brand) or a COM port.
+  | 'desktop-printer' | 'desktop-serial';
 
 export interface PrinterConfig {
   kind: PrinterKind;
@@ -37,6 +41,8 @@ export interface PrinterConfig {
   usbProductId?: number;
   /** ble: Web Bluetooth device id. */
   deviceId?: string;
+  /** desktop-printer: Windows printer name. desktop-serial: COM port path. */
+  deviceName?: string;
   /** network: printer IP and raw port (9100). */
   host?: string;
   port?: number;
@@ -75,8 +81,12 @@ interface ReceiptPrinterPlugin {
 const NativePrinter = registerPlugin<ReceiptPrinterPlugin>('ReceiptPrinter');
 
 export const isNative = () => Capacitor.isNativePlatform();
-export const supportsSerial = () => !isNative() && 'serial' in navigator;
-export const supportsBle = () => !isNative() && 'bluetooth' in navigator;
+/** Running inside the ScanLinkPay Windows app. */
+export const desktop = () => (typeof window !== 'undefined' ? window.linkpayDesktop : undefined);
+export const isDesktop = () => !!desktop();
+// The Windows app has native COM ports instead (no browser chooser there).
+export const supportsSerial = () => !isNative() && !isDesktop() && 'serial' in navigator;
+export const supportsBle = () => !isNative() && !isDesktop() && 'bluetooth' in navigator;
 
 // ------------------------------------------------------------------
 // Saved choice — per device, the cashier picks the printer once.
@@ -274,6 +284,10 @@ export async function printReceipt(lines: ReceiptLine[], config: PrinterConfig, 
       return;
     case 'network':
       if (!config.host) throw new Error('Imprimante réseau non configurée');
+      if (isDesktop()) {
+        await desktop()!.printNetwork(config.host, config.port ?? 9100, bytes);
+        return;
+      }
       await NativePrinter.printNetwork({ host: config.host, port: config.port ?? 9100, data: toBase64(bytes) });
       return;
     case 'serial':
@@ -288,5 +302,14 @@ export async function printReceipt(lines: ReceiptLine[], config: PrinterConfig, 
       return printBle(config, bytes);
     case 'system':
       return systemPrint(receiptToHtml(lines, config.columns), jobName);
+    case 'desktop-printer':
+      if (!config.deviceName || !isDesktop()) throw new Error("Imprimante Windows indisponible — ouvrez l'application ScanLinkPay pour Windows.");
+      // The printer's Windows driver renders the page — works for any brand.
+      await desktop()!.printHtml(receiptToHtml(lines, config.columns), config.deviceName);
+      return;
+    case 'desktop-serial':
+      if (!config.deviceName || !isDesktop()) throw new Error("Port COM indisponible — ouvrez l'application ScanLinkPay pour Windows.");
+      await desktop()!.printSerial(config.deviceName, bytes);
+      return;
   }
 }

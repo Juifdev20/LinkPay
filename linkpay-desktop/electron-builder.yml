@@ -1,0 +1,44 @@
+# ScanLinkPay for Windows — packaging.
+#   npm run dist:exe    → installer .exe (direct download)
+#   npm run dist:store  → .appx package for the Microsoft Store
+appId: com.scanlinkpay.desktop
+productName: ScanLinkPay
+copyright: Copyright © 2026 ScanLinkPay
+
+directories:
+  buildResources: resources
+  output: release
+
+files:
+  - src/**/*
+  - resources/**/*
+  - package.json
+
+win:
+  icon: resources/icon.png
+  target:
+    - nsis
+    - appx
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: ScanLinkPay
+  artifactName: ScanLinkPay-Setup-${version}.${ext}
+
+# Microsoft Store identity — REPLACE these three values with the ones shown
+# in Partner Center (App management > Product identity) before building the
+# package you submit. The Store re-signs the package itself.
+appx:
+  identityName: ScanLinkPay.ScanLinkPay
+  publisher: CN=00000000-0000-0000-0000-000000000000
+  publisherDisplayName: ScanLinkPay
+  applicationId: ScanLinkPay
+  displayName: ScanLinkPay
+  backgroundColor: '#4f46e5'
+  languages:
+    - fr-FR
+  artifactName: ScanLinkPay-${version}.${ext}

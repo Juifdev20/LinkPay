@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Bluetooth, BluetoothSearching, Loader2, Monitor, Printer, RefreshCw, Usb, Wifi } from 'lucide-react';
+import { Bluetooth, BluetoothSearching, Cable, Loader2, Monitor, Printer, RefreshCw, Usb, Wifi } from 'lucide-react';
 import type { PaperColumns, TextEncoding } from '@/lib/printing/types';
 import {
-  isNative, listPairedDevices, listUsbPrinters, pickBlePrinter, pickSerialPrinter, scanBlePrinters, supportsBle, supportsSerial,
+  isNative, isDesktop, desktop, listPairedDevices, listUsbPrinters, pickBlePrinter, pickSerialPrinter, scanBlePrinters, supportsBle, supportsSerial,
   type BleDevice, type PairedDevice, type PrinterConfig, type UsbPrinter,
 } from '@/lib/printing/printer';
 
@@ -54,6 +54,8 @@ const IPV4 = /^(\d{1,3}\.){3}\d{1,3}$/;
  * any ESC/POS thermal printer works whatever its brand. Android app:
  * Bluetooth (paired in the phone's settings), USB, network (port 9100).
  * Web: USB/COM port (Web Serial) or BLE (Web Bluetooth), Chrome/Edge only.
+ * Windows app (linkpay-desktop): printers installed in Windows (silent,
+ * through their driver — any brand), COM ports and network printers.
  * The system print dialog is always offered as a fallback.
  */
 export function PrinterPicker({ initial, onChosen, onCancel }: {
@@ -71,6 +73,22 @@ export function PrinterPicker({ initial, onChosen, onCancel }: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const native = isNative();
+  const onDesktop = isDesktop();
+  const [winPrinters, setWinPrinters] = useState<{ name: string; displayName: string; isDefault: boolean }[] | null>(null);
+  const [comPorts, setComPorts] = useState<{ path: string; label: string }[] | null>(null);
+
+  const loadDesktopDevices = async () => {
+    const bridge = desktop();
+    if (!bridge) return;
+    setLoading(true);
+    setError(null);
+    const [prn, com] = await Promise.allSettled([bridge.listPrinters(), bridge.listSerialPorts()]);
+    setWinPrinters(prn.status === 'fulfilled' ? [...prn.value].sort((a, b) => Number(b.isDefault) - Number(a.isDefault)) : []);
+    setComPorts(com.status === 'fulfilled' ? com.value : []);
+    if (prn.status === 'rejected') setError(prn.reason?.message || 'Impossible de lire les imprimantes Windows');
+    setLoading(false);
+  };
+  useEffect(() => { if (onDesktop) loadDesktopDevices(); }, [onDesktop]);
 
   const loadDevices = async () => {
     setLoading(true);
@@ -114,6 +132,30 @@ export function PrinterPicker({ initial, onChosen, onCancel }: {
     const port = portStr ? Number(portStr) : 9100;
     onChosen({ ...base, kind: 'network', name: `Réseau ${ip}`, host: ip, port });
   };
+
+  const networkInput = (
+    <div className="px-4 py-2.5 space-y-2">
+      <p className="flex items-center gap-2 text-sm">
+        <Wifi className="w-4 h-4 text-muted-foreground" /> Imprimante réseau (Wi-Fi / câble)
+      </p>
+      <div className="flex gap-2">
+        <input
+          value={host}
+          onChange={(e) => setHost(e.target.value)}
+          inputMode="decimal"
+          placeholder="192.168.1.50"
+          className="flex-1 min-w-0 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+        />
+        <button
+          onClick={chooseNetwork}
+          disabled={!host.trim()}
+          className="rounded-md border border-border px-3 text-sm hover:bg-accent disabled:opacity-50"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  );
 
   const system = () => onChosen({ ...base, kind: 'system', name: native ? 'Impression Android' : 'Imprimante du navigateur' });
 
@@ -206,27 +248,53 @@ export function PrinterPicker({ initial, onChosen, onCancel }: {
               />
             </div>
 
-            <div className="px-4 py-2.5 space-y-2">
-              <p className="flex items-center gap-2 text-sm">
-                <Wifi className="w-4 h-4 text-muted-foreground" /> Imprimante réseau (Wi-Fi / câble)
-              </p>
-              <div className="flex gap-2">
-                <input
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  inputMode="decimal"
-                  placeholder="192.168.1.50"
-                  className="flex-1 min-w-0 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
-                />
-                <button
-                  onClick={chooseNetwork}
-                  disabled={!host.trim()}
-                  className="rounded-md border border-border px-3 text-sm hover:bg-accent disabled:opacity-50"
-                >
-                  OK
-                </button>
+            {networkInput}
+          </>
+        )}
+
+        {/* ScanLinkPay for Windows */}
+        {onDesktop && (
+          <>
+            {loading && (
+              <div className="flex items-center justify-center gap-2 px-4 py-3 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" /> Recherche des imprimantes…
               </div>
-            </div>
+            )}
+            {!loading && (
+              <div>
+                <SectionTitle>Imprimantes de cet ordinateur</SectionTitle>
+                {winPrinters?.length === 0 && (
+                  <p className="px-4 pb-2.5 text-xs text-muted-foreground">
+                    Aucune imprimante installée. Branchez l'imprimante et installez son pilote Windows.
+                  </p>
+                )}
+                {winPrinters?.map((prn) => (
+                  <Option
+                    key={prn.name}
+                    icon={Printer}
+                    label={prn.displayName}
+                    hint={prn.isDefault ? 'Imprimante par défaut · sans fenêtre' : 'Impression directe, sans fenêtre'}
+                    onClick={() => onChosen({ ...base, kind: 'desktop-printer', name: prn.displayName, deviceName: prn.name })}
+                  />
+                ))}
+              </div>
+            )}
+            {!loading && !!comPorts?.length && (
+              <div>
+                <SectionTitle>Ports COM</SectionTitle>
+                {comPorts.map((c) => (
+                  <Option
+                    key={c.path}
+                    icon={Cable}
+                    label={c.label}
+                    hint="Imprimante série, ou Bluetooth appairée dans Windows"
+                    onClick={() => onChosen({ ...base, kind: 'desktop-serial', name: c.path, deviceName: c.path })}
+                  />
+                ))}
+              </div>
+            )}
+            <Option icon={RefreshCw} label="Actualiser la liste" onClick={loadDesktopDevices} disabled={loading} />
+            {networkInput}
           </>
         )}
 
@@ -250,7 +318,7 @@ export function PrinterPicker({ initial, onChosen, onCancel }: {
         />
       </div>
 
-      {!native && !supportsSerial() && !supportsBle() && (
+      {!native && !onDesktop && !supportsSerial() && !supportsBle() && (
         <p className="text-xs text-muted-foreground text-center">
           L'impression directe sur imprimante thermique nécessite Chrome ou Edge.
         </p>

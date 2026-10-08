@@ -2,10 +2,11 @@ import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor
 import api from './api';
 
 /**
- * Screenshot protection (super admin switch, platform_settings). On the
- * Android app the native side sets FLAG_SECURE — screenshots and screen
- * recordings come out black. Browsers expose no such control, so on the
- * web this is a no-op.
+ * Screenshot protection (super admin switch, platform_settings).
+ * - Android app: FLAG_SECURE on the window.
+ * - Windows app (linkpay-desktop): BrowserWindow content protection.
+ * Screenshots and screen recordings of the app come out black. Browsers
+ * expose no such control, so on the plain web this is a no-op.
  */
 interface ScreenProtectionPlugin {
   setEnabled(options: { enabled: boolean }): Promise<void>;
@@ -18,12 +19,15 @@ const ScreenProtection = registerPlugin<ScreenProtectionPlugin>('ScreenProtectio
  *  super admin reaches a phone left open on the till within this delay. */
 const POLL_MS = 30_000;
 
+const onWindowsApp = () => typeof window !== 'undefined' && !!window.linkpayDesktop;
+const isProtectable = () => Capacitor.isNativePlatform() || onWindowsApp();
+
 /** Applies the switch on this device right away (super admin screen). */
 export async function applyScreenProtection(enabled: boolean) {
-  if (!Capacitor.isNativePlatform()) return;
   try {
-    await ScreenProtection.setEnabled({ enabled });
-  } catch { /* older app build without the plugin — nothing to do */ }
+    if (Capacitor.isNativePlatform()) await ScreenProtection.setEnabled({ enabled });
+    else if (onWindowsApp()) await window.linkpayDesktop!.setContentProtection(enabled);
+  } catch { /* older app build without the bridge — nothing to do */ }
 }
 
 async function refresh() {
@@ -43,7 +47,7 @@ async function refresh() {
  * update, even one that never leaves the till screen. Returns a cleanup.
  */
 export function startScreenProtection() {
-  if (!Capacitor.isNativePlatform()) return () => {};
+  if (!isProtectable()) return () => {};
   refresh();
 
   const onVisible = () => {
@@ -52,9 +56,11 @@ export function startScreenProtection() {
   document.addEventListener('visibilitychange', onVisible);
 
   let resumeHandle: PluginListenerHandle | null = null;
-  ScreenProtection.addListener('resume', refresh)
-    .then((h) => { resumeHandle = h; })
-    .catch(() => { /* older build without the resume signal */ });
+  if (Capacitor.isNativePlatform()) {
+    ScreenProtection.addListener('resume', refresh)
+      .then((h) => { resumeHandle = h; })
+      .catch(() => { /* older build without the resume signal */ });
+  }
 
   const timer = setInterval(() => {
     if (document.visibilityState === 'visible') refresh();

@@ -1,0 +1,24 @@
+{
+  "name": "scanlinkpay-desktop",
+  "productName": "ScanLinkPay",
+  "version": "1.0.0",
+  "description": "ScanLinkPay pour Windows — caisse, stock et paiements, avec impression directe sur les imprimantes de caisse.",
+  "author": "ScanLinkPay",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "cross-env LINKPAY_URL=http://localhost:5173 electron .",
+    "dist": "electron-builder --win nsis appx",
+    "dist:exe": "electron-builder --win nsis",
+    "dist:store": "electron-builder --win appx"
+  },
+  "dependencies": {
+    "serialport": "^12.0.0"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
+  }
+}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ShieldCheck, Smartphone, Globe, Loader2 } from 'lucide-react';
+import { ShieldCheck, Smartphone, Globe, Loader2, Monitor } from 'lucide-react';
 import api from '@/lib/api';
 import { PageHeader } from '@/components/PageHeader';
 import { Switch } from '@/components/ui/switch';
@@ -73,6 +73,10 @@ export default function AppSecurityPage() {
           <p className="flex items-start gap-2 text-foreground">
             <Smartphone className="w-4 h-4 mt-0.5 flex-shrink-0 text-success" />
             <span><b>Application Android</b> : protégée. Les téléphones appliquent le changement dès que l'application revient au premier plan.</span>
+          </p>
+          <p className="flex items-start gap-2 text-foreground">
+            <Monitor className="w-4 h-4 mt-0.5 flex-shrink-0 text-success" />
+            <span><b>Application Windows</b> : protégée — la fenêtre apparaît noire dans les captures et enregistrements d'écran.</span>
           </p>
           <p className="flex items-start gap-2 text-muted-foreground">
             <Globe className="w-4 h-4 mt-0.5 flex-shrink-0" />
