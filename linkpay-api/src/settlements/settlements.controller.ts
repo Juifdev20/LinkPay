@@ -1,9 +1,24 @@
-import { Controller, Get, Post, Put, Param, Body, Query, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Param, Body, Query, UseGuards, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SettlementsService } from './settlements.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { toPage, toLimit } from '../common/utils/pagination';
+
+class UpdateSettlementStatusDto {
+  @ApiProperty({ enum: ['PROCESSING', 'COMPLETED', 'FAILED'] })
+  @IsIn(['PROCESSING', 'COMPLETED', 'FAILED'])
+  status!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string;
+}
 
 @ApiTags('Settlements')
 @ApiBearerAuth()
@@ -11,15 +26,17 @@ import { RolesGuard } from '../common/guards/roles.guard';
 export class SettlementsController {
   constructor(private settlementsService: SettlementsService) {}
 
+  // Store owner only (an enterprise owner acting as one of their stores
+  // counts as 'enterprise' in RolesGuard). Cashiers can't request payouts.
   @Post()
-  @Roles('merchant', 'admin', 'super_admin')
+  @Roles('merchant', 'enterprise')
   @UseGuards(RolesGuard)
-  @ApiOperation({ summary: 'Create a settlement for current merchant' })
-  async createSettlement(
-    @CurrentUser('merchant_id') merchantId: string,
-    @Body() body: { period_start?: string; period_end?: string },
-  ) {
-    return this.settlementsService.createSettlement(merchantId, body);
+  @ApiOperation({ summary: 'Request a settlement of all unsettled transactions for the current store' })
+  async createSettlement(@CurrentUser('merchant_id') merchantId: string | undefined) {
+    if (!merchantId) {
+      throw new BadRequestException('No merchant account associated');
+    }
+    return this.settlementsService.createSettlement(merchantId);
   }
 
   @Get()
@@ -33,8 +50,8 @@ export class SettlementsController {
   ) {
     const filters = {
       status,
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 20,
+      page: toPage(page),
+      limit: toLimit(limit),
     };
 
     if (role === 'admin' || role === 'super_admin') {
@@ -75,7 +92,7 @@ export class SettlementsController {
   @ApiOperation({ summary: 'Update settlement status (Admin)' })
   async updateStatus(
     @Param('id') id: string,
-    @Body() body: { status: string; notes?: string },
+    @Body() body: UpdateSettlementStatusDto,
   ) {
     return this.settlementsService.updateSettlementStatus(id, body.status, body.notes);
   }

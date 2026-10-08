@@ -175,7 +175,7 @@ export class AuthService {
           'Le service de connexion est temporairement indisponible. Veuillez réessayer plus tard.',
         );
       }
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Email ou mot de passe incorrect');
     }
 
     const userId = data.user.id;

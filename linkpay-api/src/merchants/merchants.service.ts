@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { AuthService } from '../auth/auth.service';
 import { sumByCurrency } from '../common/utils/currency';
@@ -118,7 +118,7 @@ export class MerchantsService {
   async updateMerchant(id: string, updates: Record<string, any>) {
     const allowedFields = [
       'name', 'legal_name', 'phone', 'email', 'address', 'city',
-      'settlement_account', 'limits', 'status', 'commission_rule_id', 'default_currency',
+      'settlement_account', 'status', 'commission_rule_id', 'default_currency',
     ];
     const filtered: Record<string, any> = {};
 
@@ -175,7 +175,14 @@ export class MerchantsService {
     }));
   }
 
-  async addMerchantUser(merchantId: string, data: { email: string }) {
+  /**
+   * Invites an existing user as cashier. Only a plain client account can be
+   * invited: adding a cashier replaces the person's global role, so inviting
+   * an admin, another store's owner or another store's cashier used to strip
+   * them of their own access (any merchant could demote a super_admin just by
+   * knowing their email).
+   */
+  async addMerchantUser(merchantId: string, ownerId: string, data: { email: string }) {
     const { data: targetUser } = await this.supabaseService.getClient()
       .from('profiles')
       .select('id')
@@ -184,6 +191,30 @@ export class MerchantsService {
 
     if (!targetUser) {
       throw new NotFoundException("Aucun compte ScanLinkPay avec cet email — la personne doit d'abord créer un compte.");
+    }
+
+    if (targetUser.id === ownerId) {
+      throw new BadRequestException('Vous ne pouvez pas vous inviter vous-même.');
+    }
+
+    const { data: currentRoles } = await this.supabaseService.getClient()
+      .from('user_roles')
+      .select('role:roles(slug)')
+      .eq('user_id', targetUser.id);
+    const slugs = (currentRoles || []).map((r: any) => r.role?.slug).filter(Boolean);
+    if (slugs.some((slug: string) => slug !== 'client')) {
+      throw new BadRequestException(
+        "Cette personne a déjà un rôle sur ScanLinkPay (marchand, caissier, entreprise ou administrateur) — seul un compte client peut être invité comme caissier.",
+      );
+    }
+
+    const { data: existingMembership } = await this.supabaseService.getClient()
+      .from('merchant_users')
+      .select('id')
+      .eq('user_id', targetUser.id)
+      .limit(1);
+    if (existingMembership && existingMembership.length > 0) {
+      throw new BadRequestException("Cette personne fait déjà partie de l'équipe d'une boutique.");
     }
 
     const { data: role } = await this.supabaseService.getClient()
@@ -224,15 +255,41 @@ export class MerchantsService {
     return merchantUser;
   }
 
-  async removeMerchantUser(merchantId: string, userId: string) {
-    const { error } = await this.supabaseService.getClient()
+  /**
+   * Removes one of THIS store's cashiers and returns them to a client
+   * account. The role reset used to run whether or not the person was in
+   * the team, so any merchant could demote any user — admins included — to
+   * client by passing their id.
+   */
+  async removeMerchantUser(merchantId: string, ownerId: string, userId: string) {
+    if (userId === ownerId) {
+      throw new BadRequestException("Le propriétaire ne peut pas se retirer de sa propre boutique.");
+    }
+
+    const { data: cashierRole } = await this.supabaseService.getClient()
+      .from('roles')
+      .select('id')
+      .eq('slug', 'cashier')
+      .single();
+
+    if (!cashierRole) {
+      throw new NotFoundException('Role "cashier" not found');
+    }
+
+    const { data: removed, error } = await this.supabaseService.getClient()
       .from('merchant_users')
       .delete()
       .eq('merchant_id', merchantId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .eq('role_id', cashierRole.id)
+      .select('id');
 
     if (error) {
       throw new Error(`Failed to remove merchant user: ${error.message}`);
+    }
+
+    if (!removed || removed.length === 0) {
+      throw new NotFoundException("Ce caissier ne fait pas partie de l'équipe de cette boutique.");
     }
 
     const { data: clientRole } = await this.supabaseService.getClient()
@@ -242,11 +299,21 @@ export class MerchantsService {
       .single();
 
     if (clientRole) {
-      await this.supabaseService.getClient().from('user_roles').delete().eq('user_id', userId);
-      await this.supabaseService.getClient().from('user_roles').insert({
-        user_id: userId,
-        role_id: clientRole.id,
-      });
+      // Only touch the global role if it is still "cashier of this store".
+      const { data: demoted } = await this.supabaseService.getClient()
+        .from('user_roles')
+        .delete()
+        .eq('user_id', userId)
+        .eq('role_id', cashierRole.id)
+        .eq('merchant_id', merchantId)
+        .select('id');
+
+      if (demoted && demoted.length > 0) {
+        await this.supabaseService.getClient().from('user_roles').insert({
+          user_id: userId,
+          role_id: clientRole.id,
+        });
+      }
     }
 
     return { success: true };

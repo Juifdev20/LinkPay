@@ -1,11 +1,13 @@
 import { Controller, Get, Post, Body, Param, Query, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { PaymentRequestsService } from './payment-requests.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { IsNumber, IsString, IsOptional, IsObject, IsIn, Min, Max, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { toPage, toLimit } from '../common/utils/pagination';
 
 class CreatePaymentRequestDto {
   @ApiProperty({ example: 50000, description: 'Amount in cents (e.g., 50000 = 500.00 CDF)' })
@@ -87,7 +89,10 @@ export class PaymentRequestsController {
     return this.paymentRequestsService.createPaymentRequest(merchantId, userId, dto);
   }
 
+  // Public and unauthenticated: a tighter per-IP limit than the global one,
+  // so nobody can flood a business with junk payment requests.
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('quick-pay')
   @ApiOperation({ summary: "Create a payment request by ScanLinkPay number (public — payer chooses the amount, no merchant-side invoice needed)" })
   async quickPay(@Body() dto: QuickPayDto) {
@@ -110,7 +115,7 @@ export class PaymentRequestsController {
       amount_cents: dto.amount_cents,
       currency: dto.currency,
       description: `Paiement via numéro ScanLinkPay ${dto.scanlinkpay_number}`,
-    });
+    }, { withQrCode: false });
   }
 
   @Public()
@@ -136,8 +141,8 @@ export class PaymentRequestsController {
   ) {
     return this.paymentRequestsService.getMerchantRequests(merchantId, {
       status,
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 20,
+      page: toPage(page),
+      limit: toLimit(limit),
     });
   }
 

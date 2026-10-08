@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { toPage, toLimit } from '../common/utils/pagination';
 
 @ApiTags('Admin')
 @ApiBearerAuth()
@@ -27,8 +28,8 @@ export class AdminController {
   ) {
     return this.adminService.listMerchants({
       status,
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 20,
+      page: toPage(page),
+      limit: toLimit(limit),
     });
   }
 
@@ -50,8 +51,8 @@ export class AdminController {
   ) {
     return this.adminService.listOrganizations({
       status,
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 20,
+      page: toPage(page),
+      limit: toLimit(limit),
     });
   }
 
@@ -62,8 +63,8 @@ export class AdminController {
     @Query('limit') limit?: string,
   ) {
     return this.adminService.listUsers({
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 20,
+      page: toPage(page),
+      limit: toLimit(limit),
     });
   }
 

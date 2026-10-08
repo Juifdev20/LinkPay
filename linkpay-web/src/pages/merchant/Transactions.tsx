@@ -45,6 +45,7 @@ export default function MerchantTransactionsPage() {
     setRefundTarget(tx);
     setRefundAmount(String(tx.amount_cents / 100));
     setRefundReason('');
+    refundMutation.reset();
   };
 
   const refundMutation = useMutation({
@@ -59,6 +60,7 @@ export default function MerchantTransactionsPage() {
       setRefundTarget(null);
     },
   });
+  const refundError = (refundMutation.error as any)?.response?.data?.message;
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
@@ -84,6 +86,7 @@ export default function MerchantTransactionsPage() {
           <option value="PENDING">En attente</option>
           <option value="FAILED">Échoué</option>
           <option value="REFUNDED">Remboursé</option>
+          <option value="PARTIALLY_REFUNDED">Remboursé en partie</option>
         </select>
       </div>
 
@@ -105,7 +108,9 @@ export default function MerchantTransactionsPage() {
                     date={tx.created_at}
                     type="in"
                     action={
-                      tx.status === 'SUCCESS' ? (
+                      // A transaction already included in a settlement has
+                      // been (or is being) paid out — the API refuses it.
+                      (tx.status === 'SUCCESS' || tx.status === 'PARTIALLY_REFUNDED') && !tx.settlement_id ? (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -162,6 +167,9 @@ export default function MerchantTransactionsPage() {
                 onChange={(e) => setRefundReason(e.target.value)}
               />
             </div>
+            {refundMutation.isError && (
+              <p className="text-sm text-destructive">{refundError || 'Échec du remboursement'}</p>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRefundTarget(null)}>Annuler</Button>

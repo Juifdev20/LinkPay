@@ -4,7 +4,8 @@ import { MerchantsService } from './merchants.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { IsString, IsOptional, MaxLength, IsEmail, IsIn } from 'class-validator';
+import { IsString, IsOptional, MaxLength, IsEmail, IsIn, IsUUID, ValidateNested, Matches } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 class AddMerchantUserDto {
@@ -48,6 +49,93 @@ export class CreateMerchantDto {
   @IsOptional()
   @IsIn(['CDF', 'USD'])
   default_currency?: string;
+}
+
+/** Where the platform sends this store's settlements. */
+export class SettlementAccountDto {
+  @ApiProperty({ enum: ['mobile_money', 'bank'] })
+  @IsIn(['mobile_money', 'bank'])
+  method!: string;
+
+  @ApiPropertyOptional({ example: 'M-Pesa', description: 'Mobile Money operator (M-Pesa, Orange Money, Airtel Money, Afrimoney)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  operator?: string;
+
+  @ApiPropertyOptional({ example: 'Rawbank', description: 'Bank name (bank transfers)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  bank_name?: string;
+
+  @ApiProperty({ example: '0990000000', description: 'Mobile Money number or bank account number' })
+  @IsString()
+  @Matches(/^[0-9A-Za-z +-]{6,40}$/, { message: 'Numéro de compte invalide' })
+  number!: string;
+
+  @ApiProperty({ example: 'Jean Mukendi', description: 'Account holder name' })
+  @IsString()
+  @MaxLength(255)
+  holder_name!: string;
+}
+
+export class UpdateMerchantDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  legal_name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  address?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  city?: string;
+
+  @ApiPropertyOptional({ enum: ['CDF', 'USD'] })
+  @IsOptional()
+  @IsIn(['CDF', 'USD'])
+  default_currency?: string;
+
+  @ApiPropertyOptional({ type: SettlementAccountDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SettlementAccountDto)
+  settlement_account?: SettlementAccountDto;
+
+  @ApiPropertyOptional({ description: 'Admin only' })
+  @IsOptional()
+  @IsIn(['pending', 'active', 'suspended', 'rejected', 'closed'])
+  status?: string;
+
+  @ApiPropertyOptional({ description: 'Admin only' })
+  @IsOptional()
+  @IsUUID()
+  commission_rule_id?: string;
 }
 
 @ApiTags('Merchants')
@@ -106,21 +194,27 @@ export class MerchantsController {
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update merchant (owner or admin only — status/commission_rule_id require admin)' })
+  @ApiOperation({ summary: 'Update merchant (store owner or admin only — status/commission_rule_id require admin)' })
   async updateMerchant(
     @Param('id') id: string,
-    @Body() updates: Record<string, any>,
+    @Body() updates: UpdateMerchantDto,
     @CurrentUser('merchant_id') callerMerchantId: string,
     @CurrentUser('role') callerRole: string,
   ) {
-    this.assertOwnMerchantOrAdmin(id, callerMerchantId, callerRole);
     if (!this.isAdmin(callerRole)) {
-      const attemptedPrivileged = MerchantsController.ADMIN_ONLY_FIELDS.filter((f) => updates[f] !== undefined);
+      // A cashier's token carries the store's merchant_id too — without this
+      // they could rename the store or change where its money is paid out.
+      // ('merchant' also covers an enterprise owner acting as their store.)
+      if (callerRole !== 'merchant') {
+        throw new ForbiddenException('Seul le propriétaire de la boutique peut la modifier');
+      }
+      this.assertOwnMerchant(id, callerMerchantId);
+      const attemptedPrivileged = MerchantsController.ADMIN_ONLY_FIELDS.filter((f) => (updates as any)[f] !== undefined);
       if (attemptedPrivileged.length > 0) {
         throw new ForbiddenException(`Only an administrator can change: ${attemptedPrivileged.join(', ')}`);
       }
     }
-    return this.merchantsService.updateMerchant(id, updates);
+    return this.merchantsService.updateMerchant(id, { ...updates });
   }
 
   @Get(':id/stats')
@@ -152,11 +246,12 @@ export class MerchantsController {
   @ApiOperation({ summary: 'Invite an existing ScanLinkPay user as cashier (owner only)' })
   async addMerchantUser(
     @Param('id') id: string,
+    @CurrentUser('id') callerId: string,
     @CurrentUser('merchant_id') callerMerchantId: string,
     @Body() dto: AddMerchantUserDto,
   ) {
     this.assertOwnMerchant(id, callerMerchantId);
-    return this.merchantsService.addMerchantUser(id, { email: dto.email });
+    return this.merchantsService.addMerchantUser(id, callerId, { email: dto.email });
   }
 
   @Delete(':id/users/:userId')
@@ -166,10 +261,11 @@ export class MerchantsController {
   async removeMerchantUser(
     @Param('id') id: string,
     @Param('userId') userId: string,
+    @CurrentUser('id') callerId: string,
     @CurrentUser('merchant_id') callerMerchantId: string,
   ) {
     this.assertOwnMerchant(id, callerMerchantId);
-    return this.merchantsService.removeMerchantUser(id, userId);
+    return this.merchantsService.removeMerchantUser(id, callerId, userId);
   }
 
   private assertOwnMerchant(paramMerchantId: string, callerMerchantId: string | undefined) {
