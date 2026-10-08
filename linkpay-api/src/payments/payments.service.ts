@@ -12,6 +12,7 @@ import { WalletLimitsService } from '../wallets/wallet-limits.service';
 import { AuditService } from '../audit/audit.service';
 import { SavingsService } from '../savings/savings.service';
 import { SalesService } from '../sales/sales.service';
+import { MerchantWalletCreditService } from './merchant-wallet-credit.service';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
 
@@ -33,6 +34,7 @@ export class PaymentsService {
     private auditService: AuditService,
     private savingsService: SavingsService,
     private salesService: SalesService,
+    private merchantWalletCredit: MerchantWalletCreditService,
   ) {}
 
   async createPayment(data: {
@@ -598,6 +600,13 @@ export class PaymentsService {
 
     await this.ledgerService.writePaymentEntries(transaction);
 
+    // The merchant is paid right away, with no manual settlement: the net
+    // amount lands in their wallet. Done before the nice-to-haves below
+    // (receipt, notifications) so one of those failing can't delay the
+    // money; if the credit itself fails, a retry job picks it up within a
+    // minute (it never fails the payment).
+    const walletCredited = await this.merchantWalletCredit.credit(transaction.id);
+
     // (payment_intents.status was already set to SUCCEEDED by the atomic
     // claim at the top of this method.)
 
@@ -619,7 +628,9 @@ export class PaymentsService {
       user_id: request.merchant_id ? (await this.getMerchantOwnerId(request.merchant_id)) : null,
       type: 'payment_received',
       title: 'Paiement reçu',
-      body: `Un paiement de ${intent.amount_cents / 100} ${intent.currency} a été reçu (Réf: ${txReference}).`,
+      body: walletCredited
+        ? `Un paiement de ${intent.amount_cents / 100} ${intent.currency} a été reçu (Réf: ${txReference}). ${transaction.net_cents / 100} ${intent.currency} ont été ajoutés à votre portefeuille ScanLinkPay, après frais et commission.`
+        : `Un paiement de ${intent.amount_cents / 100} ${intent.currency} a été reçu (Réf: ${txReference}). Il sera ajouté à votre portefeuille dans quelques instants.`,
       data: { transaction_id: transaction.id, reference: txReference, amount_cents: intent.amount_cents, currency: intent.currency },
     }).catch(() => null);
 

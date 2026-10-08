@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { MerchantWalletCreditService } from './merchant-wallet-credit.service';
 import { PspFactory } from './psp/psp.factory';
 import { MockPspAdapter } from './psp/providers/mock.adapter';
 import { CinetPayAdapter } from './psp/providers/cinetpay.adapter';
@@ -34,7 +35,7 @@ import { SalesModule } from '../sales/sales.module';
   // rather than importing WalletsModule, to avoid a circular module
   // dependency. Both are stateless Supabase wrappers, so a second instance
   // here is harmless.
-  providers: [PaymentsService, PspFactory, MockPspAdapter, CinetPayAdapter, WalletPinService, WalletLimitsService],
+  providers: [PaymentsService, MerchantWalletCreditService, PspFactory, MockPspAdapter, CinetPayAdapter, WalletPinService, WalletLimitsService],
   exports: [PaymentsService, PspFactory],
 })
 export class PaymentsModule {}

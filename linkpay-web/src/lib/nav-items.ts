@@ -24,7 +24,7 @@ export interface NavItem {
 // configuration (e.g. "Profil entreprise") — only full modules belong
 // here.
 //
-// Merchant-scoped pages (payment-requests, transactions, settlements) need
+// Merchant-scoped pages (payment-requests, transactions) need
 // the JWT's merchant_id claim — an enterprise account only gets one while
 // "acting as" a specific store (role becomes 'merchant' then; see
 // auth-store.ts enterStore()), never at the plain org level, so 'enterprise'
@@ -34,7 +34,6 @@ export const navItems: NavItem[] = [
   { to: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: [...ALL_ROLES, ...STAFF_ROLES] },
   { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: QrCode, roles: ['merchant', 'cashier'] },
   { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, roles: ['merchant', 'cashier'] },
-  { to: '/dashboard/settlements', label: 'Règlements', icon: Wallet, roles: ['merchant'] },
   { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'] },
   // Deliberately excludes 'enterprise' — wallet/tontine/savings features are
   // personal-account concepts; an organization has its own separate stock,

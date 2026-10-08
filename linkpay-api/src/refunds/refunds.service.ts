@@ -1,7 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
-import { PspFactory } from '../payments/psp/psp.factory';
-import { LedgerService } from '../ledger/ledger.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class RefundsService {
@@ -9,8 +8,7 @@ export class RefundsService {
 
   constructor(
     private supabaseService: SupabaseService,
-    private pspFactory: PspFactory,
-    private ledgerService: LedgerService,
+    private notificationsService: NotificationsService,
   ) {}
 
   private isAdmin(role: string | undefined): boolean {
@@ -28,6 +26,16 @@ export class RefundsService {
     }
   }
 
+  /**
+   * Refunds are paid out of the merchant's own ScanLinkPay wallet into the
+   * paying client's wallet, in one database transaction
+   * (refund_to_client_wallet, migration 041). If the merchant's wallet
+   * doesn't hold enough — typically because they already withdrew the
+   * money — the refund is refused and they must top up or refund in cash:
+   * the balance never goes negative. A payer without a ScanLinkPay account
+   * can't be refunded here either (CinetPay has no refund API, so there is
+   * nowhere to send the money): that one is also done in cash.
+   */
   async createRefund(transactionId: string, data: {
     amount_cents: number;
     reason?: string;
@@ -44,11 +52,8 @@ export class RefundsService {
 
     this.assertOwnsTransaction(transaction.merchant_id, callerMerchantId, callerRole);
 
-    // Status, "not yet settled" and "total refunded <= amount" are checked by
-    // reserve_refund() under a row lock on the transaction — checking them
-    // here first and inserting afterwards let two concurrent refunds both pass.
-    const { data: reserved, error: reserveError } = await this.supabaseService.getClient()
-      .rpc('reserve_refund', {
+    const { data: refund, error: refundError } = await this.supabaseService.getClient()
+      .rpc('refund_to_client_wallet', {
         p_transaction_id: transactionId,
         p_amount_cents: data.amount_cents,
         p_reason: data.reason ?? null,
@@ -56,86 +61,55 @@ export class RefundsService {
       })
       .single();
 
-    if (reserveError || !reserved) {
-      throw this.toRefundError(reserveError?.message);
-    }
-    let refund: any = reserved;
-
-    let pspResult: { psp_refund_id: string; status: string };
-    try {
-      const adapter = this.pspFactory.get(transaction.psp_provider || undefined);
-      pspResult = await adapter.refund({
-        psp_intent_id: transaction.psp_reference,
-        amount_cents: data.amount_cents,
-        reason: data.reason,
-      });
-    } catch (err) {
-      // Release the reservation so it no longer counts against the
-      // refundable amount, then surface the PSP's own error.
-      await this.supabaseService.getClient()
-        .from('refunds')
-        .update({ status: 'FAILED', updated_at: new Date().toISOString() })
-        .eq('id', refund.id);
-      throw err;
+    if (refundError || !refund) {
+      throw this.toRefundError(refundError?.message, transaction.currency);
     }
 
-    const completed = pspResult.status === 'COMPLETED';
-    const { data: updatedRefund, error: updateError } = await this.supabaseService.getClient()
-      .from('refunds')
-      .update({
-        status: completed ? 'COMPLETED' : 'PENDING',
-        psp_refund_id: pspResult.psp_refund_id,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', refund.id)
-      .select()
-      .single();
+    this.logger.log(`Refund completed: ${(refund as any).id} for transaction ${transactionId}`);
 
-    if (updateError) {
-      throw new Error(`Failed to update refund: ${updateError.message}`);
-    }
-    refund = updatedRefund;
-
-    if (completed) {
-      await this.ledgerService.writeRefundEntry(transaction, data.amount_cents, refund.id);
-
-      // Only a full refund closes the transaction — a partial one used to
-      // mark it REFUNDED too, which blocked any further refund on it and
-      // dropped its remaining amount from the merchant's balance.
-      const { data: completedRefunds } = await this.supabaseService.getClient()
-        .from('refunds')
-        .select('amount_cents')
-        .eq('transaction_id', transactionId)
-        .eq('status', 'COMPLETED');
-      const totalRefunded = (completedRefunds || []).reduce((sum: number, r: any) => sum + r.amount_cents, 0);
-
-      await this.supabaseService.getClient()
-        .from('transactions')
-        .update({
-          status: totalRefunded >= transaction.amount_cents ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', transactionId);
+    const amountLabel = `${(data.amount_cents / 100).toLocaleString('fr-FR')} ${transaction.currency}`;
+    if (transaction.client_id) {
+      await this.notificationsService.create({
+        user_id: transaction.client_id,
+        type: 'refund_received',
+        title: 'Remboursement reçu',
+        body: `${amountLabel} ont été ajoutés à votre portefeuille ScanLinkPay (remboursement de ${transaction.reference}).`,
+        data: { transaction_id: transactionId, refund_id: (refund as any).id },
+      }).catch(() => null);
     }
 
-    this.logger.log(`Refund created: ${refund.id} for transaction ${transactionId}`);
     return refund;
   }
 
-  private toRefundError(message?: string) {
-    if (message?.includes('REFUND_TX_SETTLED')) {
-      return new BadRequestException('Cette transaction a déjà été incluse dans un règlement au marchand — elle ne peut plus être remboursée ici.');
+  private toRefundError(message: string | undefined, currency: string) {
+    const code = (message || '').match(/REFUND_[A-Z_]+/)?.[0];
+    switch (code) {
+      case 'REFUND_INSUFFICIENT_BALANCE': {
+        const [, balance, needed] = (message || '').match(/REFUND_INSUFFICIENT_BALANCE:(\d+):(\d+)/) || [];
+        const fmt = (cents?: string) => `${(Number(cents || 0) / 100).toLocaleString('fr-FR')} ${currency}`;
+        return new BadRequestException(
+          `Solde insuffisant : votre portefeuille ScanLinkPay contient ${fmt(balance)} et ce remboursement demande ${fmt(needed)}. Rechargez votre portefeuille, ou remboursez le client en espèces.`,
+        );
+      }
+      case 'REFUND_NO_CLIENT_ACCOUNT':
+        return new BadRequestException(
+          "Ce client n'a pas de compte ScanLinkPay : le remboursement ne peut pas être fait ici. Remboursez-le en espèces.",
+        );
+      case 'REFUND_TX_SETTLED':
+        return new BadRequestException(
+          "Cette transaction a déjà été réglée au marchand avec l'ancien système de règlement : elle ne peut plus être remboursée ici.",
+        );
+      case 'REFUND_EXCEEDS_AMOUNT':
+        return new BadRequestException('Le total remboursé dépasserait le montant de la transaction.');
+      case 'REFUND_TX_NOT_REFUNDABLE':
+        return new BadRequestException('Seules les transactions réussies peuvent être remboursées.');
+      case 'REFUND_INVALID_AMOUNT':
+        return new BadRequestException('Montant invalide.');
+      case 'REFUND_TX_NOT_FOUND':
+        return new NotFoundException('Transaction not found');
+      default:
+        return new Error(`Failed to refund: ${message ?? 'unknown error'}`);
     }
-    if (message?.includes('REFUND_EXCEEDS_AMOUNT')) {
-      return new BadRequestException('Le total remboursé dépasserait le montant de la transaction.');
-    }
-    if (message?.includes('REFUND_TX_NOT_REFUNDABLE')) {
-      return new BadRequestException('Seules les transactions réussies peuvent être remboursées.');
-    }
-    if (message?.includes('REFUND_TX_NOT_FOUND')) {
-      return new NotFoundException('Transaction not found');
-    }
-    return new Error(`Failed to reserve refund: ${message ?? 'unknown error'}`);
   }
 
   async getRefundById(id: string, callerMerchantId: string, callerRole: string) {
