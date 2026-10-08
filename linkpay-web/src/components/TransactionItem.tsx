@@ -6,7 +6,7 @@ interface TransactionItemProps {
   name: string;
   amountCents: number;
   currency?: string;
-  status: 'SUCCESS' | 'PENDING' | 'FAILED' | 'REFUNDED';
+  status: 'SUCCESS' | 'PENDING' | 'FAILED' | 'REFUNDED' | 'PARTIALLY_REFUNDED';
   date: string;
   type?: 'in' | 'out';
   /** Optional trailing control (e.g. a refund icon button) — rendered as
@@ -20,6 +20,7 @@ const statusConfig = {
   PENDING: { icon: Clock, color: 'text-warning', bg: 'bg-warning/10' },
   FAILED: { icon: XCircle, color: 'text-destructive', bg: 'bg-destructive/10' },
   REFUNDED: { icon: ArrowDownLeft, color: 'text-muted-foreground', bg: 'bg-muted' },
+  PARTIALLY_REFUNDED: { icon: ArrowDownLeft, color: 'text-muted-foreground', bg: 'bg-muted' },
 };
 
 export function TransactionItem({

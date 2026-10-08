@@ -1,4 +1,5 @@
-import { Injectable, Logger, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, ConflictException, ServiceUnavailableException } from '@nestjs/common';
+import { isAuthApiError } from '@supabase/supabase-js';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
@@ -165,7 +166,16 @@ export class AuthService {
 
     if (error || !data.user) {
       this.logger.error(`Login failed for ${email}: ${error?.message || 'no user returned'}`);
-      throw new UnauthorizedException('Invalid credentials');
+      // Only a 4xx answer from Supabase Auth means the credentials were
+      // rejected. A network failure, a 5xx or an unparseable response means
+      // Supabase couldn't be reached — reporting that as "Invalid credentials"
+      // would send users hunting for a password problem they don't have.
+      if (error && !(isAuthApiError(error) && error.status >= 400 && error.status < 500)) {
+        throw new ServiceUnavailableException(
+          'Le service de connexion est temporairement indisponible. Veuillez réessayer plus tard.',
+        );
+      }
+      throw new UnauthorizedException('Email ou mot de passe incorrect');
     }
 
     const userId = data.user.id;

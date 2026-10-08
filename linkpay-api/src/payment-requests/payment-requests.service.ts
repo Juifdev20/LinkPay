@@ -22,7 +22,7 @@ export class PaymentRequestsService {
     customer_info?: { name?: string; phone?: string };
     commission_model?: string;
     expires_in_minutes?: number;
-  }) {
+  }, options?: { withQrCode?: boolean }) {
     const reference = this.generateReference();
     const linkToken = uuidv4().replace(/-/g, '');
     const currency = data.currency || (await this.getMerchantDefaultCurrency(merchantId));
@@ -56,39 +56,43 @@ export class PaymentRequestsService {
     const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:5173');
     const paymentLink = `${frontendUrl}/p/${linkToken}`;
 
-    const qrBuffer = await QRCode.toBuffer(paymentLink, {
-      width: 400,
-      margin: 2,
-      color: { dark: '#0F172A', light: '#FFFFFF' },
-    });
-
-    const { data: uploadData, error: uploadError } = await this.supabaseService.getClient()
-      .storage
-      .from('qr-codes')
-      .upload(`${linkToken}.png`, qrBuffer, {
-        contentType: 'image/png',
-        upsert: true,
+    // Quick-pay requests go straight to the payment page — the payer never
+    // sees a QR code, so don't generate and store one for each of them.
+    let qrCodeUrl: string | undefined;
+    if (options?.withQrCode !== false) {
+      const qrBuffer = await QRCode.toBuffer(paymentLink, {
+        width: 400,
+        margin: 2,
+        color: { dark: '#0F172A', light: '#FFFFFF' },
       });
 
-    let qrCodeUrl: string | undefined;
-    if (!uploadError && uploadData) {
-      const { data: urlData } = this.supabaseService.getClient()
+      const { data: uploadData, error: uploadError } = await this.supabaseService.getClient()
         .storage
         .from('qr-codes')
-        .getPublicUrl(`${linkToken}.png`);
-      qrCodeUrl = urlData.publicUrl;
-    } else if (uploadError) {
-      this.logger.error(`Failed to upload QR code for ${request.id}: ${uploadError.message}`);
-    }
+        .upload(`${linkToken}.png`, qrBuffer, {
+          contentType: 'image/png',
+          upsert: true,
+        });
 
-    if (qrCodeUrl) {
-      const { error: updateError } = await this.supabaseService.getClient()
-        .from('payment_requests')
-        .update({ qr_code_url: qrCodeUrl })
-        .eq('id', request.id);
+      if (!uploadError && uploadData) {
+        const { data: urlData } = this.supabaseService.getClient()
+          .storage
+          .from('qr-codes')
+          .getPublicUrl(`${linkToken}.png`);
+        qrCodeUrl = urlData.publicUrl;
+      } else if (uploadError) {
+        this.logger.error(`Failed to upload QR code for ${request.id}: ${uploadError.message}`);
+      }
 
-      if (updateError) {
-        this.logger.warn(`Failed to persist qr_code_url for ${request.id}: ${updateError.message}`);
+      if (qrCodeUrl) {
+        const { error: updateError } = await this.supabaseService.getClient()
+          .from('payment_requests')
+          .update({ qr_code_url: qrCodeUrl })
+          .eq('id', request.id);
+
+        if (updateError) {
+          this.logger.warn(`Failed to persist qr_code_url for ${request.id}: ${updateError.message}`);
+        }
       }
     }
 

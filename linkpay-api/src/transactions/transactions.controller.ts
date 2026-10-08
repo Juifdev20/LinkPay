@@ -2,6 +2,7 @@ import { Controller, Get, Param, Query, BadRequestException } from '@nestjs/comm
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { TransactionsService } from './transactions.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { toPage, toLimit } from '../common/utils/pagination';
 
 @ApiTags('Transactions')
 @ApiBearerAuth()
@@ -22,8 +23,8 @@ export class TransactionsController {
   ) {
     const filters = {
       status,
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 20,
+      page: toPage(page),
+      limit: toLimit(limit),
       search,
     };
 

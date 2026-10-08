@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional 
 import { IsNumber, Min, IsString, IsOptional, IsIn, IsObject, Length } from 'class-validator';
 import { WalletsService } from './wallets.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { toPage, toLimit } from '../common/utils/pagination';
 
 class CreateTopupDto {
   @ApiProperty({ example: 50000, description: 'Amount in cents (e.g. 50000 = 500.00 CDF)' })
@@ -109,8 +110,8 @@ export class WalletsController {
     @Query('limit') limit?: string,
   ) {
     return this.walletsService.getMyLedger(userId, {
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 20,
+      page: toPage(page),
+      limit: toLimit(limit),
     });
   }
 
@@ -200,8 +201,8 @@ export class WalletsController {
     @Query('limit') limit?: string,
   ) {
     return this.walletsService.getMyTransfers(userId, {
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 20,
+      page: toPage(page),
+      limit: toLimit(limit),
     });
   }
 
@@ -226,8 +227,8 @@ export class WalletsController {
     @Query('limit') limit?: string,
   ) {
     return this.walletsService.getMyWithdrawals(userId, {
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 20,
+      page: toPage(page),
+      limit: toLimit(limit),
     });
   }
 }
