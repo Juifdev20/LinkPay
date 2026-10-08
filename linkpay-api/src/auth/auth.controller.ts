@@ -40,6 +40,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Login with email and password' })
   @ApiResponse({ status: 200, description: 'Login successful' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
+  @ApiResponse({ status: 503, description: 'Supabase Auth unreachable' })
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
