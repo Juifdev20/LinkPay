@@ -114,6 +114,19 @@ export class CinetPayAdapter implements PspAdapter {
     // Always re-confirm with CinetPay directly rather than trusting the
     // webhook body — see the note above the class.
     const statusResult = await this.client.payment.getStatus(notification.transactionId, COUNTRY);
+
+    // The body is attacker-controlled: it names a CinetPay transaction AND
+    // the ScanLinkPay payment it supposedly settles. Without this check, one
+    // genuine (cheap) CinetPay payment could be replayed to mark any other
+    // pending payment as paid. CinetPay itself says which merchant
+    // transaction that payment belongs to — it must be the one claimed.
+    if (statusResult.merchantTransactionId !== notification.merchantTransactionId) {
+      this.logger.warn(
+        `CinetPay webhook mismatch: transaction ${notification.transactionId} belongs to "${statusResult.merchantTransactionId}", not "${notification.merchantTransactionId}"`,
+      );
+      throw new BadRequestException('Invalid webhook');
+    }
+
     const status: 'SUCCESS' | 'FAILED' | 'PENDING' =
       statusResult.status === 'SUCCESS' ? 'SUCCESS' : statusResult.status === 'FAILED' ? 'FAILED' : 'PENDING';
 

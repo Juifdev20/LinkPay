@@ -427,7 +427,21 @@ export class PaymentsService {
   }
 
   async processWebhook(provider: string, payload: Buffer, signature: string, headers: Record<string, string>) {
-    const adapter = this.pspFactory.get(provider);
+    // `provider` comes from the public URL. The mock adapter accepts any
+    // payload as genuine, so unless this deployment actually runs on it,
+    // anyone could POST /webhooks/mock and mark a payment as paid for free.
+    const configuredProvider = this.configService.get<string>('PSP_PROVIDER', 'mock');
+    if (provider === 'mock' && configuredProvider !== 'mock') {
+      this.logger.warn('Rejected a mock webhook: PSP_PROVIDER is not "mock" on this deployment');
+      throw new NotFoundException();
+    }
+
+    let adapter;
+    try {
+      adapter = this.pspFactory.get(provider);
+    } catch {
+      throw new NotFoundException();
+    }
 
     if (!adapter.verifyWebhook(payload, signature, headers)) {
       this.logger.warn(`Webhook signature verification failed for provider: ${provider}`);
@@ -490,6 +504,14 @@ export class PaymentsService {
       this.logger.warn(`No payment intent found for psp_intent_id: ${event.psp_intent_id}`);
       await this.markWebhookProcessed(dedupHash, 'no_intent_found');
       return { status: 'no_intent' };
+    }
+
+    // An intent only ever answers to the provider it was created with — a
+    // genuine webhook from one provider must not settle another's intent.
+    if (intent.psp_provider && intent.psp_provider !== provider) {
+      this.logger.warn(`Webhook from "${provider}" for intent ${intent.id} created with "${intent.psp_provider}" — ignored`);
+      await this.markWebhookProcessed(dedupHash, 'provider_mismatch');
+      throw new BadRequestException('Invalid webhook');
     }
 
     if (event.status === 'SUCCESS') {
