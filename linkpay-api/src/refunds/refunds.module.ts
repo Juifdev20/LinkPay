@@ -2,11 +2,10 @@ import { Module } from '@nestjs/common';
 import { RefundsController } from './refunds.controller';
 import { RefundsService } from './refunds.service';
 import { SupabaseModule } from '../supabase/supabase.module';
-import { PaymentsModule } from '../payments/payments.module';
-import { LedgerModule } from '../ledger/ledger.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [SupabaseModule, PaymentsModule, LedgerModule],
+  imports: [SupabaseModule, NotificationsModule],
   controllers: [RefundsController],
   providers: [RefundsService],
   exports: [RefundsService],

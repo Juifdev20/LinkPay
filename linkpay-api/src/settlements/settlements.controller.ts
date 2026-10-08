@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Param, Body, Query, UseGuards, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Put, Param, Body, Query, UseGuards, ForbiddenException } from '@nestjs/common';
 import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -20,24 +20,18 @@ class UpdateSettlementStatusDto {
   notes?: string;
 }
 
+/**
+ * Merchants are now paid straight into their ScanLinkPay wallet (see
+ * MerchantWalletCreditService), so there is no "request a settlement" and no
+ * settlement balance any more. What remains here is the history of the
+ * settlements created before that change, and the admin's tools to finish
+ * the ones still in flight.
+ */
 @ApiTags('Settlements')
 @ApiBearerAuth()
 @Controller('settlements')
 export class SettlementsController {
   constructor(private settlementsService: SettlementsService) {}
-
-  // Store owner only (an enterprise owner acting as one of their stores
-  // counts as 'enterprise' in RolesGuard). Cashiers can't request payouts.
-  @Post()
-  @Roles('merchant', 'enterprise')
-  @UseGuards(RolesGuard)
-  @ApiOperation({ summary: 'Request a settlement of all unsettled transactions for the current store' })
-  async createSettlement(@CurrentUser('merchant_id') merchantId: string | undefined) {
-    if (!merchantId) {
-      throw new BadRequestException('No merchant account associated');
-    }
-    return this.settlementsService.createSettlement(merchantId);
-  }
 
   @Get()
   @ApiOperation({ summary: 'List settlements' })
@@ -61,15 +55,6 @@ export class SettlementsController {
       return this.settlementsService.getMerchantSettlements(merchantId, filters);
     }
     return { data: [], total: 0, page: 1, limit: 20 };
-  }
-
-  @Get('balance')
-  @ApiOperation({ summary: 'Get current merchant settlement balance' })
-  async getBalance(@CurrentUser('merchant_id') merchantId: string | undefined) {
-    if (!merchantId) {
-      return { available: { CDF: 0, USD: 0 }, pending: { CDF: 0, USD: 0 } };
-    }
-    return this.settlementsService.getMerchantBalance(merchantId);
   }
 
   @Get(':id')

@@ -20,7 +20,6 @@ import MerchantDashboard from '@/pages/merchant/Dashboard';
 const PaymentRequestsPage = lazyPage(() => import('@/pages/merchant/PaymentRequests'));
 const CreatePaymentRequestPage = lazyPage(() => import('@/pages/merchant/CreatePaymentRequest'));
 const MerchantTransactionsPage = lazyPage(() => import('@/pages/merchant/Transactions'));
-const SettlementsPage = lazyPage(() => import('@/pages/merchant/Settlements'));
 const TeamPage = lazyPage(() => import('@/pages/merchant/Team'));
 
 import ClientDashboard from '@/pages/client/Dashboard';
@@ -184,7 +183,6 @@ export default function App() {
         <Route path="payment-requests" element={<PaymentRequestsPage />} />
         <Route path="payment-requests/new" element={<CreatePaymentRequestPage />} />
         <Route path="transactions" element={<MerchantTransactionsPage />} />
-        <Route path="settlements" element={<SettlementsPage />} />
         <Route
           path="team"
           element={
