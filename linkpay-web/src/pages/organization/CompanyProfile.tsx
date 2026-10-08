@@ -39,7 +39,7 @@ export default function CompanyProfilePage() {
   );
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl mx-auto">
+    <div className="p-6 space-y-6 w-full max-w-7xl mx-auto">
       <PageHeader title="Profil entreprise" />
 
       <Card>

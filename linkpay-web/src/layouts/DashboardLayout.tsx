@@ -80,8 +80,8 @@ export default function DashboardLayout() {
                     <Building2 className="w-4 h-4 text-primary" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground truncate">{org.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">
+                    <p className="text-sm font-semibold text-foreground line-clamp-2 break-words">{org.name}</p>
+                    <p className="text-xs text-muted-foreground line-clamp-2 break-words" title={SECTORS.find((s) => s.value === org.sector)?.label || org.sector}>
                       {SECTORS.find((s) => s.value === org.sector)?.label || org.sector}
                     </p>
                   </div>

@@ -94,7 +94,7 @@ export default function OrganizationTransactionsPage() {
   const total = data?.pages[0]?.total ?? 0;
 
   return (
-    <div className="p-6 space-y-4 max-w-2xl mx-auto">
+    <div className="p-6 space-y-4 w-full max-w-7xl mx-auto">
       <PageHeader title="Transactions" />
 
       <div className="flex gap-2 overflow-x-auto pb-1">

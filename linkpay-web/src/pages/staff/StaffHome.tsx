@@ -19,5 +19,6 @@ export default function StaffHome() {
     return <StockPage />;
   }
 
-  return <SalesDashboardPage variant={user?.role === 'vendeur' ? 'light' : 'full'} />;
+  // Seller (and legacy cashier accounts) get the full dashboard, margins included.
+  return <SalesDashboardPage />;
 }

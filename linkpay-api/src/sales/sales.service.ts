@@ -5,6 +5,8 @@ import { StockPasswordService } from '../stock/stock-password.service';
 
 // Internal staff roles (organization-staff module) per sales action. The
 // owner is always allowed on top of these — see assertOrgAccess().
+// 'caissier' is kept as an alias so existing cashier accounts keep working;
+// the vendeur interface now covers the cash desk too.
 const SELLER_ROLES = ['vendeur', 'caissier'] as const;
 const SALES_VIEW_ROLES = ['vendeur', 'caissier', 'comptable'] as const;
 
@@ -344,19 +346,8 @@ export class SalesService {
     const byCategory = [...categories.entries()].map(([category, v]) => ({ category, ...v }));
     const daysSeries = [...daily.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, amounts]) => ({ day, ...amounts }));
 
-    // Sellers see sales volume only — cost, margins and platform fees are
-    // reserved for the owner and the finance role (stripped server-side, not
-    // just hidden in the UI).
-    if (callerRole === 'vendeur') {
-      return {
-        sales_count: (sales || []).length,
-        revenue,
-        top_products: topProducts.map(({ margin, cost: _cost, ...p }: any) => p),
-        by_category: byCategory.map(({ margin, cost: _cost, ...c }: any) => c),
-        daily: daysSeries,
-      };
-    }
-
+    // Full view for every role allowed here (owner, vendeur, comptable): the
+    // seller also does the cash desk, so margins and fees are shown to them too.
     return {
       sales_count: (sales || []).length,
       revenue,

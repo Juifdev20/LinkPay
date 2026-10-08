@@ -82,6 +82,31 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+  /* PC with a mouse: scrollbars stay invisible and only appear while the
+     cursor is over the scrolling area. Touch screens keep their overlay bars. */
+  @media (hover: hover) and (pointer: fine) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: transparent transparent;
+    }
+    *:hover {
+      scrollbar-color: hsl(var(--muted-foreground) / 0.45) transparent;
+    }
+    *::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    *::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    *::-webkit-scrollbar-thumb {
+      background: transparent;
+      border-radius: 9999px;
+    }
+    *:hover::-webkit-scrollbar-thumb {
+      background: hsl(var(--muted-foreground) / 0.45);
+    }
+  }
   .safe-area-bottom {
     padding-bottom: env(safe-area-inset-bottom);
   }

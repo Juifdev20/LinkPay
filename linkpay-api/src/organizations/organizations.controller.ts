@@ -226,7 +226,7 @@ export class OrganizationsController {
     @Query('limit') limit?: string,
   ) {
     const org = await this.orgsService.getOrganizationById(id);
-    this.assertOwnerOrStaffRole(org, callerId, callerOrgId, callerRole, ['caissier', 'comptable']);
+    this.assertOwnerOrStaffRole(org, callerId, callerOrgId, callerRole, ['vendeur', 'caissier', 'comptable']);
     return this.orgsService.getOrganizationTransactions(id, {
       from,
       to,

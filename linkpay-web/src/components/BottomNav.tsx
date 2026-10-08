@@ -30,9 +30,12 @@ const orgTransactionsTab: Tab = { to: '/dashboard/organization/transactions', la
 const financeTab: Tab = { to: SALES_DASHBOARD_PATH, label: 'Finances', icon: BarChart3, end: true, central: true };
 const alertsTab: Tab = { to: '/dashboard/notifications', label: 'Alertes', icon: Bell, end: true, central: true };
 
+// The seller runs sales and the cash desk: Accueil, Transactions, Ventes, Paramètres.
+const sellerTabs = [homeTab, orgTransactionsTab, salesTab, settingsTab];
+
 const staffTabs: Record<string, Tab[]> = {
-  vendeur: [homeTab, stockTab, salesTab, settingsTab],
-  caissier: [homeTab, orgTransactionsTab, salesTab, settingsTab],
+  vendeur: sellerTabs,
+  caissier: sellerTabs,
   comptable: [homeTab, orgTransactionsTab, financeTab, settingsTab],
   magasinier: [homeTab, stockTab, alertsTab, settingsTab],
 };

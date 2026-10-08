@@ -8,12 +8,11 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { PageHeader } from '@/components/PageHeader';
 import { downloadStaffCredentialPdf } from '@/lib/staff-credential-pdf';
-import { Loader2, Plus, X, Printer, Warehouse, ShoppingBag, Wallet, Calculator } from 'lucide-react';
+import { Loader2, Plus, X, Printer, Warehouse, ShoppingBag, Calculator } from 'lucide-react';
 
 const ROLES = [
   { slug: 'magasinier', label: 'Magasinier', icon: Warehouse },
   { slug: 'vendeur', label: 'Vendeur', icon: ShoppingBag },
-  { slug: 'caissier', label: 'Caissier', icon: Wallet },
   { slug: 'comptable', label: 'Comptable', icon: Calculator },
 ];
 
@@ -97,10 +96,10 @@ export default function StaffPage() {
   const visibleStaff = roleFilter ? (staff || []).filter((s: any) => s.role === roleFilter) : (staff || []);
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl mx-auto">
+    <div className="p-6 space-y-6 w-full max-w-7xl mx-auto">
       <PageHeader title="Utilisateurs internes" />
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         {ROLES.map((r) => (
           <button
             key={r.slug}

@@ -13,7 +13,7 @@ import { DualCurrencyStat } from '@/components/DualCurrencyStat';
 import { TransactionItem } from '@/components/TransactionItem';
 import OnboardingWizard from '@/pages/organization/OnboardingWizard';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
-import { Building2, Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X, XCircle, Trophy, Banknote, Smartphone, Package, MinusCircle, PiggyBank, Clock, AlertTriangle } from 'lucide-react';
+import { Loader2, Store, Plus, TrendingUp, Receipt, QrCode, Wallet, ChevronRight, X, XCircle, Trophy, Banknote, Smartphone, Package, MinusCircle, PiggyBank, Clock, AlertTriangle } from 'lucide-react';
 
 /** Shown once the KYB onboarding is submitted, while status is still
  * 'pending' — distinct from the wizard itself (onboarding_completed_at is
@@ -187,27 +187,15 @@ export default function OrganizationProfilePage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl mx-auto">
-      <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center">
-          <Building2 className="w-6 h-6 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{org?.name || 'Dashboard'}</h1>
-          {org?.status && (
-            <Badge variant={org.status === 'active' ? 'success' : 'warning'} className="mt-1 capitalize">
-              {org.status}
-            </Badge>
-          )}
-        </div>
-      </div>
-
+    // Full width on PC: the cards spread across the available space instead
+    // of sitting in a narrow column. The business name lives in the sidebar.
+    <div className="p-6 space-y-6 w-full max-w-7xl mx-auto">
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Récapitulatif</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
             {recapCards.map((c) => (
               <div key={c.label} className="rounded-xl border border-border p-4">
                 <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center mb-2">
@@ -267,7 +255,7 @@ export default function OrganizationProfilePage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         {statCards.map((c) => (
           <Card key={c.label}>
             <CardContent className="pt-5">

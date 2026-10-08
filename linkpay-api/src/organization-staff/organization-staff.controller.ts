@@ -5,7 +5,8 @@ import { OrganizationStaffService } from './organization-staff.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
-const STAFF_ROLE_SLUGS = ['magasinier', 'vendeur', 'caissier', 'comptable'];
+// 'caissier' is no longer creatable: the vendeur role covers the cash desk.
+const STAFF_ROLE_SLUGS = ['magasinier', 'vendeur', 'comptable'];
 
 class CreateStaffDto {
   @ApiProperty({ example: 'Mukendi' })

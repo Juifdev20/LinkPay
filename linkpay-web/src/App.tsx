@@ -306,7 +306,7 @@ export default function App() {
         <Route
           path="organization/transactions"
           element={
-            <ProtectedRoute roles={['enterprise', 'caissier', 'comptable']}>
+            <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier', 'comptable']}>
               <OrganizationTransactionsPage />
             </ProtectedRoute>
           }
@@ -314,7 +314,7 @@ export default function App() {
         <Route
           path="organization/receive"
           element={
-            <ProtectedRoute roles={['enterprise', 'caissier']}>
+            <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier']}>
               <OrganizationReceivePage />
             </ProtectedRoute>
           }
