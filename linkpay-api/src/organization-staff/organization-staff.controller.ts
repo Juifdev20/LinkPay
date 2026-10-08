@@ -6,7 +6,9 @@ import { OrganizationsService } from '../organizations/organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 // 'caissier' is no longer creatable: the vendeur role covers the cash desk.
-const STAFF_ROLE_SLUGS = ['magasinier', 'vendeur', 'comptable'];
+// 'caissier' is the supermarket POS till role (see pos module) — kept
+// creatable alongside the Ventes/electronics roles.
+const STAFF_ROLE_SLUGS = ['magasinier', 'vendeur', 'caissier', 'comptable'];
 
 class CreateStaffDto {
   @ApiProperty({ example: 'Mukendi' })
