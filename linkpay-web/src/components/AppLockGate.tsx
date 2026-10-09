@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/lib/auth-store';
-import { useAppLock, BACKGROUND_LOCK_MS, getIdleLockMinutes } from '@/lib/app-lock-store';
+import { useAppLock, BACKGROUND_LOCK_MS, getIdleLockMinutes, appCodeApplies, isSalesRoute } from '@/lib/app-lock-store';
 import { isAppLockEnabled, verifyAppLock } from '@/lib/app-lock';
 import { weakAppCodeReason } from '@/lib/code-strength';
 import api from '@/lib/api';
@@ -14,10 +15,12 @@ const errorMessage = (err: any, fallback: string) => err?.response?.data?.messag
 
 /**
  * Full-screen overlay mounted once at the app root (see App.tsx). It:
- *   1. makes a user without an access code choose one (new accounts, and
+ *   1. makes a user (client / merchant / business owner) without an access code choose one (new accounts, and
  *      existing accounts the first time they open this version);
  *   2. locks the app on launch, after the app was left, and after idle time;
- *   3. unlocks with the 6-digit code (checked by the API: 5 tries, then a
+ *   3. never gets in the way of the selling/stock screens, nor of staff and
+ *      administrators (see APP_CODE_ROLES / SALES_ROUTE_PREFIXES);
+ *   4. unlocks with the 6-digit code (checked by the API: 5 tries, then a
  *      15-minute lock; two locks in a row end the session) or, as an optional
  *      shortcut, the device biometrics.
  * It also covers the screen while it is locked, so nothing shows behind it.
@@ -32,15 +35,20 @@ export function AppLockGate() {
   const hiddenAt = useRef<number | null>(null);
   const lastActivity = useRef(Date.now());
   const hasCode = user?.has_app_code;
+  const { pathname } = useLocation();
+  // Only for clients, merchants and business owners; the roles that work the
+  // till and the stock are never asked.
+  const applies = isAuthenticated && appCodeApplies(user?.role);
+  const onSalesScreen = isSalesRoute(pathname);
 
   // Profiles cached by an older version don't know yet: ask the server.
   useEffect(() => {
-    if (isAuthenticated && hasCode === undefined) fetchProfile();
-  }, [isAuthenticated, hasCode, fetchProfile]);
+    if (applies && hasCode === undefined) fetchProfile();
+  }, [applies, hasCode, fetchProfile]);
 
   // Leaving the app → lock when coming back after the grace period.
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!applies) return;
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
         hiddenAt.current = Date.now();
@@ -52,31 +60,31 @@ export function AppLockGate() {
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [isAuthenticated, lock]);
+  }, [applies, lock]);
 
-  // Idle → lock.
+  // Idle → lock (not while a sales/stock screen is open: those stay up for hours).
   useEffect(() => {
-    if (!isAuthenticated || locked) return;
+    if (!applies || locked) return;
     lastActivity.current = Date.now();
     const touch = () => { lastActivity.current = Date.now(); };
     const events = ['pointerdown', 'keydown', 'touchstart', 'scroll', 'wheel'] as const;
     events.forEach((e) => window.addEventListener(e, touch, { passive: true, capture: true }));
     const timer = window.setInterval(() => {
+      if (isSalesRoute(window.location.pathname)) { lastActivity.current = Date.now(); return; }
       if (Date.now() - lastActivity.current > getIdleLockMinutes() * 60_000) lock();
     }, 5_000);
     return () => {
       events.forEach((e) => window.removeEventListener(e, touch, { capture: true }));
       window.clearInterval(timer);
     };
-  }, [isAuthenticated, locked, lock]);
+  }, [applies, locked, lock]);
 
   const onUnlocked = useCallback(() => {
     lastActivity.current = Date.now();
     unlock();
   }, [unlock]);
 
-  if (!isAuthenticated) return null;
-  // The user's admin 2FA enrolment screen comes first; this gate waits.
+  if (!applies || onSalesScreen) return null;
   if (hasCode === false) return <CreateCode onDone={async () => { await fetchProfile(); onUnlocked(); }} />;
   if (!locked) return null;
   if (hasCode === undefined) {

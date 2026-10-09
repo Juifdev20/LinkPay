@@ -31,6 +31,33 @@ export function setIdleLockMinutes(min: number) {
   } catch { /* storage unavailable: the default applies */ }
 }
 
+/**
+ * Who is asked for the access code: clients, merchants and business owners.
+ * NOT the staff who work the tills and the stock (vendeur, caissier,
+ * magasinier, comptable, merchant cashiers) and not the administrators (they
+ * have the authenticator-app login) — a code prompt in the middle of a sale
+ * would only get in the way.
+ */
+export const APP_CODE_ROLES = ['client', 'merchant', 'enterprise'];
+export const appCodeApplies = (role?: string) => !!role && APP_CODE_ROLES.includes(role);
+
+/**
+ * Screens where the code is never asked, even for the roles above: the
+ * selling and stock screens (till, sales, stock, inventory) and the merchant's
+ * "Encaisser" screens, which stay open for hours while customers pay. The app
+ * still remembers that it should be locked, so the code is asked the moment
+ * the user leaves those screens for any other one.
+ */
+export const SALES_ROUTE_PREFIXES = [
+  '/dashboard/pos',
+  '/dashboard/organization/sales',
+  '/dashboard/organization/stock',
+  '/dashboard/organization/inventory',
+  '/dashboard/payment-requests',
+];
+export const isSalesRoute = (pathname: string) =>
+  SALES_ROUTE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+
 interface AppLockState {
   locked: boolean;
   lock: () => void;

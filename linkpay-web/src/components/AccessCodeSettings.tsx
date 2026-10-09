@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import api from '@/lib/api';
+import { useAuthStore } from '@/lib/auth-store';
 import { weakAppCodeReason } from '@/lib/code-strength';
-import { IDLE_CHOICES_MIN, getIdleLockMinutes, setIdleLockMinutes } from '@/lib/app-lock-store';
+import { appCodeApplies, IDLE_CHOICES_MIN, getIdleLockMinutes, setIdleLockMinutes } from '@/lib/app-lock-store';
 import { PinInput } from '@/components/PinInput';
 import { Button } from '@/components/ui/button';
 import { Loader2, KeyRound, Timer, CheckCircle2 } from 'lucide-react';
 
 /** Settings rows for the access code: change it (old code + new code twice) and pick the idle delay. */
 export function AccessCodeSettings() {
+  const role = useAuthStore((s) => s.user?.role);
   const [open, setOpen] = useState(false);
   const [current, setCurrent] = useState('');
   const [code, setCode] = useState('');
@@ -45,6 +47,8 @@ export function AccessCodeSettings() {
       setBusy(false);
     }
   };
+
+  if (!appCodeApplies(role)) return null; // staff and administrators don't use the access code
 
   return (
     <>
