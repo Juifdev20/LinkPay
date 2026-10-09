@@ -1,6 +1,10 @@
 import { useEffect } from 'react';
 import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { COOKIE_AUTH } from '@/lib/auth-mode';
+
+/** Cookie mode has no Supabase realtime session (it would be a second, script-readable login): refresh by polling instead. */
+const POLL_MS = 20_000;
 
 /**
  * Subscribes to Postgres changes on `table` (optionally filtered, e.g.
@@ -18,6 +22,14 @@ export function useRealtimeInvalidate(
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    if (COOKIE_AUTH) {
+      if (!enabled || (filter !== undefined && !filter)) return;
+      const timer = setInterval(() => {
+        if (document.visibilityState !== 'visible') return;
+        queryKeys.forEach((key) => queryClient.invalidateQueries({ queryKey: key }));
+      }, POLL_MS);
+      return () => clearInterval(timer);
+    }
     const client = supabase;
     if (!client || !enabled || (filter !== undefined && !filter)) return;
 

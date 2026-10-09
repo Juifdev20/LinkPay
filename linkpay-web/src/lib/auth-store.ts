@@ -4,6 +4,7 @@ import { supabase } from './supabase';
 import { getDeviceId } from './device';
 import {
   getToken,
+  hasSession as hasStoredSession,
   setTokens,
   setAccessToken,
   clearTokens,
@@ -18,6 +19,8 @@ import {
 import { clearAppLockLocal } from './webauthn';
 import { queryClient } from './query-client';
 import { useAppLock } from './app-lock-store';
+import { COOKIE_AUTH } from './auth-mode';
+import { runDeviceCheck } from './device-integrity';
 
 interface User {
   id: string;
@@ -65,10 +68,11 @@ interface AuthState {
   }, rememberMe?: boolean) => Promise<void>;
   logout: () => Promise<void>;
   fetchProfile: () => Promise<void>;
-  applyMerchantUpgrade: (merchant: { id: string }, accessToken: string) => void;
-  applyEnterpriseUpgrade: (accessToken: string) => void;
-  enterStore: (merchant: { id: string }, accessToken: string, refreshToken: string, organizationId: string) => void;
-  exitStore: () => void;
+  // Token arguments are undefined in cookie mode (the session is in HttpOnly cookies, not in the response).
+  applyMerchantUpgrade: (merchant: { id: string }, accessToken?: string) => void;
+  applyEnterpriseUpgrade: (accessToken?: string) => void;
+  enterStore: (merchant: { id: string }, accessToken: string | undefined, refreshToken: string | undefined, organizationId: string) => void;
+  exitStore: () => Promise<void>;
   clearMustChangePassword: () => void;
 }
 
@@ -76,7 +80,8 @@ interface AuthState {
 // alongside its own custom JWT (see auth.service.ts login()/register()).
 // Best-effort: Realtime is a nice-to-have, never block auth on it.
 function applySupabaseSession(session?: SupabaseSession | null) {
-  if (!session) return;
+  // Cookie mode: the API withholds it (it is a second login to the same account that a script could steal and keep).
+  if (!session || COOKIE_AUTH) return;
   localStorage.setItem('linkpay_supabase_access_token', session.access_token);
   localStorage.setItem('linkpay_supabase_refresh_token', session.refresh_token);
   supabase?.auth.setSession(session).catch(() => null);
@@ -88,7 +93,7 @@ function clearSupabaseSession() {
   supabase?.auth.signOut().catch(() => null);
 }
 
-const hasSession = !!getToken(TOKEN_ACCESS_KEY);
+const hasSession = hasStoredSession();
 
 export const useAuthStore = create<AuthState>((set) => ({
   // Last known profile: screens render at once on launch while
@@ -98,6 +103,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: false,
 
   login: async (email: string, password: string, rememberMe = true, otp?: string) => {
+    // Cookie mode: the API sets session cookies (or persistent ones) according to this choice, so it must be known first.
+    if (COOKIE_AUTH) setRememberMe(rememberMe);
     const { data } = await api.post('/auth/login', { email, password, device_id: getDeviceId(), ...(otp ? { otp } : {}) });
     queryClient.clear(); // never show another account's cached data
     setRememberMe(rememberMe);
@@ -105,9 +112,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     applySupabaseSession(data.supabase_session);
     useAppLock.getState().unlock(); // the password was just typed: no need to ask for the code too
     set({ user: data.user, isAuthenticated: true });
+    void runDeviceCheck(); // Android app: verify the phone in the background (no-op elsewhere)
   },
 
   register: async (data, rememberMe = true) => {
+    if (COOKIE_AUTH) setRememberMe(rememberMe);
     const res = await api.post('/auth/register', { ...data, device_id: getDeviceId() });
     queryClient.clear();
     setRememberMe(rememberMe);
@@ -115,6 +124,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     applySupabaseSession(res.data.supabase_session);
     useAppLock.getState().unlock();
     set({ user: res.data.user, isAuthenticated: true });
+    void runDeviceCheck();
   },
 
   applyMerchantUpgrade: (merchant, accessToken) => {
@@ -142,6 +152,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (currentAccess && currentRefresh) {
       stashOrgContextTokens(currentAccess, currentRefresh);
     }
+    // Cookie mode: the API already replaced the cookies; "back to the organization" asks the API for the owner session again.
     setTokens(accessToken, refreshToken);
     set((state) => ({
       user: state.user
@@ -156,9 +167,14 @@ export const useAuthStore = create<AuthState>((set) => ({
     }));
   },
 
-  exitStore: () => {
-    const orgTokens = popOrgContextTokens();
-    if (orgTokens) setTokens(orgTokens.access, orgTokens.refresh);
+  exitStore: async () => {
+    if (COOKIE_AUTH) {
+      // The owner's tokens were never in JavaScript, so the API re-derives them (and swaps the cookies).
+      await api.post('/auth/exit-store');
+    } else {
+      const orgTokens = popOrgContextTokens();
+      if (orgTokens) setTokens(orgTokens.access, orgTokens.refresh);
+    }
     set((state) => ({
       user: state.user ? { ...state.user, role: 'enterprise', merchant_id: undefined, acting_as_org_id: undefined } : state.user,
     }));

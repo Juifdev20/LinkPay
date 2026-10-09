@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import { accessTokenFromCookie } from './auth-cookies';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import { SESSION_TRACKING_EXEMPT_ROLES } from './constants';
@@ -25,7 +26,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private supabaseService: SupabaseService,
   ) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      // The Authorization header (Android app, API clients) first, then the HttpOnly cookie (web).
+      jwtFromRequest: ExtractJwt.fromExtractors([ExtractJwt.fromAuthHeaderAsBearerToken(), accessTokenFromCookie]),
       ignoreExpiration: false,
       secretOrKey: getRequiredJwtSecret(configService),
     });
@@ -65,6 +67,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // True only for a token minted after an authenticator code was checked.
       mfa: payload.mfa === true,
       mfa_at: payload.mfa === true ? payload.mfa_at : undefined,
+      session_id: payload.session_id,
     };
   }
 }

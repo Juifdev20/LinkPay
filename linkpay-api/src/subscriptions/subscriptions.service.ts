@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { SupabaseService } from '../supabase/supabase.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -8,6 +8,7 @@ import { WalletPinService } from '../wallets/wallet-pin.service';
 import {
   DEFAULT_SUBSCRIPTION_SETTINGS, MAX_SUBSCRIPTION_MONTHS, SUBSCRIPTION_CURRENCIES, SubscriptionMode, SubscriptionSettings,
 } from './subscription';
+import { JobLockService } from '../common/job-lock/job-lock.service';
 
 const DAY_MS = 86_400_000;
 const CACHE_TTL_MS = 15_000;
@@ -71,6 +72,7 @@ export class SubscriptionsService {
     private audit: AuditService,
     private wallets: WalletsService,
     private pins: WalletPinService,
+    @Optional() private jobLock?: JobLockService,
   ) {}
 
   private get db() {
@@ -292,6 +294,12 @@ export class SubscriptionsService {
    * list) is announced once per period; paying re-arms them.
    */
   @Cron('0 8 * * *')
+  async runDailyReminders(): Promise<number> {
+    // Once a day, on one API instance (migration 053): otherwise every instance would notify every patron.
+    if (this.jobLock && !(await this.jobLock.acquire('subscription-reminders', 3600))) return 0;
+    return this.sendReminders();
+  }
+
   async sendReminders(now = Date.now()): Promise<number> {
     const settings = await this.getSettings();
     const thresholds = settings.reminder_days;

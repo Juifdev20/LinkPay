@@ -4,7 +4,7 @@ Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente
 
 ## 1. Base de données (Supabase → SQL Editor)
 
-- [ ] Exécuter dans l'ordre les migrations `040` → `052` (dossier `linkpay-api/supabase/migrations`). **La 043 d'abord si vous ne pouvez pas tout faire** : sans elle n'importe qui peut créditer un portefeuille.
+- [ ] Exécuter dans l'ordre les migrations `040` → `054` (dossier `linkpay-api/supabase/migrations`). **La 043 d'abord si vous ne pouvez pas tout faire** : sans elle n'importe qui peut créditer un portefeuille.
 - [ ] Exécuter `linkpay-api/supabase/verify_security.sql`. **Les 6 premières lignes doivent toutes afficher `OK`.** Une ligne `FAIL` dit ce qu'il reste à corriger.
 - [ ] Lire les 4 tableaux « à regarder à la main » en bas du résultat :
   - **A** : chaque administrateur est une personne que vous connaissez ;
@@ -32,6 +32,13 @@ Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente
 - [ ] Les entreprises déjà inscrites reçoivent un essai complet **à partir du jour où la migration 052 est appliquée** (réglage `billing_starts_at`), pas depuis leur date d'inscription : personne n'est coupé le jour du lancement.
 - [ ] Faire un paiement de test avec un compte patron : le portefeuille est débité, l'abonnement apparaît, un deuxième paiement ajoute des mois à la suite ; un abonnement expiré reprend dès le paiement.
 - [ ] Les paiements des clients, le portefeuille et les retraits ne sont jamais bloqués par l'abonnement (c'est là que la commission est gagnée).
+
+## 2 ter. Alertes SMS, plusieurs instances, cookies, Android
+
+- [ ] **SMS** : `SMS_PROVIDER` + clés (Africa's Talking : `AT_USERNAME`, `AT_API_KEY`, `AT_SENDER_ID` ; ou Twilio). Chaque super admin a un numéro **international** (+243…) dans son profil, ou `ALERT_SMS_TO`. Tester en préproduction : déclencher une alerte critique (par exemple un solde négatif sur un portefeuille de test) : le SMS doit arriver.
+- [ ] **Plusieurs instances** : migration `053` appliquée ; service Redis (Key Value) créé et `REDIS_URL` défini (le `render.yaml` le fait). Avec 2 instances, vérifier qu'un rappel ou une alerte n'arrive qu'une fois.
+- [ ] **Cookies HttpOnly** (facultatif mais recommandé) : suivre `docs/COOKIES_HTTPONLY.md`, y compris la vérification de l'IP vue par l'API.
+- [ ] **Application Android** : suivre `docs/ANDROID_INTEGRITY.md` (migration `054`, compte de service Google, empreinte du certificat), laisser `warn` une à deux semaines, tester sur de vrais téléphones, puis `enforce`.
 
 ## 3. Comptes administrateurs
 

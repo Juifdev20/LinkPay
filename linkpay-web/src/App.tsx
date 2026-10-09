@@ -1,5 +1,6 @@
 import { OtpPromptDialog } from '@/components/OtpPromptDialog';
 import { SubscriptionPromptDialog } from '@/components/SubscriptionPromptDialog';
+import { DeviceUntrustedDialog } from '@/components/DeviceUntrustedDialog';
 import { SubscriptionGate } from '@/components/SubscriptionGate';
 import { AppCodeConfirmDialog } from '@/components/AppCodeConfirmDialog';
 import { StockPasswordGate } from '@/components/stock/StockPasswordGate';
@@ -9,6 +10,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { useEffect, Suspense } from 'react';
 import { lazyPage, prefetchPages, PageFallback } from '@/lib/lazy-page';
 import { startScreenProtection } from '@/lib/screen-protection';
+import { runDeviceCheck } from '@/lib/device-integrity';
 import { initNativePushNavigation } from '@/lib/native-push';
 
 import LoginPage from '@/pages/auth/LoginPage';
@@ -159,6 +161,11 @@ export default function App() {
 
   useEffect(() => prefetchPages(), []);
 
+  // Android app: verify the phone (Play Integrity + root checks) when the app opens with a session — at most every 6 hours.
+  useEffect(() => {
+    if (isAuthenticated) void runDeviceCheck();
+  }, [isAuthenticated]);
+
   // Super admin switch: black screenshots in the Android app (FLAG_SECURE).
   useEffect(() => startScreenProtection(), []);
 
@@ -178,6 +185,7 @@ export default function App() {
       <ForcePasswordChangeGate />
       <OtpPromptDialog />
       <SubscriptionPromptDialog />
+      <DeviceUntrustedDialog />
       <AppCodeConfirmDialog />
       <StockPasswordGate />
       <Suspense fallback={<PageFallback fullScreen />}>

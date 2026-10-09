@@ -42,6 +42,50 @@ services:
         sync: false
       - key: ALERT_EMAILS
         sync: false
+      - key: SMS_PROVIDER
+        sync: false
+      - key: AT_USERNAME
+        sync: false
+      - key: AT_API_KEY
+        sync: false
+      - key: AT_SENDER_ID
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM
+        sync: false
+      - key: ALERT_SMS_TO
+        sync: false
+      # Shared rate-limit counters across API instances (the Key Value service below).
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: linkpay-redis
+          property: connectionString
+      # HttpOnly session cookies for browsers — leave unset until docs/COOKIES_HTTPONLY.md is done.
+      - key: COOKIE_AUTH
+        sync: false
+      - key: COOKIE_SAMESITE
+        sync: false
+      - key: COOKIE_DOMAIN
+        sync: false
+      # Android device/app integrity — see docs/ANDROID_INTEGRITY.md (off until configured).
+      - key: DEVICE_INTEGRITY_MODE
+        value: off
+      - key: ANDROID_PACKAGE_NAME
+        value: com.scanlinkpay.app
+      - key: ANDROID_CERT_SHA256
+        sync: false
+      - key: PLAY_INTEGRITY_CLIENT_EMAIL
+        sync: false
+      - key: PLAY_INTEGRITY_PRIVATE_KEY
+        sync: false
+      - key: INTEGRITY_REQUIRE_PLAY_RECOGNIZED
+        sync: false
+      - key: INTEGRITY_MAX_AGE_HOURS
+        sync: false
       - key: ADMIN_REFRESH_EXPIRES_IN
         value: 12h
       - key: ADMIN_ALLOWED_IPS
@@ -67,6 +111,14 @@ services:
       - key: FCM_PRIVATE_KEY
         sync: false
 
+  # ── Shared rate-limit counters (Redis-compatible), private to this account's services ──
+  - type: keyvalue
+    name: linkpay-redis
+    region: frankfurt
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: [] # internal network only: nothing outside Render can reach it
+
   # ── Frontend: React PWA (static) ──
   - type: web
     name: linkpay-web
@@ -88,7 +140,18 @@ services:
         sync: false
       - key: VITE_VAPID_PUBLIC_KEY
         sync: false
+      # HttpOnly session cookies (see docs/COOKIES_HTTPONLY.md): set "true" together with VITE_API_URL=/api/v1.
+      - key: VITE_AUTH_COOKIES
+        sync: false
+      # Android app only: Google Cloud project number linked to the app in the Play Console.
+      - key: VITE_PLAY_CLOUD_PROJECT_NUMBER
+        sync: false
     routes:
+      # The browser talks to the API through this site (same origin): that is what lets the session live in
+      # HttpOnly SameSite=Strict cookies. Adjust the host if your API service has another URL. Must stay ABOVE /*.
+      - type: rewrite
+        source: /api/*
+        destination: https://linkpay-api.onrender.com/api/*
       - type: rewrite
         source: /*
         destination: /index.html
@@ -112,6 +175,10 @@ services:
       - path: /manifest.webmanifest
         name: Cache-Control
         value: no-cache
+      # API answers (proxied through /api/*) must never be stored by a shared cache: they are per-user and carry cookies.
+      - path: /api/*
+        name: Cache-Control
+        value: no-store, private
       # ── Security headers (every response) ──
       # CSP: scripts only from our own origin, so a script injected through a
       # stray bug can't run or phone home; the page can't be framed

@@ -1,7 +1,7 @@
 import { Throttle } from '@nestjs/throttler';
-import { Controller, Post, Put, Get, Body, HttpCode, HttpStatus, Req, ForbiddenException } from '@nestjs/common';
+import { Controller, Post, Put, Get, Body, HttpCode, HttpStatus, Req, Res, ForbiddenException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiProperty, ApiBearerAuth } from '@nestjs/swagger';
-import { IsString, MinLength, MaxLength } from 'class-validator';
+import { IsOptional, IsString, MinLength, MaxLength } from 'class-validator';
 import { AuthService } from './auth.service';
 import { TwoFactorService } from '../security/two-factor.service';
 import { SecurityAlertsService } from '../security/security-alerts.service';
@@ -10,11 +10,14 @@ import { MFA_REQUIRED_ROLES } from './constants';
 import { RegisterDto, LoginDto } from './dto';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { AuthCookiesService } from './auth-cookies';
 
 class RefreshDto {
-  @ApiProperty()
+  /** Omitted by browsers that keep the session in cookies: the refresh cookie is used instead. */
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsString()
-  refresh_token!: string;
+  refresh_token?: string;
 }
 
 class ChangePasswordDto {
@@ -39,6 +42,7 @@ export class AuthController {
     private authService: AuthService,
     private twoFactor: TwoFactorService,
     private securityAlerts: SecurityAlertsService,
+    private cookies: AuthCookiesService,
   ) {}
 
   // Strict per-IP budgets on the public auth endpoints (the global 100/min is
@@ -50,8 +54,8 @@ export class AuthController {
   @ApiOperation({ summary: 'Register a new client account' })
   @ApiResponse({ status: 201, description: 'User registered successfully' })
   @ApiResponse({ status: 409, description: 'Email already registered' })
-  async register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  async register(@Body() dto: RegisterDto, @Req() req: any) {
+    return this.authService.register(dto, { platform: req.headers?.['x-client-platform'] });
   }
 
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -63,7 +67,7 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   @ApiResponse({ status: 503, description: 'Supabase Auth unreachable' })
   async login(@Body() dto: LoginDto, @Req() req: any) {
-    return this.authService.login(dto, { ip: req.ip, userAgent: req.headers?.['user-agent'] });
+    return this.authService.login(dto, { ip: req.ip, userAgent: req.headers?.['user-agent'], platform: req.headers?.['x-client-platform'] });
   }
 
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
@@ -73,8 +77,37 @@ export class AuthController {
   @ApiOperation({ summary: 'Exchange a refresh token for a new access token' })
   @ApiResponse({ status: 200, description: 'Token refreshed' })
   @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
-  async refresh(@Body() dto: RefreshDto) {
-    return this.authService.refresh(dto.refresh_token);
+  async refresh(@Body() dto: RefreshDto, @Req() req: any, @Res({ passthrough: true }) res: any) {
+    const cookieClient = this.cookies.isCookieClient(req);
+    const token = dto.refresh_token || (cookieClient ? this.cookies.refreshTokenFrom(req) : undefined);
+    if (!token) throw new UnauthorizedException('Invalid or expired refresh token');
+    try {
+      return await this.authService.refresh(token);
+    } catch (err) {
+      // A dead refresh cookie is useless: drop it so the browser stops sending it.
+      if (cookieClient && err instanceof UnauthorizedException) this.cookies.clear(res);
+      throw err;
+    }
+  }
+
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Public()
+  @Post('session/clear')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Forget the session cookies of this browser (works even when the session already expired)' })
+  clearSession(@Req() req: any, @Res({ passthrough: true }) res: any) {
+    if (this.cookies.enabled) this.cookies.clear(res);
+    return { success: true };
+  }
+
+  @AllowWithoutMfa()
+  @Post('exit-store')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Leave "acting as a store" and return to the owner\'s own scope (new tokens)' })
+  async exitStore(@CurrentUser() user: any) {
+    if (!user?.acting_as_org_id) throw new BadRequestException('Vous n\'êtes dans aucune boutique.');
+    return this.authService.exitActingAs(user.id, user.email, user.session_id);
   }
 
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
@@ -139,8 +172,9 @@ export class AuthController {
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Log out and free this account for another device' })
-  async logout(@CurrentUser('id') userId: string) {
+  async logout(@CurrentUser('id') userId: string, @Res({ passthrough: true }) res: any) {
     await this.authService.logout(userId);
+    if (this.cookies.enabled) this.cookies.clear(res);
     return { success: true };
   }
 }

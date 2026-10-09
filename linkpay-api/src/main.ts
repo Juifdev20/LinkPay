@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import * as express from 'express';
 import { AppModule } from './app.module';
+import { createCsrfMiddleware } from './auth/csrf.middleware';
 import { configureTrustProxy, resolveTrustProxyHops } from './common/utils/trust-proxy';
 
 // CinetPay's SDK talks to exactly these hosts (sandbox + production) — see
@@ -85,6 +86,8 @@ async function bootstrap() {
     origin: allowedOrigins,
     credentials: true,
   });
+  // Cookie sessions (COOKIE_AUTH=true): refuse forged cross-site requests. Bearer-token clients pass straight through.
+  app.use(createCsrfMiddleware(allowedOrigins));
 
   app.setGlobalPrefix('api/v1', { exclude: ['health'] });
 

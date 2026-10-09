@@ -4,7 +4,9 @@ import { useAppCodePrompt } from './app-code-prompt';
 import { useStockPasswordPrompt, rememberStockPassword, recalledStockPassword, forgetStockPassword } from './stock-password-prompt';
 import { getConfirmToken, setConfirmToken, clearConfirmToken } from './confirm-token';
 import { useSubscriptionPrompt } from './subscription-prompt';
-import { getToken, setTokens, clearTokens, TOKEN_ACCESS_KEY, TOKEN_REFRESH_KEY } from './token-storage';
+import { getToken, hasSession, getRememberMe, setTokens, clearTokens, TOKEN_ACCESS_KEY, TOKEN_REFRESH_KEY } from './token-storage';
+import { COOKIE_AUTH, COOKIE_HEADERS } from './auth-mode';
+import { clientPlatform, useDeviceUntrusted } from './client-platform';
 
 const rawUrl = (import.meta.env.VITE_API_URL || '/api/v1').toString().replace(/\/$/, '');
 const API_URL = rawUrl.endsWith('/api/v1') ? rawUrl : `${rawUrl}/api/v1`;
@@ -12,12 +14,22 @@ const API_URL = rawUrl.endsWith('/api/v1') ? rawUrl : `${rawUrl}/api/v1`;
 const api = axios.create({
   baseURL: API_URL,
   headers: { 'Content-Type': 'application/json' },
+  // Cookie mode: the browser attaches the HttpOnly session cookies; our headers tell the API so (and satisfy its CSRF check).
+  ...(COOKIE_AUTH ? { withCredentials: true } : {}),
 });
 
 api.interceptors.request.use((config) => {
-  const token = getToken(TOKEN_ACCESS_KEY);
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  // Where this session runs (the API applies its device-integrity rule to Android-app sessions).
+  config.headers['x-client-platform'] = clientPlatform();
+  if (COOKIE_AUTH) {
+    Object.entries(COOKIE_HEADERS).forEach(([k, v]) => { config.headers[k] = v; });
+    // "Se souvenir de moi" off = session cookies that die with the browser.
+    config.headers['x-auth-remember'] = getRememberMe() ? '1' : '0';
+  } else {
+    const token = getToken(TOKEN_ACCESS_KEY);
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
   }
   // Sent whenever the user confirmed with their access code in the last 5 minutes.
   const confirm = getConfirmToken();
@@ -78,6 +90,16 @@ api.interceptors.response.use(
           }
         }
       }
+      // Android app: money can't leave without a recent device verification. Do it, then repeat the request once.
+      if (code === 'DEVICE_INTEGRITY_REQUIRED' && !error.config._attested) {
+        error.config._attested = true;
+        // Loaded on demand: device-integrity itself uses this client.
+        const { runDeviceCheck } = await import('./device-integrity');
+        if (await runDeviceCheck(true)) return api(error.config);
+      }
+      if (code === 'DEVICE_UNTRUSTED' || code === 'DEVICE_INTEGRITY_REQUIRED') {
+        useDeviceUntrusted.getState().show(error.response.data?.message);
+      }
       // The business has no active subscription: tell the user and lead them to pay.
       if (code === 'SUBSCRIPTION_REQUIRED') {
         useSubscriptionPrompt.getState().show(error.response.data);
@@ -88,15 +110,18 @@ api.interceptors.response.use(
       }
     }
     if (error.response?.status === 401) {
-      const refreshToken = getToken(TOKEN_REFRESH_KEY);
+      const refreshToken = COOKIE_AUTH ? (hasSession() ? 'cookie' : null) : getToken(TOKEN_REFRESH_KEY);
       if (refreshToken && !error.config._retry) {
         error.config._retry = true;
         try {
-          const { data } = await axios.post(`${API_URL}/auth/refresh`, {
-            refresh_token: refreshToken,
-          });
-          setTokens(data.access_token, data.refresh_token);
-          error.config.headers.Authorization = `Bearer ${data.access_token}`;
+          // Cookie mode: the refresh cookie is sent by the browser and the new session comes back as cookies.
+          const { data } = COOKIE_AUTH
+            ? await axios.post(`${API_URL}/auth/refresh`, {}, { withCredentials: true, headers: { ...COOKIE_HEADERS, 'x-auth-remember': getRememberMe() ? '1' : '0' } })
+            : await axios.post(`${API_URL}/auth/refresh`, { refresh_token: refreshToken });
+          if (!COOKIE_AUTH) {
+            setTokens(data.access_token, data.refresh_token);
+            error.config.headers.Authorization = `Bearer ${data.access_token}`;
+          }
           return api(error.config);
         } catch (refreshErr: any) {
           // Only a real rejection from the server (the refresh token is

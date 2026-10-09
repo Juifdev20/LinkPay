@@ -1,9 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SupabaseService } from '../supabase/supabase.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PspFactory } from '../payments/psp/psp.factory';
 import { PayoutNotSentError } from '../payments/psp/psp.adapter';
+import { JobLockService } from '../common/job-lock/job-lock.service';
 
 const RECONCILE_BATCH_SIZE = 50;
 // A withdrawal is looked at again only once it has been open this long, so
@@ -42,6 +43,7 @@ export class WithdrawalPayoutService {
     private supabaseService: SupabaseService,
     private pspFactory: PspFactory,
     private notificationsService: NotificationsService,
+    @Optional() private jobLock?: JobLockService,
   ) {}
 
   private get db() {
@@ -123,6 +125,8 @@ export class WithdrawalPayoutService {
   @Cron(CronExpression.EVERY_MINUTE)
   async reconcile(): Promise<number> {
     if (this.reconciling) return 0;
+    // One API instance per minute (migration 053).
+    if (this.jobLock && !(await this.jobLock.acquire('withdrawal-reconcile', 50))) return 0;
     this.reconciling = true;
     try {
       const { data: open, error } = await this.db

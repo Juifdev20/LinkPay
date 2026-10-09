@@ -108,7 +108,8 @@ describe('SecurityAlertsService', () => {
     });
     const notifications = { create: jest.fn(async () => undefined) };
     const email = { enabled: true, extraRecipients: () => ['ops@x.com'], send: jest.fn(async () => true) };
-    return { service: new SecurityAlertsService(fake.service, notifications as any, email as any), notifications, email };
+    const sms = { enabled: true, extraRecipients: () => ['+243900000000'], send: jest.fn(async () => 1) };
+    return { service: new SecurityAlertsService(fake.service, notifications as any, email as any, sms as any), notifications, email, sms };
   }
 
   it('notifies each admin once, with a severity marker', async () => {
@@ -134,6 +135,19 @@ describe('SecurityAlertsService', () => {
     await new Promise((r) => setImmediate(r));
     expect(email.send).toHaveBeenCalledTimes(1);
     expect(email.send).toHaveBeenCalledWith(expect.arrayContaining(['ops@x.com']), expect.stringContaining('C'), 'details');
+  });
+
+  it('sends critical alerts by SMS too (short, nothing confidential), warnings never', async () => {
+    const { service, sms } = setup();
+    await service.alert({ severity: 'warning', title: 'W', body: 'secret details' });
+    await service.alert({ severity: 'critical', title: 'Portefeuille en negatif', body: 'wallet 123 : -50000 CDF' });
+    await new Promise((r) => setImmediate(r));
+    expect(sms.send).toHaveBeenCalledTimes(1);
+    const [numbers, text] = sms.send.mock.calls[0] as any[];
+    expect(numbers).toContain('+243900000000');
+    expect(text).toContain('Portefeuille en negatif');
+    expect(text).not.toContain('50000');
+    expect(text).not.toContain('wallet 123');
   });
 
   it('never throws, even when the channel is broken', async () => {

@@ -12,6 +12,7 @@ import { LoginAttemptsService } from './login-attempts.service';
 import { TwoFactorService } from '../security/two-factor.service';
 import { SecurityAlertsService } from '../security/security-alerts.service';
 import { isAdminIpAllowed } from '../security/admin-ip';
+import { cleanPlatform } from '../integrity/device-integrity.service';
 
 export interface JwtPayload {
   sub: string;
@@ -51,7 +52,7 @@ export class AuthService {
     private securityAlerts: SecurityAlertsService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto, ctx: { platform?: string } = {}) {
     const { email, password, phone, full_name, account_type, business_name } = dto;
     const roleSlug = account_type === 'merchant' ? 'merchant' : account_type === 'enterprise' ? 'enterprise' : 'client';
 
@@ -155,6 +156,7 @@ export class AuthService {
     }
 
     const sessionId = await this.claimSession(userId, roleSlug, dto.device_id);
+    await this.recordClientPlatform(userId, ctx.platform);
     const token = await this.generateToken(userId, email, roleSlug, merchantId, sessionId, undefined, organizationId);
     const refreshToken = await this.generateRefreshToken(userId, email, sessionId);
     const supabaseSession = await this.mintSupabaseSession(email, password);
@@ -167,7 +169,7 @@ export class AuthService {
     };
   }
 
-  async login(dto: LoginDto, ctx: { ip?: string; userAgent?: string } = {}) {
+  async login(dto: LoginDto, ctx: { ip?: string; userAgent?: string; platform?: string } = {}) {
     const { email, password, device_id } = dto;
 
     await this.loginAttempts.assertNotLocked(email);
@@ -263,6 +265,7 @@ export class AuthService {
     }
 
     const sessionId = await this.claimSession(userId, role, device_id);
+    await this.recordClientPlatform(userId, ctx.platform);
     const token = await this.generateToken(userId, email, role, merchantId, sessionId, undefined, organizationId, mfaAt);
     const refreshToken = await this.generateRefreshToken(userId, email, sessionId, undefined, undefined, mfaAt, role);
 
@@ -375,6 +378,25 @@ export class AuthService {
     };
   }
 
+  /**
+   * Leaves "acting as a store" and returns to the account's own scope (the enterprise owner).
+   * The web app used to keep the owner's tokens in its own storage to swap them back; a browser
+   * that keeps the session in HttpOnly cookies cannot, so the server re-derives them instead —
+   * from the canonical role, exactly like a refresh does when the "acting as" grant is gone.
+   */
+  async exitActingAs(userId: string, email: string, sessionId?: string) {
+    const { data: roleData } = await this.supabaseService.getClient()
+      .from('user_roles')
+      .select('role:roles(slug), merchant_id, organization_id')
+      .eq('user_id', userId)
+      .single();
+    const role = (roleData?.role as any)?.slug || 'client';
+    return {
+      access_token: await this.generateToken(userId, email, role, roleData?.merchant_id || undefined, sessionId, undefined, roleData?.organization_id || undefined),
+      refresh_token: await this.generateRefreshToken(userId, email, sessionId, undefined, undefined, undefined, role),
+    };
+  }
+
   /** Confirms an "acting as" grant minted by OrganizationsService.enterMerchant()
    * still holds: the caller still owns that organization, and the store is
    * still part of it. Two cheap point lookups — called on every refresh of
@@ -394,6 +416,17 @@ export class AuthService {
       .eq('id', merchantId)
       .single();
     return !!merchant && merchant.organization_id === orgId;
+  }
+
+  /**
+   * Remembers where this session was opened (android-app, web…), for the device-integrity rule: a token
+   * minted in the Android app stays an Android-app session even if it is replayed from elsewhere.
+   * Best effort — migration 054 may not be applied yet, and that must never block a login.
+   */
+  private async recordClientPlatform(userId: string, platform?: string): Promise<void> {
+    try {
+      await this.supabaseService.getClient().from('profiles').update({ active_client_platform: cleanPlatform(platform) }).eq('id', userId);
+    } catch { /* ignore */ }
   }
 
   async logout(userId: string): Promise<void> {

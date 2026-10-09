@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { getToken, TOKEN_ACCESS_KEY } from './token-storage';
+import { hasSession } from './token-storage';
 import { clearConfirmToken } from './confirm-token';
 
 /**
@@ -67,7 +67,7 @@ interface AppLockState {
 
 export const useAppLock = create<AppLockState>((set) => ({
   // A stored session at launch means "someone reopened the app": locked until the code is entered.
-  locked: !!getToken(TOKEN_ACCESS_KEY),
+  locked: hasSession(),
   // Locking also forgets the 5-minute confirmation for sensitive actions.
   lock: () => { clearConfirmToken(); set({ locked: true }); },
   unlock: () => set({ locked: false }),

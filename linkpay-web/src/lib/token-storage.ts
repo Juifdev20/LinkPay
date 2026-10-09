@@ -1,4 +1,8 @@
+import { COOKIE_AUTH } from './auth-mode';
+
 const REMEMBER_KEY = 'linkpay_remember_me';
+// Cookie mode: the only thing kept in storage is this flag (no secret) — the tokens are in HttpOnly cookies.
+const SESSION_FLAG_KEY = 'linkpay_session';
 const ACCESS_KEY = 'linkpay_access_token';
 const REFRESH_KEY = 'linkpay_refresh_token';
 const TOKEN_KEYS = [ACCESS_KEY, REFRESH_KEY];
@@ -40,10 +44,22 @@ export function getRememberMe(): boolean {
 }
 
 export function getToken(key: string): string | null {
-  return activeStore().getItem(key);
+  return COOKIE_AUTH ? null : activeStore().getItem(key);
 }
 
-export function setTokens(accessToken: string, refreshToken: string) {
+/** Is someone signed in on this device? (In cookie mode the tokens are invisible, so a flag stands for them.) */
+export function hasSession(): boolean {
+  return COOKIE_AUTH ? activeStore().getItem(SESSION_FLAG_KEY) === '1' : !!activeStore().getItem(ACCESS_KEY);
+}
+
+export function setTokens(accessToken?: string, refreshToken?: string) {
+  if (COOKIE_AUTH) {
+    // The tokens are already in HttpOnly cookies (set by the API). Remember only that we're signed in.
+    activeStore().setItem(SESSION_FLAG_KEY, '1');
+    inactiveStore().removeItem(SESSION_FLAG_KEY);
+    return;
+  }
+  if (!accessToken || !refreshToken) return;
   activeStore().setItem(ACCESS_KEY, accessToken);
   activeStore().setItem(REFRESH_KEY, refreshToken);
   // Never let a stale copy linger in the OTHER storage — e.g. the user
@@ -53,12 +69,17 @@ export function setTokens(accessToken: string, refreshToken: string) {
   TOKEN_KEYS.forEach((k) => inactiveStore().removeItem(k));
 }
 
-export function setAccessToken(accessToken: string) {
+export function setAccessToken(accessToken?: string) {
+  if (COOKIE_AUTH) {
+    activeStore().setItem(SESSION_FLAG_KEY, '1');
+    return;
+  }
+  if (!accessToken) return;
   activeStore().setItem(ACCESS_KEY, accessToken);
 }
 
 export function clearTokens() {
-  TOKEN_KEYS.forEach((k) => {
+  [...TOKEN_KEYS, SESSION_FLAG_KEY].forEach((k) => {
     localStorage.removeItem(k);
     sessionStorage.removeItem(k);
   });
