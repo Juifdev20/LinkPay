@@ -661,7 +661,8 @@ export class TontinesService {
         pin,
       },
       idempotencyKey,
-      { skipPinVerification },
+      // Members pay each other, whoever they are in the app (a member may own a store).
+      { skipPinVerification, allowBusinessRecipient: true },
     );
 
     await this.db

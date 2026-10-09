@@ -46,6 +46,12 @@ export default function SendPage() {
     setLooking(true);
     try {
       const { data } = await api.get(`/wallet/lookup/${encodeURIComponent(number.trim())}`);
+      // A store's wallet doesn't take transfers (the API refuses them too):
+      // a sale has to go through an invoice so it is recorded and charged.
+      if (data.accepts_transfers === false) {
+        setError(`${data.display_name} est un compte marchand : il ne reçoit pas de transferts. Pour le payer, demandez-lui une facture (scannez son QR de paiement ou saisissez sa référence via « Payer »).`);
+        return;
+      }
       setRecipient(data);
       setStep('amount');
     } catch (err: any) {

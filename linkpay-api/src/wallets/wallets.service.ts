@@ -374,6 +374,18 @@ export class WalletsService {
   // bare wallet_number for anything but this lookup + being a transfer target).
   // ==========================================================================
 
+  /** The store or enterprise this user owns, if any (null for a plain client). */
+  private async getBusinessOwnership(userId: string): Promise<{ name: string | null; logo_url: string | null } | null> {
+    const db = this.supabaseService.getClient();
+    const [{ data: merchant }, { data: org }] = await Promise.all([
+      db.from('merchants').select('name, logo_url').eq('owner_id', userId).limit(1).maybeSingle(),
+      db.from('organizations').select('name').eq('owner_id', userId).limit(1).maybeSingle(),
+    ]);
+    if (merchant) return { name: merchant.name ?? null, logo_url: merchant.logo_url ?? null };
+    if (org) return { name: org.name ?? null, logo_url: null };
+    return null;
+  }
+
   async lookupWallet(walletNumber: string) {
     const { data: wallet, error } = await this.supabaseService.getClient()
       .from('wallets')
@@ -388,23 +400,21 @@ export class WalletsService {
       throw new BadRequestException('Ce compte ScanLinkPay n\'est pas actif');
     }
 
-    // Prefix-agnostic on purpose — existing wallets carry 'LP-MER-...' from
-    // before the SLP rebrand, new ones carry 'SLP-MER-...' (see migration
-    // 015); both must keep resolving to "this is a merchant wallet".
-    const isMerchant = wallet.wallet_number.includes('-MER-');
+    // Business-ness comes from who OWNS the wallet, not from its number: the
+    // "-MER-" prefix is fixed when the wallet is created, so someone who
+    // becomes a merchant later keeps a plain "SLP-" number.
+    const business = await this.getBusinessOwnership(wallet.user_id);
 
-    if (isMerchant) {
-      const { data: merchant } = await this.supabaseService.getClient()
-        .from('merchants')
-        .select('name, logo_url')
-        .eq('owner_id', wallet.user_id)
-        .maybeSingle();
-
+    if (business) {
       return {
         wallet_number: wallet.wallet_number,
         is_merchant: true,
-        display_name: merchant?.name || 'Marchand ScanLinkPay',
-        logo_url: merchant?.logo_url || null,
+        // Sales must go through a payment request (invoice / "Encaisser"):
+        // that is what records the sale, issues a receipt and charges the
+        // platform commission. A plain transfer does none of that.
+        accepts_transfers: false,
+        display_name: business.name || 'Marchand ScanLinkPay',
+        logo_url: business.logo_url || null,
       };
     }
 
@@ -417,6 +427,7 @@ export class WalletsService {
     return {
       wallet_number: wallet.wallet_number,
       is_merchant: false,
+      accepts_transfers: true,
       display_name: maskName(profile?.full_name),
       logo_url: null,
     };
@@ -436,7 +447,7 @@ export class WalletsService {
     // solely for TontinesService's auto-payment cron path, where the member
     // already gave standing consent (auto_payment_opt_in) instead of
     // entering their PIN for this specific transfer.
-    internalOptions?: { skipPinVerification?: boolean },
+    internalOptions?: { skipPinVerification?: boolean; allowBusinessRecipient?: boolean },
   ) {
     if (!dto.amount_cents || dto.amount_cents < 1) {
       throw new BadRequestException('Montant invalide');
@@ -476,6 +487,17 @@ export class WalletsService {
 
     if (recipientWallet.id === senderWallet.id) {
       throw new BadRequestException('Vous ne pouvez pas vous transférer de l\'argent à vous-même');
+    }
+
+    // A transfer into a store's or enterprise's wallet is a sale made outside
+    // the invoice flow: no receipt, no entry in the merchant's sales, and no
+    // platform commission (transfers carry no fee by default). Customers must
+    // pay through a payment request. Internal flows that legitimately move
+    // money between members (tontines) opt out.
+    if (!internalOptions?.allowBusinessRecipient && (await this.getBusinessOwnership(recipientWallet.user_id))) {
+      throw new BadRequestException(
+        "Ce compte est un compte marchand : il ne reçoit pas de transferts. Pour le payer, demandez-lui une facture (scannez son QR de paiement ou saisissez sa référence).",
+      );
     }
 
     // PIN verified only after the cheap checks above, but always before any
