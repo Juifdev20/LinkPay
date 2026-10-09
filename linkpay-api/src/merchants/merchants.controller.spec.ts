@@ -25,9 +25,17 @@ describe('MerchantsController.updateMerchant', () => {
     expect(merchantsService.updateMerchant).toHaveBeenCalledWith('m1', { settlement_account });
   });
 
-  it('lets an admin change the status of any store', async () => {
-    await controller.updateMerchant('m9', { status: 'suspended' }, undefined as any, 'admin');
-    expect(merchantsService.updateMerchant).toHaveBeenCalledWith('m9', { status: 'suspended' });
+  it.each([[{ status: 'suspended' }], [{ commission_rule_id: '11111111-1111-4111-8111-111111111111' }]])(
+    'sends an admin to the audited route for %p instead of changing it here',
+    async (updates) => {
+      await expect(controller.updateMerchant('m9', updates as any, undefined as any, 'admin')).rejects.toBeInstanceOf(ForbiddenException);
+      expect(merchantsService.updateMerchant).not.toHaveBeenCalled();
+    },
+  );
+
+  it('still lets an admin edit the ordinary fields of any store', async () => {
+    await controller.updateMerchant('m9', { name: 'Boutique' }, undefined as any, 'admin');
+    expect(merchantsService.updateMerchant).toHaveBeenCalledWith('m9', { name: 'Boutique' });
   });
 });
 

@@ -189,8 +189,9 @@ export default function DashboardLayout() {
             {user?.acting_as_org_id && location.pathname.startsWith('/dashboard/organization') && (
               <div className="px-6 pt-4 md:px-4 md:pt-4">
                 <button
-                  onClick={() => {
-                    exitStore();
+                  onClick={async () => {
+                    // Wait for the owner session to be back before leaving the store's screens.
+                    await exitStore().catch(() => undefined);
                     navigate('/dashboard');
                   }}
                   className="w-full flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10 transition-colors"

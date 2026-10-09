@@ -1,10 +1,29 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 
-export default defineConfig({
+/**
+ * The Android app serves the bundle from the phone itself, so there is no web server to send a
+ * Content-Security-Policy header: it goes in the page instead, for the Android build modes only. Its
+ * connect-src is built from the same env the app is built with, so it can't drift from the real API.
+ */
+function androidCsp(mode: string): Plugin {
+  const env = loadEnv(mode, process.cwd(), '');
+  const origin = (u?: string) => { try { return u ? new URL(u).origin : ''; } catch { return ''; } };
+  const api = origin(env.VITE_API_URL);
+  const supabase = origin(env.VITE_SUPABASE_URL);
+  const connect = ["'self'", api, supabase, supabase.replace(/^https:/, 'wss:'), 'https://*.googleapis.com'].filter(Boolean).join(' ');
+  const csp = `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src ${connect}; worker-src 'self' blob:; manifest-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`;
+  return {
+    name: 'android-csp',
+    transformIndexHtml: (html) => html.replace('<meta charset="UTF-8" />', `<meta charset="UTF-8" />\n    <meta http-equiv="Content-Security-Policy" content="${csp}" />`),
+  };
+}
+
+export default defineConfig(({ mode }) => ({
   plugins: [
+    ...(mode.startsWith('android') ? [androidCsp(mode)] : []),
     react(),
     VitePWA({
       registerType: 'autoUpdate',
@@ -95,4 +114,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SupabaseService } from '../supabase/supabase.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TontinesService } from './tontines.service';
+import { JobLockService } from '../common/job-lock/job-lock.service';
 
 const MAX_REMINDER_LOOKAHEAD_DAYS = 14; // matches the reminder_days_before CHECK upper bound
 
@@ -24,6 +25,7 @@ export class TontinesCronService {
     private supabaseService: SupabaseService,
     private notificationsService: NotificationsService,
     private tontinesService: TontinesService,
+    @Optional() private jobLock?: JobLockService,
   ) {}
 
   private get db() {
@@ -32,6 +34,8 @@ export class TontinesCronService {
 
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
   async checkDueDates() {
+    // Once a day, on one API instance (migration 053).
+    if (this.jobLock && !(await this.jobLock.acquire('tontines-daily', 3600))) return;
     await this.sendUpcomingReminders();
     await this.escalateOverdue();
     await this.runAutoPayments();

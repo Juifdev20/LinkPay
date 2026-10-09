@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseInterceptors, UploadedFile, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Headers, UseInterceptors, UploadedFile, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiConsumes, ApiBody } from '@nestjs/swagger';
@@ -7,6 +7,7 @@ import { StockService } from './stock.service';
 import { StockPasswordService } from './stock-password.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { RequireSubscription } from '../subscriptions/subscription.guard';
 
 const CONDITIONS = ['neuf', 'occasion', 'reconditionne'];
 const MOVEMENT_TYPES = ['in', 'out', 'adjustment'];
@@ -168,6 +169,33 @@ class VerifyStockPasswordDto {
   password!: string;
 }
 
+/**
+ * Who may touch an organization's shared stock password.
+ *  - define / change it: the patron (owner) or an administrator — never an employee;
+ *  - check it or ask whether one exists: the patron, the organization's own
+ *    staff (they need it to confirm an edit) and administrators — nobody else,
+ *    so another company's account can neither guess it nor lock it by failing.
+ */
+export function assertStockPasswordAccess(
+  org: { id: string; owner_id: string },
+  caller: { id: string; role?: string; organizationId?: string },
+  level: 'member' | 'manager' | 'owner',
+) {
+  const isAdmin = caller.role === 'admin' || caller.role === 'super_admin';
+  const isOwner = org.owner_id === caller.id;
+  if (isAdmin || isOwner) return;
+  const sameOrg = !!caller.organizationId && caller.organizationId === org.id;
+  if (level === 'member' && sameOrg) return;
+  // Trying the password counts toward a lockout of the whole company's stock edits: only people who actually manage
+  // stock may try it (a seller or cashier guessing could otherwise lock the stock keeper out).
+  if (level === 'manager' && sameOrg && caller.role === 'magasinier') return;
+  throw new ForbiddenException(
+    level === 'owner'
+      ? "Seul le patron peut définir ou modifier le mot de passe de gestion de stock."
+      : "Vous n'avez pas accès à la gestion de stock de cette entreprise",
+  );
+}
+
 @ApiTags('Stock')
 @ApiBearerAuth()
 @Controller('merchants')
@@ -175,14 +203,17 @@ export class StockController {
   constructor(private stockService: StockService) {}
 
   @Post(':id/stock-items')
-  @ApiOperation({ summary: 'Create a stock item for this store (owner or magasinier)' })
+  @RequireSubscription('merchant')
+  @ApiOperation({ summary: 'Create a stock item for this store (owner or magasinier). Needs the stock password (x-stock-password header).' })
   async createItem(
     @Param('id') merchantId: string,
     @Body() dto: CreateStockItemDto,
     @CurrentUser('id') callerId: string,
     @CurrentUser('role') callerRole: string,
+    @Headers('x-stock-password') stockPassword: string | undefined,
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
+    await this.stockService.assertManagementPassword(merchantId, callerId, callerRole, callerOrgId, stockPassword);
     return this.stockService.createItem(merchantId, callerId, callerRole, callerOrgId, dto);
   }
 
@@ -222,6 +253,7 @@ export class StockController {
   }
 
   @Post(':id/stock-items/image')
+  @RequireSubscription('merchant')
   @ApiOperation({ summary: "Upload a stock item's product image (max 2 Mo) — returns its public URL" })
   @ApiConsumes('multipart/form-data')
   @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
@@ -237,6 +269,7 @@ export class StockController {
   }
 
   @Put(':id/stock-items/:itemId')
+  @RequireSubscription('merchant')
   @ApiOperation({ summary: 'Update a stock item (owner or magasinier). A changed quantity is recorded as an adjustment movement. Requires the stock password.' })
   async updateItem(
     @Param('id') merchantId: string,
@@ -251,6 +284,7 @@ export class StockController {
   }
 
   @Delete(':id/stock-items/:itemId')
+  @RequireSubscription('merchant')
   @ApiOperation({ summary: 'Delete a stock item (owner or magasinier). Requires the stock password.' })
   async deleteItem(
     @Param('id') merchantId: string,
@@ -264,6 +298,7 @@ export class StockController {
   }
 
   @Post(':id/stock-items/:itemId/movements')
+  @RequireSubscription('merchant')
   @ApiOperation({ summary: 'Record a restock, loss or correction for a stock item (owner or magasinier)' })
   async createMovement(
     @Param('id') merchantId: string,
@@ -271,8 +306,10 @@ export class StockController {
     @Body() dto: CreateMovementDto,
     @CurrentUser('id') callerId: string,
     @CurrentUser('role') callerRole: string,
+    @Headers('x-stock-password') stockPassword: string | undefined,
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
+    await this.stockService.assertManagementPassword(merchantId, callerId, callerRole, callerOrgId, stockPassword);
     return this.stockService.createMovement(merchantId, itemId, callerId, callerRole, callerOrgId, dto);
   }
 
@@ -323,19 +360,32 @@ export class OrganizationStockController {
 
   @Get(':id/stock-password/status')
   @ApiOperation({ summary: 'Whether this organization has a stock management password set yet' })
-  async getStockPasswordStatus(@Param('id') orgId: string) {
+  async getStockPasswordStatus(
+    @Param('id') orgId: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    assertStockPasswordAccess(await this.organizationsService.getOrganizationById(orgId), { id: callerId, role: callerRole, organizationId: callerOrgId }, 'member');
     return { is_set: await this.stockPasswordService.hasPasswordSet(orgId) };
   }
 
   @Post(':id/stock-password/verify')
   @ApiOperation({ summary: 'Verify the stock password — used by the edit/delete confirm prompt' })
-  async verifyStockPassword(@Param('id') orgId: string, @Body() dto: VerifyStockPasswordDto) {
+  async verifyStockPassword(
+    @Param('id') orgId: string,
+    @Body() dto: VerifyStockPasswordDto,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    assertStockPasswordAccess(await this.organizationsService.getOrganizationById(orgId), { id: callerId, role: callerRole, organizationId: callerOrgId }, 'manager');
     await this.stockPasswordService.verifyPassword(orgId, dto.password);
     return { ok: true };
   }
 
   @Post(':id/stock-password/set')
-  @ApiOperation({ summary: 'Set the stock password for the first time, or change it by providing the current one' })
+  @ApiOperation({ summary: 'Set the stock password for the first time, or change it by providing the current one (patron / administrator only)' })
   async setStockPassword(
     @Param('id') orgId: string,
     @Body() dto: SetStockPasswordDto,
@@ -344,11 +394,7 @@ export class OrganizationStockController {
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
     const org = await this.organizationsService.getOrganizationById(orgId);
-    const isAdmin = callerRole === 'admin' || callerRole === 'super_admin';
-    const isOrgStaff = !!callerOrgId && callerOrgId === orgId;
-    if (!isAdmin && org.owner_id !== callerId && !isOrgStaff) {
-      throw new ForbiddenException("Vous n'avez pas accès à la gestion de stock de cette entreprise");
-    }
+    assertStockPasswordAccess(org, { id: callerId, role: callerRole, organizationId: callerOrgId }, 'owner');
     await this.stockPasswordService.setPassword(orgId, dto.password, dto.current_password);
     return { success: true };
   }

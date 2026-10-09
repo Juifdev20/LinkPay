@@ -1,9 +1,16 @@
+import { OtpPromptDialog } from '@/components/OtpPromptDialog';
+import { SubscriptionPromptDialog } from '@/components/SubscriptionPromptDialog';
+import { DeviceUntrustedDialog } from '@/components/DeviceUntrustedDialog';
+import { SubscriptionGate } from '@/components/SubscriptionGate';
+import { AppCodeConfirmDialog } from '@/components/AppCodeConfirmDialog';
+import { StockPasswordGate } from '@/components/stock/StockPasswordGate';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { useAuthStore } from '@/lib/auth-store';
 import { useEffect, Suspense } from 'react';
 import { lazyPage, prefetchPages, PageFallback } from '@/lib/lazy-page';
 import { startScreenProtection } from '@/lib/screen-protection';
+import { runDeviceCheck } from '@/lib/device-integrity';
 import { initNativePushNavigation } from '@/lib/native-push';
 
 import LoginPage from '@/pages/auth/LoginPage';
@@ -46,11 +53,17 @@ const AdminMerchantsPage = lazyPage(() => import('@/pages/admin/Merchants'));
 const AdminUsersPage = lazyPage(() => import('@/pages/admin/Users'));
 const AdminSettlementsPage = lazyPage(() => import('@/pages/admin/Settlements'));
 const AdminCommissionsPage = lazyPage(() => import('@/pages/admin/Commissions'));
+const StaffWalletPage = lazyPage(() => import('@/pages/staff/StaffWallet'));
+const AdminRiskLogsPage = lazyPage(() => import('@/pages/admin/RiskLogs'));
+const AdminTwoFactorSetupPage = lazyPage(() => import('@/pages/auth/AdminTwoFactorSetup'));
+const AdminWalletLimitsPage = lazyPage(() => import('@/pages/admin/WalletLimits'));
 const ExpenseTrackerSettingsPage = lazyPage(() => import('@/pages/admin/ExpenseTrackerSettings'));
 const AppSecurityPage = lazyPage(() => import('@/pages/admin/AppSecurity'));
 const AdminOrganizationsPage = lazyPage(() => import('@/pages/admin/Organizations'));
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
 const StaffPage = lazyPage(() => import('@/pages/organization/Staff'));
+const SubscriptionPage = lazyPage(() => import('@/pages/organization/Subscription'));
+const AdminSubscriptionsPage = lazyPage(() => import('@/pages/admin/Subscriptions'));
 const StoresPage = lazyPage(() => import('@/pages/organization/Stores'));
 const StockPage = lazyPage(() => import('@/pages/organization/Stock'));
 const InventoryPage = lazyPage(() => import('@/pages/organization/Inventory'));
@@ -120,6 +133,11 @@ function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?
     return <Navigate to="/login" replace />;
   }
 
+  // Administrators without a verified second factor can only reach the setup page.
+  if (user && (user.role === 'admin' || user.role === 'super_admin') && (user.two_factor_setup_required || user.mfa_verified === false)) {
+    return <Navigate to="/admin-2fa" replace />;
+  }
+
   // An org owner acting as one of their stores keeps enterprise-level
   // access to the org module (role is 'merchant' + acting_as_org_id).
   const effectiveRole = user?.acting_as_org_id ? 'enterprise' : user?.role;
@@ -143,6 +161,11 @@ export default function App() {
 
   useEffect(() => prefetchPages(), []);
 
+  // Android app: verify the phone (Play Integrity + root checks) when the app opens with a session — at most every 6 hours.
+  useEffect(() => {
+    if (isAuthenticated) void runDeviceCheck();
+  }, [isAuthenticated]);
+
   // Super admin switch: black screenshots in the Android app (FLAG_SECURE).
   useEffect(() => startScreenProtection(), []);
 
@@ -160,6 +183,11 @@ export default function App() {
       <InstallPrompt />
       <AppLockGate />
       <ForcePasswordChangeGate />
+      <OtpPromptDialog />
+      <SubscriptionPromptDialog />
+      <DeviceUntrustedDialog />
+      <AppCodeConfirmDialog />
+      <StockPasswordGate />
       <Suspense fallback={<PageFallback fullScreen />}>
       <Routes>
       <Route path="/" element={<RootRedirect />} />
@@ -171,6 +199,7 @@ export default function App() {
       <Route path="/pay/:number" element={<PayByNumber />} />
       <Route path="/payment/result" element={<PaymentResultPage />} />
 
+      <Route path="/admin-2fa" element={<AdminTwoFactorSetupPage />} />
       <Route
         path="/dashboard"
         element={
@@ -193,6 +222,7 @@ export default function App() {
         />
         <Route path="client" element={<ClientDashboard />} />
         <Route path="client/transactions" element={<ClientTransactionsPage />} />
+        <Route path="wallet" element={<StaffWalletPage />} />
         <Route path="wallet/topup" element={<TopupPage />} />
         <Route path="wallet/topup/result" element={<TopupResultPage />} />
         <Route path="wallet/send" element={<SendPage />} />
@@ -261,6 +291,22 @@ export default function App() {
           }
         />
         <Route
+          path="admin/security-alerts"
+          element={
+            <ProtectedRoute roles={['admin', 'super_admin']}>
+              <AdminRiskLogsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/wallet-limits"
+          element={
+            <ProtectedRoute roles={['super_admin']}>
+              <AdminWalletLimitsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="admin/app-security"
           element={
             <ProtectedRoute roles={['super_admin']}>
@@ -304,7 +350,7 @@ export default function App() {
           path="organization/sales"
           element={
             <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier']}>
-              <SalesPage />
+              <SubscriptionGate><SalesPage /></SubscriptionGate>
             </ProtectedRoute>
           }
         />
@@ -312,23 +358,23 @@ export default function App() {
           path="organization/sales/history"
           element={
             <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier', 'comptable']}>
-              <SalesHistoryPage />
+              <SubscriptionGate><SalesHistoryPage /></SubscriptionGate>
             </ProtectedRoute>
           }
         />
         <Route
           path="organization/sales/dashboard"
           element={
-            <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier', 'comptable']}>
-              <SalesDashboardPage />
+            <ProtectedRoute roles={['enterprise', 'vendeur', 'comptable']}>
+              <SubscriptionGate><SalesDashboardPage /></SubscriptionGate>
             </ProtectedRoute>
           }
         />
         <Route
           path="organization/stock"
           element={
-            <ProtectedRoute roles={['enterprise', 'magasinier', 'vendeur']}>
-              <StockPage />
+            <ProtectedRoute roles={['enterprise', 'magasinier']}>
+              <SubscriptionGate><StockPage /></SubscriptionGate>
             </ProtectedRoute>
           }
         />
@@ -336,7 +382,7 @@ export default function App() {
           path="organization/inventory"
           element={
             <ProtectedRoute roles={['enterprise', 'magasinier']}>
-              <InventoryPage />
+              <SubscriptionGate><InventoryPage /></SubscriptionGate>
             </ProtectedRoute>
           }
         />
@@ -352,7 +398,7 @@ export default function App() {
           path="organization/stats"
           element={
             <ProtectedRoute roles={['enterprise', 'comptable']}>
-              <SalesStatsPage />
+              <SubscriptionGate><SalesStatsPage /></SubscriptionGate>
             </ProtectedRoute>
           }
         />
@@ -368,7 +414,7 @@ export default function App() {
           path="organization/audit"
           element={
             <ProtectedRoute roles={['enterprise', 'comptable']}>
-              <AuditLogPage />
+              <SubscriptionGate><AuditLogPage /></SubscriptionGate>
             </ProtectedRoute>
           }
         />
@@ -383,8 +429,24 @@ export default function App() {
         <Route
           path="pos"
           element={
-            <ProtectedRoute roles={['enterprise', 'caissier', 'magasinier']}>
-              <PosPage />
+            <ProtectedRoute roles={['enterprise', 'caissier']}>
+              <SubscriptionGate><PosPage /></SubscriptionGate>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/subscription"
+          element={
+            <ProtectedRoute roles={['enterprise']}>
+              <SubscriptionPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/subscriptions"
+          element={
+            <ProtectedRoute roles={['super_admin']}>
+              <AdminSubscriptionsPage />
             </ProtectedRoute>
           }
         />

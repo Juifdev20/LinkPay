@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { randomInt, randomUUID } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
 import { WalletsService } from '../wallets/wallets.service';
@@ -23,6 +23,9 @@ interface CreateGroupData {
  * when, and orchestrates the random draw + cycle advancement. See
  * migration 016_tontines.sql for the schema.
  */
+// A payment claim older than this is treated as abandoned (the process died mid-payment).
+const CONTRIBUTION_CLAIM_TTL_MS = 2 * 60_000;
+
 @Injectable()
 export class TontinesService {
   private readonly logger = new Logger(TontinesService.name);
@@ -501,6 +504,20 @@ export class TontinesService {
       );
     }
 
+    // Claim the draw atomically: two simultaneous requests (a double tap) would
+    // otherwise both pass the "still forming" check above and each build the
+    // first cycle and its contributions.
+    const { data: claimedDraw } = await this.db
+      .from('tontine_groups')
+      .update({ status: 'active', current_cycle: 1, updated_at: new Date().toISOString() })
+      .eq('id', groupId)
+      .eq('status', 'forming')
+      .select('id')
+      .maybeSingle();
+    if (!claimedDraw) {
+      throw new BadRequestException('Le tirage a déjà eu lieu pour cette tontine');
+    }
+
     // Fisher–Yates shuffle using a cryptographically secure RNG — fairness
     // here is the entire point of the feature.
     const shuffled = [...members];
@@ -631,6 +648,53 @@ export class TontinesService {
     idempotencyKey: string,
     skipPinVerification: boolean,
   ) {
+    // Only one payment attempt may run for a contribution at a time: the
+    // member tapping "Cotiser" and the 9am auto-payment job (or a double tap
+    // with two different idempotency keys) would each pass the "not paid yet"
+    // check and each transfer the full amount.
+    if (!(await this.claimContribution(contribution.id))) {
+      throw new ConflictException('Cette cotisation est déjà en cours de paiement ou déjà payée.');
+    }
+    try {
+      return await this.performContribution(group, cycle, contribution, payerUserId, pin, idempotencyKey, skipPinVerification);
+    } catch (err) {
+      // Not paid: let the next attempt (retry, manual payment) go through.
+      await this.releaseContribution(contribution.id);
+      throw err;
+    }
+  }
+
+  /** Atomic: one UPDATE, so of two simultaneous attempts only one gets the row. */
+  private async claimContribution(contributionId: string): Promise<boolean> {
+    const abandonedBefore = new Date(Date.now() - CONTRIBUTION_CLAIM_TTL_MS).toISOString();
+    const { data } = await this.db
+      .from('tontine_contributions')
+      .update({ claimed_at: new Date().toISOString() })
+      .eq('id', contributionId)
+      .in('status', ['pending', 'overdue'])
+      .or(`claimed_at.is.null,claimed_at.lt.${abandonedBefore}`)
+      .select('id')
+      .maybeSingle();
+    return !!data;
+  }
+
+  private async releaseContribution(contributionId: string) {
+    await this.db
+      .from('tontine_contributions')
+      .update({ claimed_at: null })
+      .eq('id', contributionId)
+      .neq('status', 'paid');
+  }
+
+  private async performContribution(
+    group: any,
+    cycle: any,
+    contribution: any,
+    payerUserId: string,
+    pin: string,
+    idempotencyKey: string,
+    skipPinVerification: boolean,
+  ) {
     const { data: recipientMember } = await this.db
       .from('tontine_members')
       .select('user_id')
@@ -649,7 +713,13 @@ export class TontinesService {
       throw new Error(`Tontine data inconsistency: no wallet for recipient ${recipientMember.user_id}`);
     }
 
-    const effectiveAmountCents = this.computePenalizedAmount(contribution, group);
+    // A debit made WITHOUT the member's PIN (the auto-payment job) never goes
+    // above the amount they opted in to: the late penalty — which the group's
+    // organizer sets, up to 100 % of the contribution per day — is only ever
+    // charged when the member pays themselves, PIN in hand.
+    const effectiveAmountCents = skipPinVerification
+      ? contribution.amount_cents
+      : this.computePenalizedAmount(contribution, group);
 
     const result = await this.walletsService.transfer(
       payerUserId,
@@ -660,11 +730,18 @@ export class TontinesService {
         description: `Tontine "${group.name}" — cycle ${cycle.cycle_number}`,
         pin,
       },
-      idempotencyKey,
-      { skipPinVerification },
+      // Namespaced by the contribution: a key sent by the client can never collide with — or "replay" — some other transfer.
+      `tontine:${contribution.id}:${idempotencyKey}`,
+      // Members pay each other, whoever they are in the app (a member may own a store).
+      { skipPinVerification, allowBusinessRecipient: true },
     );
 
-    await this.db
+    // Only a transfer that really completed marks a contribution as paid (a replayed key can hand back a failed or pending one).
+    if (result.transfer?.status !== 'SUCCESS') {
+      throw new BadRequestException('Le paiement de la cotisation n\'a pas abouti. Réessayez.');
+    }
+
+    const { error: paidError } = await this.db
       .from('tontine_contributions')
       .update({
         status: 'paid',
@@ -674,6 +751,8 @@ export class TontinesService {
         updated_at: new Date().toISOString(),
       })
       .eq('id', contribution.id);
+    // The money has moved: failing to record it must be loud (the contribution would look unpaid and be payable twice).
+    if (paidError) throw new Error(`Cotisation ${contribution.id} payée (transfert ${result.transfer.id}) mais non enregistrée : ${paidError.message}`);
 
     const { count: pendingCount } = await this.db
       .from('tontine_contributions')
@@ -786,6 +865,11 @@ export class TontinesService {
     try {
       await this.executeContribution(group, cycle, contribution, member.user_id, '', randomUUID(), true);
     } catch (err: any) {
+      if (err instanceof ConflictException) {
+        // The member (or an earlier run) is already paying this one — nothing failed.
+        this.logger.log(`Auto-payment skipped for contribution ${contribution.id}: ${err.message}`);
+        return;
+      }
       this.logger.warn(`Auto-payment failed for contribution ${contribution.id}: ${err.message}`);
       await this.notificationsService.create({
         user_id: member.user_id,

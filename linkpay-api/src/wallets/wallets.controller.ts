@@ -4,6 +4,7 @@ import { IsNumber, Min, IsString, IsOptional, IsIn, IsObject, Length } from 'cla
 import { WalletsService } from './wallets.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { toPage, toLimit } from '../common/utils/pagination';
+import { RequireDeviceIntegrity } from '../integrity/device-integrity.guard';
 
 class CreateTopupDto {
   @ApiProperty({ example: 50000, description: 'Amount in cents (e.g. 50000 = 500.00 CDF)' })
@@ -181,6 +182,7 @@ export class WalletsController {
   }
 
   @Post('transfers')
+  @RequireDeviceIntegrity()
   @ApiOperation({ summary: 'Send money to another ScanLinkPay user by wallet number' })
   async createTransfer(
     @CurrentUser('id') userId: string,
@@ -207,6 +209,7 @@ export class WalletsController {
   }
 
   @Post('withdrawals')
+  @RequireDeviceIntegrity()
   @ApiOperation({ summary: 'Request a withdrawal to Mobile Money or bank' })
   async createWithdrawal(
     @CurrentUser('id') userId: string,

@@ -103,6 +103,10 @@ export class RefundsService {
         return new BadRequestException('Le total remboursé dépasserait le montant de la transaction.');
       case 'REFUND_TX_NOT_REFUNDABLE':
         return new BadRequestException('Seules les transactions réussies peuvent être remboursées.');
+      case 'REFUND_TX_NOT_CREDITED':
+        return new BadRequestException("Le montant de cette vente n'a pas encore été crédité sur votre portefeuille : réessayez dans quelques instants.");
+      case 'REFUND_WALLET_NOT_ACTIVE':
+        return new BadRequestException("L'un des portefeuilles concernés est suspendu ou gelé : le remboursement est impossible pour le moment. Contactez le support.");
       case 'REFUND_INVALID_AMOUNT':
         return new BadRequestException('Montant invalide.');
       case 'REFUND_TX_NOT_FOUND':

@@ -6,9 +6,10 @@ import { CashierPinService } from './cashier-pin.service';
 import { SupabaseModule } from '../supabase/supabase.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [SupabaseModule, NotificationsModule, OrganizationsModule],
+  imports: [SupabaseModule, NotificationsModule, OrganizationsModule, AuditModule],
   controllers: [OrganizationStaffController, CashierPinController],
   providers: [OrganizationStaffService, CashierPinService],
   exports: [OrganizationStaffService, CashierPinService],

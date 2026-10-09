@@ -1,4 +1,4 @@
-import { Injectable, Logger, UnauthorizedException, ConflictException, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, ConflictException, ServiceUnavailableException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { isAuthApiError } from '@supabase/supabase-js';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -6,8 +6,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { SupabaseService } from '../supabase/supabase.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RegisterDto, LoginDto } from './dto';
-import { SESSION_TRACKING_EXEMPT_ROLES } from './constants';
+import { SESSION_TRACKING_EXEMPT_ROLES, MFA_REQUIRED_ROLES } from './constants';
 import { getRequiredJwtSecret } from './jwt-secret.util';
+import { LoginAttemptsService } from './login-attempts.service';
+import { TwoFactorService } from '../security/two-factor.service';
+import { SecurityAlertsService } from '../security/security-alerts.service';
+import { isAdminIpAllowed } from '../security/admin-ip';
+import { cleanPlatform } from '../integrity/device-integrity.service';
 
 export interface JwtPayload {
   sub: string;
@@ -27,6 +32,10 @@ export interface JwtPayload {
   // org, and role/merchant_id above are a temporary "acting as that store's
   // merchant" lens — not a permanent role change. See refresh() below.
   acting_as_org_id?: string;
+  // Set only when an authenticator-app code was checked for this session
+  // (mfa_at = when, in epoch seconds): required of admin roles, see JwtAuthGuard.
+  mfa?: boolean;
+  mfa_at?: number;
 }
 
 @Injectable()
@@ -38,9 +47,12 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private notificationsService: NotificationsService,
+    private loginAttempts: LoginAttemptsService,
+    private twoFactor: TwoFactorService,
+    private securityAlerts: SecurityAlertsService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto, ctx: { platform?: string } = {}) {
     const { email, password, phone, full_name, account_type, business_name } = dto;
     const roleSlug = account_type === 'merchant' ? 'merchant' : account_type === 'enterprise' ? 'enterprise' : 'client';
 
@@ -144,6 +156,7 @@ export class AuthService {
     }
 
     const sessionId = await this.claimSession(userId, roleSlug, dto.device_id);
+    await this.recordClientPlatform(userId, ctx.platform);
     const token = await this.generateToken(userId, email, roleSlug, merchantId, sessionId, undefined, organizationId);
     const refreshToken = await this.generateRefreshToken(userId, email, sessionId);
     const supabaseSession = await this.mintSupabaseSession(email, password);
@@ -156,8 +169,11 @@ export class AuthService {
     };
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, ctx: { ip?: string; userAgent?: string; platform?: string } = {}) {
     const { email, password, device_id } = dto;
+
+    // Counted before the password is tried (atomic): a burst of parallel guesses can't all slip past the lock.
+    const reservation = await this.loginAttempts.reserve(email);
 
     const { data, error } = await this.supabaseService.getAuthClient().auth.signInWithPassword({
       email,
@@ -170,14 +186,32 @@ export class AuthService {
       // rejected. A network failure, a 5xx or an unparseable response means
       // Supabase couldn't be reached — reporting that as "Invalid credentials"
       // would send users hunting for a password problem they don't have.
-      if (error && !(isAuthApiError(error) && error.status >= 400 && error.status < 500)) {
+      // 429 is the auth provider rate-limiting US (every login comes from the same API address): not a wrong password,
+      // and it must not count against — or lock — the user.
+      if (error && !(isAuthApiError(error) && error.status >= 400 && error.status < 500 && error.status !== 429)) {
+        await this.loginAttempts.release(email);
         throw new ServiceUnavailableException(
           'Le service de connexion est temporairement indisponible. Veuillez réessayer plus tard.',
         );
       }
+      // An employee whose access the patron removed: say so instead of "wrong password".
+      if (error && /banned/i.test(error.message || '')) {
+        await this.loginAttempts.release(email);
+        throw new ForbiddenException("Votre accès a été retiré. Contactez votre employeur.");
+      }
+      if (reservation.justLocked) {
+        void this.securityAlerts.alert({
+          severity: 'warning',
+          title: 'Compte verrouillé après des échecs de connexion',
+          body: `${email} : 5 mots de passe incorrects. Connexion bloquée 15 minutes (IP ${ctx.ip || 'inconnue'}).`,
+          audience: 'admins',
+          dedupeKey: `lock:${email.toLowerCase()}`,
+        });
+      }
       throw new UnauthorizedException('Email ou mot de passe incorrect');
     }
 
+    await this.loginAttempts.recordSuccess(email);
     const userId = data.user.id;
 
     const { data: roleData } = await this.supabaseService.getClient()
@@ -196,9 +230,49 @@ export class AuthService {
       .eq('id', userId)
       .single();
 
+    // Administrators: password + authenticator code. Without 2FA set up yet
+    // they still get in, but only far enough to set it up (JwtAuthGuard).
+    let mfaAt: number | undefined;
+    let twoFactorSetupRequired = false;
+    if (MFA_REQUIRED_ROLES.includes(role)) {
+      if (!isAdminIpAllowed(this.configService.get<string>('ADMIN_ALLOWED_IPS'), ctx.ip)) {
+        void this.securityAlerts.alert({
+          severity: 'critical',
+          title: 'Connexion admin refusée : réseau non autorisé',
+          body: `${email} s'est connecté avec le bon mot de passe depuis ${ctx.ip || 'une IP inconnue'}, hors de la liste autorisée.`,
+          dedupeKey: `admin-ip:${email.toLowerCase()}:${ctx.ip}`,
+        });
+        throw new ForbiddenException('Accès administrateur refusé depuis ce réseau');
+      }
+      if (await this.twoFactor.isEnabled(userId)) {
+        if (!dto.otp) {
+          throw new ForbiddenException({ statusCode: 403, code: 'OTP_REQUIRED', message: "Saisissez le code de votre application d'authentification." });
+        }
+        if (!(await this.twoFactor.verify(userId, dto.otp))) {
+          void this.securityAlerts.alert({
+            severity: 'critical',
+            title: 'Code 2FA incorrect sur un compte administrateur',
+            body: `Quelqu'un connaît le mot de passe de ${email} mais pas le code du téléphone (IP ${ctx.ip || 'inconnue'}).`,
+            dedupeKey: `otp-fail:${userId}`,
+          });
+          throw new UnauthorizedException('Code de double authentification incorrect');
+        }
+        mfaAt = Math.floor(Date.now() / 1000);
+      } else {
+        twoFactorSetupRequired = true;
+      }
+      void this.securityAlerts.alert({
+        severity: 'info',
+        title: 'Connexion administrateur',
+        body: `${email} (${role}) vient de se connecter — IP ${ctx.ip || 'inconnue'}${ctx.userAgent ? `, ${ctx.userAgent.slice(0, 80)}` : ''}. Si ce n'est pas vous, changez le mot de passe et réinitialisez la 2FA.`,
+        audience: 'super_admins',
+      });
+    }
+
     const sessionId = await this.claimSession(userId, role, device_id);
-    const token = await this.generateToken(userId, email, role, merchantId, sessionId, undefined, organizationId);
-    const refreshToken = await this.generateRefreshToken(userId, email, sessionId);
+    await this.recordClientPlatform(userId, ctx.platform);
+    const token = await this.generateToken(userId, email, role, merchantId, sessionId, undefined, organizationId, mfaAt);
+    const refreshToken = await this.generateRefreshToken(userId, email, sessionId, undefined, undefined, mfaAt, role);
 
     return {
       user: {
@@ -210,12 +284,15 @@ export class AuthService {
         merchant_id: merchantId,
         organization_id: organizationId,
         must_change_password: !!profile?.must_change_password,
+        two_factor_setup_required: twoFactorSetupRequired,
       },
       access_token: token,
       refresh_token: refreshToken,
       // Reuse the Supabase Auth session already established above — no need
       // for a second signInWithPassword call like register() needs.
-      supabase_session: data.session
+      // An administrator who has not passed the second factor yet gets no Supabase session: it would already satisfy the
+      // database's is_admin() rules and let a password alone read admin data straight from the database API.
+      supabase_session: data.session && !(MFA_REQUIRED_ROLES.includes(role) && !mfaAt)
         ? { access_token: data.session.access_token, refresh_token: data.session.refresh_token }
         : null,
     };
@@ -229,6 +306,10 @@ export class AuthService {
       session_id?: string;
       merchant_id?: string;
       acting_as_org_id?: string;
+      mfa?: boolean;
+      mfa_at?: number;
+      iat?: number;
+      auth_at?: number;
     };
     try {
       payload = this.jwtService.verify(refreshToken, {
@@ -297,9 +378,45 @@ export class AuthService {
       }
     }
 
+    // Administrators: a revoked session (logout, "reset session", 2FA reset, role change) stops here, and a session
+    // can't be kept alive for ever by refreshing — it has an absolute age (ADMIN_MAX_SESSION_HOURS, default 24).
+    if (MFA_REQUIRED_ROLES.includes(role)) {
+      const revokedBefore = await this.tokensValidAfter(payload.sub);
+      if (revokedBefore && (payload.iat ?? 0) < Math.floor(revokedBefore / 1000)) {
+        throw new UnauthorizedException('Session revoked — please log in again');
+      }
+      const maxHours = Number(this.configService.get('ADMIN_MAX_SESSION_HOURS')) || 24;
+      const authAt = payload.auth_at ?? payload.iat ?? 0;
+      if (Date.now() / 1000 - authAt > maxHours * 3600) {
+        throw new UnauthorizedException('Session expired — please log in again');
+      }
+    }
+
+    // Keep (never create) the second-factor proof: a refresh can't turn a
+    // password-only admin session into a verified one.
+    const mfaAt = payload.mfa === true && MFA_REQUIRED_ROLES.includes(role) ? payload.mfa_at : undefined;
     return {
-      access_token: await this.generateToken(payload.sub, payload.email, role, merchantId, payload.session_id, undefined, organizationId),
-      refresh_token: await this.generateRefreshToken(payload.sub, payload.email, payload.session_id),
+      access_token: await this.generateToken(payload.sub, payload.email, role, merchantId, payload.session_id, undefined, organizationId, mfaAt),
+      refresh_token: await this.generateRefreshToken(payload.sub, payload.email, payload.session_id, undefined, undefined, mfaAt, role, payload.auth_at ?? payload.iat),
+    };
+  }
+
+  /**
+   * Leaves "acting as a store" and returns to the account's own scope (the enterprise owner).
+   * The web app used to keep the owner's tokens in its own storage to swap them back; a browser
+   * that keeps the session in HttpOnly cookies cannot, so the server re-derives them instead —
+   * from the canonical role, exactly like a refresh does when the "acting as" grant is gone.
+   */
+  async exitActingAs(userId: string, email: string, sessionId?: string) {
+    const { data: roleData } = await this.supabaseService.getClient()
+      .from('user_roles')
+      .select('role:roles(slug), merchant_id, organization_id')
+      .eq('user_id', userId)
+      .single();
+    const role = (roleData?.role as any)?.slug || 'client';
+    return {
+      access_token: await this.generateToken(userId, email, role, roleData?.merchant_id || undefined, sessionId, undefined, roleData?.organization_id || undefined),
+      refresh_token: await this.generateRefreshToken(userId, email, sessionId, undefined, undefined, undefined, role),
     };
   }
 
@@ -324,7 +441,36 @@ export class AuthService {
     return !!merchant && merchant.organization_id === orgId;
   }
 
+  /**
+   * Remembers where this session was opened (android-app, web…), for the device-integrity rule: a token
+   * minted in the Android app stays an Android-app session even if it is replayed from elsewhere.
+   * Best effort — migration 054 may not be applied yet, and that must never block a login.
+   */
+  private async recordClientPlatform(userId: string, platform?: string): Promise<void> {
+    try {
+      await this.supabaseService.getClient().from('profiles').update({ active_client_platform: cleanPlatform(platform) }).eq('id', userId);
+    } catch { /* ignore */ }
+  }
+
+  /** Administrator tokens issued before this moment are dead (see JwtStrategy and refresh()). Best effort: migration 055 may be missing. */
+  async revokeTokens(userId: string): Promise<void> {
+    try {
+      await this.supabaseService.getClient().from('profiles').update({ tokens_valid_after: new Date().toISOString() }).eq('id', userId);
+    } catch { /* ignore */ }
+  }
+
+  private async tokensValidAfter(userId: string): Promise<number | null> {
+    try {
+      const { data, error } = await this.supabaseService.getClient().from('profiles').select('tokens_valid_after').eq('id', userId).maybeSingle();
+      if (error || !data?.tokens_valid_after) return null;
+      return new Date(data.tokens_valid_after).getTime();
+    } catch {
+      return null;
+    }
+  }
+
   async logout(userId: string): Promise<void> {
+    await this.revokeTokens(userId);
     await this.supabaseService.getClient()
       .from('profiles')
       .update({ active_session_id: null })
@@ -339,7 +485,22 @@ export class AuthService {
    * "archived only until first use" rule — and the admin who created it is
    * notified. notifications/organization_staff lookups are best-effort;
    * neither failure should ever block the password itself from changing. */
-  async changePassword(userId: string, newPassword: string): Promise<void> {
+  async changePassword(userId: string, newPassword: string, currentPassword?: string): Promise<void> {
+    // A stolen session token must not be enough to take the account over: the current password is required — except for
+    // the forced first-login change, where the temporary password was typed moments ago and this is the only way forward.
+    const { data: profile } = await this.supabaseService.getClient()
+      .from('profiles').select('email, must_change_password').eq('id', userId).maybeSingle();
+    if (!profile?.must_change_password) {
+      if (!currentPassword) throw new BadRequestException('Le mot de passe actuel est requis.');
+      const key = `chpw:${userId}`;
+      const reservation = await this.loginAttempts.reserve(key);
+      const { error: verifyError } = await this.supabaseService.getAuthClient().auth.signInWithPassword({ email: profile?.email, password: currentPassword });
+      if (verifyError) {
+        void reservation;
+        throw new ForbiddenException('Mot de passe actuel incorrect.');
+      }
+      await this.loginAttempts.recordSuccess(key);
+    }
     const { error } = await this.supabaseService.getClient().auth.admin.updateUserById(userId, {
       password: newPassword,
     });
@@ -440,6 +601,7 @@ export class AuthService {
     sessionId?: string,
     actingAsOrgId?: string,
     organizationId?: string,
+    mfaAt?: number,
   ): Promise<string> {
     const payload: JwtPayload = {
       sub: userId,
@@ -449,6 +611,7 @@ export class AuthService {
       ...(sessionId ? { session_id: sessionId } : {}),
       ...(actingAsOrgId ? { acting_as_org_id: actingAsOrgId } : {}),
       ...(organizationId ? { organization_id: organizationId } : {}),
+      ...(mfaAt ? { mfa: true, mfa_at: mfaAt } : {}),
     };
     return this.jwtService.sign(payload);
   }
@@ -459,12 +622,17 @@ export class AuthService {
     sessionId?: string,
     merchantId?: string,
     actingAsOrgId?: string,
+    mfaAt?: number,
+    role?: string,
+    /** When the person really signed in (seconds). Carried unchanged through refreshes so an administrator session has an absolute age. */
+    authAt?: number,
   ): Promise<string> {
     return this.jwtService.sign(
       {
         sub: userId,
         email,
         type: 'refresh',
+        auth_at: authAt ?? Math.floor(Date.now() / 1000),
         ...(sessionId ? { session_id: sessionId } : {}),
         // Only ever set together — an "acting as" refresh token needs
         // merchant_id to know which store to re-validate against on the
@@ -472,6 +640,7 @@ export class AuthService {
         // token deliberately carries no merchant_id, since a real role
         // change is always re-derived from user_roles on every refresh.
         ...(merchantId && actingAsOrgId ? { merchant_id: merchantId, acting_as_org_id: actingAsOrgId } : {}),
+        ...(mfaAt ? { mfa: true, mfa_at: mfaAt } : {}),
       },
       // Long-lived by design ("remember me" — stay logged in like Facebook,
       // never a silent timeout): the actual security boundary is
@@ -479,7 +648,13 @@ export class AuthService {
       // via JwtStrategy, not this expiry. Only an explicit logout or an
       // admin session reset can end a session; this default just keeps the
       // refresh token from being the thing that logs someone out first.
-      { expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '365d') },
+      {
+        // Administrators don't get the year-long "stay logged in": a refresh
+        // token lifted from an admin's browser must die within the day.
+        expiresIn: role && MFA_REQUIRED_ROLES.includes(role)
+          ? this.configService.get<string>('ADMIN_REFRESH_EXPIRES_IN', '12h')
+          : this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '365d'),
+      },
     );
   }
 

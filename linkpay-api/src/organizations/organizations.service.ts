@@ -7,6 +7,20 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { sumByCurrency } from '../common/utils/currency';
 import * as QRCode from 'qrcode';
 
+/**
+ * Columns of `organizations` that only the API itself may see: the stock
+ * management password hash and its attempt/lock counters. Organization rows
+ * are sent to the owner AND to the organization's staff (cashiers...), so a
+ * hash left in them would let any staff member recover the stock password.
+ */
+const ORGANIZATION_PRIVATE_FIELDS = ['stock_password_hash', 'stock_password_attempts', 'stock_password_locked_until'] as const;
+
+export function toPublicOrganization<T extends Record<string, any>>(row: T): T {
+  const publicRow: Record<string, any> = { ...row };
+  for (const field of ORGANIZATION_PRIVATE_FIELDS) delete publicRow[field];
+  return publicRow as T;
+}
+
 @Injectable()
 export class OrganizationsService {
   private readonly logger = new Logger(OrganizationsService.name);
@@ -58,7 +72,7 @@ export class OrganizationsService {
 
     const access_token = await this.authService.generateToken(ownerId, email, 'enterprise', undefined);
 
-    return { organization: org, access_token };
+    return { organization: toPublicOrganization(org), access_token };
   }
 
   async getOrganizationById(id: string) {
@@ -97,7 +111,7 @@ export class OrganizationsService {
       .select('phone')
       .eq('id', org.owner_id)
       .maybeSingle();
-    return { ...org, owner_phone: data?.phone ?? null };
+    return { ...toPublicOrganization(org), owner_phone: data?.phone ?? null };
   }
 
   /** Public lookup for the "pay by ScanLinkPay number" flow — anyone with
@@ -337,7 +351,7 @@ export class OrganizationsService {
       throw new Error(`Failed to update organization: ${error.message}`);
     }
 
-    return data;
+    return toPublicOrganization(data);
   }
 
   /** Owner submits their completed KYB onboarding for super-admin review —
@@ -373,7 +387,7 @@ export class OrganizationsService {
       { organization_id: id },
     );
 
-    return data;
+    return toPublicOrganization(data);
   }
 
   /** Super admin approves the submission — this is the moment the
@@ -418,7 +432,7 @@ export class OrganizationsService {
       data: { organization_id: id },
     });
 
-    return data;
+    return toPublicOrganization(data);
   }
 
   async rejectOrganization(id: string, reason: string) {
@@ -443,7 +457,7 @@ export class OrganizationsService {
       data: { organization_id: id, reason },
     });
 
-    return data;
+    return toPublicOrganization(data);
   }
 
   /** No "notify every user with role X" helper exists anywhere in the

@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Receipt, QrCode, Settings, ShoppingCart, Boxes, BarChart3, Bell, Menu } from 'lucide-react';
+import { Home, Receipt, QrCode, Settings, ShoppingCart, BarChart3, Menu, History, ClipboardList, Wallet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -10,7 +10,7 @@ import { navItemsFor } from '@/lib/nav-items';
 // "Profil" moved to TopBar.tsx (top-right icon) — this slot is now the app
 // Settings destination, matching what the desktop sidebar already calls it
 // (DashboardLayout.tsx's navItems: '/dashboard/settings' → "Paramètres").
-// The central "QR" tab's target depends on role — see BottomNav() below.
+// The central tab's target depends on role — see computeVisibleTabs() below.
 type Tab = { to: string; label: string; icon: typeof Home; end: boolean; central?: boolean };
 
 const SALES_DASHBOARD_PATH = '/dashboard/organization/sales/dashboard';
@@ -28,10 +28,11 @@ const tabs: Tab[] = [
 const homeTab = tabs[0];
 const settingsTab = tabs[2];
 const salesTab: Tab = { to: '/dashboard/organization/sales', label: 'Ventes', icon: ShoppingCart, end: true, central: true };
-const stockTab: Tab = { to: '/dashboard/organization/stock', label: 'Stock', icon: Boxes, end: false };
+const historyTab: Tab = { to: '/dashboard/organization/sales/history', label: 'Historique', icon: History, end: false };
+const inventoryTab: Tab = { to: '/dashboard/organization/inventory', label: 'Inventaire', icon: ClipboardList, end: false };
 const orgTransactionsTab: Tab = { to: '/dashboard/organization/transactions', label: 'Transactions', icon: Receipt, end: false };
 const financeTab: Tab = { to: SALES_DASHBOARD_PATH, label: 'Finances', icon: BarChart3, end: true, central: true };
-const alertsTab: Tab = { to: '/dashboard/notifications', label: 'Alertes', icon: Bell, end: true, central: true };
+const walletTab: Tab = { to: '/dashboard/wallet', label: 'Portefeuille', icon: Wallet, end: true, central: true };
 
 // Selling is the daily business activity — the supermarket/electronics
 // cashier lands on the POS till; other sectors keep the Ventes form.
@@ -40,10 +41,11 @@ const venteTab: Tab = { to: '/dashboard/pos', label: 'Vente', icon: ShoppingCart
 const staffTabsFor = (role: string, orgSector?: string): Tab[] | undefined => {
   const caissierSale = orgSector === 'supermarche' ? venteTab : salesTab;
   const map: Record<string, Tab[]> = {
-    vendeur: [homeTab, stockTab, salesTab, settingsTab],
+    vendeur: [homeTab, historyTab, salesTab, settingsTab],
     caissier: [homeTab, orgTransactionsTab, caissierSale, settingsTab],
     comptable: [homeTab, orgTransactionsTab, financeTab, settingsTab],
-    magasinier: [homeTab, stockTab, alertsTab, settingsTab],
+    // Accueil IS the stock page for the stock keeper, so the second tab is the inventory (no duplicate).
+    magasinier: [homeTab, inventoryTab, walletTab, settingsTab],
   };
   return map[role];
 };
@@ -71,13 +73,19 @@ export function computeVisibleTabs(
   const isEnterprise = role === 'enterprise' || !!user?.acting_as_org_id;
   const hasMerchantId = !!user?.merchant_id;
 
-  // Business accounts sell daily — the central tab is "Vente" → the POS
-  // till for enterprise, "QR" → payment request for plain merchants,
-  // "Recevoir" → own QR for clients who can only receive.
-  const qrTab = isEnterprise
+  // The central tab is the account's main daily action, and its label says
+  // whether the user SHOWS a QR or SCANS one:
+  //  - enterprise: "Vente" → the POS till.
+  //  - plain merchant: "Encaisser" → creates the payment QR the customer scans.
+  //    (It used to be labelled just "QR", which reads as "scan".)
+  //  - client: "Recevoir" → their own wallet QR.
+  // Scanning to pay is deliberately NOT in the bar: the big balance card
+  // already offers it ("Payer" → pay screen → "Scanner un QR"), for clients
+  // and merchants alike. The bar only holds what the home screen doesn't.
+  const qrTab: Tab = isEnterprise
     ? venteTab
     : hasMerchantId
-    ? { to: '/dashboard/payment-requests/new', label: 'QR', icon: QrCode, end: false, central: true }
+    ? { to: '/dashboard/payment-requests/new', label: 'Encaisser', icon: QrCode, end: false, central: true }
     : { to: '/dashboard/wallet/receive', label: 'Recevoir', icon: QrCode, end: false, central: true };
   const transactionsTab = isEnterprise
     ? { ...tabs[1], to: '/dashboard/organization/transactions' }

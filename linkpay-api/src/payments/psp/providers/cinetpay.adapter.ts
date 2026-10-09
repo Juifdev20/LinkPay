@@ -9,7 +9,12 @@ import {
   RefundParams,
   RefundResult,
   TransactionStatusResult,
+  PayoutParams,
+  PayoutResult,
+  PayoutStatusResult,
+  PayoutNotSentError,
 } from '../psp.adapter';
+import { isWholeCurrencyUnits } from '../amount-check';
 
 // CinetPay integration — chosen over Flutterwave because it explicitly covers
 // DR Congo (Orange Money, Airtel Money, M-Pesa) in CDF/USD, which Flutterwave's
@@ -68,7 +73,11 @@ export class CinetPayAdapter implements PspAdapter {
   async createPaymentIntent(params: CreatePaymentIntentParams): Promise<PaymentIntentResult> {
     // CinetPay amounts are whole currency units (e.g. 1500 = 1500 CDF), not
     // the cents/centimes ScanLinkPay uses internally everywhere else.
-    const amount = Math.round(params.amount_cents / 100);
+    // A fraction of a unit cannot be billed: rounding it away would charge the customer less than we credit.
+    if (!isWholeCurrencyUnits(params.amount_cents)) {
+      throw new BadRequestException("Ce mode de paiement n'accepte que des montants entiers (sans centimes).");
+    }
+    const amount = params.amount_cents / 100;
     const [firstName, ...rest] = (params.customer?.name || 'Client').split(' ');
     const phone = this.normalizePhone(params.customer?.phone || '');
 
@@ -151,6 +160,16 @@ export class CinetPayAdapter implements PspAdapter {
     throw new BadRequestException(
       'Le remboursement automatique n\'est pas disponible pour CinetPay — traitez-le manuellement depuis le tableau de bord CinetPay.',
     );
+  }
+
+  // This deployment pays out through another provider (FlexPaie): CinetPay
+  // is only kept for collecting payments, so no payout is ever attempted.
+  async payout(_params: PayoutParams): Promise<PayoutResult> {
+    throw new PayoutNotSentError("Les retraits automatiques ne sont pas disponibles avec ce fournisseur de paiement.");
+  }
+
+  async getPayoutStatus(_reference: string): Promise<PayoutStatusResult> {
+    return { status: 'NOT_FOUND' };
   }
 
   async getTransactionStatus(psp_intent_id: string): Promise<TransactionStatusResult> {

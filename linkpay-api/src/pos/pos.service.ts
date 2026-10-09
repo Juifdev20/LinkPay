@@ -665,6 +665,19 @@ export class PosService {
 
   /** Remaining amount still to tender: total minus confirmed payments AND
    * pending ScanLinkPay parts (that QR is already spoken for). */
+  private toPosPaymentError(message: string | undefined, currency: string) {
+    const code = (message || '').match(/POS_[A-Z_]+/)?.[0];
+    if (code === 'POS_PAYMENT_EXCEEDS_REMAINING') {
+      const remaining = Number((message || '').match(/POS_PAYMENT_EXCEEDS_REMAINING:(\d+)/)?.[1] ?? 0);
+      return remaining <= 0
+        ? new BadRequestException('Ce ticket est déjà entièrement réglé.')
+        : new BadRequestException(`Montant invalide — reste à payer : ${remaining / 100} ${currency}.`);
+    }
+    if (code === 'POS_TICKET_NOT_OPEN') return new BadRequestException("Ce ticket n'est plus ouvert.");
+    if (code === 'POS_TICKET_NOT_FOUND') return new NotFoundException('Ticket introuvable');
+    return new Error(`Failed to record POS payment: ${message ?? 'unknown error'}`);
+  }
+
   private remainingCents(ticket: any, payments: any[]) {
     const spokenFor = payments.reduce((sum, p) => sum + p.amount_cents, 0);
     return ticket.total_cents - spokenFor;
@@ -695,15 +708,19 @@ export class PosService {
       throw new BadRequestException('Le montant remis est inférieur à la part en espèces.');
     }
 
-    const { data: payment, error } = await this.db.from('pos_ticket_payments').insert({
-      ticket_id: ticketId,
-      method: 'cash',
-      amount_cents: amount,
-      received_cents: data.received_cents ?? amount,
-      status: 'confirmed',
-      created_by: callerId,
-    }).select().single();
-    if (error) throw new Error(`Failed to record cash payment: ${error.message}`);
+    // add_pos_payment() locks the ticket and re-checks what is still owed
+    // from the stored payments — the check above is only for a friendly
+    // message; two simultaneous taps would both pass it.
+    const { data: payment, error } = await this.db.rpc('add_pos_payment', {
+      p_ticket_id: ticketId,
+      p_method: 'cash',
+      p_amount_cents: amount,
+      p_received_cents: data.received_cents ?? amount,
+      p_status: 'confirmed',
+      p_payment_request_id: null,
+      p_created_by: callerId,
+    }).single();
+    if (error || !payment) throw this.toPosPaymentError(error?.message, ticket.currency);
 
     // Everything is already in hand — no re-fetch before the receipt shows.
     const allPayments = [...payments, payment];
@@ -754,18 +771,21 @@ export class PosService {
     // (kept for anything still reading it, the legacy settle path included)
     // are independent writes — run them together.
     const updated_at = new Date().toISOString();
-    const [{ data: payment, error }] = await Promise.all([
-      this.db.from('pos_ticket_payments').insert({
-        ticket_id: ticketId,
-        method: 'scanlinkpay',
-        amount_cents: amount,
-        status: 'pending',
-        payment_request_id: request.id,
-        created_by: callerId,
-      }).select().single(),
-      this.db.from('pos_tickets').update({ payment_request_id: request.id, updated_at }).eq('id', ticketId),
-    ]);
-    if (error) throw new Error(`Failed to record ScanLinkPay payment: ${error.message}`);
+    const { data: payment, error } = await this.db.rpc('add_pos_payment', {
+      p_ticket_id: ticketId,
+      p_method: 'scanlinkpay',
+      p_amount_cents: amount,
+      p_received_cents: null,
+      p_status: 'pending',
+      p_payment_request_id: request.id,
+      p_created_by: callerId,
+    }).single();
+    if (error || !payment) {
+      // The ticket was paid in the meantime: don't leave a live QR for it.
+      await this.db.from('payment_requests').update({ status: 'CANCELLED', updated_at }).eq('id', request.id);
+      throw this.toPosPaymentError(error?.message, ticket.currency);
+    }
+    await this.db.from('pos_tickets').update({ payment_request_id: request.id, updated_at }).eq('id', ticketId);
 
     return {
       ticket: { ...ticket, payment_request_id: request.id, updated_at, items, payments: [...payments, payment], merchant },

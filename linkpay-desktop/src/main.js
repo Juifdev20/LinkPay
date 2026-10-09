@@ -11,7 +11,7 @@
  * The UI itself is loaded from the web deployment, so every web release
  * reaches this app at once — the Microsoft Store only ships shell changes.
  */
-const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const net = require('net');
@@ -59,6 +59,31 @@ function saveWindowState(win) {
   } catch { /* not critical */ }
 }
 
+/** Only normal web links and mail links are handed to the operating system: never file:, smb:, custom protocols. */
+function openExternalSafely(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol === 'https:' || u.protocol === 'mailto:') shell.openExternal(u.toString());
+  } catch { /* not a URL: ignore */ }
+}
+
+/**
+ * A network receipt printer is on the shop's own network: a private IPv4 address (10.x, 172.16-31.x, 192.168.x),
+ * link-local, or loopback. Anything else — a public host, an internal name, a metadata address — is refused, so a
+ * compromised page cannot use this app to send raw bytes to arbitrary machines.
+ */
+function isPrivatePrinterHost(host) {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(String(host || ''));
+  if (!m) return false;
+  const [a, b, c, d] = m.slice(1).map(Number);
+  if ([a, b, c, d].some((n) => n > 255)) return false;
+  if (a === 10) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 127) return true;
+  return a === 169 && b === 254 && !(c === 169 && d === 254); // link-local, but not the cloud metadata address
+}
+
 function isTrusted(url) {
   try {
     return TRUSTED_ORIGINS.has(new URL(url).origin);
@@ -94,13 +119,13 @@ function createWindow() {
 
   // Anything that isn't our app opens in the system browser.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (!isTrusted(url)) shell.openExternal(url);
+    if (!isTrusted(url)) openExternalSafely(url);
     return { action: 'deny' };
   });
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (!isTrusted(url)) {
       event.preventDefault();
-      shell.openExternal(url);
+      openExternalSafely(url);
     }
   });
 
@@ -150,6 +175,9 @@ handle('serial:list', async () => {
 
 handle('serial:print', async (_event, portPath, bytes) => {
   const { SerialPort } = require('serialport');
+  // Only a port the system actually lists (a COM port): not an arbitrary device path chosen by the page.
+  const known = await SerialPort.list();
+  if (!known.some((p) => p.path === portPath)) throw new Error('Port série inconnu');
   const port = new SerialPort({ path: portPath, baudRate: 9600, autoOpen: false });
   await new Promise((resolve, reject) => port.open((err) => (err ? reject(err) : resolve())));
   try {
@@ -163,6 +191,9 @@ handle('serial:print', async (_event, portPath, bytes) => {
 
 // Network POS printers — raw ESC/POS on TCP 9100.
 handle('network:print', async (_event, host, port, bytes) => {
+  if (!isPrivatePrinterHost(host)) throw new Error("L'imprimante réseau doit être sur le réseau local de la boutique");
+  const portNumber = port || 9100;
+  if (!Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535) throw new Error('Port invalide');
   await new Promise((resolve, reject) => {
     const socket = net.createConnection({ host, port: port || 9100, timeout: 5000 });
     socket.on('connect', () => {
@@ -187,7 +218,28 @@ handle('app:info', async () => ({ version: app.getVersion(), platform: process.p
 app.whenReady().then(() => {
   // A till doesn't need the default File/Edit/View menu.
   Menu.setApplicationMenu(null);
+
+  // The page may only ask for what a till needs (camera to scan QR codes,
+  // notifications), and only from our own origin — any other site, or any
+  // other permission (location, USB, clipboard-read…), is refused.
+  const ALLOWED_PERMISSIONS = new Set(['media', 'notifications']);
+  const fromTrustedPage = (wc, url) => isTrusted(url || wc.getURL());
+  session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => {
+    callback(ALLOWED_PERMISSIONS.has(permission) && fromTrustedPage(wc, details && details.requestingUrl));
+  });
+  session.defaultSession.setPermissionCheckHandler((wc, permission, origin) =>
+    ALLOWED_PERMISSIONS.has(permission) && isTrusted(origin));
+
   createWindow();
+});
+
+// No <webview> and no navigation to a foreign site from ANY web contents the
+// app ever creates (window.open is already denied above for the main one).
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('will-attach-webview', (event) => event.preventDefault());
+  contents.on('will-navigate', (event, url) => {
+    if (!isTrusted(url) && !url.startsWith('data:text/html')) event.preventDefault();
+  });
 });
 
 app.on('window-all-closed', () => app.quit());

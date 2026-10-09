@@ -6,6 +6,8 @@ import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import * as express from 'express';
 import { AppModule } from './app.module';
+import { createCsrfMiddleware } from './auth/csrf.middleware';
+import { configureTrustProxy, resolveTrustProxyHops } from './common/utils/trust-proxy';
 
 // CinetPay's SDK talks to exactly these hosts (sandbox + production) — see
 // cinetpay.adapter.ts. Only requests to these get routed through the proxy;
@@ -59,6 +61,14 @@ async function bootstrap() {
   );
   app.use(express.urlencoded({ extended: true }));
 
+  // The rate limiter keys on the client IP: behind Render's proxy it needs the
+  // real one (see common/utils/trust-proxy.ts).
+  const trustProxyHops = resolveTrustProxyHops({
+    NODE_ENV: configService.get<string>('NODE_ENV'),
+    TRUST_PROXY_HOPS: configService.get<string>('TRUST_PROXY_HOPS'),
+  });
+  configureTrustProxy(app.getHttpAdapter().getInstance(), trustProxyHops);
+
   app.use(helmet());
   const frontendUrl = configService.get<string>('FRONTEND_URL');
   const allowedOrigins = [
@@ -76,6 +86,8 @@ async function bootstrap() {
     origin: allowedOrigins,
     credentials: true,
   });
+  // Cookie sessions (COOKIE_AUTH=true): refuse forged cross-site requests. Bearer-token clients pass straight through.
+  app.use(createCsrfMiddleware(allowedOrigins));
 
   app.setGlobalPrefix('api/v1', { exclude: ['health'] });
 
@@ -87,19 +99,25 @@ async function bootstrap() {
     }),
   );
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('ScanLinkPay API')
-    .setDescription('ScanLinkPay Payment Platform REST API')
-    .setVersion('0.1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/v1/docs', app, document);
+  // The interactive API docs list every route and DTO: handy in development,
+  // a free map of the attack surface in production. Opt in with ENABLE_SWAGGER=true.
+  const swaggerEnabled =
+    configService.get<string>('NODE_ENV') !== 'production' || configService.get<string>('ENABLE_SWAGGER') === 'true';
+  if (swaggerEnabled) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('ScanLinkPay API')
+      .setDescription('ScanLinkPay Payment Platform REST API')
+      .setVersion('0.1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/v1/docs', app, document);
+  }
 
   const port = configService.get<number>('PORT', 3000);
   await app.listen(port);
   logger.log(`ScanLinkPay API running on port ${port}`);
-  logger.log(`Swagger docs at http://localhost:${port}/api/v1/docs`);
+  if (swaggerEnabled) logger.log(`Swagger docs at http://localhost:${port}/api/v1/docs`);
 }
 
 bootstrap();

@@ -12,7 +12,7 @@ import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicke
 import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
 import { formatCurrency, cn } from '@/lib/utils';
 import { FormSheet } from '@/components/FormSheet';
-import { Loader2, Check, ArrowLeft, ArrowUpFromLine, Smartphone, Landmark } from 'lucide-react';
+import { Loader2, Check, Clock, ArrowLeft, ArrowUpFromLine, Smartphone, Landmark } from 'lucide-react';
 
 type Step = 'amount' | 'destination' | 'confirm' | 'pin' | 'processing' | 'success';
 
@@ -106,16 +106,20 @@ export default function WithdrawPage() {
   function renderStep() {
     if (step === 'success') {
     const w = result?.withdrawal;
+    // Only the payment provider can confirm that the money was sent; until
+    // it does the withdrawal is "in progress", never "done".
+    const done = w?.status === 'SUCCESS';
     return (
       <div className="p-6 max-w-md mx-auto">
         <Card>
           <CardContent className="pt-6 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-success/10 flex items-center justify-center mx-auto mb-4">
-              <Check className="w-8 h-8 text-success" />
+            <div className={cn('w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4', done ? 'bg-success/10' : 'bg-warning/10')}>
+              {done ? <Check className="w-8 h-8 text-success" /> : <Clock className="w-8 h-8 text-warning" />}
             </div>
-            <h2 className="text-xl font-bold text-foreground mb-1">Retrait effectué !</h2>
+            <h2 className="text-xl font-bold text-foreground mb-1">{done ? 'Retrait effectué !' : 'Retrait en cours'}</h2>
             <p className="text-sm text-muted-foreground mb-6">
               {formatCurrency(amountCents, currency)} vers {channel === 'mobile_money' ? MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label : bankName}
+              {!done && <><br />Vous serez notifié dès que l'argent est envoyé.</>}
             </p>
             <div className="rounded-xl bg-secondary p-4 text-left space-y-2">
               <div className="flex justify-between text-sm">
@@ -130,7 +134,7 @@ export default function WithdrawPage() {
               )}
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Statut</span>
-                <span className="font-semibold text-success">{w?.status || 'SUCCESS'}</span>
+                <span className={cn('font-semibold', done ? 'text-success' : 'text-warning')}>{done ? 'Effectué' : 'En cours'}</span>
               </div>
             </div>
             <Button className="w-full mt-6" size="lg" onClick={() => navigate('/dashboard')}>

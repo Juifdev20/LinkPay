@@ -201,6 +201,12 @@ export class MerchantsController {
     @CurrentUser('merchant_id') callerMerchantId: string,
     @CurrentUser('role') callerRole: string,
   ) {
+    // `status` has its own audited admin route and a pinned commission rule has
+    // no UI: neither may go through this generic update, whoever calls it.
+    const privileged = MerchantsController.ADMIN_ONLY_FIELDS.filter((f) => (updates as any)[f] !== undefined);
+    if (privileged.length > 0 && this.isAdmin(callerRole)) {
+      throw new ForbiddenException(`Use the dedicated administration route to change: ${privileged.join(', ')}`);
+    }
     if (!this.isAdmin(callerRole)) {
       // A cashier's token carries the store's merchant_id too — without this
       // they could rename the store or change where its money is paid out.

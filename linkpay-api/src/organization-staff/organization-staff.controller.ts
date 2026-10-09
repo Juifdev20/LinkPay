@@ -1,11 +1,12 @@
-import { Controller, Get, Post, Body, Param, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, ForbiddenException, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, IsEmail, IsIn, MaxLength } from 'class-validator';
-import { OrganizationStaffService } from './organization-staff.service';
+import { OrganizationStaffService, STAFF_ROLE_SLUGS } from './organization-staff.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { AppCodeConfirmGuard, RequireAppCode } from '../common/guards/app-code-confirm.guard';
+import { RequireSubscription } from '../subscriptions/subscription.guard';
 
-const STAFF_ROLE_SLUGS = ['magasinier', 'vendeur', 'caissier', 'comptable'];
 
 class CreateStaffDto {
   @ApiProperty({ example: 'Mukendi' })
@@ -38,6 +39,12 @@ class CreateStaffDto {
   role_slug!: string;
 }
 
+class ChangeRoleDto {
+  @ApiProperty({ enum: STAFF_ROLE_SLUGS })
+  @IsIn(STAFF_ROLE_SLUGS)
+  role_slug!: string;
+}
+
 @ApiTags('Organization Staff')
 @ApiBearerAuth()
 @Controller('organizations')
@@ -48,6 +55,8 @@ export class OrganizationStaffController {
   ) {}
 
   @Post(':id/staff')
+  // Only ADDING people needs the subscription: removing access or changing a role must always work.
+  @RequireSubscription('org')
   @ApiOperation({ summary: 'Create an internal user for this organization (owner only)' })
   async createStaff(
     @Param('id') id: string,
@@ -85,6 +94,48 @@ export class OrganizationStaffController {
   ) {
     await this.assertOwnOrg(id, callerId);
     return this.staffService.resetStaffPassword(id, staffId);
+  }
+
+  // The three actions below change who may do what: the patron confirms with
+  // their own access code (AppCodeConfirmGuard), checked by the API.
+  @UseGuards(AppCodeConfirmGuard)
+  @RequireAppCode()
+  @Put(':id/staff/:staffId/role')
+  @ApiOperation({ summary: "Change an employee's role (owner only). Their sessions are cut so they log in again with the new role." })
+  async changeStaffRole(
+    @Param('id') id: string,
+    @Param('staffId') staffId: string,
+    @Body() dto: ChangeRoleDto,
+    @CurrentUser('id') callerId: string,
+  ) {
+    await this.assertOwnOrg(id, callerId);
+    return this.staffService.changeStaffRole(id, staffId, callerId, dto.role_slug);
+  }
+
+  @UseGuards(AppCodeConfirmGuard)
+  @RequireAppCode()
+  @Post(':id/staff/:staffId/deactivate')
+  @ApiOperation({ summary: 'Remove an employee\'s access (owner only): login blocked, sessions cut, history kept' })
+  async deactivateStaff(
+    @Param('id') id: string,
+    @Param('staffId') staffId: string,
+    @CurrentUser('id') callerId: string,
+  ) {
+    await this.assertOwnOrg(id, callerId);
+    return this.staffService.deactivateStaff(id, staffId, callerId);
+  }
+
+  @UseGuards(AppCodeConfirmGuard)
+  @RequireAppCode()
+  @Post(':id/staff/:staffId/reactivate')
+  @ApiOperation({ summary: 'Give an employee their access back (owner only): new temporary password' })
+  async reactivateStaff(
+    @Param('id') id: string,
+    @Param('staffId') staffId: string,
+    @CurrentUser('id') callerId: string,
+  ) {
+    await this.assertOwnOrg(id, callerId);
+    return this.staffService.reactivateStaff(id, staffId, callerId);
   }
 
   private async assertOwnOrg(orgId: string, callerId: string | undefined) {

@@ -2,11 +2,23 @@ import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestEx
 import { randomBytes } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
 import { StockPasswordService } from '../stock/stock-password.service';
+import { AuditService } from '../audit/audit.service';
 
 // Internal staff roles (organization-staff module) per sales action. The
 // owner is always allowed on top of these — see assertOrgAccess().
 const SELLER_ROLES = ['vendeur', 'caissier'] as const;
 const SALES_VIEW_ROLES = ['vendeur', 'caissier', 'comptable'] as const;
+// Hiding a sale from the history is a finance decision (and a fraud vector: ring up, take cash, hide): owner and accountant only.
+const SALES_ARCHIVE_ROLES = ['comptable'] as const;
+// What the shop paid for an item (and so its margin) is for the owner and the finance role only: a seller or a
+// cashier sees prices and quantities. Stripped here, on the server — hiding it in the screen would not protect it.
+const COST_BLIND_ROLES = ['vendeur', 'caissier'];
+const withoutCost = <T extends Record<string, any>>(items: T[] | undefined, role?: string): T[] =>
+  (items || []).map((item) => {
+    if (!role || !COST_BLIND_ROLES.includes(role)) return item;
+    const { unit_cost_cents: _cost, ...rest } = item;
+    return rest as T;
+  });
 
 export interface SaleLineInput {
   stock_item_id: string;
@@ -26,6 +38,7 @@ export class SalesService {
   constructor(
     private supabaseService: SupabaseService,
     private stockPasswordService: StockPasswordService,
+    private auditService: AuditService,
   ) {}
 
   private db() {
@@ -84,6 +97,12 @@ export class SalesService {
     if (itemsError) throw new Error(`Failed to load stock items: ${itemsError.message}`);
 
     const byId = new Map((items || []).map((i) => [i.id, i]));
+    // Total wanted per article: the same article may appear on several lines,
+    // and each line passing the stock check on its own would oversell it.
+    const wantedByItem = new Map<string, number>();
+    for (const line of lines) {
+      wantedByItem.set(line.stock_item_id, (wantedByItem.get(line.stock_item_id) ?? 0) + line.quantity);
+    }
     let currency: string | null = null;
     let total = 0;
     const snapshot = lines.map((line) => {
@@ -91,7 +110,7 @@ export class SalesService {
       if (!item || item.merchant_id !== merchant.id) {
         throw new BadRequestException('Un article du panier n\'appartient pas à cette entreprise');
       }
-      if (line.quantity > item.quantity) {
+      if ((wantedByItem.get(item.id) ?? line.quantity) > item.quantity) {
         throw new BadRequestException(`Stock insuffisant pour "${item.name}" : il reste ${item.quantity} unité(s)`);
       }
       if (currency && currency !== item.currency) {
@@ -160,7 +179,7 @@ export class SalesService {
       .insert(snapshot.map((s) => ({ ...s, sale_id: sale.id })));
     if (linesError) throw new Error(`Failed to create sale items: ${linesError.message}`);
 
-    return { sale, link_token: request.link_token, items: snapshot };
+    return { sale, link_token: request.link_token, items: withoutCost(snapshot as any[], callerRole) };
   }
 
   async getSale(orgId: string, saleId: string, callerId: string, callerOrgId: string | undefined, callerRole?: string) {
@@ -182,7 +201,7 @@ export class SalesService {
         .single();
       link_token = request?.link_token ?? null;
     }
-    return { ...sale, link_token };
+    return { ...sale, sale_items: withoutCost(sale.sale_items as any[], callerRole), link_token };
   }
 
   /** Records stock leaving the shelf for a paid sale. Writes stock_movements
@@ -347,7 +366,7 @@ export class SalesService {
     // Sellers see sales volume only — cost, margins and platform fees are
     // reserved for the owner and the finance role (stripped server-side, not
     // just hidden in the UI).
-    if (callerRole === 'vendeur') {
+    if (callerRole && COST_BLIND_ROLES.includes(callerRole)) {
       return {
         sales_count: (sales || []).length,
         revenue,
@@ -421,7 +440,7 @@ export class SalesService {
     callerRole: string | undefined,
     managementPassword: string,
   ) {
-    await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SALES_VIEW_ROLES);
+    await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SALES_ARCHIVE_ROLES);
     await this.stockPasswordService.verifyPassword(orgId, managementPassword);
 
     const { data, error } = await this.db()
@@ -434,6 +453,13 @@ export class SalesService {
       .maybeSingle();
     if (error) throw new Error(`Failed to archive sale: ${error.message}`);
     if (!data) throw new NotFoundException('Vente introuvable ou déjà archivée');
+    await this.auditService.log({
+      user_id: callerId,
+      action: 'sale_archived',
+      entity_type: 'sale',
+      entity_id: saleId,
+      changes: { organization_id: orgId },
+    });
     return { success: true };
   }
 }

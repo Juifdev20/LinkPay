@@ -14,6 +14,7 @@ import { formatCurrency } from '@/lib/utils';
 import { TopupStatusCard, TopupCardStatus } from '@/components/TopupStatusCard';
 import { FormSheet } from '@/components/FormSheet';
 import { Loader2, DollarSign, ArrowLeft, Wallet as WalletIcon, Smartphone, Phone } from 'lucide-react';
+import { checkoutUrl } from '@/lib/safe-url';
 
 const PRESETS = [5000, 10000, 25000, 50000];
 
@@ -92,7 +93,7 @@ export default function TopupPage() {
       // Real PSPs (e.g. CinetPay) return a checkout_url and confirm later via
       // webhook — send the user there instead of claiming success early.
       if (data.checkout_url) {
-        window.location.href = data.checkout_url;
+        window.location.href = checkoutUrl(data.checkout_url);
         return;
       }
 

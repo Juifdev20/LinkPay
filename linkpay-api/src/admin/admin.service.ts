@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { sumByCurrency } from '../common/utils/currency';
+import { toPublicProfile } from '../users/users.service';
+import { toPublicOrganization } from '../organizations/organizations.service';
 
 @Injectable()
 export class AdminService {
@@ -105,7 +107,7 @@ export class AdminService {
 
     const { data, error, count } = await query;
     if (error) throw new Error(`Failed to fetch organizations: ${error.message}`);
-    return { data, total: count || 0, page, limit };
+    return { data: (data || []).map((o: any) => toPublicOrganization(o)), total: count || 0, page, limit };
   }
 
   async listUsers(filters?: { page?: number; limit?: number }) {
@@ -134,7 +136,8 @@ export class AdminService {
       }, {});
     }
 
-    const enriched = (data || []).map((u: any) => ({ ...u, role: rolesByUser[u.id] || 'client' }));
+    // Never send PIN hashes / 2FA secrets / session columns to the admin's browser either.
+    const enriched = (data || []).map((u: any) => ({ ...toPublicProfile(u), role: rolesByUser[u.id] || 'client' }));
 
     return { data: enriched, total: count || 0, page, limit };
   }
@@ -151,8 +154,16 @@ export class AdminService {
     if (error) {
       throw new Error(`Failed to reset session: ${error.message}`);
     }
+    await this.revokeTokens(userId);
 
     return { success: true };
+  }
+
+  /** Kills every administrator token issued before now (a stolen one included). Best effort: migration 055 may be missing. */
+  private async revokeTokens(userId: string) {
+    try {
+      await this.supabaseService.getClient().from('profiles').update({ tokens_valid_after: new Date().toISOString() }).eq('id', userId);
+    } catch { /* ignore */ }
   }
 
   async assignRole(userId: string, roleSlug: string, merchantId?: string) {
@@ -160,6 +171,18 @@ export class AdminService {
       .from('roles').select('id').eq('slug', roleSlug).single();
 
     if (!role) throw new NotFoundException(`Role "${roleSlug}" not found`);
+
+    // Never leave the platform without a super admin: demoting the last one
+    // would lock everybody out of the money rules, with no way back but SQL.
+    const { data: superRole } = await this.supabaseService.getClient().from('roles').select('id').eq('slug', 'super_admin').single();
+    if (superRole && role.id !== superRole.id) {
+      const { data: target } = await this.supabaseService.getClient().from('user_roles').select('role_id').eq('user_id', userId);
+      const isSuperNow = (target || []).some((r: any) => r.role_id === superRole.id);
+      if (isSuperNow) {
+        const { count } = await this.supabaseService.getClient().from('user_roles').select('*', { count: 'exact', head: true }).eq('role_id', superRole.id);
+        if ((count || 0) <= 1) throw new BadRequestException('Impossible : ce compte est le dernier super administrateur');
+      }
+    }
 
     // The JWT model only supports one "current" role per user — replace any
     // prior row(s) instead of accumulating, otherwise role lookups become
@@ -177,6 +200,7 @@ export class AdminService {
       .single();
 
     if (error) throw new Error(`Failed to assign role: ${error.message}`);
+    await this.revokeTokens(userId); // a demoted administrator's tokens must not keep working
     return data;
   }
 }

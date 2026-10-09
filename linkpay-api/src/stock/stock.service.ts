@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, HttpException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StockPasswordService } from './stock-password.service';
+import { AuditService } from '../audit/audit.service';
 import { sumByCurrency } from '../common/utils/currency';
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -29,7 +30,19 @@ export class StockService {
     private organizationsService: OrganizationsService,
     private notificationsService: NotificationsService,
     private stockPasswordService: StockPasswordService,
+    private auditService: AuditService,
   ) {}
+
+  /**
+   * Selling staff (vendeur, caissier) need the catalogue — name, price, quantity
+   * — to ring up a sale, but never what the shop paid for it: cost and margin
+   * stay with the patron and the stock keeper.
+   */
+  private redactForRole<T extends Record<string, any>>(item: T, role: string | undefined): T {
+    if (role !== 'vendeur' && role !== 'caissier') return item;
+    const { cost_price_cents: _cost, ...rest } = item;
+    return rest as T;
+  }
 
   private isAdmin(role: string | undefined): boolean {
     return role === 'admin' || role === 'super_admin';
@@ -159,7 +172,7 @@ export class StockService {
       .order('created_at', { ascending: false });
 
     if (error) throw new Error(`Failed to fetch stock items: ${error.message}`);
-    return data || [];
+    return (data || []).map((item) => this.redactForRole(item, callerRole));
   }
 
   /** Both edit and delete are gated behind the organization's shared stock
@@ -174,6 +187,38 @@ export class StockService {
       throw new BadRequestException('Mot de passe de gestion de stock requis');
     }
     await this.stockPasswordService.verifyPassword(merchant.organization_id, stockPassword);
+  }
+
+  /**
+   * The patron's shared stock password, for the operations that don't carry it
+   * in their body (add an item, record a movement, validate an inventory): sent
+   * in the `x-stock-password` header. Missing → 403 STOCK_PASSWORD_REQUIRED and
+   * the app asks for it; wrong → 403 STOCK_PASSWORD_INVALID with the reason
+   * (remaining tries, lock-out). Administrators are not asked.
+   */
+  async assertManagementPassword(
+    merchantId: string,
+    callerId: string,
+    callerRole: string,
+    callerOrgId: string | undefined,
+    password: string | undefined,
+  ) {
+    const merchant = await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
+    if (this.isAdmin(callerRole)) return;
+    if (!merchant.organization_id) {
+      throw new BadRequestException("Cette boutique ne fait partie d'aucune entreprise");
+    }
+    if (!password) {
+      throw new ForbiddenException({ statusCode: 403, code: 'STOCK_PASSWORD_REQUIRED', message: 'Mot de passe de gestion de stock requis' });
+    }
+    try {
+      await this.stockPasswordService.verifyPassword(merchant.organization_id, password);
+    } catch (err: any) {
+      if (err instanceof HttpException) {
+        throw new ForbiddenException({ statusCode: 403, code: 'STOCK_PASSWORD_INVALID', message: err.message });
+      }
+      throw err;
+    }
   }
 
   async updateItem(
@@ -209,7 +254,7 @@ export class StockService {
 
     const { data: current, error: currentError } = await this.supabaseService.getClient()
       .from('stock_items')
-      .select('quantity')
+      .select('*')
       .eq('id', itemId)
       .eq('merchant_id', merchantId)
       .single();
@@ -227,6 +272,22 @@ export class StockService {
     if (error) {
       this.throwIfDuplicate(error);
       throw new Error(`Failed to update stock item: ${error.message}`);
+    }
+
+    // Who changed what: kept in the audit journal (the shared password says
+    // nothing about the person, their own login does).
+    const changes: Record<string, { from: unknown; to: unknown }> = {};
+    for (const key of Object.keys(filtered)) {
+      if (JSON.stringify(current[key]) !== JSON.stringify(filtered[key])) changes[key] = { from: current[key], to: filtered[key] };
+    }
+    if (Object.keys(changes).length > 0) {
+      await this.auditService.log({
+        user_id: callerId,
+        action: 'stock_item_updated',
+        entity_type: 'stock_item',
+        entity_id: itemId,
+        changes: { name: current.name, merchant_id: merchantId, fields: changes },
+      });
     }
 
     const newQuantity = updates.quantity;
@@ -253,6 +314,13 @@ export class StockService {
     const merchant = await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
     await this.assertStockPassword(merchant, stockPassword);
 
+    const { data: before } = await this.supabaseService.getClient()
+      .from('stock_items')
+      .select('name, barcode, quantity, unit_price_cents, cost_price_cents, currency')
+      .eq('id', itemId)
+      .eq('merchant_id', merchantId)
+      .maybeSingle();
+
     const { error } = await this.supabaseService.getClient()
       .from('stock_items')
       .delete()
@@ -260,6 +328,15 @@ export class StockService {
       .eq('merchant_id', merchantId);
 
     if (error) throw new Error(`Failed to delete stock item: ${error.message}`);
+
+    // A deleted article leaves no row behind, so what it was and who removed it is recorded here.
+    await this.auditService.log({
+      user_id: callerId,
+      action: 'stock_item_deleted',
+      entity_type: 'stock_item',
+      entity_id: itemId,
+      changes: { merchant_id: merchantId, item: before || null },
+    });
     return { success: true };
   }
 
@@ -353,7 +430,14 @@ export class StockService {
       .select()
       .single();
 
-    if (error) throw new Error(`Failed to record stock movement: ${error.message}`);
+    if (error) {
+      // 23514 = check_violation: stock_items_quantity_nonnegative refused it —
+      // another sale took the last units between the check above and here.
+      if (error.code === '23514') {
+        throw new BadRequestException('Quantité insuffisante : le stock vient de changer');
+      }
+      throw new Error(`Failed to record stock movement: ${error.message}`);
+    }
 
     const { data: item } = await this.supabaseService.getClient()
       .from('stock_items')
@@ -416,7 +500,8 @@ export class StockService {
   }
 
   async listMovements(merchantId: string, itemId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
-    await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId, true);
+    // The movement history (restocks, losses, who did what) is for the patron and the stock keeper, not the sellers.
+    await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
 
     const { data, error } = await this.supabaseService.getClient()
       .from('stock_movements')
@@ -452,7 +537,7 @@ export class StockService {
     const merchantNameById: Record<string, string> = {};
     merchants.forEach((m) => { merchantNameById[m.id] = m.name; });
 
-    return (data || []).map((item) => ({ ...item, merchant_name: merchantNameById[item.merchant_id] || null }));
+    return (data || []).map((item) => this.redactForRole({ ...item, merchant_name: merchantNameById[item.merchant_id] || null }, callerRole));
   }
 
   async getOrgStockSummary(orgId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {

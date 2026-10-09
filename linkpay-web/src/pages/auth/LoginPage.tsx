@@ -20,6 +20,9 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(() => localStorage.getItem('linkpay_remember_me') !== '0');
   const [emailError, setEmailError] = useState('');
+  // Administrator accounts also need the code from their authenticator app.
+  const [needOtp, setNeedOtp] = useState(false);
+  const [otp, setOtp] = useState('');
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -46,10 +49,15 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await login(email, password, rememberMe);
+      await login(email, password, rememberMe, needOtp ? otp.trim() : undefined);
       navigate(safeRedirect(searchParams.get('redirect')));
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Échec de la connexion');
+      if (err.response?.data?.code === 'OTP_REQUIRED') {
+        setNeedOtp(true);
+        setError('');
+      } else {
+        setError(err.response?.data?.message || 'Échec de la connexion');
+      }
     } finally {
       setLoading(false);
     }
@@ -124,6 +132,25 @@ export default function LoginPage() {
                 </button>
               </div>
             </div>
+
+            {needOtp && (
+              <div className="space-y-2">
+                <Label htmlFor="otp" className="font-semibold text-foreground">Code de l'application d'authentification</Label>
+                <Input
+                  id="otp"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={11}
+                  placeholder="123456 (ou code de secours)"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  required
+                  autoFocus
+                  className="bg-background border-input text-foreground text-center text-lg tracking-widest"
+                />
+                <p className="text-xs text-muted-foreground">Ouvrez Google Authenticator (ou équivalent) et saisissez le code à 6 chiffres.</p>
+              </div>
+            )}
 
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">

@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import { Controller, Post, Get, Delete, Body, Param, Headers } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import type { RegistrationResponseJSON, AuthenticationResponseJSON } from '@simplewebauthn/server';
@@ -39,6 +40,7 @@ export class WebauthnController {
     return this.webauthnService.generateAuthenticationOptionsFor(userId);
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('auth/verify')
   @ApiOperation({ summary: 'Verify a WebAuthn authentication response (app-lock unlock)' })
   authVerify(@CurrentUser('id') userId: string, @Body() body: AuthenticationResponseJSON) {

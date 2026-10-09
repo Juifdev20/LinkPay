@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
         // Local plugins must be registered before the bridge starts.
         registerPlugin(ReceiptPrinterPlugin.class);
         registerPlugin(ScreenProtectionPlugin.class);
+        registerPlugin(DeviceIntegrityPlugin.class);
         super.onCreate(savedInstanceState);
         // Screenshot protection decided by the super admin, applied before
         // anything is drawn (the app refreshes it from the server afterwards).

@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { PinInput } from '@/components/PinInput';
 import { formatCurrency } from '@/lib/utils';
 import { Loader2, Crown, Wallet, CreditCard } from 'lucide-react';
+import { checkoutUrl } from '@/lib/safe-url';
 
 interface ExpenseProUpgradeProps {
   status: { monthly_price_cents: number; monthly_price_currency: 'CDF' | 'USD' };
@@ -50,7 +51,7 @@ export function ExpenseProUpgrade({ status, context = 'paywall' }: ExpenseProUpg
     mutationFn: async () => (await api.post('/expense-tracker/pro/activate/cinetpay')).data,
     onSuccess: (data) => {
       if (data.checkout_url) {
-        window.location.href = data.checkout_url;
+        window.location.href = checkoutUrl(data.checkout_url);
         return;
       }
       // Mock provider settles synchronously.

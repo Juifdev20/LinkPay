@@ -6,6 +6,7 @@ import { Public } from '../common/decorators/public.decorator';
 import { IsString, IsOptional, MaxLength, IsObject, IsNumber, IsIn, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CreateMerchantDto } from '../merchants/merchants.controller';
+import { RequireSubscription } from '../subscriptions/subscription.guard';
 
 class CreateOrganizationDto {
   @ApiProperty({ example: 'Tech Solutions SARL' })
@@ -165,6 +166,7 @@ export class OrganizationsController {
   }
 
   @Post(':id/merchants')
+  @RequireSubscription('org')
   @ApiOperation({ summary: 'Create a new store under this organization (owner only)' })
   async createOrgMerchant(
     @Param('id') id: string,
@@ -236,6 +238,7 @@ export class OrganizationsController {
   }
 
   @Post(':id/expenses')
+  @RequireSubscription('org')
   @ApiOperation({ summary: 'Record a manual expense (owner only)' })
   async createOrgExpense(
     @Param('id') id: string,

@@ -6,6 +6,7 @@ import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { OtpStepUpGuard, RequireOtp } from '../security/otp-step-up.guard';
 
 class UpdatePlatformSettingsDto {
   @ApiProperty({ description: "Bloquer les captures et enregistrements d'écran dans l'application Android" })
@@ -38,7 +39,8 @@ export class PlatformSettingsController {
   @ApiBearerAuth()
   @Put('admin/platform-settings')
   @Roles('super_admin')
-  @UseGuards(RolesGuard)
+  @UseGuards(RolesGuard, OtpStepUpGuard)
+  @RequireOtp()
   @ApiOperation({ summary: 'Modifier les réglages globaux (super admin)' })
   update(@Body() dto: UpdatePlatformSettingsDto, @CurrentUser('id') callerId: string) {
     return this.platformSettingsService.update(callerId, dto);

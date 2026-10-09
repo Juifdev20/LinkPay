@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SupabaseService } from '../supabase/supabase.service';
+import { JobLockService } from '../common/job-lock/job-lock.service';
 
 const RETRY_BATCH_SIZE = 50;
 // Give the normal path (webhook handler) time to finish before the retry job
@@ -23,7 +24,7 @@ export class MerchantWalletCreditService {
   private readonly logger = new Logger(MerchantWalletCreditService.name);
   private retryRunning = false;
 
-  constructor(private supabaseService: SupabaseService) {}
+  constructor(private supabaseService: SupabaseService, @Optional() private jobLock?: JobLockService) {}
 
   /** @returns true when the wallet was credited (or already had been). */
   async credit(transactionId: string): Promise<boolean> {
@@ -41,6 +42,8 @@ export class MerchantWalletCreditService {
   @Cron(CronExpression.EVERY_MINUTE)
   async retryUncredited(): Promise<number> {
     if (this.retryRunning) return 0;
+    // One API instance per minute (migration 053).
+    if (this.jobLock && !(await this.jobLock.acquire('merchant-credit-retry', 50))) return 0;
     this.retryRunning = true;
     try {
       const { data, error } = await this.supabaseService.getClient()

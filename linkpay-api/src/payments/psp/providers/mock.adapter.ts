@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PspAdapter, CreatePaymentIntentParams, PaymentIntentResult, WebhookEventResult, RefundParams, RefundResult, TransactionStatusResult } from '../psp.adapter';
+import { PspAdapter, CreatePaymentIntentParams, PaymentIntentResult, WebhookEventResult, RefundParams, RefundResult, TransactionStatusResult, PayoutParams, PayoutResult, PayoutStatusResult } from '../psp.adapter';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class MockPspAdapter implements PspAdapter {
   readonly provider = 'mock';
   private readonly logger = new Logger(MockPspAdapter.name);
+
+  // In-memory only: lets getPayoutStatus() answer like a real provider would
+  // (known / unknown reference) while developing without one.
+  private readonly payouts = new Map<string, string>();
 
   constructor(private configService: ConfigService) {}
 
@@ -57,5 +61,17 @@ export class MockPspAdapter implements PspAdapter {
       amount_cents: 0,
       currency: 'CDF',
     };
+  }
+
+  async payout(params: PayoutParams): Promise<PayoutResult> {
+    this.logger.log(`Mock PSP: payout ${params.reference} amount=${params.amount_cents} ${params.currency} via ${params.channel} — no money is sent`);
+    const id = `mock_payout_${uuidv4().replace(/-/g, '').slice(0, 12)}`;
+    this.payouts.set(params.reference, id);
+    return { psp_payout_id: id, status: 'SUCCESS' };
+  }
+
+  async getPayoutStatus(reference: string): Promise<PayoutStatusResult> {
+    const id = this.payouts.get(reference);
+    return id ? { status: 'SUCCESS', psp_payout_id: id } : { status: 'NOT_FOUND' };
   }
 }
