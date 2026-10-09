@@ -74,10 +74,8 @@ export class AppCodeService {
     if (code !== confirm) throw new BadRequestException('Les deux codes ne sont pas identiques.');
     const weak = weakAppCodeReason(code);
     if (weak) throw new BadRequestException(weak);
-    // Two secrets that are the same digits protect nothing twice.
-    if (transactionPinHash && (await bcrypt.compare(code, transactionPinHash))) {
-      throw new BadRequestException('Le code d’accès doit être différent de votre code PIN de transaction.');
-    }
+    // (No "must differ from the transaction PIN" rule: answering differently when a candidate equals the PIN would let
+    // anyone holding a session guess the PIN here, without the PIN's own lockout.)
   }
 
   /** First-time creation. Changing an existing code goes through change(). */
@@ -153,10 +151,9 @@ export class AppCodeService {
     const p = await this.profile(userId);
     if (!p) throw new UnauthorizedException();
     const key = `appcode-reset:${userId}`;
-    await this.loginAttempts.assertNotLocked(key);
+    await this.loginAttempts.reserve(key);
     const { error } = await this.supabaseService.getAuthClient().auth.signInWithPassword({ email: p.email, password });
     if (error) {
-      await this.loginAttempts.recordFailure(key);
       throw new ForbiddenException('Mot de passe incorrect.');
     }
     await this.loginAttempts.recordSuccess(key);

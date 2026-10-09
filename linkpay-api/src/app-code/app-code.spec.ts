@@ -48,12 +48,13 @@ describe('AppCodeService', () => {
     expect(await bcrypt.compare('482915', stored)).toBe(false); // a leaked DB alone can't be matched against raw digits
   });
 
-  it('refuses mismatched, weak, or already-existing codes, and a code equal to the transaction PIN', async () => {
+  it('refuses mismatched, weak, or already-existing codes (and never reveals whether a code equals the transaction PIN)', async () => {
     await expect(setup().service.create('u1', '482915', '482916')).rejects.toThrow(/pas identiques/);
     await expect(setup().service.create('u1', '123456', '123456')).rejects.toThrow(/courant/);
     await expect(setup({ hash: 'x' }).service.create('u1', '482915', '482915')).rejects.toThrow(/existe déjà/);
     const txPinHash = await bcrypt.hash('482915', 4);
-    await expect(setup({ txPinHash }).service.create('u1', '482915', '482915')).rejects.toThrow(/PIN de transaction/);
+    // Deliberately allowed: answering differently when the code equals the PIN would be an oracle for guessing the PIN.
+    await expect(setup({ txPinHash }).service.create('u1', '482915', '482915')).resolves.toBeUndefined();
   });
 
   it('verifies the right code, and clears the failure counter', async () => {

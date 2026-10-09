@@ -24,7 +24,15 @@ class ChangePasswordDto {
   @ApiProperty({ example: 'un-nouveau-mot-de-passe' })
   @IsString()
   @MinLength(8)
+  @MaxLength(128)
   new_password!: string;
+
+  /** Required except for the forced first-login change. */
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  current_password?: string;
 }
 
 class EnableTwoFactorDto {
@@ -116,7 +124,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Change the current user\'s password (used for the forced first-login change)' })
   async changePassword(@CurrentUser('id') userId: string, @Body() dto: ChangePasswordDto) {
-    await this.authService.changePassword(userId, dto.new_password);
+    await this.authService.changePassword(userId, dto.new_password, dto.current_password);
     return { success: true };
   }
 

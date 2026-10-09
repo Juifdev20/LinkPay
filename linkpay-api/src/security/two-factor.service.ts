@@ -144,6 +144,8 @@ export class TwoFactorService {
       .update({ two_factor_enabled: false, two_factor_secret: null, two_factor_last_step: null, two_factor_recovery_hashes: [], two_factor_enrolled_at: null })
       .eq('id', userId);
     if (error) throw new Error(`Failed to reset 2FA: ${error.message}`);
+    // Whoever held a session proved by the old second factor loses it.
+    try { await this.supabaseService.getClient().from('profiles').update({ tokens_valid_after: new Date().toISOString() }).eq('id', userId); } catch { /* migration 055 missing */ }
   }
 
   private async claimStep(userId: string, step: number): Promise<boolean> {
@@ -155,11 +157,12 @@ export class TwoFactorService {
     return `otp:${userId}`;
   }
 
+  /** Counts the try before it is checked (atomic): parallel guesses can't all slip past the 5-try limit. */
   private async assertNotLocked(userId: string) {
-    await this.attempts.assertNotLocked(this.attemptKey(userId));
+    await this.attempts.reserve(this.attemptKey(userId));
   }
 
-  private async fail(userId: string) {
-    await this.attempts.recordFailure(this.attemptKey(userId));
+  private async fail(_userId: string) {
+    /* already counted by assertNotLocked() (reserve) */
   }
 }

@@ -19,6 +19,7 @@ import { SecurityAlertsService } from '../security/security-alerts.service';
 
 const SECRET = 'x'.repeat(48);
 const WEB = 'https://app.scanlinkpay.com';
+const revokedAt: { value: string | null } = { value: null };
 const HDR = { 'x-auth-mode': 'cookie', 'x-requested-with': 'ScanLinkPay', origin: WEB };
 
 async function bootApp(env: Record<string, string> = {}) {
@@ -36,7 +37,7 @@ async function bootApp(env: Record<string, string> = {}) {
       JwtStrategy,
       AuthCookiesService,
       { provide: AuthService, useValue: authService },
-      { provide: SupabaseService, useValue: { getClient: () => ({ from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: { active_session_id: 's1' } }) }) }) }) }) } },
+      { provide: SupabaseService, useValue: { getClient: () => ({ from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: { active_session_id: 's1' } }), maybeSingle: async () => ({ data: { tokens_valid_after: revokedAt.value } }) }) }) }) }) } },
       { provide: TwoFactorService, useValue: { isEnabled: async () => false } },
       { provide: SecurityAlertsService, useValue: { alert: jest.fn() } },
       { provide: APP_GUARD, useFactory: (r: Reflector, c: any) => new JwtAuthGuard(r, c), inject: [Reflector, 'ConfigService'] },
@@ -101,15 +102,19 @@ describe('cookie sessions', () => {
   });
 
   it('an authenticated request works with the cookie alone', async () => {
-    const res = await request(app.getHttpServer()).get('/api/v1/auth/2fa/status').set('Cookie', `lp_at=${ctx.token()}`).expect(200);
+    const res = await request(app.getHttpServer()).get('/api/v1/auth/2fa/status').set('x-auth-mode', 'cookie').set('Cookie', `lp_at=${ctx.token()}`).expect(200);
     expect(res.body).toMatchObject({ enabled: false });
     await request(app.getHttpServer()).get('/api/v1/auth/2fa/status').expect(401);
-    await request(app.getHttpServer()).get('/api/v1/auth/2fa/status').set('Cookie', 'lp_at=garbage').expect(401);
+    await request(app.getHttpServer()).get('/api/v1/auth/2fa/status').set('x-auth-mode', 'cookie').set('Cookie', 'lp_at=garbage').expect(401);
+  });
+
+  it('a cookie is NOT an identity unless the browser announced cookie mode (so a script cannot get a cookie-authenticated request answered with tokens)', async () => {
+    await request(app.getHttpServer()).get('/api/v1/auth/2fa/status').set('Cookie', `lp_at=${ctx.token()}`).expect(401);
   });
 
   it('CSRF: a state-changing request with only the cookie is refused without our header, from a foreign origin, or when flagged cross-site', async () => {
     const cookie = `lp_at=${ctx.token()}`;
-    const post = () => request(app.getHttpServer()).post('/api/v1/auth/logout').set('Cookie', cookie);
+    const post = () => request(app.getHttpServer()).post('/api/v1/auth/logout').set('x-auth-mode', 'cookie').set('Cookie', cookie);
     expect((await post().expect(403)).body.code).toBe('CSRF_REJECTED');
     await post().set('x-requested-with', 'ScanLinkPay').set('origin', 'https://evil.example').expect(403);
     await post().set('x-requested-with', 'ScanLinkPay').set('origin', 'null').expect(403);
@@ -120,8 +125,20 @@ describe('cookie sessions', () => {
   });
 
   it('CSRF: reading is never blocked, and bearer clients are not affected', async () => {
-    await request(app.getHttpServer()).get('/api/v1/auth/2fa/status').set('Cookie', `lp_at=${ctx.token()}`).expect(200);
+    await request(app.getHttpServer()).get('/api/v1/auth/2fa/status').set('x-auth-mode', 'cookie').set('Cookie', `lp_at=${ctx.token()}`).expect(200);
     await request(app.getHttpServer()).post('/api/v1/auth/logout').set('Authorization', `Bearer ${ctx.token()}`).expect(200);
+  });
+
+  it('CSRF: a junk Authorization header is not a way around the checks (only a real Bearer token exempts a request)', async () => {
+    const cookie = `lp_at=${ctx.token()}`;
+    await request(app.getHttpServer()).post('/api/v1/auth/logout').set('Authorization', 'Basic xxx').set('Cookie', cookie).set('x-auth-mode', 'cookie').expect(403);
+    await request(app.getHttpServer()).post('/api/v1/auth/logout').set('Authorization', 'garbage').set('Cookie', cookie).expect(403);
+  });
+
+  it('a refresh token is not an access token (cookie or Bearer), whatever its lifetime', async () => {
+    const refresh = ctx.token({ type: 'refresh' }, '365d');
+    await request(app.getHttpServer()).get('/api/v1/auth/2fa/status').set('Authorization', `Bearer ${refresh}`).expect(401);
+    await request(app.getHttpServer()).get('/api/v1/auth/2fa/status').set('x-auth-mode', 'cookie').set('Cookie', `lp_at=${refresh}`).expect(401);
   });
 
   it('logout clears both cookies', async () => {
@@ -173,6 +190,25 @@ describe('cookie sessions', () => {
   it('session/clear works without a session and wipes the cookies', async () => {
     const res = await request(app.getHttpServer()).post('/api/v1/auth/session/clear').set(HDR).set('Cookie', 'lp_rt=whatever').expect(200);
     expect(cookieNamed(res, 'lp_rt')).toMatch(/Expires=Thu, 01 Jan 1970/);
+  });
+});
+
+describe('administrator token revocation', () => {
+  it('a token issued before the revocation moment is refused for an admin, a later one works, and ordinary users are not affected', async () => {
+    const { app, token } = await bootApp();
+    try {
+      const admin = (iat?: number) => token({ role: 'admin', mfa: true, mfa_at: Math.floor(Date.now() / 1000), ...(iat ? { iat } : {}) });
+      const now = Math.floor(Date.now() / 1000);
+      revokedAt.value = null;
+      await request(app.getHttpServer()).get('/api/v1/auth/2fa/status').set('Authorization', `Bearer ${admin(now - 600)}`).expect(200);
+      revokedAt.value = new Date((now - 60) * 1000).toISOString();
+      await request(app.getHttpServer()).get('/api/v1/auth/2fa/status').set('Authorization', `Bearer ${admin(now - 600)}`).expect(401); // stolen before the logout
+      await request(app.getHttpServer()).get('/api/v1/auth/2fa/status').set('Authorization', `Bearer ${admin(now)}`).expect(200); // signed in again after
+      await request(app.getHttpServer()).get('/api/v1/auth/2fa/status').set('Authorization', `Bearer ${token({ iat: now - 600 })}`).expect(200); // not an admin
+    } finally {
+      revokedAt.value = null;
+      await app.close();
+    }
   });
 });
 

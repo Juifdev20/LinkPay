@@ -17,7 +17,9 @@ export function createCsrfMiddleware(allowedOrigins: (string | RegExp)[]) {
 
   return (req: any, res: any, next: () => void) => {
     if (SAFE_METHODS.has(req.method)) return next();
-    if (req.headers?.authorization) return next();
+    // Only a real bearer token exempts a request (the cookie is then not what authenticates it): any other
+    // Authorization value must not be a way around the checks below.
+    if (/^Bearer\s+\S+/i.test(req.headers?.authorization || '')) return next();
 
     const cookies = parseCookies(req.headers?.cookie);
     if (!cookies[ACCESS_COOKIE] && !cookies[REFRESH_COOKIE]) return next();

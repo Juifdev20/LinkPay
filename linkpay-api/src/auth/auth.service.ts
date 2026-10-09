@@ -1,4 +1,4 @@
-import { Injectable, Logger, UnauthorizedException, ConflictException, ServiceUnavailableException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, ConflictException, ServiceUnavailableException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { isAuthApiError } from '@supabase/supabase-js';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -172,7 +172,8 @@ export class AuthService {
   async login(dto: LoginDto, ctx: { ip?: string; userAgent?: string; platform?: string } = {}) {
     const { email, password, device_id } = dto;
 
-    await this.loginAttempts.assertNotLocked(email);
+    // Counted before the password is tried (atomic): a burst of parallel guesses can't all slip past the lock.
+    const reservation = await this.loginAttempts.reserve(email);
 
     const { data, error } = await this.supabaseService.getAuthClient().auth.signInWithPassword({
       email,
@@ -185,16 +186,20 @@ export class AuthService {
       // rejected. A network failure, a 5xx or an unparseable response means
       // Supabase couldn't be reached — reporting that as "Invalid credentials"
       // would send users hunting for a password problem they don't have.
-      if (error && !(isAuthApiError(error) && error.status >= 400 && error.status < 500)) {
+      // 429 is the auth provider rate-limiting US (every login comes from the same API address): not a wrong password,
+      // and it must not count against — or lock — the user.
+      if (error && !(isAuthApiError(error) && error.status >= 400 && error.status < 500 && error.status !== 429)) {
+        await this.loginAttempts.release(email);
         throw new ServiceUnavailableException(
           'Le service de connexion est temporairement indisponible. Veuillez réessayer plus tard.',
         );
       }
       // An employee whose access the patron removed: say so instead of "wrong password".
       if (error && /banned/i.test(error.message || '')) {
+        await this.loginAttempts.release(email);
         throw new ForbiddenException("Votre accès a été retiré. Contactez votre employeur.");
       }
-      if (await this.loginAttempts.recordFailure(email)) {
+      if (reservation.justLocked) {
         void this.securityAlerts.alert({
           severity: 'warning',
           title: 'Compte verrouillé après des échecs de connexion',
@@ -285,7 +290,9 @@ export class AuthService {
       refresh_token: refreshToken,
       // Reuse the Supabase Auth session already established above — no need
       // for a second signInWithPassword call like register() needs.
-      supabase_session: data.session
+      // An administrator who has not passed the second factor yet gets no Supabase session: it would already satisfy the
+      // database's is_admin() rules and let a password alone read admin data straight from the database API.
+      supabase_session: data.session && !(MFA_REQUIRED_ROLES.includes(role) && !mfaAt)
         ? { access_token: data.session.access_token, refresh_token: data.session.refresh_token }
         : null,
     };
@@ -301,6 +308,8 @@ export class AuthService {
       acting_as_org_id?: string;
       mfa?: boolean;
       mfa_at?: number;
+      iat?: number;
+      auth_at?: number;
     };
     try {
       payload = this.jwtService.verify(refreshToken, {
@@ -369,12 +378,26 @@ export class AuthService {
       }
     }
 
+    // Administrators: a revoked session (logout, "reset session", 2FA reset, role change) stops here, and a session
+    // can't be kept alive for ever by refreshing — it has an absolute age (ADMIN_MAX_SESSION_HOURS, default 24).
+    if (MFA_REQUIRED_ROLES.includes(role)) {
+      const revokedBefore = await this.tokensValidAfter(payload.sub);
+      if (revokedBefore && (payload.iat ?? 0) < Math.floor(revokedBefore / 1000)) {
+        throw new UnauthorizedException('Session revoked — please log in again');
+      }
+      const maxHours = Number(this.configService.get('ADMIN_MAX_SESSION_HOURS')) || 24;
+      const authAt = payload.auth_at ?? payload.iat ?? 0;
+      if (Date.now() / 1000 - authAt > maxHours * 3600) {
+        throw new UnauthorizedException('Session expired — please log in again');
+      }
+    }
+
     // Keep (never create) the second-factor proof: a refresh can't turn a
     // password-only admin session into a verified one.
     const mfaAt = payload.mfa === true && MFA_REQUIRED_ROLES.includes(role) ? payload.mfa_at : undefined;
     return {
       access_token: await this.generateToken(payload.sub, payload.email, role, merchantId, payload.session_id, undefined, organizationId, mfaAt),
-      refresh_token: await this.generateRefreshToken(payload.sub, payload.email, payload.session_id, undefined, undefined, mfaAt, role),
+      refresh_token: await this.generateRefreshToken(payload.sub, payload.email, payload.session_id, undefined, undefined, mfaAt, role, payload.auth_at ?? payload.iat),
     };
   }
 
@@ -429,7 +452,25 @@ export class AuthService {
     } catch { /* ignore */ }
   }
 
+  /** Administrator tokens issued before this moment are dead (see JwtStrategy and refresh()). Best effort: migration 055 may be missing. */
+  async revokeTokens(userId: string): Promise<void> {
+    try {
+      await this.supabaseService.getClient().from('profiles').update({ tokens_valid_after: new Date().toISOString() }).eq('id', userId);
+    } catch { /* ignore */ }
+  }
+
+  private async tokensValidAfter(userId: string): Promise<number | null> {
+    try {
+      const { data, error } = await this.supabaseService.getClient().from('profiles').select('tokens_valid_after').eq('id', userId).maybeSingle();
+      if (error || !data?.tokens_valid_after) return null;
+      return new Date(data.tokens_valid_after).getTime();
+    } catch {
+      return null;
+    }
+  }
+
   async logout(userId: string): Promise<void> {
+    await this.revokeTokens(userId);
     await this.supabaseService.getClient()
       .from('profiles')
       .update({ active_session_id: null })
@@ -444,7 +485,22 @@ export class AuthService {
    * "archived only until first use" rule — and the admin who created it is
    * notified. notifications/organization_staff lookups are best-effort;
    * neither failure should ever block the password itself from changing. */
-  async changePassword(userId: string, newPassword: string): Promise<void> {
+  async changePassword(userId: string, newPassword: string, currentPassword?: string): Promise<void> {
+    // A stolen session token must not be enough to take the account over: the current password is required — except for
+    // the forced first-login change, where the temporary password was typed moments ago and this is the only way forward.
+    const { data: profile } = await this.supabaseService.getClient()
+      .from('profiles').select('email, must_change_password').eq('id', userId).maybeSingle();
+    if (!profile?.must_change_password) {
+      if (!currentPassword) throw new BadRequestException('Le mot de passe actuel est requis.');
+      const key = `chpw:${userId}`;
+      const reservation = await this.loginAttempts.reserve(key);
+      const { error: verifyError } = await this.supabaseService.getAuthClient().auth.signInWithPassword({ email: profile?.email, password: currentPassword });
+      if (verifyError) {
+        void reservation;
+        throw new ForbiddenException('Mot de passe actuel incorrect.');
+      }
+      await this.loginAttempts.recordSuccess(key);
+    }
     const { error } = await this.supabaseService.getClient().auth.admin.updateUserById(userId, {
       password: newPassword,
     });
@@ -568,12 +624,15 @@ export class AuthService {
     actingAsOrgId?: string,
     mfaAt?: number,
     role?: string,
+    /** When the person really signed in (seconds). Carried unchanged through refreshes so an administrator session has an absolute age. */
+    authAt?: number,
   ): Promise<string> {
     return this.jwtService.sign(
       {
         sub: userId,
         email,
         type: 'refresh',
+        auth_at: authAt ?? Math.floor(Date.now() / 1000),
         ...(sessionId ? { session_id: sessionId } : {}),
         // Only ever set together — an "acting as" refresh token needs
         // merchant_id to know which store to re-validate against on the

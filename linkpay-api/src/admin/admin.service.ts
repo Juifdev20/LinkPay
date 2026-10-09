@@ -154,8 +154,16 @@ export class AdminService {
     if (error) {
       throw new Error(`Failed to reset session: ${error.message}`);
     }
+    await this.revokeTokens(userId);
 
     return { success: true };
+  }
+
+  /** Kills every administrator token issued before now (a stolen one included). Best effort: migration 055 may be missing. */
+  private async revokeTokens(userId: string) {
+    try {
+      await this.supabaseService.getClient().from('profiles').update({ tokens_valid_after: new Date().toISOString() }).eq('id', userId);
+    } catch { /* ignore */ }
   }
 
   async assignRole(userId: string, roleSlug: string, merchantId?: string) {
@@ -192,6 +200,7 @@ export class AdminService {
       .single();
 
     if (error) throw new Error(`Failed to assign role: ${error.message}`);
+    await this.revokeTokens(userId); // a demoted administrator's tokens must not keep working
     return data;
   }
 }

@@ -74,6 +74,74 @@ export class LoginAttemptsService {
     }
   }
 
+  /**
+   * Counts an attempt BEFORE it is verified, atomically (migration 055). N guesses fired at once can no
+   * longer all pass an "is it locked?" check: only the first MAX_FAILED_LOGINS are let through, the one
+   * that reaches the limit locks the account, and the rest are refused. A success clears the count
+   * (recordSuccess); a failure that isn't the user's fault gives the attempt back (release).
+   * Throws 429 when the account is locked. `justLocked` tells the caller that, if this attempt fails, it
+   * is the one that locked the account (for the admin alert).
+   */
+  async reserve(account: string, now = Date.now()): Promise<{ justLocked: boolean }> {
+    let justLocked: boolean | null = null;
+    if (this.supabaseService) {
+      try {
+        const { data, error } = await this.supabaseService.getClient().rpc('reserve_auth_attempt', {
+          p_key: this.hashed(account),
+          p_max: MAX_FAILED_LOGINS,
+          p_window_seconds: LOGIN_WINDOW_MS / 1000,
+          p_lock_seconds: LOGIN_LOCK_MS / 1000,
+        });
+        if (!error) {
+          const row = Array.isArray(data) ? data[0] : data;
+          if (row && row.allowed === false) this.throwLocked(row.locked_until ? new Date(row.locked_until).getTime() : now + LOGIN_LOCK_MS, now);
+          justLocked = !!row?.just_locked;
+        } else {
+          this.fellBack(error.message);
+        }
+      } catch (err: any) {
+        if (err?.getStatus?.() === HttpStatus.TOO_MANY_REQUESTS) throw err;
+        this.fellBack(err?.message);
+      }
+    }
+    if (justLocked !== null) return { justLocked };
+
+    // Fallback (migration 055 missing / database unreachable): the same rule, counted in this process.
+    const k = this.key(account);
+    const entry = this.byKey.get(k) ?? { failures: [], lockedUntil: 0 };
+    if (entry.lockedUntil > now) this.throwLocked(entry.lockedUntil, now);
+    entry.failures = entry.failures.filter((t) => now - t < LOGIN_WINDOW_MS);
+    entry.failures.push(now);
+    let locked = false;
+    if (entry.failures.length >= MAX_FAILED_LOGINS) {
+      entry.lockedUntil = now + LOGIN_LOCK_MS;
+      entry.failures = [];
+      locked = true;
+    }
+    this.byKey.set(k, entry);
+    if (this.byKey.size > 10_000) this.prune(now);
+    return { justLocked: locked };
+  }
+
+  /** Gives a reserved attempt back (the failure wasn't the user's: the auth provider was busy, the account was removed…). */
+  async release(account: string): Promise<void> {
+    const k = this.key(account);
+    const entry = this.byKey.get(k);
+    if (entry && entry.failures.length > 0) entry.failures.pop();
+    if (!this.supabaseService) return;
+    try {
+      await this.supabaseService.getClient().rpc('release_auth_attempt', { p_key: this.hashed(account) });
+    } catch { /* an attempt not given back only makes the lock slightly stricter */ }
+  }
+
+  private throwLocked(until: number, now: number): never {
+    const minutes = Math.max(1, Math.ceil((until - now) / 60_000));
+    throw new HttpException(
+      `Trop de tentatives de connexion. Réessayez dans ${minutes} minute${minutes > 1 ? 's' : ''}.`,
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+
   /** Returns true when this failure is the one that locks the account. */
   async recordFailure(account: string, now = Date.now()): Promise<boolean> {
     if (this.supabaseService) {
