@@ -18,8 +18,9 @@ const errorMessage = (err: any, fallback: string) => err?.response?.data?.messag
  *   1. makes a user (client / merchant / business owner) without an access code choose one (new accounts, and
  *      existing accounts the first time they open this version);
  *   2. locks the app on launch, after the app was left, and after idle time;
- *   3. never gets in the way of the selling/stock screens, nor of staff and
- *      administrators (see APP_CODE_ROLES / SALES_ROUTE_PREFIXES);
+ *   3. is an ENTRANCE check only: it never interrupts someone moving between
+ *      tabs and screens, and it stays out of the selling/stock screens, staff
+ *      and administrators altogether (see APP_CODE_ROLES / SALES_ROUTE_PREFIXES);
  *   4. unlocks with the 6-digit code (checked by the API: 5 tries, then a
  *      15-minute lock; two locks in a row end the session) or, as an optional
  *      shortcut, the device biometrics.
@@ -40,6 +41,17 @@ export function AppLockGate() {
   // till and the stock are never asked.
   const applies = isAuthenticated && appCodeApplies(user?.role);
   const onSalesScreen = isSalesRoute(pathname);
+  // A lock request while a sales/stock screen is open is dropped, not postponed:
+  // the code is never asked later, mid-navigation, because of something that
+  // happened on a screen where it must not appear.
+  const lockUnlessSelling = useCallback(() => {
+    if (!isSalesRoute(window.location.pathname)) lock();
+  }, [lock]);
+
+  // Opening the app straight onto a sales/stock screen is not an entrance to guard.
+  useEffect(() => {
+    if (applies && onSalesScreen && locked) unlock();
+  }, [applies, onSalesScreen, locked, unlock]);
 
   // Profiles cached by an older version don't know yet: ask the server.
   useEffect(() => {
@@ -55,12 +67,12 @@ export function AppLockGate() {
       } else if (hiddenAt.current !== null) {
         const away = Date.now() - hiddenAt.current;
         hiddenAt.current = null;
-        if (away > BACKGROUND_LOCK_MS) lock();
+        if (away > BACKGROUND_LOCK_MS) lockUnlessSelling();
       }
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [applies, lock]);
+  }, [applies, lockUnlessSelling]);
 
   // Idle → lock (not while a sales/stock screen is open: those stay up for hours).
   useEffect(() => {
@@ -71,13 +83,13 @@ export function AppLockGate() {
     events.forEach((e) => window.addEventListener(e, touch, { passive: true, capture: true }));
     const timer = window.setInterval(() => {
       if (isSalesRoute(window.location.pathname)) { lastActivity.current = Date.now(); return; }
-      if (Date.now() - lastActivity.current > getIdleLockMinutes() * 60_000) lock();
+      if (Date.now() - lastActivity.current > getIdleLockMinutes() * 60_000) lockUnlessSelling();
     }, 5_000);
     return () => {
       events.forEach((e) => window.removeEventListener(e, touch, { capture: true }));
       window.clearInterval(timer);
     };
-  }, [applies, locked, lock]);
+  }, [applies, locked, lockUnlessSelling]);
 
   const onUnlocked = useCallback(() => {
     lastActivity.current = Date.now();

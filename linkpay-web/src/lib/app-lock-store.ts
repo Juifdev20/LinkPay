@@ -44,9 +44,9 @@ export const appCodeApplies = (role?: string) => !!role && APP_CODE_ROLES.includ
 /**
  * Screens where the code is never asked, even for the roles above: the
  * selling and stock screens (till, sales, stock, inventory) and the merchant's
- * "Encaisser" screens, which stay open for hours while customers pay. The app
- * still remembers that it should be locked, so the code is asked the moment
- * the user leaves those screens for any other one.
+ * "Encaisser" screens, which stay open for hours while customers pay. A lock
+ * that would happen while one of these is open is simply skipped: the code is
+ * an entrance check, never asked while moving around the app afterwards.
  */
 export const SALES_ROUTE_PREFIXES = [
   '/dashboard/pos',
