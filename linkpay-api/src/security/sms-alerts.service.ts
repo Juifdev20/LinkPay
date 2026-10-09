@@ -89,7 +89,7 @@ export class SmsAlertsService {
     let accepted = 0;
     // One request per number for Twilio (its API has no multi-recipient call); one for everybody on Africa's Talking.
     try {
-      if (provider === 'africastalking') accepted = (await this.sendAfricasTalking(numbers, text)) ? numbers.length : 0;
+      if (provider === 'africastalking') accepted = await this.sendAfricasTalking(numbers, text);
       else accepted = (await Promise.all(numbers.map((n) => this.sendTwilio(n, text)))).filter(Boolean).length;
     } catch (err: any) {
       this.logger.error(`Could not send the alert SMS: ${err?.message}`);
@@ -107,7 +107,8 @@ export class SmsAlertsService {
     }
   }
 
-  private async sendAfricasTalking(numbers: string[], text: string): Promise<boolean> {
+  /** Returns how many recipients Africa's Talking really accepted (it answers 201 even when some numbers are refused). */
+  private async sendAfricasTalking(numbers: string[], text: string): Promise<number> {
     const username = this.config.get<string>('AT_USERNAME')!;
     const base = username === 'sandbox' ? 'https://api.sandbox.africastalking.com' : 'https://api.africastalking.com';
     const form = new URLSearchParams({ username, to: numbers.join(','), message: text });
@@ -120,9 +121,18 @@ export class SmsAlertsService {
     });
     if (!res.ok) {
       this.logger.error(`Africa's Talking refused the alert SMS (${res.status}): ${(await res.text()).slice(0, 200)}`);
-      return false;
+      return 0;
     }
-    return true;
+    let recipients: any[] | null = null;
+    try {
+      recipients = ((await res.json()) as any)?.SMSMessageData?.Recipients ?? null;
+    } catch { /* unreadable body: trust the HTTP status */ }
+    if (!Array.isArray(recipients)) return numbers.length;
+    // statusCode 100 Processed, 101 Sent, 102 Queued are successes; anything else (403 InvalidPhoneNumber, 405 InsufficientBalance…) is not.
+    const ok = recipients.filter((r) => [100, 101, 102].includes(Number(r?.statusCode))).length;
+    const failed = recipients.filter((r) => ![100, 101, 102].includes(Number(r?.statusCode)));
+    if (failed.length > 0) this.logger.error(`Africa's Talking did not accept ${failed.length} alert SMS: ${failed.map((r) => r?.status || r?.statusCode).join(', ')}`);
+    return ok;
   }
 
   private async sendTwilio(to: string, text: string): Promise<boolean> {

@@ -54,6 +54,17 @@ describe('SmsAlertsService', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('https://api.sandbox.africastalking.com/version1/messaging');
   });
 
+  it("Africa's Talking: counts only the recipients it really accepted (it answers 201 even for refused numbers)", async () => {
+    const s = new SmsAlertsService(config(AT));
+    const answer = (recipients: any[]) => ({ ok: true, status: 201, json: async () => ({ SMSMessageData: { Message: 'Sent', Recipients: recipients } }), text: async () => '' });
+    fetchMock.mockResolvedValueOnce(answer([{ statusCode: 101, status: 'Success' }, { statusCode: 403, status: 'InvalidPhoneNumber' }]));
+    expect(await s.send(['+243812345678', '+243900000000'], 'x', 1)).toBe(1);
+    fetchMock.mockResolvedValueOnce(answer([{ statusCode: 405, status: 'InsufficientBalance' }]));
+    expect(await s.send(['+243812345678'], 'x', 2)).toBe(0);
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 201, json: async () => { throw new Error('not json'); }, text: async () => '' });
+    expect(await s.send(['+243812345678'], 'x', 3)).toBe(1); // unreadable body: the HTTP status is all we have
+  });
+
   it('Twilio: one request per number, basic auth', async () => {
     const s = new SmsAlertsService(config(TW));
     expect(await s.send(['+243812345678', '+243900000000'], 'x')).toBe(2);
