@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { useAuthStore } from '@/lib/auth-store';
 import { ArrowDownToLine, Send, ScanLine, ArrowUpFromLine } from 'lucide-react';
 
 interface WalletActionsProps {
@@ -9,19 +8,16 @@ interface WalletActionsProps {
 
 /** Action row for BalanceCard's `actions` slot when it's showing a wallet. */
 export function WalletActions({ currency }: WalletActionsProps) {
-  const role = useAuthStore((s) => s.user?.role);
-  // Staff (merchant cashier, vendeur, caissier, magasinier, comptable) never withdraw: only the patron does.
-  const mayWithdraw = !['cashier', 'vendeur', 'caissier', 'magasinier', 'comptable'].includes(role || '');
   const suffix = currency ? `?currency=${currency}` : '';
   const actions = [
     { to: `/dashboard/wallet/topup${suffix}`, icon: ArrowDownToLine, label: 'Recharger' },
     { to: `/dashboard/wallet/send${suffix}`, icon: Send, label: 'Envoyer' },
     { to: '/dashboard/wallet/pay', icon: ScanLine, label: 'Payer' },
-    ...(mayWithdraw ? [{ to: `/dashboard/wallet/withdraw${suffix}`, icon: ArrowUpFromLine, label: 'Retirer' }] : []),
+    { to: `/dashboard/wallet/withdraw${suffix}`, icon: ArrowUpFromLine, label: 'Retirer' },
   ];
 
   return (
-    <div className={`grid gap-2 w-full ${actions.length === 4 ? 'grid-cols-4' : 'grid-cols-3'}`}>
+    <div className="grid grid-cols-4 gap-2 w-full">
       {actions.map((a) => (
         <Link
           key={a.to}

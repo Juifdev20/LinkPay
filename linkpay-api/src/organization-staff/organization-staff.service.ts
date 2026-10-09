@@ -117,6 +117,9 @@ export class OrganizationStaffService {
       organization_id: orgId,
     });
 
+    // Their own wallet, where the patron can send their salary and from which they withdraw it.
+    await this.supabaseService.getClient().from('wallets').upsert({ user_id: userId }, { onConflict: 'user_id', ignoreDuplicates: true });
+
     const { data: staff, error: staffError } = await this.supabaseService.getClient()
       .from('organization_staff')
       .insert({

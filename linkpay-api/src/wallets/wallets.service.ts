@@ -35,11 +35,24 @@ export class WalletsService {
       .eq('user_id', userId)
       .single();
 
-    if (error || !data) {
+    if (data) return data;
+    if (error && error.code !== 'PGRST116') throw new NotFoundException('Wallet not found');
+
+    // Employees created by their patron before wallets were given to them have none yet:
+    // open it on first use, so they can receive and withdraw their salary.
+    // (Administrators deliberately have no wallet.)
+    const { data: roles } = await this.supabaseService.getClient()
+      .from('user_roles')
+      .select('role:roles(slug)')
+      .eq('user_id', userId);
+    const slugs = (roles || []).map((r: any) => r.role?.slug);
+    if (slugs.length === 0 || slugs.some((s: string) => s === 'admin' || s === 'super_admin')) {
       throw new NotFoundException('Wallet not found');
     }
-
-    return data;
+    await this.supabaseService.getClient().from('wallets').upsert({ user_id: userId }, { onConflict: 'user_id', ignoreDuplicates: true });
+    const { data: created } = await this.supabaseService.getClient().from('wallets').select('*').eq('user_id', userId).single();
+    if (!created) throw new NotFoundException('Wallet not found');
+    return created;
   }
 
   /**

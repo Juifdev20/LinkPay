@@ -49,6 +49,7 @@ const AdminMerchantsPage = lazyPage(() => import('@/pages/admin/Merchants'));
 const AdminUsersPage = lazyPage(() => import('@/pages/admin/Users'));
 const AdminSettlementsPage = lazyPage(() => import('@/pages/admin/Settlements'));
 const AdminCommissionsPage = lazyPage(() => import('@/pages/admin/Commissions'));
+const StaffWalletPage = lazyPage(() => import('@/pages/staff/StaffWallet'));
 const AdminRiskLogsPage = lazyPage(() => import('@/pages/admin/RiskLogs'));
 const AdminTwoFactorSetupPage = lazyPage(() => import('@/pages/auth/AdminTwoFactorSetup'));
 const AdminWalletLimitsPage = lazyPage(() => import('@/pages/admin/WalletLimits'));
@@ -208,6 +209,7 @@ export default function App() {
         />
         <Route path="client" element={<ClientDashboard />} />
         <Route path="client/transactions" element={<ClientTransactionsPage />} />
+        <Route path="wallet" element={<StaffWalletPage />} />
         <Route path="wallet/topup" element={<TopupPage />} />
         <Route path="wallet/topup/result" element={<TopupResultPage />} />
         <Route path="wallet/send" element={<SendPage />} />

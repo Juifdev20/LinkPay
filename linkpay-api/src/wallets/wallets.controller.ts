@@ -1,23 +1,9 @@
-import { Controller, Get, Post, Body, Headers, Query, Param, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Headers, Query, Param, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNumber, Min, IsString, IsOptional, IsIn, IsObject, Length } from 'class-validator';
 import { WalletsService } from './wallets.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { toPage, toLimit } from '../common/utils/pagination';
-
-/**
- * The people who work for a business — a merchant's cashier and an
- * enterprise's vendeur / caissier / magasinier / comptable — sell and handle
- * stock; they never withdraw. The takings land in the OWNER's wallet and only
- * the owner (patron) moves that money out.
- */
-export const WITHDRAWAL_BLOCKED_ROLES = ['cashier', 'vendeur', 'caissier', 'magasinier', 'comptable'];
-
-export function assertMayWithdraw(role?: string) {
-  if (role && WITHDRAWAL_BLOCKED_ROLES.includes(role)) {
-    throw new ForbiddenException("Seul le patron peut effectuer des retraits. Votre rôle permet uniquement de gérer les ventes et le stock.");
-  }
-}
 
 class CreateTopupDto {
   @ApiProperty({ example: 50000, description: 'Amount in cents (e.g. 50000 = 500.00 CDF)' })
@@ -224,11 +210,9 @@ export class WalletsController {
   @ApiOperation({ summary: 'Request a withdrawal to Mobile Money or bank' })
   async createWithdrawal(
     @CurrentUser('id') userId: string,
-    @CurrentUser('role') role: string,
     @Body() dto: WithdrawalDto,
     @Headers('idempotency-key') idempotencyKey: string,
   ) {
-    assertMayWithdraw(role);
     if (!idempotencyKey) {
       throw new BadRequestException('Idempotency-Key header is required');
     }

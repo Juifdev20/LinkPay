@@ -22,3 +22,13 @@ Dans **Paramètres → Utilisateurs internes**, chaque employé actif a un séle
 - **Retirer l'accès** (l'employé part) : son compte est bloqué dans Supabase Auth (connexion impossible, message « Votre accès a été retiré »), ses sessions sont coupées immédiatement (un jeton resté sur son téléphone est refusé à la requête suivante) et le mot de passe temporaire non utilisé est effacé. Ses ventes, mouvements de stock et entrées du journal sont conservés.
 - **Rétablir l'accès** (l'employé revient) : le compte est débloqué avec un nouveau mot de passe temporaire à changer à la première connexion.
 - Les trois actions sont inscrites dans le **Journal** (qui, quand, quel employé).
+
+## Le salaire des employés
+
+Chaque employé a son **propre portefeuille ScanLinkPay** (menu « Mon portefeuille », ou « Portefeuille » dans la barre du bas pour le magasinier ; « Plus » pour les autres rôles sur mobile).
+
+1. L'employé y trouve son **numéro ScanLinkPay** et le donne au patron.
+2. Le patron lui envoie le salaire par **Envoyer** (transfert ScanLinkPay).
+3. L'employé appuie sur **Retirer mon salaire**, choisit Mobile Money, saisit son PIN de transaction : l'argent part vers son téléphone.
+
+Il ne retire que **son** argent : les recettes du commerce restent dans le portefeuille du patron, hors de portée des employés.

@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Receipt, QrCode, Settings, ShoppingCart, BarChart3, Bell, Menu, History, ClipboardList } from 'lucide-react';
+import { Home, Receipt, QrCode, Settings, ShoppingCart, BarChart3, Menu, History, ClipboardList, Wallet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -32,7 +32,7 @@ const historyTab: Tab = { to: '/dashboard/organization/sales/history', label: 'H
 const inventoryTab: Tab = { to: '/dashboard/organization/inventory', label: 'Inventaire', icon: ClipboardList, end: false };
 const orgTransactionsTab: Tab = { to: '/dashboard/organization/transactions', label: 'Transactions', icon: Receipt, end: false };
 const financeTab: Tab = { to: SALES_DASHBOARD_PATH, label: 'Finances', icon: BarChart3, end: true, central: true };
-const alertsTab: Tab = { to: '/dashboard/notifications', label: 'Alertes', icon: Bell, end: true, central: true };
+const walletTab: Tab = { to: '/dashboard/wallet', label: 'Portefeuille', icon: Wallet, end: true, central: true };
 
 // Selling is the daily business activity — the supermarket/electronics
 // cashier lands on the POS till; other sectors keep the Ventes form.
@@ -45,7 +45,7 @@ const staffTabsFor = (role: string, orgSector?: string): Tab[] | undefined => {
     caissier: [homeTab, orgTransactionsTab, caissierSale, settingsTab],
     comptable: [homeTab, orgTransactionsTab, financeTab, settingsTab],
     // Accueil IS the stock page for the stock keeper, so the second tab is the inventory (no duplicate).
-    magasinier: [homeTab, inventoryTab, alertsTab, settingsTab],
+    magasinier: [homeTab, inventoryTab, walletTab, settingsTab],
   };
   return map[role];
 };

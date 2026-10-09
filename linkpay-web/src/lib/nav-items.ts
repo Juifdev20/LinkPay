@@ -87,6 +87,8 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/organization/profile', label: 'Profil entreprise', icon: Building2, roles: ['enterprise'] },
   { to: '/dashboard/organization/stores', label: 'Boutiques', icon: Store, roles: ['enterprise'] },
   { to: '/dashboard/organization/staff', label: 'Utilisateurs internes', icon: Users, roles: ['enterprise'] },
+  // Employees' own wallet: where the patron sends their salary and from where they withdraw it.
+  { to: '/dashboard/wallet', label: 'Mon portefeuille', icon: Wallet, roles: STAFF_ROLES },
   { to: '/dashboard/notifications', label: 'Notifications', icon: Bell, roles: [...ALL_ROLES, ...STAFF_ROLES] },
   { to: '/dashboard/settings', label: 'Paramètres', icon: Settings, roles: [...ALL_ROLES, ...STAFF_ROLES] },
 ];
