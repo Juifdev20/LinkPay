@@ -48,6 +48,6 @@ jobs:
         with:
           fetch-depth: 0
       # Fails the build if a key, token or password was committed.
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
