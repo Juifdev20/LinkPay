@@ -46,7 +46,7 @@ Ce document décrit les défenses en place et ce qu'il reste à faire. Il est te
 3. Vérifier `ledger_entries` (types `ADJUSTMENT` et `TOPUP`) pour détecter un éventuel abus avant la migration `043`.
 4. Fermer ou contrôler l'inscription publique de Supabase Auth (l'inscription doit passer par `/auth/register`).
 5. **Jetons de session** : ils sont dans `localStorage`. Un cookie `HttpOnly` serait plus sûr contre le vol par XSS, mais il change tout le flux de connexion (web, Electron, Android) ; la CSP réduit déjà le risque. À planifier séparément.
-6. **Mises à jour majeures de NestJS** : `npm audit` signale encore des vulnérabilités qui n'ont de correctif que dans une version majeure (`@nestjs/platform-express`/`multer`, `@nestjs/swagger`, `@nestjs/cli`). À faire dans une branche dédiée, avec les tests.
+6. **Dépendances** : plus aucune faille « high » ou « critique » dans ce qui est déployé (`npm audit --omit=dev`, vérifié par la CI). Il reste des failles « moderate » sans correctif sans changement majeur ; la montée vers NestJS 12 n'est pas urgente et se fera avec une recette complète.
 7. **Plusieurs instances de l'API** : le verrouillage de connexion et de la 2FA est partagé via la base (migration `049`). Reste la limite de débit par IP (`@Throttle`), encore en mémoire par instance : à déplacer vers un stockage partagé (Redis) si vous passez à plusieurs instances.
 8. **Mobile** : détection de téléphone « rooté », vérification d'intégrité de l'application (Play Integrity), épinglage de certificat — nécessitent des plugins natifs et un test sur appareil.
 9. **SMS** pour les alertes critiques (l'email via Resend est fait, voir `.env.example`) : à ajouter quand un fournisseur couvrant la RDC est choisi.

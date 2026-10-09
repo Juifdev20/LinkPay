@@ -37,10 +37,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      # Fails on known CRITICAL vulnerabilities in what actually ships. The
-      # remaining HIGH ones only have a fix in a major NestJS upgrade (see
-      # SECURITY.md); lower this to `high` once that is done.
-      - run: npm audit --omit=dev --audit-level=critical
+      # Fails on known HIGH/CRITICAL vulnerabilities in what actually ships.
+      - run: npm audit --omit=dev --audit-level=high
         working-directory: ${{ matrix.project }}
 
   secret-scan:
