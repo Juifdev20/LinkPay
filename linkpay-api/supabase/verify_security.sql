@@ -122,5 +122,9 @@ SELECT created_at, wallet_id, entry_type, amount_cents, currency, reference
  ORDER BY amount_cents DESC
  LIMIT 20;
 
+-- C2. Employés dont l'accès a été retiré (un compte retiré doit aussi être bloqué dans Supabase Auth :
+--     Authentication → Users → la colonne « Banned until » doit être renseignée).
+SELECT prenom, nom, email, deactivated_at FROM organization_staff WHERE deactivated_at IS NOT NULL ORDER BY deactivated_at DESC LIMIT 20;
+
 -- D. Opérations suspectes déjà détectées et pas encore traitées.
 SELECT created_at, risk_score, flags FROM risk_logs WHERE NOT resolved ORDER BY created_at DESC LIMIT 20;

@@ -24,6 +24,9 @@ const ACTION_LABELS: Record<string, string> = {
   stock_item_updated: 'Article modifié',
   stock_item_deleted: 'Article supprimé',
   sale_archived: 'Vente archivée',
+  staff_role_changed: 'Rôle d\'un employé changé',
+  staff_access_removed: 'Accès d\'un employé retiré',
+  staff_access_restored: 'Accès d\'un employé rétabli',
 };
 
 function describe(entry: any): string {
@@ -53,6 +56,11 @@ function describe(entry: any): string {
       return `${c.name || 'Article'} — ${Object.entries(c.fields || {}).map(([k, v]: [string, any]) => `${k} : ${v.from ?? '∅'} → ${v.to ?? '∅'}`).join(' · ')}`;
     case 'stock_item_deleted':
       return `${c.item?.name || 'Article'}${c.item?.quantity != null ? ` (${c.item.quantity} en stock)` : ''}`;
+    case 'staff_role_changed':
+      return `${c.employee || 'Employé'} : ${c.from || '?'} → ${c.to || '?'}`;
+    case 'staff_access_removed':
+    case 'staff_access_restored':
+      return `${c.employee || 'Employé'}${c.email ? ` (${c.email})` : ''}`;
     case 'sale_archived':
       return 'Retirée de l\'historique (données conservées)';
     default:

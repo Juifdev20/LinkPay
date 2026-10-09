@@ -4,7 +4,7 @@ Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente
 
 ## 1. Base de données (Supabase → SQL Editor)
 
-- [ ] Exécuter dans l'ordre les migrations `040` → `050` (dossier `linkpay-api/supabase/migrations`). **La 043 d'abord si vous ne pouvez pas tout faire** : sans elle n'importe qui peut créditer un portefeuille.
+- [ ] Exécuter dans l'ordre les migrations `040` → `051` (dossier `linkpay-api/supabase/migrations`). **La 043 d'abord si vous ne pouvez pas tout faire** : sans elle n'importe qui peut créditer un portefeuille.
 - [ ] Exécuter `linkpay-api/supabase/verify_security.sql`. **Les 6 premières lignes doivent toutes afficher `OK`.** Une ligne `FAIL` dit ce qu'il reste à corriger.
 - [ ] Lire les 4 tableaux « à regarder à la main » en bas du résultat :
   - **A** : chaque administrateur est une personne que vous connaissez ;

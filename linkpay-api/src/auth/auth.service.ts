@@ -188,6 +188,10 @@ export class AuthService {
           'Le service de connexion est temporairement indisponible. Veuillez réessayer plus tard.',
         );
       }
+      // An employee whose access the patron removed: say so instead of "wrong password".
+      if (error && /banned/i.test(error.message || '')) {
+        throw new ForbiddenException("Votre accès a été retiré. Contactez votre employeur.");
+      }
       if (await this.loginAttempts.recordFailure(email)) {
         void this.securityAlerts.alert({
           severity: 'warning',
