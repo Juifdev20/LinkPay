@@ -34,6 +34,12 @@ services:
         value: false
       - key: TWO_FACTOR_ENCRYPTION_KEY
         sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: ALERT_EMAIL_FROM
+        sync: false
+      - key: ALERT_EMAILS
+        sync: false
       - key: ADMIN_REFRESH_EXPIRES_IN
         value: 12h
       - key: ADMIN_ALLOWED_IPS

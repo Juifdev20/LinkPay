@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EmailAlertsService } from './email-alerts.service';
 
 export type AlertSeverity = 'info' | 'warning' | 'critical';
 export type AlertAudience = 'super_admins' | 'admins';
@@ -26,6 +27,7 @@ export class SecurityAlertsService {
   constructor(
     private supabaseService: SupabaseService,
     private notificationsService: NotificationsService,
+    private emailAlerts: EmailAlertsService,
   ) {}
 
   async alert(p: {
@@ -52,6 +54,14 @@ export class SecurityAlertsService {
       this.logger.warn(`SECURITY ALERT [${p.severity}] ${p.title} — ${p.body}`);
 
       const recipients = await this.recipients(p.audience ?? 'super_admins');
+
+      // Critical alerts also go by email — to the audience's own addresses
+      // plus ALERT_EMAILS — so they reach people whose phone is silent.
+      if (p.severity === 'critical' && this.emailAlerts.enabled) {
+        void this.emailRecipients(recipients, p.excludeUserId).then((emails) =>
+          this.emailAlerts.send(emails, `${SEVERITY_LABEL.critical} ${p.title}`, p.body),
+        );
+      }
       await Promise.all(
         recipients
           .filter((id) => id !== p.excludeUserId)
@@ -68,6 +78,16 @@ export class SecurityAlertsService {
     } catch (err: any) {
       this.logger.error(`Could not send security alert "${p.title}": ${err?.message}`);
     }
+  }
+
+  private async emailRecipients(userIds: string[], excludeUserId?: string): Promise<string[]> {
+    const ids = userIds.filter((id) => id !== excludeUserId);
+    const emails = [...this.emailAlerts.extraRecipients()];
+    if (ids.length > 0) {
+      const { data } = await this.supabaseService.getClient().from('profiles').select('email').in('id', ids);
+      emails.push(...(data || []).map((r: any) => r.email).filter(Boolean));
+    }
+    return emails;
   }
 
   private async recipients(audience: AlertAudience): Promise<string[]> {

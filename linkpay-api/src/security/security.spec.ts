@@ -107,7 +107,8 @@ describe('SecurityAlertsService', () => {
       return { data: null };
     });
     const notifications = { create: jest.fn(async () => undefined) };
-    return { service: new SecurityAlertsService(fake.service, notifications as any), notifications };
+    const email = { enabled: true, extraRecipients: () => ['ops@x.com'], send: jest.fn(async () => true) };
+    return { service: new SecurityAlertsService(fake.service, notifications as any, email as any), notifications, email };
   }
 
   it('notifies each admin once, with a severity marker', async () => {
@@ -124,6 +125,15 @@ describe('SecurityAlertsService', () => {
     expect(notifications.create).toHaveBeenCalledTimes(2);
     await service.alert({ severity: 'info', title: 'T2', body: 'b', excludeUserId: 'a1' });
     expect(notifications.create).toHaveBeenCalledTimes(3);
+  });
+
+  it('emails critical alerts only, to the admins plus the extra recipients', async () => {
+    const { service, email } = setup();
+    await service.alert({ severity: 'warning', title: 'W', body: 'b' });
+    await service.alert({ severity: 'critical', title: 'C', body: 'details' });
+    await new Promise((r) => setImmediate(r));
+    expect(email.send).toHaveBeenCalledTimes(1);
+    expect(email.send).toHaveBeenCalledWith(expect.arrayContaining(['ops@x.com']), expect.stringContaining('C'), 'details');
   });
 
   it('never throws, even when the channel is broken', async () => {
@@ -155,5 +165,41 @@ describe('isAdminIpAllowed', () => {
     expect(isAdminIpAllowed('1.2.3.4', '::ffff:1.2.3.4')).toBe(true);
     expect(isAdminIpAllowed('1.2.3.4', '9.9.9.9')).toBe(false);
     expect(isAdminIpAllowed('1.2.3.4', undefined)).toBe(false);
+  });
+});
+
+describe('EmailAlertsService', () => {
+  const { EmailAlertsService } = require('./email-alerts.service');
+  const cfg = (v: Record<string, string>) => ({ get: (k: string) => v[k] }) as any;
+  const original = global.fetch;
+  afterEach(() => { global.fetch = original; });
+
+  it('does nothing without an API key (development)', async () => {
+    global.fetch = jest.fn() as any;
+    const svc = new EmailAlertsService(cfg({}));
+    expect(svc.enabled).toBe(false);
+    expect(await svc.send(['a@x.com'], 's', 't')).toBe(false);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('posts to Resend with the key in the header (not the body), de-duplicated recipients, escaped HTML', async () => {
+    global.fetch = jest.fn(async () => ({ ok: true })) as any;
+    const svc = new EmailAlertsService(cfg({ RESEND_API_KEY: 're_secret', ALERT_EMAIL_FROM: 'alerts@x.com' }));
+    expect(await svc.send(['A@x.com', 'a@x.com', 'b@x.com'], 'Sujet <b>', 'corps <script>')).toBe(true);
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(url).toBe('https://api.resend.com/emails');
+    expect(init.headers.Authorization).toBe('Bearer re_secret');
+    const body = JSON.parse(init.body);
+    expect(body.to).toEqual(['a@x.com', 'b@x.com']);
+    expect(init.body).not.toContain('re_secret');
+    expect(body.html).not.toContain('<script>');
+  });
+
+  it('reports failure instead of throwing when Resend refuses or the network is down', async () => {
+    const svc = new EmailAlertsService(cfg({ RESEND_API_KEY: 'k', ALERT_EMAIL_FROM: 'a@x.com' }));
+    global.fetch = jest.fn(async () => ({ ok: false, status: 403, text: async () => 'domain not verified' })) as any;
+    expect(await svc.send(['a@x.com'], 's', 't')).toBe(false);
+    global.fetch = jest.fn(async () => { throw new Error('ECONNRESET'); }) as any;
+    expect(await svc.send(['a@x.com'], 's', 't')).toBe(false);
   });
 });

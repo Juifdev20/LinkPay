@@ -170,7 +170,7 @@ export class AuthService {
   async login(dto: LoginDto, ctx: { ip?: string; userAgent?: string } = {}) {
     const { email, password, device_id } = dto;
 
-    this.loginAttempts.assertNotLocked(email);
+    await this.loginAttempts.assertNotLocked(email);
 
     const { data, error } = await this.supabaseService.getAuthClient().auth.signInWithPassword({
       email,
@@ -188,7 +188,7 @@ export class AuthService {
           'Le service de connexion est temporairement indisponible. Veuillez réessayer plus tard.',
         );
       }
-      if (this.loginAttempts.recordFailure(email)) {
+      if (await this.loginAttempts.recordFailure(email)) {
         void this.securityAlerts.alert({
           severity: 'warning',
           title: 'Compte verrouillé après des échecs de connexion',
@@ -200,7 +200,7 @@ export class AuthService {
       throw new UnauthorizedException('Email ou mot de passe incorrect');
     }
 
-    this.loginAttempts.recordSuccess(email);
+    await this.loginAttempts.recordSuccess(email);
     const userId = data.user.id;
 
     const { data: roleData } = await this.supabaseService.getClient()

@@ -1,4 +1,6 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, Logger, Optional } from '@nestjs/common';
+import { createHash } from 'crypto';
+import { SupabaseService } from '../supabase/supabase.service';
 
 export const MAX_FAILED_LOGINS = 5;
 export const LOGIN_WINDOW_MS = 15 * 60_000;
@@ -10,33 +12,61 @@ interface Attempts {
 }
 
 /**
- * Per-account brute-force brake for the login endpoint.
+ * Per-account brute-force brake for login and 2FA codes.
  *
  * The IP throttle alone doesn't stop a guesser who rotates IPs (a botnet, a
  * VPN pool): each IP stays under its budget while the SAME account is hit
- * thousands of times. This counts failures per email, whatever the IP: after
- * MAX_FAILED_LOGINS wrong passwords in LOGIN_WINDOW_MS the account refuses
+ * thousands of times. This counts failures per account, whatever the IP: after
+ * MAX_FAILED_LOGINS wrong attempts in LOGIN_WINDOW_MS the account refuses
  * logins for LOGIN_LOCK_MS — even with the right password, so a guesser can't
  * keep going and learn when they've hit it. The lock expires by itself.
  *
- * State is in memory (one API instance, as deployed on Render): a restart
- * clears it, which only ever gives an attacker a fresh budget, never locks a
- * legitimate user out for good. Moving to Redis is needed before scaling to
- * several instances.
+ * The counters live in the database (migration 049, keyed by a hash of the
+ * account) so every API instance and every restart sees the same state. If the
+ * database part is unavailable — migration not applied yet, an outage — it
+ * falls back to counters in this process's memory: weaker with several
+ * instances, but never "no protection" and never a login outage.
  */
 @Injectable()
 export class LoginAttemptsService {
+  private readonly logger = new Logger(LoginAttemptsService.name);
   private readonly byKey = new Map<string, Attempts>();
+  private warnedFallback = false;
 
-  private key(email: string) {
-    return email.trim().toLowerCase();
+  constructor(@Optional() private supabaseService?: SupabaseService) {}
+
+  private key(account: string) {
+    return account.trim().toLowerCase();
+  }
+
+  private hashed(account: string) {
+    return createHash('sha256').update(this.key(account)).digest('hex');
+  }
+
+  private fellBack(reason: string) {
+    if (!this.warnedFallback) {
+      this.warnedFallback = true;
+      this.logger.warn(`Login attempt counters fall back to memory (${reason}). Apply migration 049 to share them across instances.`);
+    }
   }
 
   /** Throws 429 when the account is currently locked. */
-  assertNotLocked(email: string, now = Date.now()): void {
-    const entry = this.byKey.get(this.key(email));
-    if (entry && entry.lockedUntil > now) {
-      const minutes = Math.ceil((entry.lockedUntil - now) / 60_000);
+  async assertNotLocked(account: string, now = Date.now()): Promise<void> {
+    let until: number | null = null;
+    if (this.supabaseService) {
+      try {
+        const { data, error } = await this.supabaseService.getClient().rpc('get_auth_lock', { p_key: this.hashed(account) });
+        if (error) this.fellBack(error.message);
+        else until = data ? new Date(data).getTime() : null;
+      } catch (err: any) {
+        this.fellBack(err?.message);
+      }
+    }
+    const memory = this.byKey.get(this.key(account));
+    if (memory && memory.lockedUntil > now) until = Math.max(until ?? 0, memory.lockedUntil);
+
+    if (until && until > now) {
+      const minutes = Math.ceil((until - now) / 60_000);
       throw new HttpException(
         `Trop de tentatives de connexion. Réessayez dans ${minutes} minute${minutes > 1 ? 's' : ''}.`,
         HttpStatus.TOO_MANY_REQUESTS,
@@ -45,8 +75,39 @@ export class LoginAttemptsService {
   }
 
   /** Returns true when this failure is the one that locks the account. */
-  recordFailure(email: string, now = Date.now()): boolean {
-    const k = this.key(email);
+  async recordFailure(account: string, now = Date.now()): Promise<boolean> {
+    if (this.supabaseService) {
+      try {
+        const { data, error } = await this.supabaseService.getClient().rpc('record_auth_failure', {
+          p_key: this.hashed(account),
+          p_max: MAX_FAILED_LOGINS,
+          p_window_seconds: LOGIN_WINDOW_MS / 1000,
+          p_lock_seconds: LOGIN_LOCK_MS / 1000,
+        });
+        if (!error) {
+          const row = Array.isArray(data) ? data[0] : data;
+          return !!row?.just_locked;
+        }
+        this.fellBack(error.message);
+      } catch (err: any) {
+        this.fellBack(err?.message);
+      }
+    }
+    return this.recordFailureInMemory(account, now);
+  }
+
+  async recordSuccess(account: string): Promise<void> {
+    this.byKey.delete(this.key(account));
+    if (!this.supabaseService) return;
+    try {
+      await this.supabaseService.getClient().rpc('clear_auth_attempts', { p_key: this.hashed(account) });
+    } catch {
+      /* the memory side is already cleared; the database row ages out on its own */
+    }
+  }
+
+  private recordFailureInMemory(account: string, now: number): boolean {
+    const k = this.key(account);
     const entry = this.byKey.get(k) ?? { failures: [], lockedUntil: 0 };
     entry.failures = entry.failures.filter((t) => now - t < LOGIN_WINDOW_MS);
     entry.failures.push(now);
@@ -59,10 +120,6 @@ export class LoginAttemptsService {
     this.byKey.set(k, entry);
     if (this.byKey.size > 10_000) this.prune(now);
     return locked;
-  }
-
-  recordSuccess(email: string): void {
-    this.byKey.delete(this.key(email));
   }
 
   private prune(now: number) {

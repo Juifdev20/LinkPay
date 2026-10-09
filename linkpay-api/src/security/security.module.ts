@@ -3,6 +3,7 @@ import { SupabaseModule } from '../supabase/supabase.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LoginAttemptsService } from '../auth/login-attempts.service';
 import { SecurityAlertsService } from './security-alerts.service';
+import { EmailAlertsService } from './email-alerts.service';
 import { SecurityMonitorService } from './security-monitor.service';
 import { TwoFactorService } from './two-factor.service';
 import { OtpStepUpGuard } from './otp-step-up.guard';
@@ -11,7 +12,7 @@ import { OtpStepUpGuard } from './otp-step-up.guard';
 @Global()
 @Module({
   imports: [SupabaseModule, NotificationsModule],
-  providers: [LoginAttemptsService, TwoFactorService, SecurityAlertsService, SecurityMonitorService, OtpStepUpGuard],
+  providers: [LoginAttemptsService, TwoFactorService, EmailAlertsService, SecurityAlertsService, SecurityMonitorService, OtpStepUpGuard],
   exports: [LoginAttemptsService, TwoFactorService, SecurityAlertsService, OtpStepUpGuard],
 })
 export class SecurityModule {}

@@ -58,7 +58,7 @@ expected_functions AS (
     FROM unnest(ARRAY[
       'credit_wallet', 'debit_wallet', 'transfer_wallet', 'credit_merchant_wallet', 'refund_to_client_wallet',
       'mark_withdrawal_processing', 'finish_withdrawal', 'fail_withdrawal', 'fail_settlement',
-      'add_pos_payment', 'savings_pot_balances', 'claim_totp_step', 'consume_recovery_code', 'negative_wallet_balances'
+      'add_pos_payment', 'savings_pot_balances', 'claim_totp_step', 'consume_recovery_code', 'negative_wallet_balances', 'record_auth_failure', 'get_auth_lock', 'clear_auth_attempts'
     ]) AS f
    WHERE NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname = f)
 )

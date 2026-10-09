@@ -4,7 +4,7 @@ Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente
 
 ## 1. Base de données (Supabase → SQL Editor)
 
-- [ ] Exécuter dans l'ordre les migrations `040` → `048` (dossier `linkpay-api/supabase/migrations`). **La 043 d'abord si vous ne pouvez pas tout faire** : sans elle n'importe qui peut créditer un portefeuille.
+- [ ] Exécuter dans l'ordre les migrations `040` → `049` (dossier `linkpay-api/supabase/migrations`). **La 043 d'abord si vous ne pouvez pas tout faire** : sans elle n'importe qui peut créditer un portefeuille.
 - [ ] Exécuter `linkpay-api/supabase/verify_security.sql`. **Les 6 premières lignes doivent toutes afficher `OK`.** Une ligne `FAIL` dit ce qu'il reste à corriger.
 - [ ] Lire les 4 tableaux « à regarder à la main » en bas du résultat :
   - **A** : chaque administrateur est une personne que vous connaissez ;
@@ -21,6 +21,7 @@ Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente
 - [ ] Nouveau mot de passe / clés CinetPay, nouvelle clé FCM.
 - [ ] `TWO_FACTOR_ENCRYPTION_KEY` : 32+ caractères aléatoires, à définir **avant** que les administrateurs activent la 2FA, puis ne plus jamais la changer.
 - [ ] `NODE_ENV=production`, `ENABLE_SWAGGER=false`, `PSP_PROVIDER` = le vrai fournisseur (jamais `mock`).
+- [ ] **Alertes par email** : créer un compte gratuit sur resend.com, vérifier votre domaine d'envoi, puis définir `RESEND_API_KEY` et `ALERT_EMAIL_FROM` (et `ALERT_EMAILS` pour des destinataires en plus). Tester : déclencher une alerte critique (ex. un mauvais code 2FA sur un compte admin) et vérifier la réception.
 - [ ] Optionnel mais recommandé : `ADMIN_ALLOWED_IPS` si les administrateurs ont une IP fixe (bureau/VPN).
 
 ## 3. Comptes administrateurs

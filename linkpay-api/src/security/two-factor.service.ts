@@ -82,14 +82,14 @@ export class TwoFactorService {
 
   /** Confirms the first code, switches 2FA on and returns the recovery codes (shown only now). */
   async confirmSetup(userId: string, code: string): Promise<string[]> {
-    this.assertNotLocked(userId);
+    await this.assertNotLocked(userId);
     const profile = await this.load(userId);
     if (!profile?.two_factor_secret || profile.two_factor_enabled) {
       throw new BadRequestException("Lancez d'abord la configuration de la double authentification");
     }
     const step = verifyCode(this.decryptSecret(profile.two_factor_secret), code);
     if (step === null || !(await this.claimStep(userId, step))) {
-      this.fail(userId);
+      await this.fail(userId);
       throw new BadRequestException('Code incorrect. Vérifiez l\'heure de votre téléphone et réessayez.');
     }
     const plainCodes = Array.from({ length: RECOVERY_CODE_COUNT }, () => {
@@ -105,13 +105,13 @@ export class TwoFactorService {
       })
       .eq('id', userId);
     if (error) throw new Error(`Failed to enable 2FA: ${error.message}`);
-    this.attempts.recordSuccess(this.attemptKey(userId));
+    await this.attempts.recordSuccess(this.attemptKey(userId));
     return plainCodes;
   }
 
   /** Checks an authenticator code, or a recovery code. Never reveals which part was wrong. */
   async verify(userId: string, code: string): Promise<boolean> {
-    this.assertNotLocked(userId);
+    await this.assertNotLocked(userId);
     const profile = await this.load(userId);
     if (!profile?.two_factor_enabled || !profile.two_factor_secret) return false;
 
@@ -126,8 +126,8 @@ export class TwoFactorService {
       ok = data === true;
     }
 
-    if (ok) this.attempts.recordSuccess(this.attemptKey(userId));
-    else this.fail(userId);
+    if (ok) await this.attempts.recordSuccess(this.attemptKey(userId));
+    else await this.fail(userId);
     return ok;
   }
 
@@ -155,11 +155,11 @@ export class TwoFactorService {
     return `otp:${userId}`;
   }
 
-  private assertNotLocked(userId: string) {
-    this.attempts.assertNotLocked(this.attemptKey(userId));
+  private async assertNotLocked(userId: string) {
+    await this.attempts.assertNotLocked(this.attemptKey(userId));
   }
 
-  private fail(userId: string) {
-    this.attempts.recordFailure(this.attemptKey(userId));
+  private async fail(userId: string) {
+    await this.attempts.recordFailure(this.attemptKey(userId));
   }
 }
