@@ -46,6 +46,7 @@ const SECTIONS: { title: string; match: (to: string) => boolean }[] = [
       to.startsWith('/dashboard/payment-requests') ||
       to.startsWith('/dashboard/team') ||
       to.startsWith('/dashboard/wallet') ||
+      to.startsWith('/dashboard/card') ||
       to.startsWith('/dashboard/client/'),
   },
   {

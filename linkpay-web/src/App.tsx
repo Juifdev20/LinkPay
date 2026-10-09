@@ -21,6 +21,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 const PaymentLinkPage = lazyPage(() => import('@/pages/public/PaymentLinkPage'));
 const PaymentResultPage = lazyPage(() => import('@/pages/public/PaymentResultPage'));
 const PayByNumber = lazyPage(() => import('@/pages/public/PayByNumber'));
+const CardLandingPage = lazyPage(() => import('@/pages/public/CardLanding'));
 
 import DashboardLayout from '@/layouts/DashboardLayout';
 import MerchantDashboard from '@/pages/merchant/Dashboard';
@@ -47,6 +48,10 @@ const ScanQrPage = lazyPage(() => import('@/pages/wallet/ScanQr'));
 const WithdrawPage = lazyPage(() => import('@/pages/wallet/Withdraw'));
 const SetPinPage = lazyPage(() => import('@/pages/wallet/SetPin'));
 const WalletTransactionsPage = lazyPage(() => import('@/pages/wallet/Transactions'));
+const MyCardPage = lazyPage(() => import('@/pages/wallet/MyCard'));
+const ChargeCardPage = lazyPage(() => import('@/pages/merchant/ChargeCard'));
+const AdminCardsPage = lazyPage(() => import('@/pages/admin/Cards'));
+const CardPrintPage = lazyPage(() => import('@/pages/admin/CardPrint'));
 
 const AdminDashboard = lazyPage(() => import('@/pages/admin/Dashboard'));
 const AdminMerchantsPage = lazyPage(() => import('@/pages/admin/Merchants'));
@@ -197,6 +202,15 @@ export default function App() {
 
       <Route path="/p/:token" element={<PaymentLinkPage />} />
       <Route path="/pay/:number" element={<PayByNumber />} />
+      <Route path="/c/:token" element={<CardLandingPage />} />
+      <Route
+        path="/admin/cards/:id/print"
+        element={
+          <ProtectedRoute roles={['admin', 'super_admin']}>
+            <CardPrintPage />
+          </ProtectedRoute>
+        }
+      />
       <Route path="/payment/result" element={<PaymentResultPage />} />
 
       <Route path="/admin-2fa" element={<AdminTwoFactorSetupPage />} />
@@ -246,6 +260,23 @@ export default function App() {
         <Route path="wallet/withdraw" element={<WithdrawPage />} />
         <Route path="wallet/pin" element={<SetPinPage />} />
         <Route path="wallet/transactions" element={<WalletTransactionsPage />} />
+        <Route path="card" element={<MyCardPage />} />
+        <Route
+          path="card/charge"
+          element={
+            <ProtectedRoute roles={['merchant', 'cashier', 'enterprise', 'caissier', 'vendeur']}>
+              <ChargeCardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/cards"
+          element={
+            <ProtectedRoute roles={['admin', 'super_admin']}>
+              <AdminCardsPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="more" element={<MorePage />} />

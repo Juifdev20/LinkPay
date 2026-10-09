@@ -55,6 +55,7 @@ Ce document décrit les défenses en place et ce qu'il reste à faire. Il est te
 ### Chaîne de développement
 - CI (`.github/workflows/security.yml`) : tests, vérification des types, audit des dépendances, détection de secrets.
 - Dependabot pour les mises à jour de dépendances.
+- **Carte ScanLinkPay** (migration `059`) : la carte ne contient **ni solde ni secret**. Son QR code est un jeton opaque de 60 bits (`/c/<jeton>`), le numéro à 16 chiffres (norme ISO 7812, clé de Luhn) est **distinct** du numéro de portefeuille : perdre une carte ne change jamais le numéro que tout le monde utilise. Une carte émise est **inactive** : seul son titulaire l'active, depuis son compte, avec les 16 chiffres **et** son PIN (essais comptés avant comparaison, verrou après 5) — une carte remise à la mauvaise personne ne sert à rien. Un paiement par carte n'est **jamais** débité sans le **PIN du titulaire**, saisi sur **son** téléphone : le commerçant crée une demande liée à la carte (3 minutes), le titulaire la confirme, et le paiement est le paiement par portefeuille existant (limites, frais, risque, journal). Le commerçant n'apprend que « Prénom X. », jamais un solde ; carte inconnue, gelée, bloquée, expirée ou non activée donnent la même réponse. Une seule carte vivante par personne (garanti par un index unique en base, `issue_card` atomique, 12 émissions simultanées = 1 carte). Perte : blocage définitif avec PIN, demandes en attente annulées. Émission, impression, blocage et réglages sont journalisés ; seul le super admin (avec code frais) change téléphone, domaine, validité et logos (images PNG/JPEG/WebP uniquement, pas de SVG, 110 ko au plus). Tout est réservé à l'API (aucun accès par la clé publique).
 
 ## À faire (priorité décroissante)
 
@@ -79,6 +80,7 @@ Ce document décrit les défenses en place et ce qu'il reste à faire. Il est te
 - **Paiement par numéro (public)** : permet de vérifier qu'un numéro correspond à un compte marchand actif (limité en débit par IP). À restreindre si cela gêne.
 - **Journal d'audit** : le comptable voit les actions de l'équipe (sans adresses IP ni appareils) ; le propriétaire et la plateforme voient tout.
 - **Verrou d'écran (application)** : la vente rapide reste utilisable écran verrouillé, par choix produit ; le déblocage reste exigé pour tout le reste.
+- **Carte** : le QR code est statique (il ne change qu'au remplacement de la carte) ; quelqu'un qui le photographie peut seulement demander un paiement au titulaire, qui doit le confirmer avec son PIN, ou lui envoyer de l'argent. Un commerçant malveillant peut tenter d'envoyer des demandes à une carte (3 en attente, 20 par heure au plus, le titulaire peut refuser ou geler la carte). Une carte expirée reste « active » en base mais n'est plus acceptée : le renouvellement passe par « remplacer » dans Cartes.
 - Règlements manuels hérités (`fail_settlement`) : à revoir si l'ancien système est un jour réactivé.
 
 ## Signaler une faille

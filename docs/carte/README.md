@@ -1,4 +1,6 @@
-# Carte ScanLinkPay — proposition de design
+# Carte ScanLinkPay — design et mise en œuvre
+
+> Mise en œuvre : `linkpay-api/src/cards/` (API), migration `059_cards.sql`, `linkpay-web/src/components/card/` (la carte), pages « Ma carte », « Cartes » (admin), « Encaisser par carte ». Voir `docs/LAUNCH_CHECKLIST.md` § 2 ter.
 
 Aperçu : `apercu-carte.html` (recto + verso), images `recto.png` / `verso.png`.
 Données de l'aperçu **fictives** (nom, numéro, QR, téléphone du service client).

@@ -39,6 +39,7 @@ import { ExpenseTrackerModule } from './expense-tracker/expense-tracker.module';
 import { PlatformSettingsModule } from './platform-settings/platform-settings.module';
 import { SalesModule } from './sales/sales.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { CardsModule } from './cards/cards.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { CookieAuthInterceptor } from './auth/cookie-auth.interceptor';
 import { AuthCookiesService } from './auth/auth-cookies';
@@ -97,6 +98,7 @@ import { createThrottlerStorage } from './common/throttler/redis-throttler.stora
     PlatformSettingsModule,
     SalesModule,
     SubscriptionsModule,
+    CardsModule,
   ],
   providers: [
     {

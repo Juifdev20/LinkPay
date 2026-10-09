@@ -4,7 +4,7 @@ Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente
 
 ## 1. Base de données (Supabase → SQL Editor)
 
-- [ ] Exécuter dans l'ordre les migrations `040` → `058` (dossier `linkpay-api/supabase/migrations`). **La 043 d'abord si vous ne pouvez pas tout faire** : sans elle n'importe qui peut créditer un portefeuille.
+- [ ] Exécuter dans l'ordre les migrations `040` → `059` (dossier `linkpay-api/supabase/migrations`). **La 043 d'abord si vous ne pouvez pas tout faire** : sans elle n'importe qui peut créditer un portefeuille.
 - [ ] Exécuter `linkpay-api/supabase/verify_security.sql`. **Les 6 premières lignes doivent toutes afficher `OK`.** Une ligne `FAIL` dit ce qu'il reste à corriger.
 - [ ] Lire les 4 tableaux « à regarder à la main » en bas du résultat :
   - **A** : chaque administrateur est une personne que vous connaissez ;
@@ -24,6 +24,14 @@ Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente
 - [ ] `NODE_ENV=production`, `ENABLE_SWAGGER=false`, `PSP_PROVIDER` = le vrai fournisseur (jamais `mock`).
 - [ ] **Alertes par email** : créer un compte gratuit sur resend.com, vérifier votre domaine d'envoi, puis définir `RESEND_API_KEY` et `ALERT_EMAIL_FROM` (et `ALERT_EMAILS` pour des destinataires en plus). Tester : déclencher une alerte critique (ex. un mauvais code 2FA sur un compte admin) et vérifier la réception.
 - [ ] Optionnel mais recommandé : `ADMIN_ALLOWED_IPS` si les administrateurs ont une IP fixe (bureau/VPN).
+
+## 2 ter. Carte ScanLinkPay
+
+- [ ] Migration `059` appliquée (tables `cards`, `card_charges`, `card_settings`, fonction `issue_card`) ; relancer `verify_security.sql`.
+- [ ] Super admin → **Cartes → Réglages de la carte** : renseigner le **téléphone du service client**, le **téléphone « carte perdue ou volée »** (les deux lignes du verso), le **nom de domaine** (c'est lui qui est encodé dans le QR code : `https://<domaine>/c/<jeton>` — à fixer AVANT d'imprimer, un QR déjà imprimé garde l'ancien domaine), la **validité** (3 ans par défaut) et les **logos des partenaires** (Orange Money, Airtel Money, M-Pesa : les fichiers sont dans `docs/carte/logos/`, à ajouter dans cet ordre ou à réordonner avec les flèches). Un champ vide n'est pas imprimé.
+- [ ] Imprimer une carte d'essai (Cartes → Préparer → Imprimer → « Enregistrer au format PDF »), la montrer à l'imprimerie ou au fabricant de cartes : format 85,60 × 53,98 mm, option « fond perdu 1,5 mm » si elle le demande. Tester le QR avec un téléphone avant d'en imprimer beaucoup.
+- [ ] Essai de bout en bout avec deux comptes : activer la carte (16 chiffres + PIN), la bloquer, puis un commerçant encaisse la carte, le titulaire confirme avec son PIN.
+- [ ] Le prix de la carte (si vous la facturez) n'est pas géré par l'application : à encaisser au guichet.
 
 ## 2 bis. Abonnement mensuel (revenus de la plateforme)
 
