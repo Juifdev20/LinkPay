@@ -27,7 +27,7 @@ export default function ProActivationResultPage() {
 
   const { data, isLoading, timedOut } = usePaymentStatusPoll<ExpenseProPayment>(
     ['expense-pro-payment-status', ref],
-    async () => (await api.get(`/expense-tracker/pro/payments/${ref}/status`)).data,
+    async () => (await api.get(`/expense-tracker/pro/payments/${encodeURIComponent(ref ?? "")}/status`)).data,
     (d) => d.status,
     !!ref,
   );

@@ -12,6 +12,7 @@ import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicke
 import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Loader2, CheckCircle, AlertCircle, Lock, User, Phone, Smartphone, Wallet as WalletIcon, Sparkles, ArrowLeft } from 'lucide-react';
+import { checkoutUrl } from '@/lib/safe-url';
 
 export default function PaymentLinkPage() {
   const { token } = useParams<{ token: string }>();
@@ -27,7 +28,7 @@ export default function PaymentLinkPage() {
   const [operator, setOperator] = useState(MOBILE_MONEY_OPERATORS[0].value);
 
   useEffect(() => {
-    api.get(`/payment-requests/link/${token}`)
+    api.get(`/payment-requests/link/${encodeURIComponent(token ?? "")}`)
       .then(({ data }) => setRequest(data))
       .catch(() => setError('Lien de paiement invalide ou expiré'))
       .finally(() => setLoading(false));
@@ -68,7 +69,7 @@ export default function PaymentLinkPage() {
       if (data.status === 'SUCCESS') {
         navigate('/payment/result', { state: { status: 'success', reference: data.reference } });
       } else if (data.checkout_url) {
-        window.location.href = data.checkout_url;
+        window.location.href = checkoutUrl(data.checkout_url);
       } else {
         navigate('/payment/result', { state: { status: 'failed' } });
       }

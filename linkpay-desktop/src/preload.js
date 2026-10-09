@@ -6,7 +6,9 @@
  */
 const { contextBridge, ipcRenderer } = require('electron');
 
-const TRUSTED = ['https://linkpay-lwt2.onrender.com', 'http://localhost:5173'];
+// The local dev server is trusted only when launched for development (LINKPAY_URL set); a shipped build never trusts localhost.
+const TRUSTED = ['https://linkpay-lwt2.onrender.com'];
+if (process.env.LINKPAY_URL) TRUSTED.push(new URL(process.env.LINKPAY_URL).origin);
 
 if (TRUSTED.includes(location.origin)) {
   contextBridge.exposeInMainWorld('linkpayDesktop', {

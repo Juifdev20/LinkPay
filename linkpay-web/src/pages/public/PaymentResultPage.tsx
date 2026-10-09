@@ -31,7 +31,7 @@ export default function PaymentResultPage() {
 
   const { data, isLoading, timedOut } = usePaymentStatusPoll<PaymentStatusResponse>(
     ['payment-status', ref],
-    async () => (await api.get(`/payments/status/${ref}`)).data,
+    async () => (await api.get(`/payments/status/${encodeURIComponent(ref ?? "")}`)).data,
     (d) => d.status,
     !state && !!ref,
   );

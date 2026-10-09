@@ -151,7 +151,7 @@ services:
       # HttpOnly SameSite=Strict cookies. Adjust the host if your API service has another URL. Must stay ABOVE /*.
       - type: rewrite
         source: /api/*
-        destination: https://linkpay-api.onrender.com/api/*
+        destination: https://linkpayapi.onrender.com/api/*
       - type: rewrite
         source: /*
         destination: /index.html
@@ -181,13 +181,16 @@ services:
         value: no-store, private
       # ── Security headers (every response) ──
       # CSP: scripts only from our own origin, so a script injected through a
-      # stray bug can't run or phone home; the page can't be framed
-      # (clickjacking). connect-src lists the API (Render) and Supabase
-      # (REST + realtime websockets) — add a host here if the app starts
-      # calling a new one, or the browser will block it.
+      # stray bug can't run; the page can't be framed (clickjacking).
+      # connect-src is pinned to the EXACT API host and the EXACT Supabase project (not *.onrender.com /
+      # *.supabase.co): a wildcard would let an injected script send the session to any attacker-owned app on
+      # those platforms. Change these two hosts here if the API or the Supabase project ever changes, or the
+      # browser will block the calls. form-action is 'self' (payments redirect with window.location, not forms).
+      # Known gap: img-src still allows any https image (an image request is a way to leak data) — it can be
+      # narrowed once every image host the app uses is listed.
       - path: /*
         name: Content-Security-Policy
-        value: "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://*.onrender.com https://*.supabase.co wss://*.supabase.co https://*.googleapis.com; worker-src 'self' blob:; manifest-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self' https:; frame-ancestors 'none'"
+        value: "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://linkpayapi.onrender.com https://lxgdbneabsqrawgcusmv.supabase.co wss://lxgdbneabsqrawgcusmv.supabase.co https://*.googleapis.com; worker-src 'self' blob:; manifest-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
       - path: /*
         name: X-Frame-Options
         value: DENY

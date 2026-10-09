@@ -29,7 +29,7 @@ export default function PayByNumber() {
   const [paying, setPaying] = useState(false);
 
   useEffect(() => {
-    api.get(`/organizations/pay/${number}`)
+    api.get(`/organizations/pay/${encodeURIComponent(number ?? "")}`)
       .then(({ data }) => {
         setOrg(data);
         if (data.merchants.length === 1) setMerchantId(data.merchants[0].id);

@@ -12,6 +12,7 @@ import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
 import { formatCurrency } from '@/lib/utils';
 import { FormSheet } from '@/components/FormSheet';
 import { Loader2, Check, Search, ArrowLeft, ScanLine, Store, Wallet as WalletIcon, Smartphone } from 'lucide-react';
+import { checkoutUrl } from '@/lib/safe-url';
 
 type Step = 'reference' | 'confirm' | 'method' | 'pin' | 'processing' | 'success';
 type Source = 'wallet' | 'mobile_money';
@@ -102,7 +103,7 @@ export default function PayInvoicePage() {
         { headers: { 'Idempotency-Key': crypto.randomUUID() } },
       );
       if (data.checkout_url) {
-        window.location.href = data.checkout_url;
+        window.location.href = checkoutUrl(data.checkout_url);
         return;
       }
       setResult(data);

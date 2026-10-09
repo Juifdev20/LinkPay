@@ -1,6 +1,5 @@
 import { create } from 'zustand';
-import { hasSession } from './token-storage';
-import { clearConfirmToken } from './confirm-token';
+import { hasSession, forgetSessionSecrets } from './token-storage';
 
 /**
  * When the app asks for the access code again.
@@ -69,6 +68,6 @@ export const useAppLock = create<AppLockState>((set) => ({
   // A stored session at launch means "someone reopened the app": locked until the code is entered.
   locked: hasSession(),
   // Locking also forgets the 5-minute confirmation for sensitive actions.
-  lock: () => { clearConfirmToken(); set({ locked: true }); },
+  lock: () => { forgetSessionSecrets(); set({ locked: true }); },
   unlock: () => set({ locked: false }),
 }));

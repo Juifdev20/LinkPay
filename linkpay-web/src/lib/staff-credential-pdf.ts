@@ -105,7 +105,12 @@ export async function downloadStaffCredentialPdf(staff: StaffCredentialData): Pr
   if (Capacitor.isNativePlatform()) {
     const base64 = doc.output('datauristring').split(',')[1];
     const { uri } = await Filesystem.writeFile({ path: filename, data: base64, directory: Directory.Cache });
-    await Share.share({ title: filename, files: [uri], dialogTitle: 'Enregistrer le PDF' });
+    try {
+      await Share.share({ title: filename, files: [uri], dialogTitle: 'Enregistrer le PDF' });
+    } finally {
+      // It contains a temporary password: don't leave it in the app's cache.
+      await Filesystem.deleteFile({ path: filename, directory: Directory.Cache }).catch(() => undefined);
+    }
     return;
   }
 

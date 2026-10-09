@@ -15,6 +15,7 @@ import {
   TOKEN_REFRESH_KEY,
   getCachedUser,
   setCachedUser,
+  forgetSessionSecrets,
 } from './token-storage';
 import { clearAppLockLocal } from './webauthn';
 import { queryClient } from './query-client';
@@ -107,6 +108,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (COOKIE_AUTH) setRememberMe(rememberMe);
     const { data } = await api.post('/auth/login', { email, password, device_id: getDeviceId(), ...(otp ? { otp } : {}) });
     queryClient.clear(); // never show another account's cached data
+    forgetSessionSecrets(); // …nor inherit the previous person's stock password / confirmation
     setRememberMe(rememberMe);
     setTokens(data.access_token, data.refresh_token);
     applySupabaseSession(data.supabase_session);
@@ -119,6 +121,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (COOKIE_AUTH) setRememberMe(rememberMe);
     const res = await api.post('/auth/register', { ...data, device_id: getDeviceId() });
     queryClient.clear();
+    forgetSessionSecrets();
     setRememberMe(rememberMe);
     setTokens(res.data.access_token, res.data.refresh_token);
     applySupabaseSession(res.data.supabase_session);
