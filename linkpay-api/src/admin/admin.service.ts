@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { sumByCurrency } from '../common/utils/currency';
+import { toPublicProfile } from '../users/users.service';
 
 @Injectable()
 export class AdminService {
@@ -134,7 +135,8 @@ export class AdminService {
       }, {});
     }
 
-    const enriched = (data || []).map((u: any) => ({ ...u, role: rolesByUser[u.id] || 'client' }));
+    // Never send PIN hashes / 2FA secrets / session columns to the admin's browser either.
+    const enriched = (data || []).map((u: any) => ({ ...toPublicProfile(u), role: rolesByUser[u.id] || 'client' }));
 
     return { data: enriched, total: count || 0, page, limit };
   }

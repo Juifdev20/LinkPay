@@ -2,6 +2,23 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { sumByCurrency } from '../common/utils/currency';
 
+/**
+ * Columns of `profiles` that only the API itself may see. A profile is sent
+ * to the browser (GET /users/me), and a bcrypt hash of a 4-digit PIN falls to
+ * offline guessing in seconds — so the PIN hash, the 2FA secret and the
+ * lockout / session-control columns never leave the server.
+ */
+const PROFILE_PRIVATE_FIELDS = [
+  'transaction_pin_hash', 'pin_attempts', 'pin_locked_until',
+  'two_factor_secret', 'active_session_id', 'active_device_id',
+] as const;
+
+export function toPublicProfile<T extends Record<string, any>>(row: T) {
+  const publicRow: Record<string, any> = { ...row };
+  for (const field of PROFILE_PRIVATE_FIELDS) delete publicRow[field];
+  return publicRow;
+}
+
 @Injectable()
 export class UsersService {
   constructor(private supabaseService: SupabaseService) {}
@@ -29,7 +46,7 @@ export class UsersService {
     }
 
     return {
-      ...data,
+      ...toPublicProfile(data),
       role,
       merchant_id: merchantId || undefined,
       acting_as_org_id: actingAsOrgId || undefined,
@@ -58,7 +75,7 @@ export class UsersService {
       throw new Error(`Failed to update profile: ${error.message}`);
     }
 
-    return data;
+    return toPublicProfile(data);
   }
 
   async getClientStats(userId: string) {
