@@ -353,7 +353,14 @@ export class StockService {
       .select()
       .single();
 
-    if (error) throw new Error(`Failed to record stock movement: ${error.message}`);
+    if (error) {
+      // 23514 = check_violation: stock_items_quantity_nonnegative refused it —
+      // another sale took the last units between the check above and here.
+      if (error.code === '23514') {
+        throw new BadRequestException('Quantité insuffisante : le stock vient de changer');
+      }
+      throw new Error(`Failed to record stock movement: ${error.message}`);
+    }
 
     const { data: item } = await this.supabaseService.getClient()
       .from('stock_items')

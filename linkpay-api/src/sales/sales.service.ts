@@ -84,6 +84,12 @@ export class SalesService {
     if (itemsError) throw new Error(`Failed to load stock items: ${itemsError.message}`);
 
     const byId = new Map((items || []).map((i) => [i.id, i]));
+    // Total wanted per article: the same article may appear on several lines,
+    // and each line passing the stock check on its own would oversell it.
+    const wantedByItem = new Map<string, number>();
+    for (const line of lines) {
+      wantedByItem.set(line.stock_item_id, (wantedByItem.get(line.stock_item_id) ?? 0) + line.quantity);
+    }
     let currency: string | null = null;
     let total = 0;
     const snapshot = lines.map((line) => {
@@ -91,7 +97,7 @@ export class SalesService {
       if (!item || item.merchant_id !== merchant.id) {
         throw new BadRequestException('Un article du panier n\'appartient pas à cette entreprise');
       }
-      if (line.quantity > item.quantity) {
+      if ((wantedByItem.get(item.id) ?? line.quantity) > item.quantity) {
         throw new BadRequestException(`Stock insuffisant pour "${item.name}" : il reste ${item.quantity} unité(s)`);
       }
       if (currency && currency !== item.currency) {
