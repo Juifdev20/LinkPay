@@ -40,3 +40,11 @@ Un seul abonnement mensuel, **tout est inclus** : caisse, ventes, stock, inventa
 Les employés ne paient rien : si l'abonnement est inactif, ils lisent « Vous n'avez pas d'abonnement actif pour utiliser cette fonctionnalité » et sont invités à prévenir le patron. Selon le réglage du super admin, les écrans restent consultables (lecture simple) ou se ferment (bloqué).
 
 Toujours disponibles quelle que soit la situation : paiements des clients, portefeuille, retraits, notifications, paramètres, retirer l'accès d'un employé.
+
+
+## La carte ScanLinkPay
+
+- **Tout le monde** (client, marchand, patron, employé, administrateur) a **Ma carte** : la carte avec le solde en CDF et en USD de son portefeuille, demande, activation (16 chiffres + PIN), pause, déclaration de perte.
+- **Marchand, patron, caissier, vendeur** ont en plus **Encaisser par carte** : scanner la carte du client (ou saisir son numéro), saisir le montant ; le client confirme avec son PIN sur son téléphone. Le patron et le personnel encaissent dans la boutique la plus ancienne de l'entreprise (ou celle choisie).
+- **Administrateur et super admin** ont **Cartes** : préparer une carte à partir du numéro ScanLinkPay de la personne (ou d'une demande), l'imprimer, la bloquer. Le **super admin** règle en plus le téléphone, le domaine, la validité et les logos imprimés.
+- Scanner une carte avec l'appareil photo ouvre `/c/<jeton>` : un vendeur arrive à la caisse, toute autre personne peut envoyer de l'argent au titulaire.

@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { CardsService, extractQrToken, MAX_PENDING_CHARGES_PER_CARD } from './cards.service';
+import { CardsService, extractQrToken, MAX_CHARGES_PER_CARD_PER_HOUR, MAX_PENDING_CHARGES_PER_CARD } from './cards.service';
 import { createFakeSupabase, has, RecordedQuery } from '../test-utils/fake-supabase';
 import { validateCardSettings } from './card-settings';
 
@@ -243,9 +243,9 @@ describe('admin block', () => {
 describe('charging a card (the till)', () => {
   const caller = { userId: 'u-shop', merchantId: 'm1' };
   const dto = { qr_token: `https://scanlinkpay.com/c/${TOKEN}`, amount_cents: 50000, currency: 'CDF' };
-  const handlers = (card: any = CARD, pending = 0): Handlers => ({
+  const handlers = (card: any = CARD, pending = 0, lastHour = 0): Handlers => ({
     'cards:select': () => ({ data: card }),
-    'card_charges:select': (q) => (has(q, 'select', 'id', { count: 'exact', head: true }) ? { count: pending } : { data: [] }),
+    'card_charges:select': (q) => (has(q, 'select', 'id', { count: 'exact', head: true }) ? { count: has(q, 'gt', 'created_at') ? lastHour : pending } : { data: [] }),
     'card_charges:insert': () => ({ data: { id: 'ch1' } }),
     merchants: () => ({ data: { name: 'Chez Mama' } }),
     profiles: () => ({ data: { full_name: 'Amina Marie Kabongo' } }),
@@ -290,6 +290,12 @@ describe('charging a card (the till)', () => {
 
   it('a card cannot be flooded with requests', async () => {
     const { service, paymentRequests } = setup(handlers(CARD, MAX_PENDING_CHARGES_PER_CARD));
+    await expect(service.createCharge(caller, dto)).rejects.toMatchObject({ status: 429 });
+    expect(paymentRequests.createPaymentRequest).not.toHaveBeenCalled();
+  });
+
+  it('and not asked more than a handful of times an hour, whoever asks', async () => {
+    const { service, paymentRequests } = setup(handlers(CARD, 0, MAX_CHARGES_PER_CARD_PER_HOUR));
     await expect(service.createCharge(caller, dto)).rejects.toMatchObject({ status: 429 });
     expect(paymentRequests.createPaymentRequest).not.toHaveBeenCalled();
   });
@@ -374,22 +380,24 @@ describe('approving a charge (the holder)', () => {
 });
 
 describe('the till follows the charge', () => {
-  const CHARGE = { id: 'ch1', merchant_id: 'm1', payment_request_id: 'pr1', amount_cents: 50000, currency: 'CDF', status: 'pending', expires_at: new Date(Date.now() + 100_000).toISOString() };
+  const CHARGE = { id: 'ch1', merchant_id: 'm1', created_by: 'u-shop', payment_request_id: 'pr1', amount_cents: 50000, currency: 'CDF', status: 'pending', expires_at: new Date(Date.now() + 100_000).toISOString() };
   it('sees "approved" once the invoice is paid, "expired" when time runs out, and only for its own charges', async () => {
     const paid = setup({ 'card_charges:select': () => ({ data: CHARGE }), 'payment_requests:select': () => ({ data: { status: 'PAID' } }) });
-    expect(await paid.service.getChargeForMerchant('m1', 'ch1')).toMatchObject({ status: 'approved' });
+    expect(await paid.service.getChargeForMerchant({ userId: 'u-shop', merchantId: 'm1' }, 'ch1')).toMatchObject({ status: 'approved' });
     const late = setup({ 'card_charges:select': () => ({ data: { ...CHARGE, expires_at: new Date(Date.now() - 1000).toISOString() } }), 'payment_requests:select': () => ({ data: { status: 'CREATED' } }) });
-    expect(await late.service.getChargeForMerchant('m1', 'ch1')).toMatchObject({ status: 'expired' });
+    expect(await late.service.getChargeForMerchant({ userId: 'u-shop', merchantId: 'm1' }, 'ch1')).toMatchObject({ status: 'expired' });
     expect(writes(late.fake, 'payment_requests', 'update')).toHaveLength(1);
-    await expect(setup({ 'card_charges:select': () => ({ data: null }) }).service.getChargeForMerchant('m2', 'ch1')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(setup({ 'card_charges:select': () => ({ data: null }) }).service.getChargeForMerchant({ userId: 'x', merchantId: 'm2' }, 'ch1')).rejects.toBeInstanceOf(NotFoundException);
+    // somebody else's till: same answer as a charge that does not exist
+    await expect(setup({ 'card_charges:select': () => ({ data: { ...CHARGE, created_by: 'someone' } }) }).service.getChargeForMerchant({ userId: 'x', merchantId: 'm2' }, 'ch1')).rejects.toBeInstanceOf(NotFoundException);
   });
   it('a charge being paid is not expired the second its time is up', async () => {
     const h = { 'card_charges:select': () => ({ data: { ...CHARGE, status: 'processing', expires_at: new Date(Date.now() - 60_000).toISOString() } }), 'payment_requests:select': () => ({ data: { status: 'PENDING' } }) };
-    expect(await setup(h).service.getChargeForMerchant('m1', 'ch1')).toMatchObject({ status: 'processing' });
+    expect(await setup(h).service.getChargeForMerchant({ userId: 'u-shop', merchantId: 'm1' }, 'ch1')).toMatchObject({ status: 'processing' });
   });
   it('cannot cancel a charge that was paid', async () => {
     const h: Handlers = { 'card_charges:select': () => ({ data: CHARGE }), 'card_charges:update': () => ({ data: null }), 'payment_requests:select': () => ({ data: { status: 'PAID' } }) };
-    await expect(setup(h).service.cancelCharge('m1', 'ch1')).rejects.toThrow(/déjà payé/);
+    await expect(setup(h).service.cancelCharge({ userId: 'u-shop', merchantId: 'm1' }, 'ch1')).rejects.toThrow(/déjà payé/);
   });
 });
 
@@ -427,5 +435,30 @@ describe('card settings (set by the super admin, empty by default)', () => {
     const logged = JSON.stringify(audit.log.mock.calls);
     expect(logged).toContain('CARD_SETTINGS_UPDATED');
     expect(logged).not.toContain('iVBORw0KGgo');
+  });
+});
+
+describe('which store is paid', () => {
+  const stores = (ids: string[]): Handlers => ({
+    organizations: () => ({ data: { id: 'o1' } }),
+    merchants: () => ({ data: ids.map((id) => ({ id })) }),
+  });
+  it('a merchant is paid into their own store (from the token)', async () => {
+    expect(await setup().service.resolveSellerMerchant({ userId: 'u', role: 'merchant', merchantId: 'm9' })).toBe('m9');
+  });
+  it("the owner of a business and its staff are paid into the business's oldest store, or the one chosen", async () => {
+    const { service } = setup(stores(['m1', 'm2']));
+    expect(await service.resolveSellerMerchant({ userId: 'boss', role: 'enterprise' })).toBe('m1');
+    expect(await service.resolveSellerMerchant({ userId: 's', role: 'caissier', organizationId: 'o1' })).toBe('m1');
+    expect(await service.resolveSellerMerchant({ userId: 's', role: 'caissier', organizationId: 'o1' }, 'm2')).toBe('m2');
+  });
+  it("never into a store of another business", async () => {
+    const { service } = setup(stores(['m1', 'm2']));
+    await expect(service.resolveSellerMerchant({ userId: 's', role: 'caissier', organizationId: 'o1' }, 'm-other')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(setup().service.resolveSellerMerchant({ userId: 'u', role: 'merchant', merchantId: 'm9' }, 'm-other')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+  it('a business without a store, or an account without any, is told so', async () => {
+    await expect(setup(stores([])).service.resolveSellerMerchant({ userId: 'boss', role: 'enterprise' })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(setup().service.resolveSellerMerchant({ userId: 'u', role: 'client' })).rejects.toBeInstanceOf(BadRequestException);
   });
 });

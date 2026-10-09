@@ -21,6 +21,8 @@ export const LIVE_STATUSES = ['requested', 'issued', 'active', 'frozen'];
 /** A merchant's charge waits this long for the holder to approve it. */
 export const CHARGE_TTL_MINUTES = 3;
 export const MAX_PENDING_CHARGES_PER_CARD = 3;
+/** However honest the till: a card is not asked for money more often than this per hour (nobody should be flooded with prompts). */
+export const MAX_CHARGES_PER_CARD_PER_HOUR = 20;
 const MAX_ISSUE_RETRIES = 5;
 const MAX_ACTIVATION_NOTE = 'card-activate';
 
@@ -428,6 +430,35 @@ export class CardsService {
   // ------------------------------------------------------------------ paying with the card
 
   /**
+   * Which store is being paid. A merchant (or an owner acting as a store) carries it in their token. The owner of
+   * a business and its sales staff don't: they are paid into one of the business's stores, the oldest unless the
+   * till says which. Never a store of another business.
+   */
+  async resolveSellerMerchant(
+    caller: { userId: string; role?: string; merchantId?: string; organizationId?: string },
+    requested?: string,
+  ): Promise<string> {
+    if (caller.merchantId && !requested) return caller.merchantId;
+    let orgId = caller.organizationId;
+    if (!orgId && caller.role === 'enterprise') {
+      const { data: org } = await this.db.from('organizations').select('id').eq('owner_id', caller.userId).maybeSingle();
+      orgId = org?.id;
+    }
+    if (!orgId) {
+      if (caller.merchantId && requested === caller.merchantId) return caller.merchantId;
+      if (caller.merchantId) throw new ForbiddenException("Cette boutique n'est pas la vôtre.");
+      throw new BadRequestException("Aucune boutique n'est associée à votre compte.");
+    }
+    const { data: stores } = await this.db.from('merchants').select('id').eq('organization_id', orgId).order('created_at', { ascending: true });
+    if (!stores?.length) throw new BadRequestException("Aucune boutique n'est liée à cette entreprise.");
+    if (requested) {
+      if (!stores.some((m: any) => m.id === requested)) throw new ForbiddenException("Cette boutique n'appartient pas à votre entreprise.");
+      return requested;
+    }
+    return stores[0].id;
+  }
+
+  /**
    * A merchant scanned a card (or typed its number) and asks to be paid `amount`. This creates a normal payment
    * request, bound to the card, and the holder gets it on their phone: nothing is debited until they approve it
    * with their PIN. The merchant learns the holder's first name and initial, never a balance.
@@ -456,12 +487,17 @@ export class CardsService {
     // The same till asking again (new amount, retry): the previous request is replaced, not stacked.
     const { data: previous } = await this.db
       .from('card_charges').select('id, payment_request_id').eq('card_id', card.id).eq('merchant_id', caller.merchantId).eq('status', 'pending');
-    for (const p of previous ?? []) await this.cancelCharge(caller.merchantId, p.id).catch(() => undefined);
+    for (const p of previous ?? []) await this.cancelCharge({ userId: caller.userId, merchantId: caller.merchantId }, p.id).catch(() => undefined);
 
     const { count } = await this.db
       .from('card_charges').select('id', { count: 'exact', head: true }).eq('card_id', card.id).eq('status', 'pending').gt('expires_at', new Date().toISOString());
     if ((count ?? 0) >= MAX_PENDING_CHARGES_PER_CARD) {
       throw new HttpException('Trop de demandes en attente sur cette carte. Réessayez dans quelques minutes.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    const { count: lastHour } = await this.db
+      .from('card_charges').select('id', { count: 'exact', head: true }).eq('card_id', card.id).gt('created_at', new Date(Date.now() - 3_600_000).toISOString());
+    if ((lastHour ?? 0) >= MAX_CHARGES_PER_CARD_PER_HOUR) {
+      throw new HttpException('Cette carte a reçu trop de demandes de paiement. Réessayez plus tard.', HttpStatus.TOO_MANY_REQUESTS);
     }
 
     const request = await this.paymentRequests.createPaymentRequest(
@@ -536,16 +572,22 @@ export class CardsService {
     return charge;
   }
 
-  async getChargeForMerchant(merchantId: string, chargeId: string) {
-    const { data: charge } = await this.db.from('card_charges').select('*').eq('id', chargeId).eq('merchant_id', merchantId).maybeSingle();
-    if (!charge) throw new NotFoundException('Demande introuvable.');
+  /** A till sees the charges it created (or those of its own store). */
+  private async chargeOfSeller(caller: { userId: string; merchantId?: string }, chargeId: string) {
+    const { data: charge } = await this.db.from('card_charges').select('*').eq('id', chargeId).maybeSingle();
+    const mine = !!charge && (charge.created_by === caller.userId || (!!caller.merchantId && charge.merchant_id === caller.merchantId));
+    if (!charge || !mine) throw new NotFoundException('Demande introuvable.');
+    return charge;
+  }
+
+  async getChargeForMerchant(caller: { userId: string; merchantId?: string }, chargeId: string) {
+    const charge = await this.chargeOfSeller(caller, chargeId);
     const now = await this.reconcile(charge);
     return { charge_id: now.id, status: now.status, amount_cents: now.amount_cents, currency: now.currency, expires_at: now.expires_at };
   }
 
-  async cancelCharge(merchantId: string, chargeId: string) {
-    const { data: charge } = await this.db.from('card_charges').select('*').eq('id', chargeId).eq('merchant_id', merchantId).maybeSingle();
-    if (!charge) throw new NotFoundException('Demande introuvable.');
+  async cancelCharge(caller: { userId: string; merchantId?: string }, chargeId: string) {
+    const charge = await this.chargeOfSeller(caller, chargeId);
     const { data: cancelled } = await this.db
       .from('card_charges').update({ status: 'cancelled', decided_at: new Date().toISOString() }).eq('id', chargeId).eq('status', 'pending').select('id').maybeSingle();
     if (!cancelled) {

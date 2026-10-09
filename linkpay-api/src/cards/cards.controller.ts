@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, UseGuards, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
@@ -54,6 +54,11 @@ export class CreateChargeDto {
   @IsString()
   @MaxLength(200)
   description?: string;
+
+  @ApiPropertyOptional({ description: 'Which store is paid, for a business with several (the oldest by default)' })
+  @IsOptional()
+  @IsUUID()
+  merchant_id?: string;
 }
 
 export class IssueCardDto {
@@ -167,21 +172,28 @@ export class CardChargesController {
   @Post()
   @Throttle({ default: { limit: 30, ttl: 60000 } })
   @ApiOperation({ summary: 'Charge a card: the holder confirms with their PIN on their phone' })
-  create(@CurrentUser('id') userId: string, @CurrentUser('merchant_id') merchantId: string, @Body() dto: CreateChargeDto) {
-    if (!merchantId) throw new BadRequestException('No merchant account associated');
-    return this.cards.createCharge({ userId, merchantId }, dto);
+  async create(
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') role: string,
+    @CurrentUser('merchant_id') merchantId: string | undefined,
+    @CurrentUser('organization_id') organizationId: string | undefined,
+    @Body() dto: CreateChargeDto,
+  ) {
+    const store = await this.cards.resolveSellerMerchant({ userId, role, merchantId, organizationId }, dto.merchant_id);
+    const { merchant_id: _ignored, ...charge } = dto;
+    return this.cards.createCharge({ userId, merchantId: store }, charge);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Has the holder paid yet?' })
-  status(@CurrentUser('merchant_id') merchantId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.cards.getChargeForMerchant(merchantId, id);
+  status(@CurrentUser('id') userId: string, @CurrentUser('merchant_id') merchantId: string | undefined, @Param('id', ParseUUIDPipe) id: string) {
+    return this.cards.getChargeForMerchant({ userId, merchantId }, id);
   }
 
   @Post(':id/cancel')
   @ApiOperation({ summary: 'Cancel a charge that was not paid yet' })
-  cancel(@CurrentUser('merchant_id') merchantId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.cards.cancelCharge(merchantId, id);
+  cancel(@CurrentUser('id') userId: string, @CurrentUser('merchant_id') merchantId: string | undefined, @Param('id', ParseUUIDPipe) id: string) {
+    return this.cards.cancelCharge({ userId, merchantId }, id);
   }
 }
 
@@ -223,7 +235,8 @@ export class CardsAdminController {
     return this.cards.issue(adminId, dto);
   }
 
-  @Get(':id/print')
+  // A POST: opening the print view is counted and audited, a GET must not do that.
+  @Post(':id/print')
   @ApiOperation({ summary: 'Everything needed to print a card that is waiting to be handed over' })
   print(@CurrentUser('id') adminId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.cards.printData(adminId, id);
