@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import logo from '@/assets/logo.png';
 import { DRC_PATH } from './drc-map';
@@ -45,7 +45,10 @@ export function useQrSvg(url?: string | null): string {
   return svg;
 }
 
-function MapWatermark({ id }: { id: string }) {
+function MapWatermark({ id: face }: { id: string }) {
+  // Unique per instance: the same card can be on the page twice (the preview and the print copy), and an SVG clip-path
+  // that points at an id living in a hidden copy is silently ignored — the flag stripe then runs outside the map.
+  const id = `${face}-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   return (
     <svg className="map" viewBox="0 0 1000 1000" aria-hidden="true">
       <defs>
