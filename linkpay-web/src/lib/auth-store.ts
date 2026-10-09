@@ -17,6 +17,7 @@ import {
 } from './token-storage';
 import { clearAppLockLocal } from './webauthn';
 import { queryClient } from './query-client';
+import { useAppLock } from './app-lock-store';
 
 interface User {
   id: string;
@@ -40,6 +41,8 @@ interface User {
   two_factor_setup_required?: boolean;
   /** Administrators only: this session has passed the authenticator check (from /users/me). */
   mfa_verified?: boolean;
+  /** Whether the user has chosen their 6-digit access code (from /users/me). */
+  has_app_code?: boolean;
 }
 
 interface SupabaseSession {
@@ -100,6 +103,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     setRememberMe(rememberMe);
     setTokens(data.access_token, data.refresh_token);
     applySupabaseSession(data.supabase_session);
+    useAppLock.getState().unlock(); // the password was just typed: no need to ask for the code too
     set({ user: data.user, isAuthenticated: true });
   },
 
@@ -109,6 +113,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     setRememberMe(rememberMe);
     setTokens(res.data.access_token, res.data.refresh_token);
     applySupabaseSession(res.data.supabase_session);
+    useAppLock.getState().unlock();
     set({ user: res.data.user, isAuthenticated: true });
   },
 

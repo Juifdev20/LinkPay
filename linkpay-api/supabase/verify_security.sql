@@ -44,6 +44,7 @@ secrets AS (
       ('profiles', 'transaction_pin_hash'), ('profiles', 'pin_attempts'), ('profiles', 'pin_locked_until'),
       ('profiles', 'two_factor_secret'), ('profiles', 'two_factor_last_step'), ('profiles', 'two_factor_recovery_hashes'),
       ('profiles', 'active_session_id'), ('profiles', 'active_device_id'),
+      ('profiles', 'app_code_hash'), ('profiles', 'app_code_attempts'), ('profiles', 'app_code_lockouts'), ('profiles', 'app_code_locked_until'),
       ('organizations', 'stock_password_hash'), ('organizations', 'stock_password_attempts'), ('organizations', 'stock_password_locked_until')
     ) AS t(tbl, col)
     JOIN information_schema.columns c
@@ -58,7 +59,8 @@ expected_functions AS (
     FROM unnest(ARRAY[
       'credit_wallet', 'debit_wallet', 'transfer_wallet', 'credit_merchant_wallet', 'refund_to_client_wallet',
       'mark_withdrawal_processing', 'finish_withdrawal', 'fail_withdrawal', 'fail_settlement',
-      'add_pos_payment', 'savings_pot_balances', 'claim_totp_step', 'consume_recovery_code', 'negative_wallet_balances', 'record_auth_failure', 'get_auth_lock', 'clear_auth_attempts'
+      'add_pos_payment', 'savings_pot_balances', 'claim_totp_step', 'consume_recovery_code', 'negative_wallet_balances', 'record_auth_failure', 'get_auth_lock', 'clear_auth_attempts',
+      'begin_app_code_attempt', 'fail_app_code_attempt', 'clear_app_code_failures'
     ]) AS f
    WHERE NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname = f)
 )

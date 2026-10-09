@@ -11,6 +11,8 @@ import { sumByCurrency } from '../common/utils/currency';
 const PROFILE_PRIVATE_FIELDS = [
   'transaction_pin_hash', 'pin_attempts', 'pin_locked_until',
   'two_factor_secret', 'active_session_id', 'active_device_id',
+  'two_factor_last_step', 'two_factor_recovery_hashes',
+  'app_code_hash', 'app_code_attempts', 'app_code_lockouts', 'app_code_locked_until',
 ] as const;
 
 export function toPublicProfile<T extends Record<string, any>>(row: T) {
@@ -47,6 +49,8 @@ export class UsersService {
 
     return {
       ...toPublicProfile(data),
+      // Whether the access code was chosen (the hash itself never leaves the server).
+      has_app_code: !!data.app_code_hash,
       role,
       merchant_id: merchantId || undefined,
       acting_as_org_id: actingAsOrgId || undefined,

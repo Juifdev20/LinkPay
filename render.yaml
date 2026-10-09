@@ -34,6 +34,8 @@ services:
         value: false
       - key: TWO_FACTOR_ENCRYPTION_KEY
         sync: false
+      - key: APP_CODE_PEPPER
+        sync: false
       - key: RESEND_API_KEY
         sync: false
       - key: ALERT_EMAIL_FROM
