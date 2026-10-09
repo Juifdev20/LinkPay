@@ -15,6 +15,15 @@ import { configureTrustProxy, resolveTrustProxyHops } from './common/utils/trust
 // normal outbound path.
 const CINETPAY_HOSTS = ['api.cinetpay.net', 'api.cinetpay.co'];
 
+/** FlexPaie is reached at an address its own contract gives (FLEXPAIE_BASE_URL); it too is usually reachable only from a whitelisted IP. */
+function flexPaieHosts(): string[] {
+  try {
+    return process.env.FLEXPAIE_BASE_URL ? [new URL(process.env.FLEXPAIE_BASE_URL).hostname] : [];
+  } catch {
+    return [];
+  }
+}
+
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
@@ -30,17 +39,18 @@ async function bootstrap() {
   if (process.env.PROXY_URL) {
     const proxyAgent = new ProxyAgent(process.env.PROXY_URL);
     const originalFetch = globalThis.fetch;
+    const proxiedHosts = [...CINETPAY_HOSTS, ...flexPaieHosts()];
     globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' || input instanceof URL ? input : input.url;
       const hostname = new URL(url).hostname;
-      if (CINETPAY_HOSTS.includes(hostname)) {
+      if (proxiedHosts.includes(hostname)) {
         return originalFetch(input, { ...init, dispatcher: proxyAgent } as RequestInit);
       }
       return originalFetch(input, init);
     }) as typeof fetch;
-    logger.log(`CinetPay requests (${CINETPAY_HOSTS.join(', ')}) routed via proxy: ${process.env.PROXY_URL.replace(/\/\/.*@/, '//***@')}`);
+    logger.log(`Payment provider requests (${[...CINETPAY_HOSTS, ...flexPaieHosts()].join(', ')}) routed via proxy: ${process.env.PROXY_URL.replace(/\/\/.*@/, '//***@')}`);
   } else {
-    logger.warn('PROXY_URL not set — outbound requests use the raw platform IP (CinetPay IP whitelisting will fail on Render\'s shared IPs)');
+    logger.warn('PROXY_URL not set — outbound requests use the raw platform IP (CinetPay / FlexPaie IP whitelisting will fail on Render\'s shared IPs)');
   }
 
   const app = await NestFactory.create(AppModule, {
@@ -59,7 +69,15 @@ async function bootstrap() {
       },
     }),
   );
-  app.use(express.urlencoded({ extended: true }));
+  app.use(
+    express.urlencoded({
+      extended: true,
+      // A provider may post its callback as a form: the adapter reads it from the raw body like the JSON ones.
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
 
   // The rate limiter keys on the client IP: behind Render's proxy it needs the
   // real one (see common/utils/trust-proxy.ts).

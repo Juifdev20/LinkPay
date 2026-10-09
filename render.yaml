@@ -91,7 +91,14 @@ services:
       - key: ADMIN_ALLOWED_IPS
         sync: false
       - key: PSP_PROVIDER
-        value: cinetpay
+        value: flexpaie
+      # FlexPaie (docs/FLEXPAIE.md): the address, merchant code and token come from FlexPaie with the account.
+      - key: FLEXPAIE_BASE_URL
+        sync: false
+      - key: FLEXPAIE_MERCHANT
+        sync: false
+      - key: FLEXPAIE_TOKEN
+        sync: false
       - key: CINETPAY_API_KEY_CD
         sync: false
       - key: CINETPAY_API_PASSWORD_CD

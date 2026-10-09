@@ -335,7 +335,8 @@ export class ExpenseTrackerService {
         metadata: { kind: 'expense_pro_subscription', user_id: userId },
       });
     } catch (err: any) {
-      this.logger.error(`Expense Pro CinetPay init failed: ${err.message}`, err.stack);
+      if (err instanceof BadRequestException) throw err;
+      this.logger.error(`Expense Pro payment init failed: ${err.message}`, err.stack);
       throw new BadRequestException("Impossible d'initialiser le paiement. Veuillez réessayer ou contacter le support.");
     }
 
@@ -345,6 +346,7 @@ export class ExpenseTrackerService {
         user_id: userId,
         amount_cents: settings.monthly_price_cents,
         currency: settings.monthly_price_currency,
+        // The column name says "cinetpay" for "paid through the payment provider"; psp_provider says which one.
         payment_method: 'cinetpay',
         status: 'PENDING',
         psp_provider: provider,
