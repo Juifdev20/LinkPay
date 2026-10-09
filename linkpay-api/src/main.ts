@@ -96,19 +96,25 @@ async function bootstrap() {
     }),
   );
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('ScanLinkPay API')
-    .setDescription('ScanLinkPay Payment Platform REST API')
-    .setVersion('0.1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/v1/docs', app, document);
+  // The interactive API docs list every route and DTO: handy in development,
+  // a free map of the attack surface in production. Opt in with ENABLE_SWAGGER=true.
+  const swaggerEnabled =
+    configService.get<string>('NODE_ENV') !== 'production' || configService.get<string>('ENABLE_SWAGGER') === 'true';
+  if (swaggerEnabled) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('ScanLinkPay API')
+      .setDescription('ScanLinkPay Payment Platform REST API')
+      .setVersion('0.1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/v1/docs', app, document);
+  }
 
   const port = configService.get<number>('PORT', 3000);
   await app.listen(port);
   logger.log(`ScanLinkPay API running on port ${port}`);
-  logger.log(`Swagger docs at http://localhost:${port}/api/v1/docs`);
+  if (swaggerEnabled) logger.log(`Swagger docs at http://localhost:${port}/api/v1/docs`);
 }
 
 bootstrap();

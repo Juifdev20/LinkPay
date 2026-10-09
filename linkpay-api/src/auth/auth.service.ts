@@ -8,6 +8,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { RegisterDto, LoginDto } from './dto';
 import { SESSION_TRACKING_EXEMPT_ROLES } from './constants';
 import { getRequiredJwtSecret } from './jwt-secret.util';
+import { LoginAttemptsService } from './login-attempts.service';
 
 export interface JwtPayload {
   sub: string;
@@ -38,6 +39,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private notificationsService: NotificationsService,
+    private loginAttempts: LoginAttemptsService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -159,6 +161,8 @@ export class AuthService {
   async login(dto: LoginDto) {
     const { email, password, device_id } = dto;
 
+    this.loginAttempts.assertNotLocked(email);
+
     const { data, error } = await this.supabaseService.getAuthClient().auth.signInWithPassword({
       email,
       password,
@@ -175,9 +179,11 @@ export class AuthService {
           'Le service de connexion est temporairement indisponible. Veuillez réessayer plus tard.',
         );
       }
+      this.loginAttempts.recordFailure(email);
       throw new UnauthorizedException('Email ou mot de passe incorrect');
     }
 
+    this.loginAttempts.recordSuccess(email);
     const userId = data.user.id;
 
     const { data: roleData } = await this.supabaseService.getClient()

@@ -11,7 +11,7 @@
  * The UI itself is loaded from the web deployment, so every web release
  * reaches this app at once — the Microsoft Store only ships shell changes.
  */
-const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const net = require('net');
@@ -187,7 +187,28 @@ handle('app:info', async () => ({ version: app.getVersion(), platform: process.p
 app.whenReady().then(() => {
   // A till doesn't need the default File/Edit/View menu.
   Menu.setApplicationMenu(null);
+
+  // The page may only ask for what a till needs (camera to scan QR codes,
+  // notifications), and only from our own origin — any other site, or any
+  // other permission (location, USB, clipboard-read…), is refused.
+  const ALLOWED_PERMISSIONS = new Set(['media', 'notifications']);
+  const fromTrustedPage = (wc, url) => isTrusted(url || wc.getURL());
+  session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => {
+    callback(ALLOWED_PERMISSIONS.has(permission) && fromTrustedPage(wc, details && details.requestingUrl));
+  });
+  session.defaultSession.setPermissionCheckHandler((wc, permission, origin) =>
+    ALLOWED_PERMISSIONS.has(permission) && isTrusted(origin));
+
   createWindow();
+});
+
+// No <webview> and no navigation to a foreign site from ANY web contents the
+// app ever creates (window.open is already denied above for the main one).
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('will-attach-webview', (event) => event.preventDefault());
+  contents.on('will-navigate', (event, url) => {
+    if (!isTrusted(url) && !url.startsWith('data:text/html')) event.preventDefault();
+  });
 });
 
 app.on('window-all-closed', () => app.quit());

@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import { Controller, Post, Put, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiProperty, ApiBearerAuth } from '@nestjs/swagger';
 import { IsString, MinLength } from 'class-validator';
@@ -24,6 +25,9 @@ class ChangePasswordDto {
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  // Strict per-IP budgets on the public auth endpoints (the global 100/min is
+  // far too generous for them): slows credential stuffing and mass sign-ups.
+  @Throttle({ default: { limit: 5, ttl: 10 * 60_000 } })
   @Public()
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
@@ -34,6 +38,7 @@ export class AuthController {
     return this.authService.register(dto);
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -45,6 +50,7 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
@@ -55,6 +61,7 @@ export class AuthController {
     return this.authService.refresh(dto.refresh_token);
   }
 
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Put('change-password')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)

@@ -22,7 +22,7 @@ function setup(opts: { merchant?: any; org?: any } = {}) {
     { verifyPin } as any,
     // Stop right after the checks under test: limits are the next thing that runs.
     { getRule: async () => { throw new Error('REACHED_LIMITS'); } } as any,
-    { log: jest.fn() } as any, {} as any, {} as any,
+    { log: jest.fn() } as any, {} as any, {} as any, { assessOutflow: jest.fn() } as any,
   );
   return { service, verifyPin, fake };
 }

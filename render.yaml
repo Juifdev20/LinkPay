@@ -30,6 +30,8 @@ services:
         value: 15m
       - key: JWT_REFRESH_EXPIRES_IN
         value: 365d
+      - key: ENABLE_SWAGGER
+        value: false
       - key: PSP_PROVIDER
         value: cinetpay
       - key: CINETPAY_API_KEY_CD
@@ -96,3 +98,27 @@ services:
       - path: /manifest.webmanifest
         name: Cache-Control
         value: no-cache
+      # ── Security headers (every response) ──
+      # CSP: scripts only from our own origin, so a script injected through a
+      # stray bug can't run or phone home; the page can't be framed
+      # (clickjacking). connect-src lists the API (Render) and Supabase
+      # (REST + realtime websockets) — add a host here if the app starts
+      # calling a new one, or the browser will block it.
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://*.onrender.com https://*.supabase.co wss://*.supabase.co https://*.googleapis.com; worker-src 'self' blob:; manifest-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self' https:; frame-ancestors 'none'"
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(self), microphone=(), geolocation=(), payment=()
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains

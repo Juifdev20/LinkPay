@@ -25,6 +25,7 @@ function setup(dispatchResult: any) {
     { log: jest.fn(async () => undefined) } as any,
     {} as any,
     payouts as any,
+    { assessOutflow: jest.fn(async () => undefined) } as any,
   );
   return { service, payouts, fake };
 }

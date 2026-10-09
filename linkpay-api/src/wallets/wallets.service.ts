@@ -7,6 +7,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { WalletPinService } from './wallet-pin.service';
 import { WalletLimitsService } from './wallet-limits.service';
 import { AuditService } from '../audit/audit.service';
+import { RiskService } from '../risk/risk.service';
 import { SavingsService } from '../savings/savings.service';
 import { WithdrawalPayoutService } from './withdrawal-payout.service';
 
@@ -24,6 +25,7 @@ export class WalletsService {
     private auditService: AuditService,
     private savingsService: SavingsService,
     private withdrawalPayouts: WithdrawalPayoutService,
+    private riskService: RiskService,
   ) {}
 
   async getWalletByUserId(userId: string) {
@@ -512,6 +514,15 @@ export class WalletsService {
     const fee = this.walletLimitsService.quoteFee(dto.amount_cents, rule);
     await this.walletLimitsService.assertWithinLimits(senderWallet.id, 'TRANSFER', fee.total_cents, rule);
 
+    // Standing-consent flows (tontine auto-payments) have their own rules;
+    // a person sending money gets the velocity checks.
+    if (!internalOptions) {
+      await this.riskService.assessOutflow({
+        kind: 'TRANSFER', userId, walletId: senderWallet.id, amountCents: dto.amount_cents,
+        currency: dto.currency, recipientWalletId: recipientWallet.id,
+      });
+    }
+
     const { data: transferRow, error: insertError } = await this.supabaseService.getClient()
       .from('transfers')
       .insert({
@@ -669,6 +680,10 @@ export class WalletsService {
     const rule = await this.walletLimitsService.getRule('WITHDRAWAL', dto.currency);
     const fee = this.walletLimitsService.quoteFee(dto.amount_cents, rule);
     await this.walletLimitsService.assertWithinLimits(wallet.id, 'WITHDRAWAL', fee.total_cents, rule);
+
+    await this.riskService.assessOutflow({
+      kind: 'WITHDRAWAL', userId, walletId: wallet.id, amountCents: dto.amount_cents, currency: dto.currency,
+    });
 
     const { data: withdrawal, error: insertError } = await this.supabaseService.getClient()
       .from('withdrawals')
