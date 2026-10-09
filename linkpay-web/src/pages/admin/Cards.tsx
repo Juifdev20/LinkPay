@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Printer, Ban, Search, Check, Trash2, Upload } from 'lucide-react';
+import { Loader2, Printer, Ban, Search, Check, Trash2, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { formatDate } from '@/lib/utils';
@@ -51,14 +51,14 @@ async function toLogo(file: File): Promise<string> {
 function SettingsPanel() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ['card-settings'], queryFn: async () => (await api.get('/admin/cards/settings')).data });
-  const [form, setForm] = useState<{ service_phone: string; web_domain: string; validity_years: string; partner_logos: { name: string; image: string }[] }>({
-    service_phone: '', web_domain: '', validity_years: '3', partner_logos: [],
+  const [form, setForm] = useState<{ service_phone: string; lost_card_phone: string; web_domain: string; validity_years: string; partner_logos: { name: string; image: string }[] }>({
+    service_phone: '', lost_card_phone: '', web_domain: '', validity_years: '3', partner_logos: [],
   });
   const [error, setError] = useState('');
   const file = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (data) setForm({ service_phone: data.service_phone ?? '', web_domain: data.web_domain ?? '', validity_years: String(data.validity_years ?? 3), partner_logos: data.partner_logos ?? [] });
+    if (data) setForm({ service_phone: data.service_phone ?? '', lost_card_phone: data.lost_card_phone ?? '', web_domain: data.web_domain ?? '', validity_years: String(data.validity_years ?? 3), partner_logos: data.partner_logos ?? [] });
   }, [data]);
 
   const save = useMutation({
@@ -66,6 +66,14 @@ function SettingsPanel() {
     onSuccess: () => { setError(''); void qc.invalidateQueries({ queryKey: ['card-settings'] }); },
     onError: (e) => setError(msg(e)),
   });
+
+  // The order here is the order on the back of the card, left to right.
+  const move = (i: number, by: number) =>
+    setForm((v) => {
+      const logos = v.partner_logos.slice();
+      [logos[i], logos[i + by]] = [logos[i + by], logos[i]];
+      return { ...v, partner_logos: logos };
+    });
 
   const addLogo = async (f?: File) => {
     if (!f) return;
@@ -85,11 +93,17 @@ function SettingsPanel() {
         <p className="text-xs text-muted-foreground">Ce qui est imprimé sur la carte. Un champ vide n'est pas imprimé. Seul le super admin modifie ces réglages.</p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid sm:grid-cols-3 gap-3">
+        <div className="grid sm:grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label className="text-xs">Téléphone du service client</Label>
             <Input value={form.service_phone} placeholder="+243 …" onChange={(e) => setForm({ ...form, service_phone: e.target.value })} />
           </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Téléphone « carte perdue ou volée »</Label>
+            <Input value={form.lost_card_phone} placeholder="+243 …" aria-label="Téléphone carte perdue" onChange={(e) => setForm({ ...form, lost_card_phone: e.target.value })} />
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label className="text-xs">Nom de domaine (QR code)</Label>
             <Input value={form.web_domain} placeholder="scanlinkpay.com" onChange={(e) => setForm({ ...form, web_domain: e.target.value })} />
@@ -107,9 +121,13 @@ function SettingsPanel() {
               <div key={i} className="w-24 text-center space-y-1">
                 <img src={l.image} alt={l.name} className="w-16 h-16 rounded-xl mx-auto border border-border object-cover" />
                 <Input className="h-8 text-xs px-2" value={l.name} aria-label="Nom du logo" onChange={(e) => setForm({ ...form, partner_logos: form.partner_logos.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
-                <button type="button" className="text-xs text-destructive inline-flex items-center gap-1" onClick={() => setForm({ ...form, partner_logos: form.partner_logos.filter((_, j) => j !== i) })}>
-                  <Trash2 className="w-3 h-3" /> Retirer
-                </button>
+                <div className="flex items-center justify-center gap-1">
+                  <button type="button" aria-label="Déplacer à gauche" disabled={i === 0} className="p-1 disabled:opacity-30" onClick={() => move(i, -1)}><ChevronLeft className="w-4 h-4" /></button>
+                  <button type="button" className="text-xs text-destructive inline-flex items-center gap-1" onClick={() => setForm({ ...form, partner_logos: form.partner_logos.filter((_, j) => j !== i) })}>
+                    <Trash2 className="w-3 h-3" /> Retirer
+                  </button>
+                  <button type="button" aria-label="Déplacer à droite" disabled={i === form.partner_logos.length - 1} className="p-1 disabled:opacity-30" onClick={() => move(i, 1)}><ChevronRight className="w-4 h-4" /></button>
+                </div>
               </div>
             ))}
             {form.partner_logos.length < 6 && (

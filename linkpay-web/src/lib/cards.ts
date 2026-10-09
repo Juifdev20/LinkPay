@@ -16,7 +16,7 @@ export interface MyCardResponse {
   card: MyCard | null;
   can_request: boolean;
   balances: { CDF: number; USD: number };
-  display: { service_phone: string | null; web_domain: string | null; partner_logos: PartnerLogo[] };
+  display: { service_phone: string | null; lost_card_phone: string | null; web_domain: string | null; partner_logos: PartnerLogo[] };
 }
 
 /** "9243001234567895" → "9243 0012 3456 7895" */
@@ -45,6 +45,7 @@ export function cardFaceData(res: MyCardResponse, fallbackName: string, revealed
     serialNo: c?.serial_no,
     qrUrl: live ? c!.qr_url : null,
     servicePhone: res.display.service_phone,
+    lostCardPhone: res.display.lost_card_phone,
     webDomain: res.display.web_domain,
     partnerLogos: res.display.partner_logos,
   };

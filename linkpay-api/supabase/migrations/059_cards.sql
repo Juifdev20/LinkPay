@@ -83,6 +83,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uniq_card_charges_request ON card_charges(paym
 CREATE TABLE IF NOT EXISTS card_settings (
   id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   service_phone TEXT,
+  -- Printed on the back as the line to call when a card is lost or stolen.
+  lost_card_phone TEXT,
   web_domain TEXT,
   validity_years INT NOT NULL DEFAULT 3 CHECK (validity_years BETWEEN 1 AND 10),
   -- [{ "name": "Orange Money", "image": "data:image/png;base64,..." }] — checked by the API (type, size, count).
@@ -90,6 +92,7 @@ CREATE TABLE IF NOT EXISTS card_settings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_by UUID REFERENCES auth.users(id)
 );
+ALTER TABLE card_settings ADD COLUMN IF NOT EXISTS lost_card_phone TEXT;
 INSERT INTO card_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
 DO $$

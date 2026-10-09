@@ -413,14 +413,14 @@ describe('scanning a card to send money', () => {
 describe('card settings (set by the super admin, empty by default)', () => {
   const logo = 'data:image/png;base64,iVBORw0KGgo=';
   it('accepts a clean set and turns empty fields into "not printed"', () => {
-    expect(validateCardSettings({ service_phone: ' +243 900 000 000 ', web_domain: 'ScanLinkPay.com', validity_years: 3, partner_logos: [{ name: 'M-Pesa', image: logo }] })).toEqual({
-      service_phone: '+243 900 000 000', web_domain: 'scanlinkpay.com', validity_years: 3, partner_logos: [{ name: 'M-Pesa', image: logo }],
+    expect(validateCardSettings({ service_phone: ' +243 900 000 000 ', lost_card_phone: '+243 810 000 000', web_domain: 'ScanLinkPay.com', validity_years: 3, partner_logos: [{ name: 'M-Pesa', image: logo }] })).toEqual({
+      service_phone: '+243 900 000 000', lost_card_phone: '+243 810 000 000', web_domain: 'scanlinkpay.com', validity_years: 3, partner_logos: [{ name: 'M-Pesa', image: logo }],
     });
-    expect(validateCardSettings({ service_phone: '', web_domain: '' })).toMatchObject({ service_phone: null, web_domain: null, validity_years: 3, partner_logos: [] });
+    expect(validateCardSettings({ service_phone: '', web_domain: '' })).toMatchObject({ service_phone: null, lost_card_phone: null, web_domain: null, validity_years: 3, partner_logos: [] });
   });
   it.each([
     [{ web_domain: 'https://scanlinkpay.com' }], [{ web_domain: 'scanlinkpay.com/path' }], [{ web_domain: 'evil.com"><script>' }],
-    [{ service_phone: 'call me' }], [{ validity_years: 0 }], [{ validity_years: 11 }], [{ validity_years: 2.5 }],
+    [{ service_phone: 'call me' }], [{ lost_card_phone: 'call me' }], [{ validity_years: 0 }], [{ validity_years: 11 }], [{ validity_years: 2.5 }],
     [{ partner_logos: [{ name: 'x', image: 'data:image/svg+xml;base64,PHN2Zz4=' }] }],
     [{ partner_logos: [{ name: 'x', image: 'https://evil.example/logo.png' }] }],
     [{ partner_logos: [{ name: '', image: logo }] }],

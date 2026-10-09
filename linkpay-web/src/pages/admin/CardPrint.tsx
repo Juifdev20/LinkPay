@@ -29,7 +29,7 @@ export default function CardPrintPage() {
     api.post(`/admin/cards/${id}/print`)
       .then(({ data: d }) => setData({
         holderName: d.holder_name, numberText: d.card_number_formatted || groupDigits(d.card_number), validThru: validThru(d.expires_on),
-        serialNo: d.serial_no, qrUrl: d.qr_url, servicePhone: d.settings.service_phone, webDomain: d.settings.web_domain, partnerLogos: d.settings.partner_logos,
+        serialNo: d.serial_no, qrUrl: d.qr_url, servicePhone: d.settings.service_phone, lostCardPhone: d.settings.lost_card_phone, webDomain: d.settings.web_domain, partnerLogos: d.settings.partner_logos,
       }))
       .catch((e) => setError(e?.response?.data?.message || "Impossible d'ouvrir cette carte."));
   }, [id]);

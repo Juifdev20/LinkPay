@@ -8,12 +8,14 @@ export interface PartnerLogo {
 
 export interface CardSettings {
   service_phone: string | null;
+  /** The line to call when a card is lost or stolen (printed on the back). */
+  lost_card_phone: string | null;
   web_domain: string | null;
   validity_years: number;
   partner_logos: PartnerLogo[];
 }
 
-export const DEFAULT_CARD_SETTINGS: CardSettings = { service_phone: null, web_domain: null, validity_years: 3, partner_logos: [] };
+export const DEFAULT_CARD_SETTINGS: CardSettings = { service_phone: null, lost_card_phone: null, web_domain: null, validity_years: 3, partner_logos: [] };
 
 export const MAX_PARTNER_LOGOS = 6;
 export const MAX_LOGO_CHARS = 150_000; // ≈ 110 kB of image once decoded: plenty for a 256 px logo
@@ -27,6 +29,9 @@ export function validateCardSettings(input: any): CardSettings {
 
   const phoneRaw = typeof input.service_phone === 'string' ? input.service_phone.trim() : '';
   if (phoneRaw && !PHONE.test(phoneRaw)) throw new BadRequestException('Numéro du service client invalide (ex. +243 900 000 000).');
+
+  const lostRaw = typeof input.lost_card_phone === 'string' ? input.lost_card_phone.trim() : '';
+  if (lostRaw && !PHONE.test(lostRaw)) throw new BadRequestException('Numéro « carte perdue » invalide (ex. +243 900 000 000).');
 
   // The domain only: no scheme, no path — the QR code is built as https://<domain>/c/<token>.
   const domainRaw = typeof input.web_domain === 'string' ? input.web_domain.trim().toLowerCase() : '';
@@ -46,5 +51,5 @@ export function validateCardSettings(input: any): CardSettings {
     return { name, image: l.image };
   });
 
-  return { service_phone: phoneRaw || null, web_domain: domainRaw || null, validity_years: years, partner_logos };
+  return { service_phone: phoneRaw || null, lost_card_phone: lostRaw || null, web_domain: domainRaw || null, validity_years: years, partner_logos };
 }

@@ -61,6 +61,7 @@ export class CardsService {
     if (error || !data) return { ...DEFAULT_CARD_SETTINGS };
     return {
       service_phone: data.service_phone ?? null,
+      lost_card_phone: data.lost_card_phone ?? null,
       web_domain: data.web_domain ?? null,
       validity_years: data.validity_years ?? DEFAULT_CARD_SETTINGS.validity_years,
       partner_logos: Array.isArray(data.partner_logos) ? data.partner_logos : [],
@@ -143,7 +144,7 @@ export class CardsService {
       card: card ? this.ownerView(card, settings) : null,
       can_request: !live,
       balances,
-      display: { service_phone: settings.service_phone, web_domain: settings.web_domain, partner_logos: settings.partner_logos },
+      display: { service_phone: settings.service_phone, lost_card_phone: settings.lost_card_phone, web_domain: settings.web_domain, partner_logos: settings.partner_logos },
     };
   }
 

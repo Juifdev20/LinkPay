@@ -20,6 +20,8 @@ export interface CardFaceData {
   /** The link the QR code opens. Omit it and no QR is drawn (card not issued yet). */
   qrUrl?: string | null;
   servicePhone?: string | null;
+  /** The line to call when the card is lost or stolen. */
+  lostCardPhone?: string | null;
   webDomain?: string | null;
   partnerLogos?: PartnerLogo[];
 }
@@ -98,7 +100,7 @@ export function CardFront({ data, bleedMm = 0 }: FaceProps) {
           <div className="word">ScanLink<b>Pay</b></div>
           <div className="slogan">PAYEZ. RECEVEZ. SIMPLEMENT.</div>
         </div>
-        <div className="abs pill">CDF · USD</div>
+        <div className="abs pill">CDF • USD</div>
         <div className="abs hint">
           <div className="t">Scannez pour payer</div>
           <div className="s">Présentez cette carte, scannez le code avec l’appareil photo. Le paiement est confirmé avec votre PIN.</div>
@@ -124,14 +126,16 @@ export function CardBack({ data, bleedMm = 0 }: FaceProps) {
       <div className="slp-inner">
         <Graticule />
         <MapWatermark id="back" />
-        {data.servicePhone && (
-          <>
-            <div className="abs hot" style={{ left: 'calc(4.5 * var(--u))' }}>Service client : {data.servicePhone}</div>
-            <div className="abs hot" style={{ right: 'calc(4.5 * var(--u))' }}>Carte perdue ou volée : bloquez-la dans l’application</div>
-          </>
+        {/* Both lines are the super admin's to set; each is printed only when it is set. */}
+        {data.servicePhone && <div className="abs hot" style={{ left: 'calc(4.5 * var(--u))' }}>Service client : {data.servicePhone}</div>}
+        {(data.lostCardPhone || data.servicePhone) && (
+          <div className="abs hot" style={{ right: 'calc(4.5 * var(--u))' }}>
+            {data.lostCardPhone ? `Carte perdue ou volée : ${data.lostCardPhone}` : 'Carte perdue ou volée : bloquez-la dans l’application'}
+          </div>
         )}
         <div className="abs stripe" />
-        <div className="abs sig"><span>SIGNATURE DU TITULAIRE</span>{data.serialNo ? <em>Réf. {String(data.serialNo).padStart(6, '0')}</em> : null}</div>
+        <div className="abs siglabel">SIGNATURE DU TITULAIRE</div>
+        <div className="abs sig">{data.serialNo ? <em>Réf. {String(data.serialNo).padStart(6, '0')}</em> : null}</div>
         <div className="abs terms">
           <b>Carte personnelle et incessible.</b> Tout paiement exige le code PIN du titulaire. Cette carte ne contient ni solde ni code secret : consultez votre solde dans l’application ScanLinkPay. Si vous trouvez cette carte, merci de la déposer auprès de ScanLinkPay.{data.webDomain ? ` ${data.webDomain}` : ''}
         </div>
