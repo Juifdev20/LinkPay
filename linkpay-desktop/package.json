@@ -14,7 +14,7 @@
     "dist:store": "electron-builder --win appx"
   },
   "dependencies": {
-    "serialport": "^12.0.0"
+    "serialport": "^13.0.0"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",
