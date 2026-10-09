@@ -120,7 +120,7 @@ export class WalletLimitsService {
     if (rule.daily_max_cents) {
       const since = new Date();
       since.setHours(0, 0, 0, 0);
-      const sum = await this.sumDebits(walletId, entryType, since);
+      const sum = await this.sumDebits(walletId, entryType, since, rule.currency);
       if (sum + amountCents > rule.daily_max_cents) {
         throw new BadRequestException(
           `Limite quotidienne dépassée (${(rule.daily_max_cents / 100).toLocaleString('fr-FR')} ${rule.currency} max/jour).`,
@@ -132,7 +132,7 @@ export class WalletLimitsService {
       const since = new Date();
       since.setDate(1);
       since.setHours(0, 0, 0, 0);
-      const sum = await this.sumDebits(walletId, entryType, since);
+      const sum = await this.sumDebits(walletId, entryType, since, rule.currency);
       if (sum + amountCents > rule.monthly_max_cents) {
         throw new BadRequestException(
           `Limite mensuelle dépassée (${(rule.monthly_max_cents / 100).toLocaleString('fr-FR')} ${rule.currency} max/mois).`,
@@ -141,14 +141,17 @@ export class WalletLimitsService {
     }
   }
 
-  private async sumDebits(walletId: string, entryType: string, since: Date): Promise<number> {
-    const { data } = await this.supabaseService.getClient()
+  /** Only the SAME currency counts toward a cap: 100 USD (10 000 cents) must not eat into a CDF limit, or the reverse. */
+  private async sumDebits(walletId: string, entryType: string, since: Date, currency?: string): Promise<number> {
+    let query = this.supabaseService.getClient()
       .from('ledger_entries')
       .select('amount_cents')
       .eq('wallet_id', walletId)
       .eq('entry_type', entryType)
       .eq('direction', 'debit')
       .gte('created_at', since.toISOString());
+    if (currency) query = query.eq('currency', currency);
+    const { data } = await query;
 
     return (data || []).reduce((sum: number, e: any) => sum + e.amount_cents, 0);
   }

@@ -31,6 +31,13 @@ Ce document décrit les défenses en place et ce qu'il reste à faire. Il est te
 - **Session en cookies HttpOnly (navigateur, optionnel : `COOKIE_AUTH` + `VITE_AUTH_COOKIES`)** : les jetons ne sont plus lisibles par aucun script de la page, ni stockés dans le navigateur ; protection CSRF (SameSite=Strict + en-tête exigé + contrôle de l'origine) ; la session Supabase « temps réel » n'est pas donnée au navigateur dans ce mode. L'application Android garde l'en-tête `Authorization`. Détails et mise en route : `docs/COOKIES_HTTPONLY.md`.
 - **Intégrité de l'appareil et de l'application Android (Google Play Integrity, `DEVICE_INTEGRITY_MODE` = off / warn / enforce)** : l'API vérifie auprès de Google que l'application est la nôtre, non modifiée, sur un appareil certifié (ni rooté ni émulé) ; en `enforce`, une session Android sans verdict fiable récent ne peut ni transférer ni retirer de l'argent. Détections de root locales (indicatives) transmises à l'API. Détails, limites et mise en place : `docs/ANDROID_INTEGRITY.md`.
 - **Plusieurs instances de l'API** : les tâches planifiées (rappels, rapprochement des retraits, contrôle du grand livre, tontines) s'exécutent sur **une seule instance à la fois** grâce à un bail en base (`try_acquire_job_lock`, migration `053`) ; la limite de débit par IP est partagée via Redis (`REDIS_URL`, service Key Value de Render) avec repli sur la mémoire si Redis tombe.
+- **Revue de sécurité (relectures indépendantes, constats vérifiés puis corrigés)** :
+  - tentatives de connexion, de code 2FA et de PIN comptées *avant* la vérification, sous verrou de ligne (migration `055`) — une rafale de tentatives parallèles ne dépasse plus la limite ;
+  - jetons des administrateurs révocables (déconnexion, réinitialisation de session ou de 2FA, changement de rôle) et âge absolu de session ; un jeton de rafraîchissement n'est plus accepté comme jeton d'accès ;
+  - recharge créditée **une seule fois** quelle que soit la confirmation (webhook, double livraison, page de retour) — `complete_topup`, migration `056` ; le montant confirmé par le fournisseur doit être égal au montant enregistré ; montants avec centimes refusés pour un fournisseur qui facture en unités entières ;
+  - retrait : demande **et** débit dans une seule transaction, et remboursement d'un retrait seulement si le débit existe (`request_withdrawal`, migration `057`) ;
+  - paiement par portefeuille : le payeur n'est remboursé que si le marchand n'a pas été crédité ; une clé d'idempotence ne « rejoue » jamais l'opération d'un autre ni une autre opération ; une cotisation de tontine n'est « payée » que par un transfert réussi ;
+  - remboursements refusés sur un portefeuille suspendu/gelé ou avant le crédit du marchand (migration `058`) ; plafonds comptés dans la devise concernée uniquement.
 - Limites et frais de portefeuille configurables (`wallet_limits`).
 - Webhooks PSP signés, rejouables sans effet, fournisseur vérifié.
 - Journal d'audit (`audit_logs`) sur les actions sensibles.
@@ -51,7 +58,7 @@ Ce document décrit les défenses en place et ce qu'il reste à faire. Il est te
 
 ## À faire (priorité décroissante)
 
-1. **Appliquer les migrations `040` à `054`**, puis lancer `linkpay-api/supabase/verify_security.sql` (voir `docs/LAUNCH_CHECKLIST.md`) dans le SQL Editor de Supabase, dans l'ordre, puis lancer le *Security Advisor* de Supabase.
+1. **Appliquer les migrations `040` à `058`**, puis lancer `linkpay-api/supabase/verify_security.sql` (voir `docs/LAUNCH_CHECKLIST.md`) dans le SQL Editor de Supabase, dans l'ordre, puis lancer le *Security Advisor* de Supabase.
 2. **Changer toutes les clés déjà partagées** : `service_role` Supabase, `JWT_SECRET`, mot de passe CinetPay, clé FCM.
 3. Vérifier `ledger_entries` (types `ADJUSTMENT` et `TOPUP`) pour détecter un éventuel abus avant la migration `043`.
 4. Fermer ou contrôler l'inscription publique de Supabase Auth (l'inscription doit passer par `/auth/register`).
@@ -61,6 +68,15 @@ Ce document décrit les défenses en place et ce qu'il reste à faire. Il est te
 8. **Mobile** : détection de root et vérification d'intégrité **écrites, compilées et testées côté ordinateur**, mais à **tester sur de vrais téléphones** avant `enforce` (voir `docs/ANDROID_INTEGRITY.md`) ; l'épinglage de certificat (certificate pinning) n'est pas fait. iOS : non traité (pas d'application iOS dans ce dépôt).
 9. **SMS** : fait (Africa's Talking ou Twilio). À configurer et à tester avec un vrai fournisseur ; l'envoi n'a été vérifié qu'avec un faux serveur.
 10. **Test d'intrusion** par un tiers avant la mise en production, et sauvegardes Supabase (avec un test de restauration).
+
+## Points connus, non corrigés (décisions ou travaux à planifier)
+
+- **Tontine** : le créateur peut inviter quelqu'un après le tirage au sort ; l'invité accepte seul, ce qui ajoute un tour de cotisation à tous les membres sans leur accord. À décider : interdire les invitations une fois la tontine lancée, ou exiger l'accord des membres.
+- **Application Android modifiée** : la plateforme de la session est annoncée par l'application à la connexion ; une version modifiée peut se dire « web » et échapper à la règle d'intégrité de l'appareil. Elle protège un téléphone compromis qui fait tourner la vraie application, pas un attaquant qui possède déjà les identifiants.
+- **Plafonds de retrait/transfert** : la vérification est faite puis l'opération, en deux temps ; des requêtes parallèles peuvent dépasser un plafond journalier d'un petit nombre d'opérations (les plafonds par opération, le PIN verrouillé et le moteur de risque limitent les dégâts).
+- **Jetons de rafraîchissement** : pas de rotation ni de détection de rejeu ; un jeton volé reste valable jusqu'à sa déconnexion (administrateurs : révocation et âge maximum 24 h).
+- **Inscription** : l'adresse e-mail est marquée confirmée sans vérification, et « e-mail déjà utilisé » permet de savoir qu'un compte existe.
+- Règlements manuels hérités (`fail_settlement`) : à revoir si l'ancien système est un jour réactivé.
 
 ## Signaler une faille
 

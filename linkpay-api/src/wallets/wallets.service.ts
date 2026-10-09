@@ -10,6 +10,8 @@ import { AuditService } from '../audit/audit.service';
 import { RiskService } from '../risk/risk.service';
 import { SavingsService } from '../savings/savings.service';
 import { WithdrawalPayoutService } from './withdrawal-payout.service';
+import { completeTopupOnce } from './topup-completion';
+import { confirmedAmountMatches } from '../payments/psp/amount-check';
 
 @Injectable()
 export class WalletsService {
@@ -225,67 +227,23 @@ export class WalletsService {
    * PSP confirms payment. Idempotent: a top-up already SUCCESS is a no-op.
    */
   async completeTopup(topupId: string, pspIntentId?: string): Promise<void> {
-    const { data: topup } = await this.supabaseService.getClient()
-      .from('wallet_topups')
-      .select('*')
-      .eq('id', topupId)
-      .single();
-
-    if (!topup) {
-      throw new NotFoundException('Wallet top-up not found');
+    let outcome;
+    try {
+      outcome = await completeTopupOnce(this.supabaseService.getClient(), topupId, pspIntentId, this.logger);
+    } catch (err: any) {
+      if (/not found/i.test(err?.message)) throw new NotFoundException('Wallet top-up not found');
+      throw err;
     }
+    // Already completed by someone else (the webhook, a poll, a replay): nothing more to do.
+    if (!outcome.credited || !outcome.userId) return;
 
-    // Atomically claim the PENDING -> SUCCESS transition: the mock provider's
-    // synchronous path and the status-check endpoint (a poll racing a
-    // delayed webhook) can both reach this method for the same top-up, and
-    // only one may credit the wallet.
-    const { data: claimed } = await this.supabaseService.getClient()
-      .from('wallet_topups')
-      .update({ status: 'SUCCESS', updated_at: new Date().toISOString() })
-      .eq('id', topupId)
-      .eq('status', 'PENDING')
-      .select()
-      .maybeSingle();
-
-    if (!claimed) {
-      return;
-    }
-
-    const { error: rpcError } = await this.supabaseService.getClient().rpc('credit_wallet', {
-      p_wallet_id: topup.wallet_id,
-      p_amount_cents: topup.amount_cents,
-      p_entry_type: 'TOPUP',
-      p_reference: `TOPUP-${topup.id}`,
-      p_currency: topup.currency,
-      p_metadata: { wallet_topup_id: topup.id, psp_intent_id: pspIntentId },
-    });
-
-    if (rpcError) {
-      throw new Error(`Failed to credit wallet: ${rpcError.message}`);
-    }
-
-    await this.supabaseService.getClient()
-      .from('wallet_topups')
-      .update({ status: 'SUCCESS', updated_at: new Date().toISOString() })
-      .eq('id', topupId);
-
-    const { data: wallet } = await this.supabaseService.getClient()
-      .from('wallets')
-      .select('user_id')
-      .eq('id', topup.wallet_id)
-      .single();
-
-    if (wallet?.user_id) {
-      await this.notificationsService.create({
-        user_id: wallet.user_id,
-        type: 'wallet_topup_success',
-        title: 'Portefeuille rechargé',
-        body: `Votre compte ScanLinkPay a été crédité de ${(topup.amount_cents / 100).toLocaleString('fr-FR')} ${topup.currency}.`,
-        data: { wallet_topup_id: topup.id },
-      }).catch(() => null);
-    }
-
-    this.logger.log(`Wallet top-up ${topup.id} completed, wallet ${topup.wallet_id} credited ${topup.amount_cents} ${topup.currency} cents`);
+    await this.notificationsService.create({
+      user_id: outcome.userId,
+      type: 'wallet_topup_success',
+      title: 'Portefeuille rechargé',
+      body: `Votre compte ScanLinkPay a été crédité de ${((outcome.amountCents ?? 0) / 100).toLocaleString('fr-FR')} ${outcome.currency}.`,
+      data: { wallet_topup_id: topupId },
+    }).catch(() => null);
   }
 
   /**
@@ -326,7 +284,12 @@ export class WalletsService {
       const adapter = this.pspFactory.get(topup.psp_provider);
       const live = await adapter.getTransactionStatus(topup.psp_intent_id);
       if (live.status === 'SUCCESS') {
-        await this.completeTopup(topup.id, topup.psp_intent_id);
+        // The provider's confirmed amount must equal the one we recorded (rounding, partial or tampered payments).
+        if (!confirmedAmountMatches(topup.amount_cents, live.amount_cents)) {
+          this.logger.error(`Top-up ${topup.id}: the provider confirmed ${live.amount_cents} but ${topup.amount_cents} was expected — not credited`);
+        } else {
+          await this.completeTopup(topup.id, topup.psp_intent_id);
+        }
       } else if (live.status === 'FAILED') {
         await this.failTopup(topup.id);
       }
@@ -475,6 +438,20 @@ export class WalletsService {
       .single();
 
     if (existing) {
+      // A key is only a replay if it is the SAME operation by the SAME person. Anything else is a reused or guessed key:
+      // answering it with someone else's (or a different) transfer would let a caller — the tontine flow in particular —
+      // treat a transfer that never happened as theirs.
+      const mine = await this.getWalletByUserId(userId);
+      const { data: sameRecipient } = await this.supabaseService.getClient()
+        .from('wallets').select('id').eq('wallet_number', dto.recipient_wallet_number).maybeSingle();
+      if (
+        existing.sender_wallet_id !== mine.id ||
+        Number(existing.amount_cents) !== dto.amount_cents ||
+        existing.currency !== dto.currency ||
+        (sameRecipient && existing.recipient_wallet_id !== sameRecipient.id)
+      ) {
+        throw new ConflictException("Cette clé d'idempotence a déjà été utilisée pour une autre opération.");
+      }
       // A row stuck PENDING here would mean the process crashed between
       // creating it and calling transfer_wallet() below — this flow is
       // otherwise fully synchronous, so PENDING never means "still being
@@ -569,7 +546,9 @@ export class WalletsService {
       await this.supabaseService.getClient()
         .from('transfers')
         .update({ status: 'FAILED', failure_reason: this.classifyTransferFailure(rpcError.message), updated_at: new Date().toISOString() })
-        .eq('id', transferRow.id);
+        .eq('id', transferRow.id)
+        // Never flip a transfer that may in fact have completed (an ambiguous timeout after the commit) to FAILED.
+        .eq('status', 'PENDING');
       throw new BadRequestException(this.explainTransferFailure(rpcError.message));
     }
 
@@ -673,6 +652,8 @@ export class WalletsService {
       throw new BadRequestException('Compte de destination requis');
     }
 
+    const wallet = await this.getWalletByUserId(userId);
+
     const { data: existing } = await this.supabaseService.getClient()
       .from('withdrawals')
       .select('*')
@@ -680,10 +661,9 @@ export class WalletsService {
       .single();
 
     if (existing) {
-      return { withdrawal: existing, message: 'Withdrawal already exists (idempotent)' };
+      return this.replayOf(existing, wallet.id, dto);
     }
 
-    const wallet = await this.getWalletByUserId(userId);
     if (wallet.status !== 'ACTIVE') {
       throw new BadRequestException(`Votre wallet est ${wallet.status}, retrait impossible`);
     }
@@ -698,45 +678,8 @@ export class WalletsService {
       kind: 'WITHDRAWAL', userId, walletId: wallet.id, amountCents: dto.amount_cents, currency: dto.currency,
     });
 
-    const { data: withdrawal, error: insertError } = await this.supabaseService.getClient()
-      .from('withdrawals')
-      .insert({
-        wallet_id: wallet.id,
-        amount_cents: dto.amount_cents,
-        fee_cents: fee.fee_cents,
-        currency: dto.currency,
-        channel: dto.channel,
-        destination: dto.destination,
-        status: 'PENDING',
-        psp_provider: this.pspFactory.get().provider,
-        idempotency_key: idempotencyKey,
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      throw new Error(`Failed to create withdrawal: ${insertError.message}`);
-    }
-
-    // Reserve the funds immediately — debit_wallet raises on insufficient
-    // balance, which we surface as a clean error and mark the request FAILED
-    // rather than leaving it dangling PENDING with no funds reserved.
-    const { error: debitError } = await this.supabaseService.getClient().rpc('debit_wallet', {
-      p_wallet_id: wallet.id,
-      p_amount_cents: fee.total_cents,
-      p_entry_type: 'WITHDRAWAL',
-      p_reference: `WITHDRAWAL-${withdrawal.id}`,
-      p_currency: dto.currency,
-      p_metadata: { withdrawal_id: withdrawal.id, channel: dto.channel },
-    });
-
-    if (debitError) {
-      await this.supabaseService.getClient()
-        .from('withdrawals')
-        .update({ status: 'FAILED', failure_reason: 'INSUFFICIENT_BALANCE', updated_at: new Date().toISOString() })
-        .eq('id', withdrawal.id);
-      throw new BadRequestException('Solde ScanLinkPay insuffisant pour ce retrait.');
-    }
+    const withdrawal = await this.createWithdrawalAtomically(wallet.id, fee, dto, idempotencyKey);
+    if ('replay' in withdrawal) return withdrawal.replay;
 
     await this.auditService.log({
       user_id: userId,
@@ -771,6 +714,89 @@ export class WalletsService {
     }
 
     return { withdrawal: settled };
+  }
+
+  /** A key replays only the SAME withdrawal by the SAME wallet; anything else is a reused or guessed key. */
+  private replayOf(existing: any, walletId: string, dto: { amount_cents: number; currency: string }) {
+    if (existing.wallet_id !== walletId || Number(existing.amount_cents) !== dto.amount_cents || existing.currency !== dto.currency) {
+      throw new ConflictException("Cette clé d'idempotence a déjà été utilisée pour une autre opération.");
+    }
+    return { withdrawal: existing, message: 'Withdrawal already exists (idempotent)' };
+  }
+
+  /**
+   * Creates the withdrawal AND takes the money in one database transaction (request_withdrawal, migration 057):
+   * a crash in between can no longer leave a withdrawal that was never debited (which the reconciliation would later
+   * "refund" — money from nothing), and an ambiguous timeout can no longer be mistaken for "insufficient balance".
+   */
+  private async createWithdrawalAtomically(
+    walletId: string,
+    fee: { fee_cents: number; total_cents: number },
+    dto: { amount_cents: number; currency: string; channel: string; destination: Record<string, any> },
+    idempotencyKey: string,
+  ): Promise<any> {
+    const client = this.supabaseService.getClient();
+    const { data, error } = await client.rpc('request_withdrawal', {
+      p_wallet: walletId,
+      p_amount: dto.amount_cents,
+      p_fee: fee.fee_cents,
+      p_currency: dto.currency,
+      p_channel: dto.channel,
+      p_destination: dto.destination,
+      p_psp_provider: this.pspFactory.get().provider,
+      p_idempotency_key: idempotencyKey,
+    });
+    if (!error && data) return Array.isArray(data) ? data[0] : data;
+
+    if (error) {
+      if (/Insufficient balance/i.test(error.message)) {
+        throw new BadRequestException('Solde ScanLinkPay insuffisant pour ce retrait.');
+      }
+      if (/duplicate key|idempotency_key/i.test(error.message)) {
+        // The same request arrived twice at once: the other one won. Answer with ITS withdrawal.
+        const { data: winner } = await client.from('withdrawals').select('*').eq('idempotency_key', idempotencyKey).single();
+        if (winner) return { replay: this.replayOf(winner, walletId, dto) };
+      }
+      if (!/could not find the function|does not exist|schema cache/i.test(error.message)) {
+        throw new Error(`Failed to create withdrawal: ${error.message}`);
+      }
+      this.logger.warn('request_withdrawal() is not available (apply migration 057) — using the two-step fallback');
+    }
+
+    // Fallback (migration 057 not applied yet): the previous two-step flow.
+    const { data: withdrawal, error: insertError } = await client
+      .from('withdrawals')
+      .insert({
+        wallet_id: walletId,
+        amount_cents: dto.amount_cents,
+        fee_cents: fee.fee_cents,
+        currency: dto.currency,
+        channel: dto.channel,
+        destination: dto.destination,
+        status: 'PENDING',
+        psp_provider: this.pspFactory.get().provider,
+        idempotency_key: idempotencyKey,
+      })
+      .select()
+      .single();
+    if (insertError) throw new Error(`Failed to create withdrawal: ${insertError.message}`);
+
+    const { error: debitError } = await client.rpc('debit_wallet', {
+      p_wallet_id: walletId,
+      p_amount_cents: fee.total_cents,
+      p_entry_type: 'WITHDRAWAL',
+      p_reference: `WITHDRAWAL-${withdrawal.id}`,
+      p_currency: dto.currency,
+      p_metadata: { withdrawal_id: withdrawal.id, channel: dto.channel },
+    });
+    if (debitError) {
+      await client
+        .from('withdrawals')
+        .update({ status: 'FAILED', failure_reason: 'INSUFFICIENT_BALANCE', updated_at: new Date().toISOString() })
+        .eq('id', withdrawal.id);
+      throw new BadRequestException('Solde ScanLinkPay insuffisant pour ce retrait.');
+    }
+    return withdrawal;
   }
 
   async getMyWithdrawals(userId: string, filters?: { page?: number; limit?: number }) {

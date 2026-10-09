@@ -49,6 +49,8 @@ describe('RefundsService.createRefund', () => {
     ['REFUND_TX_SETTLED', /règlement/],
     ['REFUND_EXCEEDS_AMOUNT', /dépasserait/],
     ['REFUND_TX_NOT_REFUNDABLE', /réussies/],
+    ['REFUND_TX_NOT_CREDITED', /pas encore été crédité/],
+    ['REFUND_WALLET_NOT_ACTIVE', /suspendu ou gelé/],
   ])('maps %s to a clear message', async (code, message) => {
     const { service } = setup({ rpcError: `ERROR: ${code}` });
     await expect(service.createRefund('tx1', { amount_cents: 100 }, 'u1', 'm1', 'merchant')).rejects.toThrow(message);

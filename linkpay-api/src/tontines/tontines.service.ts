@@ -730,12 +730,18 @@ export class TontinesService {
         description: `Tontine "${group.name}" — cycle ${cycle.cycle_number}`,
         pin,
       },
-      idempotencyKey,
+      // Namespaced by the contribution: a key sent by the client can never collide with — or "replay" — some other transfer.
+      `tontine:${contribution.id}:${idempotencyKey}`,
       // Members pay each other, whoever they are in the app (a member may own a store).
       { skipPinVerification, allowBusinessRecipient: true },
     );
 
-    await this.db
+    // Only a transfer that really completed marks a contribution as paid (a replayed key can hand back a failed or pending one).
+    if (result.transfer?.status !== 'SUCCESS') {
+      throw new BadRequestException('Le paiement de la cotisation n\'a pas abouti. Réessayez.');
+    }
+
+    const { error: paidError } = await this.db
       .from('tontine_contributions')
       .update({
         status: 'paid',
@@ -745,6 +751,8 @@ export class TontinesService {
         updated_at: new Date().toISOString(),
       })
       .eq('id', contribution.id);
+    // The money has moved: failing to record it must be loud (the contribution would look unpaid and be payable twice).
+    if (paidError) throw new Error(`Cotisation ${contribution.id} payée (transfert ${result.transfer.id}) mais non enregistrée : ${paidError.message}`);
 
     const { count: pendingCount } = await this.db
       .from('tontine_contributions')

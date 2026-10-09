@@ -6,6 +6,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { IsNumber, IsString, IsOptional, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { RequireDeviceIntegrity } from '../integrity/device-integrity.guard';
 
 class CreateRefundDto {
   @ApiProperty({ example: 50000, description: 'Refund amount in cents' })
@@ -27,6 +28,7 @@ export class RefundsController {
   constructor(private refundsService: RefundsService) {}
 
   @Post('transaction/:transactionId')
+  @RequireDeviceIntegrity()
   @Roles('merchant', 'admin', 'super_admin')
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'Create a refund for a transaction (owner merchant or admin only)' })

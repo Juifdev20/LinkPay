@@ -7,7 +7,7 @@ const group = { id: 'g1', name: 'Tontine Amis', max_members: 5, late_penalty_ena
 const cycle = { id: 'c1', cycle_number: 1, recipient_member_id: 'rm1' };
 const lateContribution = () => ({ id: 'k1', amount_cents: 10000, currency: 'CDF', due_date: new Date(Date.now() - 4 * DAY).toISOString().slice(0, 10) });
 
-function setup(opts: { claimGranted?: boolean; transferError?: Error } = {}) {
+function setup(opts: { claimGranted?: boolean; transferError?: Error; transferStatus?: string } = {}) {
   const granted = opts.claimGranted ?? true;
   const fake = createFakeSupabase((q: RecordedQuery) => {
     if (q.target === 'tontine_members') return { data: { user_id: 'recipient-user', id: 'rm1' } };
@@ -20,7 +20,7 @@ function setup(opts: { claimGranted?: boolean; transferError?: Error } = {}) {
   });
   const transfer = jest.fn(async () => {
     if (opts.transferError) throw opts.transferError;
-    return { transfer: { id: 't1' } };
+    return { transfer: { id: 't1', status: opts.transferStatus ?? 'SUCCESS' } };
   });
   const notifications = { create: jest.fn(async () => undefined) };
   const service = new TontinesService(fake.service, { transfer } as any, notifications as any);
@@ -42,6 +42,21 @@ describe('tontine contributions are paid once', () => {
     await service.executeContribution(group, cycle, lateContribution(), 'payer', '1234', 'key', false);
     expect(transfer).toHaveBeenCalledTimes(1);
     expect(releases()).toBe(0);
+  });
+
+  it('never marks a contribution paid from a transfer that did not complete (a replayed key can return a FAILED or PENDING one)', async () => {
+    for (const transferStatus of ['FAILED', 'PENDING']) {
+      const { service, releases, fake } = setup({ transferStatus });
+      await expect(service.executeContribution(group, cycle, lateContribution(), 'payer', '1234', 'key', false)).rejects.toThrow(/n'a pas abouti/);
+      expect(fake.queries.some((q) => q.target === 'tontine_contributions' && has(q, 'update', { status: 'paid' }))).toBe(false);
+      expect(releases()).toBe(1);
+    }
+  });
+
+  it('uses a transfer key of its own (the client key is namespaced by the contribution), so it cannot replay an unrelated transfer', async () => {
+    const { service, transfer } = setup();
+    await service.executeContribution(group, cycle, lateContribution(), 'payer', '1234', 'client-key', false);
+    expect((transfer.mock.calls as any[])[0][2]).toBe('tontine:k1:client-key');
   });
 
   it('releases the claim when the payment fails, so a retry is possible', async () => {

@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional 
 import { IsString, IsOptional, IsInt, IsIn, IsBoolean, IsNumber, Min, Max, MaxLength, Length, ValidateIf } from 'class-validator';
 import { TontinesService } from './tontines.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { RequireDeviceIntegrity } from '../integrity/device-integrity.guard';
 
 class CreateTontineDto {
   @ApiProperty({ example: 'Tontine des amies' })
@@ -172,6 +173,7 @@ export class TontinesController {
   }
 
   @Post(':id/contribute')
+  @RequireDeviceIntegrity()
   @ApiOperation({ summary: "Pay this cycle's contribution (\"Cotiser\") — a real wallet transfer to the current recipient" })
   async contribute(
     @Param('id') id: string,

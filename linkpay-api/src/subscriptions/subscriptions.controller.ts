@@ -9,6 +9,7 @@ import { SecurityAlertsService } from '../security/security-alerts.service';
 import { AuditService } from '../audit/audit.service';
 import { SubscriptionsService } from './subscriptions.service';
 import { MAX_SUBSCRIPTION_MONTHS, SUBSCRIPTION_CURRENCIES, SUBSCRIPTION_MODES } from './subscription';
+import { RequireDeviceIntegrity } from '../integrity/device-integrity.guard';
 
 export class QuoteDto {
   @ApiProperty({ minimum: 1, maximum: MAX_SUBSCRIPTION_MONTHS })
@@ -56,6 +57,7 @@ export class SubscriptionsController {
   }
 
   @Post('organizations/:id/subscribe')
+  @RequireDeviceIntegrity()
   @Roles('enterprise')
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: "Pay N months of subscription from the owner's wallet. Header Idempotency-Key required." })

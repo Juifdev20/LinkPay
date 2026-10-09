@@ -16,6 +16,8 @@ import { SalesService } from '../sales/sales.service';
 import { MerchantWalletCreditService } from './merchant-wallet-credit.service';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
+import { completeTopupOnce } from '../wallets/topup-completion';
+import { confirmedAmountMatches } from './psp/amount-check';
 
 @Injectable()
 export class PaymentsService {
@@ -231,11 +233,15 @@ export class PaymentsService {
     // would see a confusing "already paid" error instead of its own result.
     const { data: existing } = await this.supabaseService.getClient()
       .from('payment_intents')
-      .select('id, status')
+      .select('id, status, client_id')
       .eq('idempotency_key', idempotencyKey)
       .single();
 
     if (existing) {
+      // Someone else's payment is never handed back for a key reused or guessed.
+      if (existing.client_id !== userId) {
+        throw new ConflictException("Cette clé d'idempotence a déjà été utilisée pour une autre opération.");
+      }
       return { payment_intent_id: existing.id, status: existing.status, message: 'Payment intent already exists (idempotent)' };
     }
 
@@ -339,34 +345,28 @@ export class PaymentsService {
       throw new BadRequestException('Solde ScanLinkPay insuffisant pour ce paiement.');
     }
 
+    // The payer has been debited. What happens next depends on ONE fact: does the merchant-side transaction exist?
+    //   - it does  → the money is committed (the merchant is credited now, or by the retry job within a minute): the
+    //                payer must NEVER be refunded, whatever a later, non-essential step does;
+    //   - it doesn't → nobody was paid: give the payer their money back.
+    // (Refunding the payer after the merchant had been credited created money; reporting success when no
+    // transaction was written destroyed it.)
+    let transaction: any;
+    let finalizeError: any = null;
     try {
-      const transaction = await this.handleSuccessfulPayment(intent, { psp_intent_id: pspIntentId });
-
-      await this.salesService.markPaidByPaymentRequest(request.id, transaction?.id);
-
-      await this.auditService.log({
-        user_id: userId,
-        action: 'wallet_payment',
-        entity_type: 'payment_intent',
-        entity_id: intent.id,
-        changes: { amount_cents: request.amount_cents, merchant_id: request.merchant_id, reference: request.reference },
-      });
-
-      // .catch() here is load-bearing, not just style: this is still inside
-      // the try block whose catch reverses the whole payment — a round-up
-      // failure must never fall into that catch and undo a payment that
-      // already succeeded.
-      const roundup = await this.savingsService
-        .maybeRoundUp(userId, payerWallet.id, request.amount_cents, request.currency, `payment:${request.reference}`)
-        .catch(() => null);
-
-      return { payment_intent_id: intent.id, status: 'SUCCESS', reference: transaction?.reference, roundup };
+      transaction = await this.handleSuccessfulPayment(intent, { psp_intent_id: pspIntentId });
     } catch (err: any) {
-      // The wallet was already debited but the transaction/ledger pipeline
-      // failed downstream — never leave the customer's money in limbo:
-      // reverse the debit and fail the whole operation cleanly.
-      this.logger.error(`Wallet payment debit succeeded but finalize failed for intent ${intent.id}, reversing: ${err.message}`);
-      await this.supabaseService.getClient().rpc('credit_wallet', {
+      finalizeError = err;
+    }
+    if (!transaction) {
+      const { data: existingTx } = await this.supabaseService.getClient()
+        .from('transactions').select('*').eq('payment_intent_id', intent.id).maybeSingle();
+      transaction = existingTx ?? undefined;
+    }
+
+    if (!transaction) {
+      this.logger.error(`Wallet payment debit succeeded but no transaction was created for intent ${intent.id}, reversing: ${finalizeError?.message || 'no transaction'}`);
+      const { error: reverseError } = await this.supabaseService.getClient().rpc('credit_wallet', {
         p_wallet_id: payerWallet.id,
         p_amount_cents: fees.total_cents,
         p_entry_type: 'ADJUSTMENT',
@@ -374,9 +374,41 @@ export class PaymentsService {
         p_currency: request.currency,
         p_metadata: { payment_intent_id: intent.id, reason: 'finalize_failed' },
       });
+      if (reverseError) {
+        // The worst case: debited, not paid, and the refund failed. Never silent.
+        this.logger.error(`CRITICAL: could not refund ${fees.total_cents} ${request.currency} to wallet ${payerWallet.id} for intent ${intent.id}: ${reverseError.message}`);
+        void this.securityAlerts.alert({
+          severity: 'critical',
+          title: 'Paiement par portefeuille : remboursement du payeur en échec',
+          body: `Un paiement a été débité sans être enregistré, et le remboursement automatique a échoué (intention ${intent.id}). À régulariser à la main.`,
+          dedupeKey: `wallet-reversal:${intent.id}`,
+        });
+      }
       await this.supabaseService.getClient().from('payment_intents').update({ status: 'FAILED', updated_at: new Date().toISOString() }).eq('id', intent.id);
+      await this.supabaseService.getClient().from('payment_requests').update({ status: 'CREATED', updated_at: new Date().toISOString() }).eq('id', request.id);
       throw new BadRequestException('Le paiement a échoué. Aucun montant n\'a été débité.');
     }
+
+    // The payment is done. Everything below is bookkeeping: a failure is logged for follow-up and never undoes it.
+    if (finalizeError) {
+      this.logger.error(`Wallet payment ${intent.id} completed but a step after the transaction failed (the retry job finishes the merchant credit): ${finalizeError.message}`);
+    }
+    await this.salesService.markPaidByPaymentRequest(request.id, transaction.id)
+      .catch((err: any) => this.logger.error(`Wallet payment ${intent.id} is paid but its sale could not be marked paid: ${err.message}`));
+
+    await this.auditService.log({
+      user_id: userId,
+      action: 'wallet_payment',
+      entity_type: 'payment_intent',
+      entity_id: intent.id,
+      changes: { amount_cents: request.amount_cents, merchant_id: request.merchant_id, reference: request.reference },
+    }).catch((err: any) => this.logger.warn(`Audit log failed for wallet payment ${intent.id}: ${err.message}`));
+
+    const roundup = await this.savingsService
+      .maybeRoundUp(userId, payerWallet.id, request.amount_cents, request.currency, `payment:${request.reference}`)
+      .catch(() => null);
+
+    return { payment_intent_id: intent.id, status: 'SUCCESS', reference: transaction.reference, roundup };
   }
 
   /**
@@ -402,7 +434,7 @@ export class PaymentsService {
       const adapter = this.pspFactory.get(intent.psp_provider);
       const live = await adapter.getTransactionStatus(intent.psp_intent_id);
       if (live.status === 'SUCCESS') {
-        await this.handleSuccessfulPayment(intent, { psp_intent_id: intent.psp_intent_id });
+        await this.handleSuccessfulPayment(intent, { psp_intent_id: intent.psp_intent_id, amount_cents: live.amount_cents });
       } else if (live.status === 'FAILED') {
         await this.handleFailedPayment(intent, { psp_intent_id: intent.psp_intent_id });
       }
@@ -493,6 +525,11 @@ export class PaymentsService {
       });
 
     if (logError) {
+      // The unique dedup_hash is what makes two simultaneous deliveries of the same event safe: the loser stops here.
+      if (/duplicate|unique/i.test(logError.message)) {
+        this.logger.log(`Duplicate webhook detected (race): ${dedupHash}`);
+        return { status: 'duplicate', message: 'Webhook already processed' };
+      }
       this.logger.error(`Failed to log webhook event: ${logError.message}`);
     }
 
@@ -507,7 +544,7 @@ export class PaymentsService {
       // Kept as a direct table lookup here (rather than injecting
       // WalletsService) to avoid a circular module dependency, since
       // WalletsModule already depends on PaymentsModule for PspFactory.
-      const handledAsTopup = await this.tryHandleTopupWebhook(event.psp_intent_id, event.status);
+      const handledAsTopup = await this.tryHandleTopupWebhook(event.psp_intent_id, event.status, event.amount_cents);
       if (handledAsTopup) {
         await this.markWebhookProcessed(dedupHash);
         return { status: 'processed', event_type: event.event_type };
@@ -544,7 +581,23 @@ export class PaymentsService {
     return { status: 'processed', event_type: event.event_type };
   }
 
+  /** The provider's confirmed amount must equal ours (see amount-check.ts). Not claimed, nothing credited, admins told. */
+  private amountAccepted(kind: string, ref: string, expectedCents: number, confirmedCents: number | undefined): boolean {
+    if (confirmedAmountMatches(expectedCents, confirmedCents)) return true;
+    this.logger.error(`${kind} ${ref}: the provider confirmed ${confirmedCents} but ${expectedCents} was expected — not credited`);
+    void this.securityAlerts.alert({
+      severity: 'critical',
+      title: 'Montant confirmé différent du montant attendu',
+      body: `Le fournisseur de paiement confirme un montant différent de celui enregistré (${kind} ${ref}). Rien n'a été crédité : vérifier avec le fournisseur.`,
+      audience: 'admins',
+      dedupeKey: `amount-mismatch:${ref}`,
+    });
+    return false;
+  }
+
   private async handleSuccessfulPayment(intent: any, event: any): Promise<any> {
+    if (!this.amountAccepted('paiement', intent.id, intent.amount_cents, event?.amount_cents)) return undefined;
+
     // Atomically claim the PENDING -> SUCCEEDED transition before doing any
     // work: a webhook delivery and a concurrent status-check poll (GET
     // /payments/status/:reference) can both reach this method for the same
@@ -576,6 +629,7 @@ export class PaymentsService {
 
     if (!request) {
       this.logger.error(`No payment request found for intent ${intent.id}`);
+      await this.releaseSuccessClaim(intent.id);
       return undefined;
     }
 
@@ -611,6 +665,9 @@ export class PaymentsService {
 
     if (txError) {
       this.logger.error(`Failed to create transaction: ${txError.message}`);
+      // Put the intent back to PENDING: it was claimed as SUCCEEDED above, and left like that nobody would ever retry — the
+      // customer paid and the merchant would never be credited. The next webhook delivery or status check tries again.
+      await this.releaseSuccessClaim(intent.id);
       return undefined;
     }
 
@@ -652,6 +709,15 @@ export class PaymentsService {
 
     this.logger.log(`Payment succeeded: ${txReference}`);
     return transaction;
+  }
+
+  /** Undo the PENDING → SUCCEEDED claim of handleSuccessfulPayment when nothing was recorded, so the payment can be retried. */
+  private async releaseSuccessClaim(intentId: string) {
+    await this.supabaseService.getClient()
+      .from('payment_intents')
+      .update({ status: 'PENDING', updated_at: new Date().toISOString() })
+      .eq('id', intentId)
+      .eq('status', 'SUCCEEDED');
   }
 
   private async handleFailedPayment(intent: any, event: any) {
@@ -697,7 +763,7 @@ export class PaymentsService {
   }
 
   /** Returns true if a wallet_topups row was found for this psp_intent_id (handled either way). */
-  private async tryHandleTopupWebhook(pspIntentId: string, status: string): Promise<boolean> {
+  private async tryHandleTopupWebhook(pspIntentId: string, status: string, confirmedAmountCents?: number): Promise<boolean> {
     const { data: topup } = await this.supabaseService.getClient()
       .from('wallet_topups')
       .select('*')
@@ -709,49 +775,34 @@ export class PaymentsService {
     }
 
     if (status === 'SUCCESS') {
-      if (topup.status !== 'SUCCESS') {
-        const { error: rpcError } = await this.supabaseService.getClient().rpc('credit_wallet', {
-          p_wallet_id: topup.wallet_id,
-          p_amount_cents: topup.amount_cents,
-          p_entry_type: 'TOPUP',
-          p_reference: `TOPUP-${topup.id}`,
-          p_currency: topup.currency,
-          p_metadata: { wallet_topup_id: topup.id, psp_intent_id: pspIntentId },
-        });
-
-        if (rpcError) {
-          this.logger.error(`Failed to credit wallet for top-up ${topup.id}: ${rpcError.message}`);
-          return true;
-        }
-
-        await this.supabaseService.getClient()
-          .from('wallet_topups')
-          .update({ status: 'SUCCESS', updated_at: new Date().toISOString() })
-          .eq('id', topup.id);
-
-        const { data: wallet } = await this.supabaseService.getClient()
-          .from('wallets')
-          .select('user_id')
-          .eq('id', topup.wallet_id)
-          .single();
-
-        if (wallet?.user_id) {
-          await this.notificationsService.create({
-            user_id: wallet.user_id,
-            type: 'wallet_topup_success',
-            title: 'Portefeuille rechargé',
-            body: `Votre compte ScanLinkPay a été crédité de ${(topup.amount_cents / 100).toLocaleString('fr-FR')} ${topup.currency}.`,
-            data: { wallet_topup_id: topup.id },
-          }).catch(() => null);
-        }
-
+      if (!this.amountAccepted('recharge', topup.id, topup.amount_cents, confirmedAmountCents)) return true;
+      // Claim + credit + status change as ONE atomic step (migration 056): a webhook delivered twice, or racing the
+      // status check the app makes on return from the payment page, credits the wallet exactly once.
+      let outcome;
+      try {
+        outcome = await completeTopupOnce(this.supabaseService.getClient(), topup.id, pspIntentId, this.logger);
+      } catch (err: any) {
+        // Left PENDING: the next confirmation (a webhook retry, the status check) credits it.
+        this.logger.error(`Failed to credit wallet for top-up ${topup.id}: ${err.message}`);
+        return true;
+      }
+      if (outcome.credited && outcome.userId) {
+        await this.notificationsService.create({
+          user_id: outcome.userId,
+          type: 'wallet_topup_success',
+          title: 'Portefeuille rechargé',
+          body: `Votre compte ScanLinkPay a été crédité de ${(topup.amount_cents / 100).toLocaleString('fr-FR')} ${topup.currency}.`,
+          data: { wallet_topup_id: topup.id },
+        }).catch(() => null);
         this.logger.log(`Wallet top-up ${topup.id} confirmed via webhook, wallet ${topup.wallet_id} credited`);
       }
     } else if (status === 'FAILED') {
+      // Only a top-up still waiting can fail: a late "failed" must never overwrite one that already succeeded.
       await this.supabaseService.getClient()
         .from('wallet_topups')
         .update({ status: 'FAILED', updated_at: new Date().toISOString() })
-        .eq('id', topup.id);
+        .eq('id', topup.id)
+        .eq('status', 'PENDING');
     }
 
     return true;
