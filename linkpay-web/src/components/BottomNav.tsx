@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Receipt, QrCode, Settings, ShoppingCart, Boxes, BarChart3, Bell, Menu } from 'lucide-react';
+import { Home, Receipt, QrCode, ScanLine, Settings, ShoppingCart, Boxes, BarChart3, Bell, Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -10,7 +10,7 @@ import { navItemsFor } from '@/lib/nav-items';
 // "Profil" moved to TopBar.tsx (top-right icon) — this slot is now the app
 // Settings destination, matching what the desktop sidebar already calls it
 // (DashboardLayout.tsx's navItems: '/dashboard/settings' → "Paramètres").
-// The central "QR" tab's target depends on role — see BottomNav() below.
+// The central tab's target depends on role — see computeVisibleTabs() below.
 type Tab = { to: string; label: string; icon: typeof Home; end: boolean; central?: boolean };
 
 const SALES_DASHBOARD_PATH = '/dashboard/organization/sales/dashboard';
@@ -36,6 +36,8 @@ const alertsTab: Tab = { to: '/dashboard/notifications', label: 'Alertes', icon:
 // Selling is the daily business activity — the supermarket/electronics
 // cashier lands on the POS till; other sectors keep the Ventes form.
 const venteTab: Tab = { to: '/dashboard/pos', label: 'Vente', icon: ShoppingCart, end: false, central: true };
+
+const scanTab: Tab = { to: '/dashboard/wallet/scan', label: 'Scanner', icon: ScanLine, end: false, central: true };
 
 const staffTabsFor = (role: string, orgSector?: string): Tab[] | undefined => {
   const caissierSale = orgSector === 'supermarche' ? venteTab : salesTab;
@@ -71,18 +73,28 @@ export function computeVisibleTabs(
   const isEnterprise = role === 'enterprise' || !!user?.acting_as_org_id;
   const hasMerchantId = !!user?.merchant_id;
 
-  // Business accounts sell daily — the central tab is "Vente" → the POS
-  // till for enterprise, "QR" → payment request for plain merchants,
-  // "Recevoir" → own QR for clients who can only receive.
-  const qrTab = isEnterprise
+  // The central tab is the account's main daily action, and its label says
+  // whether the user SHOWS a QR or SCANS one:
+  //  - enterprise: "Vente" → the POS till.
+  //  - plain merchant: "Encaisser" → creates the payment QR the customer scans.
+  //    (It used to be labelled just "QR", which reads as "scan".)
+  //  - client: "Scanner" → scan a merchant's QR to pay, or a wallet QR to
+  //    send money — what a client does most. Their own receive QR stays one
+  //    tap away on the home screen ("Recevoir").
+  const qrTab: Tab = isEnterprise
     ? venteTab
     : hasMerchantId
-    ? { to: '/dashboard/payment-requests/new', label: 'QR', icon: QrCode, end: false, central: true }
-    : { to: '/dashboard/wallet/receive', label: 'Recevoir', icon: QrCode, end: false, central: true };
+    ? { to: '/dashboard/payment-requests/new', label: 'Encaisser', icon: QrCode, end: false, central: true }
+    : scanTab;
   const transactionsTab = isEnterprise
     ? { ...tabs[1], to: '/dashboard/organization/transactions' }
     : tabs[1];
-  const allTabs = staffTabsFor(role || '', orgSector) ?? [tabs[0], transactionsTab, qrTab, tabs[2]];
+  // A plain merchant also pays suppliers, so besides "Encaisser" they get
+  // "Scanner" (the central tab sits in the middle of five).
+  const merchantTabs: Tab[] = [tabs[0], transactionsTab, qrTab, { ...scanTab, central: false }, tabs[2]];
+  const allTabs =
+    staffTabsFor(role || '', orgSector) ??
+    (hasMerchantId && !isEnterprise ? merchantTabs : [tabs[0], transactionsTab, qrTab, tabs[2]]);
 
   const navRole = isEnterprise ? 'enterprise' : role;
   const businessItemCount = navRole
