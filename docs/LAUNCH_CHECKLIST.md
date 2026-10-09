@@ -4,7 +4,7 @@ Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente
 
 ## 1. Base de données (Supabase → SQL Editor)
 
-- [ ] Exécuter dans l'ordre les migrations `040` → `051` (dossier `linkpay-api/supabase/migrations`). **La 043 d'abord si vous ne pouvez pas tout faire** : sans elle n'importe qui peut créditer un portefeuille.
+- [ ] Exécuter dans l'ordre les migrations `040` → `052` (dossier `linkpay-api/supabase/migrations`). **La 043 d'abord si vous ne pouvez pas tout faire** : sans elle n'importe qui peut créditer un portefeuille.
 - [ ] Exécuter `linkpay-api/supabase/verify_security.sql`. **Les 6 premières lignes doivent toutes afficher `OK`.** Une ligne `FAIL` dit ce qu'il reste à corriger.
 - [ ] Lire les 4 tableaux « à regarder à la main » en bas du résultat :
   - **A** : chaque administrateur est une personne que vous connaissez ;
@@ -24,6 +24,13 @@ Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente
 - [ ] `NODE_ENV=production`, `ENABLE_SWAGGER=false`, `PSP_PROVIDER` = le vrai fournisseur (jamais `mock`).
 - [ ] **Alertes par email** : créer un compte gratuit sur resend.com, vérifier votre domaine d'envoi, puis définir `RESEND_API_KEY` et `ALERT_EMAIL_FROM` (et `ALERT_EMAILS` pour des destinataires en plus). Tester : déclencher une alerte critique (ex. un mauvais code 2FA sur un compte admin) et vérifier la réception.
 - [ ] Optionnel mais recommandé : `ADMIN_ALLOWED_IPS` si les administrateurs ont une IP fixe (bureau/VPN).
+
+## 2 bis. Licences (revenus de la plateforme)
+
+- [ ] Migration `052` appliquée (les 7 fonctionnalités sont créées **sans prix**).
+- [ ] Super admin → **Licences** : fixer le prix par jour de chaque fonctionnalité (CDF et/ou USD), éventuellement le prix « Toute l'application », la durée de l'essai gratuit, ce qui se passe à la fin de l'essai et à l'expiration (lecture simple ou bloqué) et les jours de rappel. Une fonctionnalité sans prix dans une devise n'est pas vendable dans cette devise.
+- [ ] Faire un achat de test avec un compte patron : le portefeuille est débité, la licence apparaît, un deuxième achat ajoute des jours à la suite ; une licence expirée reprend dès le paiement.
+- [ ] Les paiements des clients, le portefeuille et les retraits ne sont jamais bloqués par une licence (c'est là que la commission est gagnée).
 
 ## 3. Comptes administrateurs
 

@@ -26,6 +26,7 @@ Ce document décrit les défenses en place et ce qu'il reste à faire. Il est te
 - **Accès administrateur** : un compte `admin` / `super_admin` ne fonctionne qu'avec le mot de passe **et** un code d'application d'authentification (TOTP, secret chiffré en base, code utilisable une seule fois, codes de secours hachés). Sans 2FA configurée, la session ne peut que configurer la 2FA (`JwtAuthGuard`). Jetons de rafraîchissement admin limités à 12 h. Liste d'IP autorisées optionnelle (`ADMIN_ALLOWED_IPS`).
 - **Confirmation des actions sensibles** : changer un rôle, une commission, les frais/limites, les réglages de la plateforme ou réinitialiser la 2FA d'un collègue demande un code frais (`x-otp-code`, `OtpStepUpGuard`) ; impossible de changer son propre rôle ou de retirer le dernier super administrateur.
 - **Alertes aux administrateurs** (cloche + notification push) : connexion admin, code 2FA faux, compte verrouillé, réseau admin non autorisé, opération bloquée par le moteur de risque, faux webhook de paiement, changement de rôle / commission / limites, réinitialisation de la 2FA, **portefeuille en négatif** (contrôle du grand livre toutes les 10 minutes).
+- **Licences** : l'accès aux fonctionnalités d'une entreprise (caisse, ventes, stock, inventaire, statistiques, journal, ajout d'employés) dépend d'une licence achetée par le patron au jour près, payée depuis son portefeuille (code PIN, achat idempotent, débit et licence dans **une seule transaction SQL** — `purchase_license`, migration `052`). Le contrôle est fait par l'API (`@RequireLicense`), pas seulement par l'écran : en « lecture simple » les lectures passent et les écritures sont refusées, en « bloqué » tout est refusé. Jamais bloqués : paiements des clients, portefeuille, retraits, retrait d'un employé. Prix, essai, modes et rappels ne se changent que par un super administrateur avec code frais (2FA), journalisés et signalés par alerte. Si les tables de licence sont illisibles, l'API laisse passer (aucune entreprise n'est coupée par une panne ou une migration oubliée).
 - Limites et frais de portefeuille configurables (`wallet_limits`).
 - Webhooks PSP signés, rejouables sans effet, fournisseur vérifié.
 - Journal d'audit (`audit_logs`) sur les actions sensibles.
@@ -46,7 +47,7 @@ Ce document décrit les défenses en place et ce qu'il reste à faire. Il est te
 
 ## À faire (priorité décroissante)
 
-1. **Appliquer les migrations `040` à `048`**, puis lancer `linkpay-api/supabase/verify_security.sql` (voir `docs/LAUNCH_CHECKLIST.md`) dans le SQL Editor de Supabase, dans l'ordre, puis lancer le *Security Advisor* de Supabase.
+1. **Appliquer les migrations `040` à `052`**, puis lancer `linkpay-api/supabase/verify_security.sql` (voir `docs/LAUNCH_CHECKLIST.md`) dans le SQL Editor de Supabase, dans l'ordre, puis lancer le *Security Advisor* de Supabase.
 2. **Changer toutes les clés déjà partagées** : `service_role` Supabase, `JWT_SECRET`, mot de passe CinetPay, clé FCM.
 3. Vérifier `ledger_entries` (types `ADJUSTMENT` et `TOPUP`) pour détecter un éventuel abus avant la migration `043`.
 4. Fermer ou contrôler l'inscription publique de Supabase Auth (l'inscription doit passer par `/auth/register`).

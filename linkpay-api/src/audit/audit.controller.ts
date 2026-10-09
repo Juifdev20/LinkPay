@@ -5,6 +5,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { RequireLicense } from '../licenses/license.guard';
 
 /**
  * Organization-scoped audit trail (spec 3.2 "traçabilité") — the direction
@@ -16,6 +17,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 @ApiTags('Audit')
 @ApiBearerAuth()
 @Controller('organizations/:id/audit-log')
+@RequireLicense('audit', 'org')
 @Roles('enterprise', 'comptable', 'admin', 'super_admin')
 @UseGuards(RolesGuard)
 export class AuditController {

@@ -3,6 +3,7 @@ import { useOtpPrompt } from './otp-prompt';
 import { useAppCodePrompt } from './app-code-prompt';
 import { useStockPasswordPrompt, rememberStockPassword, recalledStockPassword, forgetStockPassword } from './stock-password-prompt';
 import { getConfirmToken, setConfirmToken, clearConfirmToken } from './confirm-token';
+import { useLicensePrompt } from './license-prompt';
 import { getToken, setTokens, clearTokens, TOKEN_ACCESS_KEY, TOKEN_REFRESH_KEY } from './token-storage';
 
 const rawUrl = (import.meta.env.VITE_API_URL || '/api/v1').toString().replace(/\/$/, '');
@@ -76,6 +77,10 @@ api.interceptors.response.use(
             if (confirmErr?.response?.status === 429) break; // locked: the error below tells the user
           }
         }
+      }
+      // The business has no running licence for this feature: tell the user and suggest buying one.
+      if (code === 'LICENSE_REQUIRED') {
+        useLicensePrompt.getState().show(error.response.data);
       }
       // An administrator session without the second factor can only set it up.
       if (code === 'MFA_REQUIRED' && window.location.pathname !== '/admin-2fa') {

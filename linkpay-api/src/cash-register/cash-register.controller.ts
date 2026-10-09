@@ -6,6 +6,7 @@ import { AppCodeConfirmGuard, RequireAppCode } from '../common/guards/app-code-c
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { RequireLicense } from '../licenses/license.guard';
 
 class OpenSessionDto {
   @ApiProperty({ enum: ['CDF', 'USD'] })
@@ -45,6 +46,7 @@ class CloseSessionDto {
 @ApiTags('Cash Register')
 @ApiBearerAuth()
 @Controller('merchants/:id/cash-register')
+@RequireLicense('pos', 'merchant')
 // The stock keeper may sell at the till (so can read/open a session), but only the patron and
 // the caissier in charge of it move cash in/out or close it — see the per-method @Roles below.
 @Roles('enterprise', 'caissier', 'magasinier', 'admin', 'super_admin')

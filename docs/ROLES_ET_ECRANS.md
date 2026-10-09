@@ -32,3 +32,19 @@ Chaque employé a son **propre portefeuille ScanLinkPay** (menu « Mon portefeui
 3. L'employé appuie sur **Retirer mon salaire**, choisit Mobile Money, saisit son PIN de transaction : l'argent part vers son téléphone.
 
 Il ne retire que **son** argent : les recettes du commerce restent dans le portefeuille du patron, hors de portée des employés.
+
+## Licences (par entreprise)
+
+Le patron achète, depuis son portefeuille, des jours de licence pour les fonctionnalités qu'il coche (ou « Toute l'application »), page **Licence**. Les employés n'achètent rien : s'ils ouvrent un écran sans licence, ils lisent « Vous n'avez pas de licence pour cette fonctionnalité » et sont invités à prévenir le patron.
+
+| Fonctionnalité | Écrans / actions concernés |
+| --- | --- |
+| Caisse | Caisse (encaissement, sessions, mouvements d'espèces) |
+| Ventes | Ventes, historique, tableau de bord des ventes |
+| Stock | Ajouter / modifier / supprimer un article, mouvements, photo |
+| Inventaire | Inventaires |
+| Statistiques | Statistiques de la caisse |
+| Journal | Journal d'audit |
+| Employés | Ajouter un employé (retirer un accès ou changer un rôle reste toujours possible) |
+
+Toujours disponibles quelle que soit la licence : paiements des clients, portefeuille, retraits, notifications, paramètres.

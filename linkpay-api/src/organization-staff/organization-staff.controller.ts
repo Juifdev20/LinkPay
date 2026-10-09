@@ -5,6 +5,7 @@ import { OrganizationStaffService, STAFF_ROLE_SLUGS } from './organization-staff
 import { OrganizationsService } from '../organizations/organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AppCodeConfirmGuard, RequireAppCode } from '../common/guards/app-code-confirm.guard';
+import { RequireLicense } from '../licenses/license.guard';
 
 
 class CreateStaffDto {
@@ -54,6 +55,8 @@ export class OrganizationStaffController {
   ) {}
 
   @Post(':id/staff')
+  // Only ADDING people needs the licence: removing access or changing a role must always work.
+  @RequireLicense('staff', 'org')
   @ApiOperation({ summary: 'Create an internal user for this organization (owner only)' })
   async createStaff(
     @Param('id') id: string,

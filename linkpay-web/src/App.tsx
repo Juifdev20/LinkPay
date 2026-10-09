@@ -1,4 +1,6 @@
 import { OtpPromptDialog } from '@/components/OtpPromptDialog';
+import { LicensePromptDialog } from '@/components/LicensePromptDialog';
+import { LicenseGate } from '@/components/LicenseGate';
 import { AppCodeConfirmDialog } from '@/components/AppCodeConfirmDialog';
 import { StockPasswordGate } from '@/components/stock/StockPasswordGate';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
@@ -58,6 +60,8 @@ const AppSecurityPage = lazyPage(() => import('@/pages/admin/AppSecurity'));
 const AdminOrganizationsPage = lazyPage(() => import('@/pages/admin/Organizations'));
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
 const StaffPage = lazyPage(() => import('@/pages/organization/Staff'));
+const LicensePage = lazyPage(() => import('@/pages/organization/License'));
+const AdminLicensesPage = lazyPage(() => import('@/pages/admin/Licenses'));
 const StoresPage = lazyPage(() => import('@/pages/organization/Stores'));
 const StockPage = lazyPage(() => import('@/pages/organization/Stock'));
 const InventoryPage = lazyPage(() => import('@/pages/organization/Inventory'));
@@ -173,6 +177,7 @@ export default function App() {
       <AppLockGate />
       <ForcePasswordChangeGate />
       <OtpPromptDialog />
+      <LicensePromptDialog />
       <AppCodeConfirmDialog />
       <StockPasswordGate />
       <Suspense fallback={<PageFallback fullScreen />}>
@@ -337,7 +342,7 @@ export default function App() {
           path="organization/sales"
           element={
             <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier']}>
-              <SalesPage />
+              <LicenseGate feature="sales"><SalesPage /></LicenseGate>
             </ProtectedRoute>
           }
         />
@@ -345,7 +350,7 @@ export default function App() {
           path="organization/sales/history"
           element={
             <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier', 'comptable']}>
-              <SalesHistoryPage />
+              <LicenseGate feature="sales"><SalesHistoryPage /></LicenseGate>
             </ProtectedRoute>
           }
         />
@@ -353,7 +358,7 @@ export default function App() {
           path="organization/sales/dashboard"
           element={
             <ProtectedRoute roles={['enterprise', 'vendeur', 'comptable']}>
-              <SalesDashboardPage />
+              <LicenseGate feature="sales"><SalesDashboardPage /></LicenseGate>
             </ProtectedRoute>
           }
         />
@@ -361,7 +366,7 @@ export default function App() {
           path="organization/stock"
           element={
             <ProtectedRoute roles={['enterprise', 'magasinier']}>
-              <StockPage />
+              <LicenseGate feature="stock"><StockPage /></LicenseGate>
             </ProtectedRoute>
           }
         />
@@ -369,7 +374,7 @@ export default function App() {
           path="organization/inventory"
           element={
             <ProtectedRoute roles={['enterprise', 'magasinier']}>
-              <InventoryPage />
+              <LicenseGate feature="inventory"><InventoryPage /></LicenseGate>
             </ProtectedRoute>
           }
         />
@@ -385,7 +390,7 @@ export default function App() {
           path="organization/stats"
           element={
             <ProtectedRoute roles={['enterprise', 'comptable']}>
-              <SalesStatsPage />
+              <LicenseGate feature="stats"><SalesStatsPage /></LicenseGate>
             </ProtectedRoute>
           }
         />
@@ -401,7 +406,7 @@ export default function App() {
           path="organization/audit"
           element={
             <ProtectedRoute roles={['enterprise', 'comptable']}>
-              <AuditLogPage />
+              <LicenseGate feature="audit"><AuditLogPage /></LicenseGate>
             </ProtectedRoute>
           }
         />
@@ -417,7 +422,23 @@ export default function App() {
           path="pos"
           element={
             <ProtectedRoute roles={['enterprise', 'caissier']}>
-              <PosPage />
+              <LicenseGate feature="pos"><PosPage /></LicenseGate>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/license"
+          element={
+            <ProtectedRoute roles={['enterprise']}>
+              <LicensePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/licenses"
+          element={
+            <ProtectedRoute roles={['super_admin']}>
+              <AdminLicensesPage />
             </ProtectedRoute>
           }
         />
