@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { sumByCurrency } from '../common/utils/currency';
 import { toPublicProfile } from '../users/users.service';
+import { toPublicOrganization } from '../organizations/organizations.service';
 
 @Injectable()
 export class AdminService {
@@ -106,7 +107,7 @@ export class AdminService {
 
     const { data, error, count } = await query;
     if (error) throw new Error(`Failed to fetch organizations: ${error.message}`);
-    return { data, total: count || 0, page, limit };
+    return { data: (data || []).map((o: any) => toPublicOrganization(o)), total: count || 0, page, limit };
   }
 
   async listUsers(filters?: { page?: number; limit?: number }) {

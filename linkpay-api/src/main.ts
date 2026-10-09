@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import * as express from 'express';
 import { AppModule } from './app.module';
+import { configureTrustProxy, resolveTrustProxyHops } from './common/utils/trust-proxy';
 
 // CinetPay's SDK talks to exactly these hosts (sandbox + production) — see
 // cinetpay.adapter.ts. Only requests to these get routed through the proxy;
@@ -58,6 +59,14 @@ async function bootstrap() {
     }),
   );
   app.use(express.urlencoded({ extended: true }));
+
+  // The rate limiter keys on the client IP: behind Render's proxy it needs the
+  // real one (see common/utils/trust-proxy.ts).
+  const trustProxyHops = resolveTrustProxyHops({
+    NODE_ENV: configService.get<string>('NODE_ENV'),
+    TRUST_PROXY_HOPS: configService.get<string>('TRUST_PROXY_HOPS'),
+  });
+  configureTrustProxy(app.getHttpAdapter().getInstance(), trustProxyHops);
 
   app.use(helmet());
   const frontendUrl = configService.get<string>('FRONTEND_URL');
