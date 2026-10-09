@@ -17,7 +17,7 @@ Bleu royal du logo (#1A3CFF → #0A17A8), « Pay » en bleu clair (#38B6FF), pol
 ## Fond (v2)
 - Carte de la RDC en filigrane (Natural Earth 1:50 000 000, domaine public), bleu clair assourdi, trame de points, bande diagonale rouge/jaune du drapeau très atténuée (recto seulement), méridiens/parallèles discrets.
 - Logo ScanLinkPay en bas à droite du recto (à la place du logo de réseau d'une carte bancaire).
-- Verso : bande des partenaires « Recharge · Retrait ». Les noms affichés sont des emplacements : les logos officiels sont à fournir par ScanLinkPay (droits des marques) et seront téléversés dans les réglages.
+- Verso : bande « Recharge · Retrait » avec les logos fournis (Orange Money, Airtel Money, M-Pesa), dans `logos/`. À terme, ces logos seront téléversés dans les réglages super admin.
 
 ## Réglages super admin (à ne pas figer dans le design)
 Téléphone du service client, nom de domaine (donc l'adresse encodée dans le QR), logos partenaires, durée de validité : vides par défaut, définis dans les réglages. Un champ vide n'est pas imprimé.
