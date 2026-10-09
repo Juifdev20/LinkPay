@@ -169,6 +169,29 @@ class VerifyStockPasswordDto {
   password!: string;
 }
 
+/**
+ * Who may touch an organization's shared stock password.
+ *  - define / change it: the patron (owner) or an administrator — never an employee;
+ *  - check it or ask whether one exists: the patron, the organization's own
+ *    staff (they need it to confirm an edit) and administrators — nobody else,
+ *    so another company's account can neither guess it nor lock it by failing.
+ */
+export function assertStockPasswordAccess(
+  org: { id: string; owner_id: string },
+  caller: { id: string; role?: string; organizationId?: string },
+  level: 'member' | 'owner',
+) {
+  const isAdmin = caller.role === 'admin' || caller.role === 'super_admin';
+  const isOwner = org.owner_id === caller.id;
+  if (isAdmin || isOwner) return;
+  if (level === 'member' && !!caller.organizationId && caller.organizationId === org.id) return;
+  throw new ForbiddenException(
+    level === 'owner'
+      ? "Seul le patron peut définir ou modifier le mot de passe de gestion de stock."
+      : "Vous n'avez pas accès à la gestion de stock de cette entreprise",
+  );
+}
+
 @ApiTags('Stock')
 @ApiBearerAuth()
 @Controller('merchants')
@@ -332,19 +355,32 @@ export class OrganizationStockController {
 
   @Get(':id/stock-password/status')
   @ApiOperation({ summary: 'Whether this organization has a stock management password set yet' })
-  async getStockPasswordStatus(@Param('id') orgId: string) {
+  async getStockPasswordStatus(
+    @Param('id') orgId: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    assertStockPasswordAccess(await this.organizationsService.getOrganizationById(orgId), { id: callerId, role: callerRole, organizationId: callerOrgId }, 'member');
     return { is_set: await this.stockPasswordService.hasPasswordSet(orgId) };
   }
 
   @Post(':id/stock-password/verify')
   @ApiOperation({ summary: 'Verify the stock password — used by the edit/delete confirm prompt' })
-  async verifyStockPassword(@Param('id') orgId: string, @Body() dto: VerifyStockPasswordDto) {
+  async verifyStockPassword(
+    @Param('id') orgId: string,
+    @Body() dto: VerifyStockPasswordDto,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    assertStockPasswordAccess(await this.organizationsService.getOrganizationById(orgId), { id: callerId, role: callerRole, organizationId: callerOrgId }, 'member');
     await this.stockPasswordService.verifyPassword(orgId, dto.password);
     return { ok: true };
   }
 
   @Post(':id/stock-password/set')
-  @ApiOperation({ summary: 'Set the stock password for the first time, or change it by providing the current one' })
+  @ApiOperation({ summary: 'Set the stock password for the first time, or change it by providing the current one (patron / administrator only)' })
   async setStockPassword(
     @Param('id') orgId: string,
     @Body() dto: SetStockPasswordDto,
@@ -353,11 +389,7 @@ export class OrganizationStockController {
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
     const org = await this.organizationsService.getOrganizationById(orgId);
-    const isAdmin = callerRole === 'admin' || callerRole === 'super_admin';
-    const isOrgStaff = !!callerOrgId && callerOrgId === orgId;
-    if (!isAdmin && org.owner_id !== callerId && !isOrgStaff) {
-      throw new ForbiddenException("Vous n'avez pas accès à la gestion de stock de cette entreprise");
-    }
+    assertStockPasswordAccess(org, { id: callerId, role: callerRole, organizationId: callerOrgId }, 'owner');
     await this.stockPasswordService.setPassword(orgId, dto.password, dto.current_password);
     return { success: true };
   }
