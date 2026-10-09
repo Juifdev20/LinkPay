@@ -14,6 +14,14 @@ Données de l'aperçu **fictives** (nom, numéro, QR, téléphone du service cli
 ## Charte reprise du projet
 Bleu royal du logo (#1A3CFF → #0A17A8), « Pay » en bleu clair (#38B6FF), police Poppins, slogan « PAYEZ. RECEVEZ. SIMPLEMENT. », cadre de scan du logo autour du QR.
 
+## Fond (v2)
+- Carte de la RDC en filigrane (Natural Earth 1:50 000 000, domaine public), bleu clair assourdi, trame de points, bande diagonale rouge/jaune du drapeau très atténuée (recto seulement), méridiens/parallèles discrets.
+- Logo ScanLinkPay en bas à droite du recto (à la place du logo de réseau d'une carte bancaire).
+- Verso : bande des partenaires « Recharge · Retrait ». Les noms affichés sont des emplacements : les logos officiels sont à fournir par ScanLinkPay (droits des marques) et seront téléversés dans les réglages.
+
+## Réglages super admin (à ne pas figer dans le design)
+Téléphone du service client, nom de domaine (donc l'adresse encodée dans le QR), logos partenaires, durée de validité : vides par défaut, définis dans les réglages. Un champ vide n'est pas imprimé.
+
 ## Volontairement absent
 - Pas de puce ni de symbole sans contact : la carte n'en a pas, les afficher tromperait les commerçants.
 - Pas de solde imprimé : il change à chaque paiement, il se lit dans l'application.
