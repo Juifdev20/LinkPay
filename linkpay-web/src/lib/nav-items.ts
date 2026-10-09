@@ -1,4 +1,4 @@
-import { LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, type LucideIcon } from 'lucide-react';
 
 export const ALL_ROLES = ['merchant', 'cashier', 'enterprise', 'client', 'admin', 'super_admin'];
 
@@ -49,6 +49,7 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/admin/merchants', label: 'Commerçants', icon: Users, roles: ['admin', 'super_admin'] },
   { to: '/dashboard/admin/organizations', label: 'Entreprises', icon: Building2, roles: ['admin', 'super_admin'] },
   { to: '/dashboard/admin/settlements', label: 'Règlements (admin)', icon: Wallet, roles: ['admin', 'super_admin'] },
+  { to: '/dashboard/admin/security-alerts', label: 'Alertes de sécurité', icon: ShieldAlert, roles: ['admin', 'super_admin'] },
   { to: '/dashboard/admin/users', label: 'Utilisateurs', icon: UserCog, roles: ['super_admin'] },
   { to: '/dashboard/admin/commissions', label: 'Commissions', icon: Percent, roles: ['super_admin'] },
   { to: '/dashboard/admin/wallet-limits', label: 'Frais et limites', icon: SlidersHorizontal, roles: ['super_admin'] },

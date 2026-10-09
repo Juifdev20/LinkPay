@@ -1,3 +1,4 @@
+import { SecurityAlertsService } from '../security/security-alerts.service';
 import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -35,6 +36,7 @@ export class PaymentsService {
     private savingsService: SavingsService,
     private salesService: SalesService,
     private merchantWalletCredit: MerchantWalletCreditService,
+    private securityAlerts: SecurityAlertsService,
   ) {}
 
   async createPayment(data: {
@@ -435,6 +437,13 @@ export class PaymentsService {
     const configuredProvider = this.configService.get<string>('PSP_PROVIDER', 'mock');
     if (provider === 'mock' && configuredProvider !== 'mock') {
       this.logger.warn('Rejected a mock webhook: PSP_PROVIDER is not "mock" on this deployment');
+      void this.securityAlerts.alert({
+        severity: 'warning',
+        title: 'Faux webhook de paiement rejeté',
+        body: "Quelqu'un a tenté de simuler un paiement via /webhooks/mock.",
+        audience: 'admins',
+        dedupeKey: 'webhook-mock',
+      });
       throw new NotFoundException();
     }
 
@@ -447,6 +456,13 @@ export class PaymentsService {
 
     if (!adapter.verifyWebhook(payload, signature, headers)) {
       this.logger.warn(`Webhook signature verification failed for provider: ${provider}`);
+      void this.securityAlerts.alert({
+        severity: 'critical',
+        title: 'Webhook de paiement avec signature invalide',
+        body: `Un appel prétendant venir de ${provider} a échoué la vérification de signature : tentative de faux paiement, ou mauvais secret configuré.`,
+        audience: 'admins',
+        dedupeKey: `webhook-sig:${provider}`,
+      });
       throw new BadRequestException('Invalid webhook signature');
     }
 

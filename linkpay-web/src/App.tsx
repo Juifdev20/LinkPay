@@ -1,3 +1,4 @@
+import { OtpPromptDialog } from '@/components/OtpPromptDialog';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { useAuthStore } from '@/lib/auth-store';
@@ -46,6 +47,8 @@ const AdminMerchantsPage = lazyPage(() => import('@/pages/admin/Merchants'));
 const AdminUsersPage = lazyPage(() => import('@/pages/admin/Users'));
 const AdminSettlementsPage = lazyPage(() => import('@/pages/admin/Settlements'));
 const AdminCommissionsPage = lazyPage(() => import('@/pages/admin/Commissions'));
+const AdminRiskLogsPage = lazyPage(() => import('@/pages/admin/RiskLogs'));
+const AdminTwoFactorSetupPage = lazyPage(() => import('@/pages/auth/AdminTwoFactorSetup'));
 const AdminWalletLimitsPage = lazyPage(() => import('@/pages/admin/WalletLimits'));
 const ExpenseTrackerSettingsPage = lazyPage(() => import('@/pages/admin/ExpenseTrackerSettings'));
 const AppSecurityPage = lazyPage(() => import('@/pages/admin/AppSecurity'));
@@ -121,6 +124,11 @@ function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?
     return <Navigate to="/login" replace />;
   }
 
+  // Administrators without a verified second factor can only reach the setup page.
+  if (user && (user.role === 'admin' || user.role === 'super_admin') && (user.two_factor_setup_required || user.mfa_verified === false)) {
+    return <Navigate to="/admin-2fa" replace />;
+  }
+
   // An org owner acting as one of their stores keeps enterprise-level
   // access to the org module (role is 'merchant' + acting_as_org_id).
   const effectiveRole = user?.acting_as_org_id ? 'enterprise' : user?.role;
@@ -161,6 +169,7 @@ export default function App() {
       <InstallPrompt />
       <AppLockGate />
       <ForcePasswordChangeGate />
+      <OtpPromptDialog />
       <Suspense fallback={<PageFallback fullScreen />}>
       <Routes>
       <Route path="/" element={<RootRedirect />} />
@@ -172,6 +181,7 @@ export default function App() {
       <Route path="/pay/:number" element={<PayByNumber />} />
       <Route path="/payment/result" element={<PaymentResultPage />} />
 
+      <Route path="/admin-2fa" element={<AdminTwoFactorSetupPage />} />
       <Route
         path="/dashboard"
         element={
@@ -258,6 +268,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={['super_admin']}>
               <AdminCommissionsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/security-alerts"
+          element={
+            <ProtectedRoute roles={['admin', 'super_admin']}>
+              <AdminRiskLogsPage />
             </ProtectedRoute>
           }
         />

@@ -12,7 +12,8 @@ function setup(opts: { transfers?: any[]; withdrawals?: any[]; walletCreatedAt?:
     if (q.target === 'wallets') return { data: { created_at: opts.walletCreatedAt ?? ago(30 * 24 * 3_600_000) } };
     return { data: null };
   });
-  return { service: new RiskService(fake.service), fake };
+  const alerts = { alert: jest.fn(async () => undefined) };
+  return { service: new RiskService(fake.service, alerts as any), fake, alerts };
 }
 
 const base = { userId: 'u1', walletId: 'w1', currency: 'CDF' };
@@ -27,11 +28,12 @@ describe('RiskService.assessOutflow', () => {
 
   it('blocks and logs a wallet that already made too many operations this hour', async () => {
     const transfers = Array.from({ length: MAX_OUTFLOW_OPS_PER_HOUR }, (_, i) => ({ recipient_wallet_id: `r${i % 2}`, created_at: ago(30 * 60_000) }));
-    const { service, fake } = setup({ transfers });
+    const { service, fake, alerts } = setup({ transfers });
     const err: any = await service.assessOutflow({ ...base, kind: 'WITHDRAWAL', amountCents: 100_000 }).catch((e) => e);
     expect(err).toBeInstanceOf(HttpException);
     expect(err.getStatus()).toBe(429);
     expect(logged(fake)).toHaveLength(1);
+    expect(alerts.alert).toHaveBeenCalledWith(expect.objectContaining({ severity: 'critical', audience: 'admins' }));
   });
 
   it('blocks sending to a sixth different wallet within ten minutes, but not to one already used', async () => {

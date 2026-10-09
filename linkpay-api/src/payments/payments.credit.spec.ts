@@ -20,7 +20,7 @@ function setup(creditResult: boolean) {
   const requests = { markPaid: jest.fn(async () => { order.push('markPaid'); }) };
   const service = new PaymentsService(
     fake.service, {} as any, commissions as any, ledger as any, {} as any, notifications as any, requests as any,
-    { get: () => undefined } as any, {} as any, {} as any, {} as any, {} as any, {} as any, { credit } as any,
+    { get: () => undefined } as any, {} as any, {} as any, {} as any, {} as any, {} as any, { credit } as any, { alert: jest.fn() } as any,
   );
   jest.spyOn(service as any, 'generateReceipt').mockImplementation(async () => { order.push('receipt'); throw new Error('receipt printer down'); });
   jest.spyOn(service as any, 'getMerchantOwnerId').mockResolvedValue('owner-1');

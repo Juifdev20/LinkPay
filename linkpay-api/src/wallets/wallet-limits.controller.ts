@@ -6,6 +6,8 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuditService } from '../audit/audit.service';
 import { WalletLimitsService } from './wallet-limits.service';
+import { OtpStepUpGuard, RequireOtp } from '../security/otp-step-up.guard';
+import { SecurityAlertsService } from '../security/security-alerts.service';
 
 /** Highest fee an admin can set — a typo like 5 (meaning 5%, read as 500%) must not go through. */
 const MAX_FEE_FRACTION = 0.2;
@@ -69,6 +71,7 @@ export class WalletLimitsController {
   constructor(
     private limits: WalletLimitsService,
     private audit: AuditService,
+    private alerts: SecurityAlertsService,
   ) {}
 
   @Get()
@@ -80,6 +83,8 @@ export class WalletLimitsController {
 
   @Put(':id')
   @Roles('super_admin')
+  @UseGuards(OtpStepUpGuard)
+  @RequireOtp()
   @ApiOperation({ summary: 'Change the fee or limits of one rule (super admin only)' })
   async update(
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -93,6 +98,12 @@ export class WalletLimitsController {
       entity_type: 'wallet_limit',
       entity_id: id,
       changes: { op_type: before.op_type, currency: before.currency, before, after },
+    });
+    await this.alerts.alert({
+      severity: 'warning',
+      title: 'Frais ou limites de portefeuille modifiés',
+      body: `Règle ${before.op_type} ${before.currency} modifiée par ${adminId}.`,
+      data: { before, after },
     });
     return after;
   }

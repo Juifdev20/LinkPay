@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { useOtpPrompt } from './otp-prompt';
 import { getToken, setTokens, clearTokens, TOKEN_ACCESS_KEY, TOKEN_REFRESH_KEY } from './token-storage';
 
 const rawUrl = (import.meta.env.VITE_API_URL || '/api/v1').toString().replace(/\/$/, '');
@@ -20,6 +21,23 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    if (error.response?.status === 403) {
+      const code = error.response.data?.code;
+      // Sensitive admin action: ask for a fresh authenticator code, then repeat
+      // the request with it (up to 3 tries if the code is wrong).
+      if ((code === 'OTP_STEP_UP_REQUIRED' || code === 'OTP_STEP_UP_INVALID') && (error.config._otpTries ?? 0) < 3) {
+        error.config._otpTries = (error.config._otpTries ?? 0) + 1;
+        const otp = await useOtpPrompt.getState().ask(code === 'OTP_STEP_UP_INVALID');
+        if (otp) {
+          error.config.headers['x-otp-code'] = otp;
+          return api(error.config);
+        }
+      }
+      // An administrator session without the second factor can only set it up.
+      if (code === 'MFA_REQUIRED' && window.location.pathname !== '/admin-2fa') {
+        window.location.href = '/admin-2fa';
+      }
+    }
     if (error.response?.status === 401) {
       const refreshToken = getToken(TOKEN_REFRESH_KEY);
       if (refreshToken && !error.config._retry) {

@@ -1,5 +1,6 @@
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
+import { SecurityAlertsService } from '../security/security-alerts.service';
 
 /** Money going out of a wallet: more than this many operations in an hour is a drain, not a customer. */
 export const MAX_OUTFLOW_OPS_PER_HOUR = 10;
@@ -18,7 +19,10 @@ export type OutflowKind = 'TRANSFER' | 'WITHDRAWAL';
 export class RiskService {
   private readonly logger = new Logger(RiskService.name);
 
-  constructor(private supabaseService: SupabaseService) {}
+  constructor(
+    private supabaseService: SupabaseService,
+    private alerts: SecurityAlertsService,
+  ) {}
 
   async checkTransactionRisk(transactionData: {
     merchant_id: string;
@@ -162,6 +166,15 @@ export class RiskService {
       })),
     });
     if (error) this.logger.error(`Failed to write risk log: ${error.message}`);
+
+    await this.alerts.alert({
+      severity: blocked ? 'critical' : 'warning',
+      title: blocked ? 'Opération suspecte BLOQUÉE' : 'Opération à vérifier',
+      body: `${p.kind === 'WITHDRAWAL' ? 'Retrait' : 'Transfert'} de ${(p.amountCents / 100).toLocaleString('fr-FR')} ${p.currency} — ${flags.join(', ')}. Portefeuille ${p.walletId}.`,
+      audience: 'admins',
+      dedupeKey: `risk:${p.walletId}:${flags.join(',')}`,
+      data: { wallet_id: p.walletId, user_id: p.userId, flags },
+    });
   }
 
   async getRiskLogs(filters?: { resolved?: boolean }) {

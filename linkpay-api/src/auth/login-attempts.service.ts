@@ -44,17 +44,21 @@ export class LoginAttemptsService {
     }
   }
 
-  recordFailure(email: string, now = Date.now()): void {
+  /** Returns true when this failure is the one that locks the account. */
+  recordFailure(email: string, now = Date.now()): boolean {
     const k = this.key(email);
     const entry = this.byKey.get(k) ?? { failures: [], lockedUntil: 0 };
     entry.failures = entry.failures.filter((t) => now - t < LOGIN_WINDOW_MS);
     entry.failures.push(now);
+    let locked = false;
     if (entry.failures.length >= MAX_FAILED_LOGINS) {
       entry.lockedUntil = now + LOGIN_LOCK_MS;
       entry.failures = [];
+      locked = true;
     }
     this.byKey.set(k, entry);
     if (this.byKey.size > 10_000) this.prune(now);
+    return locked;
   }
 
   recordSuccess(email: string): void {

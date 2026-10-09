@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { sumByCurrency } from '../common/utils/currency';
 import { toPublicProfile } from '../users/users.service';
@@ -163,6 +163,18 @@ export class AdminService {
       .from('roles').select('id').eq('slug', roleSlug).single();
 
     if (!role) throw new NotFoundException(`Role "${roleSlug}" not found`);
+
+    // Never leave the platform without a super admin: demoting the last one
+    // would lock everybody out of the money rules, with no way back but SQL.
+    const { data: superRole } = await this.supabaseService.getClient().from('roles').select('id').eq('slug', 'super_admin').single();
+    if (superRole && role.id !== superRole.id) {
+      const { data: target } = await this.supabaseService.getClient().from('user_roles').select('role_id').eq('user_id', userId);
+      const isSuperNow = (target || []).some((r: any) => r.role_id === superRole.id);
+      if (isSuperNow) {
+        const { count } = await this.supabaseService.getClient().from('user_roles').select('*', { count: 'exact', head: true }).eq('role_id', superRole.id);
+        if ((count || 0) <= 1) throw new BadRequestException('Impossible : ce compte est le dernier super administrateur');
+      }
+    }
 
     // The JWT model only supports one "current" role per user — replace any
     // prior row(s) instead of accumulating, otherwise role lookups become

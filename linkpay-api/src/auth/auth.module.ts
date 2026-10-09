@@ -6,7 +6,6 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { SupabaseModule } from '../supabase/supabase.module';
 import { NotificationsModule } from '../notifications/notifications.module';
-import { LoginAttemptsService } from './login-attempts.service';
 import { JwtStrategy } from './jwt.strategy';
 import { getRequiredJwtSecret } from './jwt-secret.util';
 
@@ -27,7 +26,7 @@ import { getRequiredJwtSecret } from './jwt-secret.util';
     NotificationsModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, LoginAttemptsService],
+  providers: [AuthService, JwtStrategy],
   exports: [AuthService],
 })
 export class AuthModule {}

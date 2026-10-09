@@ -1,0 +1,82 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { SupabaseService } from '../supabase/supabase.service';
+import { NotificationsService } from '../notifications/notifications.service';
+
+export type AlertSeverity = 'info' | 'warning' | 'critical';
+export type AlertAudience = 'super_admins' | 'admins';
+
+const DEDUPE_MS = 10 * 60_000;
+const SEVERITY_LABEL: Record<AlertSeverity, string> = { info: 'ℹ️', warning: '⚠️', critical: '🚨' };
+
+/**
+ * Tells the platform's administrators that something security-relevant just
+ * happened — in the app's notification bell and, through the same
+ * NotificationsService, as a system push on their phone.
+ *
+ * Alerts never throw: a broken alert channel must not break the payment,
+ * login or admin action that triggered it. The same alert (same dedupeKey) is
+ * sent at most once every 10 minutes, so an attacker hammering an endpoint
+ * doesn't bury the admins in identical notifications.
+ */
+@Injectable()
+export class SecurityAlertsService {
+  private readonly logger = new Logger(SecurityAlertsService.name);
+  private readonly lastSent = new Map<string, number>();
+
+  constructor(
+    private supabaseService: SupabaseService,
+    private notificationsService: NotificationsService,
+  ) {}
+
+  async alert(p: {
+    severity: AlertSeverity;
+    title: string;
+    body: string;
+    audience?: AlertAudience;
+    dedupeKey?: string;
+    data?: Record<string, any>;
+    /** Never notify this user (e.g. the admin who just did the action). */
+    excludeUserId?: string;
+  }): Promise<void> {
+    try {
+      const now = Date.now();
+      if (p.dedupeKey) {
+        const last = this.lastSent.get(p.dedupeKey);
+        if (last && now - last < DEDUPE_MS) return;
+        this.lastSent.set(p.dedupeKey, now);
+        if (this.lastSent.size > 5000) {
+          for (const [k, t] of this.lastSent) if (now - t >= DEDUPE_MS) this.lastSent.delete(k);
+        }
+      }
+
+      this.logger.warn(`SECURITY ALERT [${p.severity}] ${p.title} — ${p.body}`);
+
+      const recipients = await this.recipients(p.audience ?? 'super_admins');
+      await Promise.all(
+        recipients
+          .filter((id) => id !== p.excludeUserId)
+          .map((user_id) =>
+            this.notificationsService.create({
+              user_id,
+              type: 'security_alert',
+              title: `${SEVERITY_LABEL[p.severity]} ${p.title}`,
+              body: p.body,
+              data: { severity: p.severity, ...(p.data || {}) },
+            }),
+          ),
+      );
+    } catch (err: any) {
+      this.logger.error(`Could not send security alert "${p.title}": ${err?.message}`);
+    }
+  }
+
+  private async recipients(audience: AlertAudience): Promise<string[]> {
+    const slugs = audience === 'super_admins' ? ['super_admin'] : ['admin', 'super_admin'];
+    const client = this.supabaseService.getClient();
+    const { data: roles } = await client.from('roles').select('id').in('slug', slugs);
+    const roleIds = (roles || []).map((r: any) => r.id);
+    if (roleIds.length === 0) return [];
+    const { data: rows } = await client.from('user_roles').select('user_id').in('role_id', roleIds);
+    return Array.from(new Set((rows || []).map((r: any) => r.user_id as string)));
+  }
+}

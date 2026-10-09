@@ -16,7 +16,7 @@ function makeService(configuredProvider: string, intent: any = null) {
   };
   const pspFactory = { get: (p?: string) => { if (p !== 'mock' && p !== 'cinetpay') throw new Error('nope'); return mockAdapter; } };
   const config = { get: (k: string, d?: any) => (k === 'PSP_PROVIDER' ? configuredProvider : d) };
-  const service = new PaymentsService(fake.service, pspFactory as any, {} as any, {} as any, {} as any, {} as any, {} as any, config as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+  const service = new PaymentsService(fake.service, pspFactory as any, {} as any, {} as any, {} as any, {} as any, {} as any, config as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, { alert: jest.fn() } as any);
   const handleSuccess = jest.spyOn(service as any, 'handleSuccessfulPayment').mockResolvedValue(undefined);
   return { service, handleSuccess };
 }

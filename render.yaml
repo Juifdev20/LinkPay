@@ -32,6 +32,12 @@ services:
         value: 365d
       - key: ENABLE_SWAGGER
         value: false
+      - key: TWO_FACTOR_ENCRYPTION_KEY
+        sync: false
+      - key: ADMIN_REFRESH_EXPIRES_IN
+        value: 12h
+      - key: ADMIN_ALLOWED_IPS
+        sync: false
       - key: PSP_PROVIDER
         value: cinetpay
       - key: CINETPAY_API_KEY_CD

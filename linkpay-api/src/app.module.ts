@@ -26,6 +26,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PushNotificationsModule } from './push-notifications/push-notifications.module';
 import { RiskModule } from './risk/risk.module';
+import { SecurityModule } from './security/security.module';
 import { AdminModule } from './admin/admin.module';
 import { AuditModule } from './audit/audit.module';
 import { HealthModule } from './health/health.module';
@@ -72,6 +73,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     NotificationsModule,
     PushNotificationsModule,
     RiskModule,
+    SecurityModule,
     AdminModule,
     AuditModule,
     HealthModule,

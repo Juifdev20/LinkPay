@@ -36,6 +36,10 @@ interface User {
    * — set on enterprise-staff accounts created via OrganizationStaffService.
    * See ForcePasswordChangeGate.tsx, mounted once in App.tsx. */
   must_change_password?: boolean;
+  /** Administrators only: no authenticator set up yet (from login). */
+  two_factor_setup_required?: boolean;
+  /** Administrators only: this session has passed the authenticator check (from /users/me). */
+  mfa_verified?: boolean;
 }
 
 interface SupabaseSession {
@@ -47,7 +51,7 @@ interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
+  login: (email: string, password: string, rememberMe?: boolean, otp?: string) => Promise<void>;
   register: (data: {
     email: string;
     password: string;
@@ -90,8 +94,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: hasSession,
   isLoading: false,
 
-  login: async (email: string, password: string, rememberMe = true) => {
-    const { data } = await api.post('/auth/login', { email, password, device_id: getDeviceId() });
+  login: async (email: string, password: string, rememberMe = true, otp?: string) => {
+    const { data } = await api.post('/auth/login', { email, password, device_id: getDeviceId(), ...(otp ? { otp } : {}) });
     queryClient.clear(); // never show another account's cached data
     setRememberMe(rememberMe);
     setTokens(data.access_token, data.refresh_token);

@@ -85,11 +85,13 @@ describe('WalletLimitsController.update', () => {
   it('records who changed what in the audit log', async () => {
     const { service } = setup();
     const audit = { log: jest.fn(async () => undefined) };
-    const controller = new WalletLimitsController(service, audit as any);
+    const alerts = { alert: jest.fn(async () => undefined) };
+    const controller = new WalletLimitsController(service, audit as any, alerts as any);
     await controller.update('11111111-1111-1111-1111-111111111111', { fee_percent: 0.02 } as any, 'admin-1');
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({
       user_id: 'admin-1', action: 'wallet_limit_updated', entity_type: 'wallet_limit',
       changes: expect.objectContaining({ op_type: 'WITHDRAWAL', currency: 'CDF' }),
     }));
+    expect(alerts.alert).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warning' }));
   });
 });

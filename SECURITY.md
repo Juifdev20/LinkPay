@@ -18,6 +18,9 @@ Ce document décrit les défenses en place et ce qu'il reste à faire. Il est te
 - PIN de transaction haché, bloqué après 5 essais.
 - Une seule session active par compte (hors admins).
 - Contrôle des sorties d'argent (`RiskService.assessOutflow`) : trop d'opérations en une heure, envoi à trop de portefeuilles différents en 10 minutes, gros montant depuis un portefeuille de moins de 24 h → blocage et entrée dans `risk_logs`. Les très gros montants sont seulement signalés. Les admins consultent la liste via `GET /risk-logs`.
+- **Accès administrateur** : un compte `admin` / `super_admin` ne fonctionne qu'avec le mot de passe **et** un code d'application d'authentification (TOTP, secret chiffré en base, code utilisable une seule fois, codes de secours hachés). Sans 2FA configurée, la session ne peut que configurer la 2FA (`JwtAuthGuard`). Jetons de rafraîchissement admin limités à 12 h. Liste d'IP autorisées optionnelle (`ADMIN_ALLOWED_IPS`).
+- **Confirmation des actions sensibles** : changer un rôle, une commission, les frais/limites, les réglages de la plateforme ou réinitialiser la 2FA d'un collègue demande un code frais (`x-otp-code`, `OtpStepUpGuard`) ; impossible de changer son propre rôle ou de retirer le dernier super administrateur.
+- **Alertes aux administrateurs** (cloche + notification push) : connexion admin, code 2FA faux, compte verrouillé, réseau admin non autorisé, opération bloquée par le moteur de risque, faux webhook de paiement, changement de rôle / commission / limites, réinitialisation de la 2FA, **portefeuille en négatif** (contrôle du grand livre toutes les 10 minutes).
 - Limites et frais de portefeuille configurables (`wallet_limits`).
 - Webhooks PSP signés, rejouables sans effet, fournisseur vérifié.
 - Journal d'audit (`audit_logs`) sur les actions sensibles.
@@ -38,7 +41,7 @@ Ce document décrit les défenses en place et ce qu'il reste à faire. Il est te
 
 ## À faire (priorité décroissante)
 
-1. **Appliquer les migrations `040` à `047`** dans le SQL Editor de Supabase, dans l'ordre, puis lancer le *Security Advisor* de Supabase.
+1. **Appliquer les migrations `040` à `048`**, puis lancer `linkpay-api/supabase/verify_security.sql` (voir `docs/LAUNCH_CHECKLIST.md`) dans le SQL Editor de Supabase, dans l'ordre, puis lancer le *Security Advisor* de Supabase.
 2. **Changer toutes les clés déjà partagées** : `service_role` Supabase, `JWT_SECRET`, mot de passe CinetPay, clé FCM.
 3. Vérifier `ledger_entries` (types `ADJUSTMENT` et `TOPUP`) pour détecter un éventuel abus avant la migration `043`.
 4. Fermer ou contrôler l'inscription publique de Supabase Auth (l'inscription doit passer par `/auth/register`).
@@ -46,7 +49,7 @@ Ce document décrit les défenses en place et ce qu'il reste à faire. Il est te
 6. **Mises à jour majeures de NestJS** : `npm audit` signale encore des vulnérabilités qui n'ont de correctif que dans une version majeure (`@nestjs/platform-express`/`multer`, `@nestjs/swagger`, `@nestjs/cli`). À faire dans une branche dédiée, avec les tests.
 7. **Plusieurs instances de l'API** : le verrouillage de connexion est en mémoire ; il faudra Redis (ou une table) avant de passer à plus d'une instance.
 8. **Mobile** : détection de téléphone « rooté », vérification d'intégrité de l'application (Play Integrity), épinglage de certificat — nécessitent des plugins natifs et un test sur appareil.
-9. **Alertes** : brancher une notification (email ou push) aux admins quand `risk_logs` reçoit une entrée bloquée.
+9. **Alertes par email / SMS** en plus de la cloche et du push, pour qu'une alerte critique réveille même si personne n'ouvre l'application.
 10. **Test d'intrusion** par un tiers avant la mise en production, et sauvegardes Supabase (avec un test de restauration).
 
 ## Signaler une faille
