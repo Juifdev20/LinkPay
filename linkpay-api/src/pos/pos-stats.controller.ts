@@ -4,7 +4,7 @@ import { PosStatsService } from './pos-stats.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { RequireLicense } from '../licenses/license.guard';
+import { RequireSubscription } from '../subscriptions/subscription.guard';
 
 function requireRange(from?: string, to?: string) {
   if (!from || !to) throw new BadRequestException('Les paramètres from/to (ISO dates) sont requis.');
@@ -14,7 +14,7 @@ function requireRange(from?: string, to?: string) {
 @ApiTags('POS Stats')
 @ApiBearerAuth()
 @Controller('merchants/:id/pos/stats')
-@RequireLicense('stats', 'merchant')
+@RequireSubscription('merchant')
 @Roles('enterprise', 'comptable', 'admin', 'super_admin')
 @UseGuards(RolesGuard)
 export class PosStatsController {

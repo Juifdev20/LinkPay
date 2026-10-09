@@ -1,4 +1,4 @@
-import { LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, KeyRound, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, type LucideIcon } from 'lucide-react';
 
 export const ALL_ROLES = ['merchant', 'cashier', 'enterprise', 'client', 'admin', 'super_admin'];
 
@@ -61,7 +61,7 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/admin/commissions', label: 'Commissions', icon: Percent, roles: ['super_admin'] },
   { to: '/dashboard/admin/wallet-limits', label: 'Frais et limites', icon: SlidersHorizontal, roles: ['super_admin'] },
   { to: '/dashboard/admin/expense-tracker-settings', label: 'Dépenses — Config.', icon: Receipt, roles: ['super_admin'] },
-  { to: '/dashboard/admin/licenses', label: 'Licences', icon: KeyRound, roles: ['super_admin'] },
+  { to: '/dashboard/admin/subscriptions', label: 'Abonnements', icon: Sparkles, roles: ['super_admin'] },
   { to: '/dashboard/admin/app-security', label: "Sécurité de l'application", icon: ShieldCheck, roles: ['super_admin'] },
   // The one enterprise module kept at this top level — Transactions and
   // Utilisateurs internes moved to Settings.tsx's secondaryLinks instead
@@ -88,7 +88,7 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/organization/profile', label: 'Profil entreprise', icon: Building2, roles: ['enterprise'] },
   { to: '/dashboard/organization/stores', label: 'Boutiques', icon: Store, roles: ['enterprise'] },
   { to: '/dashboard/organization/staff', label: 'Utilisateurs internes', icon: Users, roles: ['enterprise'] },
-  { to: '/dashboard/organization/license', label: 'Licence', icon: KeyRound, roles: ['enterprise'] },
+  { to: '/dashboard/organization/subscription', label: 'Abonnement', icon: Sparkles, roles: ['enterprise'] },
   // Employees' own wallet: where the patron sends their salary and from where they withdraw it.
   { to: '/dashboard/wallet', label: 'Mon portefeuille', icon: Wallet, roles: STAFF_ROLES },
   { to: '/dashboard/notifications', label: 'Notifications', icon: Bell, roles: [...ALL_ROLES, ...STAFF_ROLES] },

@@ -38,7 +38,7 @@ import { SavingsModule } from './savings/savings.module';
 import { ExpenseTrackerModule } from './expense-tracker/expense-tracker.module';
 import { PlatformSettingsModule } from './platform-settings/platform-settings.module';
 import { SalesModule } from './sales/sales.module';
-import { LicensesModule } from './licenses/licenses.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 
 @Module({
@@ -87,7 +87,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     ExpenseTrackerModule,
     PlatformSettingsModule,
     SalesModule,
-    LicensesModule,
+    SubscriptionsModule,
   ],
   providers: [
     {

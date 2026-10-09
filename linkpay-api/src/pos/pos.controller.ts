@@ -5,7 +5,7 @@ import { PosService } from './pos.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { RequireLicense } from '../licenses/license.guard';
+import { RequireSubscription } from '../subscriptions/subscription.guard';
 
 class CreateTicketDto {
   @ApiProperty({ enum: ['CDF', 'USD'] })
@@ -123,7 +123,7 @@ class UpdatePosSettingsDto {
 @ApiTags('POS')
 @ApiBearerAuth()
 @Controller('merchants/:id/pos')
-@RequireLicense('pos', 'merchant')
+@RequireSubscription('merchant')
 @Roles('enterprise', 'caissier', 'magasinier', 'admin', 'super_admin')
 @UseGuards(RolesGuard)
 export class PosController {

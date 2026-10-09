@@ -4,7 +4,7 @@ import { IsArray, ArrayMinSize, ValidateNested, IsInt, IsString, Min, IsUUID } f
 import { Type } from 'class-transformer';
 import { SalesService } from './sales.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { RequireLicense } from '../licenses/license.guard';
+import { RequireSubscription } from '../subscriptions/subscription.guard';
 
 class SaleLineDto {
   @ApiProperty()
@@ -34,7 +34,7 @@ class ArchiveSaleDto {
 
 @ApiTags('Sales')
 @ApiBearerAuth()
-@RequireLicense('sales', 'org')
+@RequireSubscription('org')
 @Controller('organizations')
 export class SalesController {
   constructor(private salesService: SalesService) {}

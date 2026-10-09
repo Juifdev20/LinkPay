@@ -25,12 +25,12 @@ Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente
 - [ ] **Alertes par email** : créer un compte gratuit sur resend.com, vérifier votre domaine d'envoi, puis définir `RESEND_API_KEY` et `ALERT_EMAIL_FROM` (et `ALERT_EMAILS` pour des destinataires en plus). Tester : déclencher une alerte critique (ex. un mauvais code 2FA sur un compte admin) et vérifier la réception.
 - [ ] Optionnel mais recommandé : `ADMIN_ALLOWED_IPS` si les administrateurs ont une IP fixe (bureau/VPN).
 
-## 2 bis. Licences (revenus de la plateforme)
+## 2 bis. Abonnement mensuel (revenus de la plateforme)
 
-- [ ] Migration `052` appliquée (les 7 fonctionnalités sont créées **sans prix**).
-- [ ] Super admin → **Licences** : fixer le prix par jour de chaque fonctionnalité (CDF et/ou USD), éventuellement le prix « Toute l'application », la durée de l'essai gratuit, ce qui se passe à la fin de l'essai et à l'expiration (lecture simple ou bloqué) et les jours de rappel. Une fonctionnalité sans prix dans une devise n'est pas vendable dans cette devise.
-- [ ] Faire un achat de test avec un compte patron : le portefeuille est débité, la licence apparaît, un deuxième achat ajoute des jours à la suite ; une licence expirée reprend dès le paiement.
-- [ ] Les paiements des clients, le portefeuille et les retraits ne sont jamais bloqués par une licence (c'est là que la commission est gagnée).
+- [ ] Migration `052` appliquée (elle supprime au passage l'ancien brouillon « licences par fonctionnalité » s'il avait été créé).
+- [ ] Super admin → **Abonnements** : fixer le **prix d'un mois** (CDF et/ou USD), la durée de l'essai gratuit, ce qui se passe à la fin de l'essai et à l'expiration (lecture simple ou bloqué) et les jours de rappel. Sans prix dans une devise, l'abonnement n'est pas vendable dans cette devise.
+- [ ] Faire un paiement de test avec un compte patron : le portefeuille est débité, l'abonnement apparaît, un deuxième paiement ajoute des mois à la suite ; un abonnement expiré reprend dès le paiement.
+- [ ] Les paiements des clients, le portefeuille et les retraits ne sont jamais bloqués par l'abonnement (c'est là que la commission est gagnée).
 
 ## 3. Comptes administrateurs
 

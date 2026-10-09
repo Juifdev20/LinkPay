@@ -1,6 +1,6 @@
 import { OtpPromptDialog } from '@/components/OtpPromptDialog';
-import { LicensePromptDialog } from '@/components/LicensePromptDialog';
-import { LicenseGate } from '@/components/LicenseGate';
+import { SubscriptionPromptDialog } from '@/components/SubscriptionPromptDialog';
+import { SubscriptionGate } from '@/components/SubscriptionGate';
 import { AppCodeConfirmDialog } from '@/components/AppCodeConfirmDialog';
 import { StockPasswordGate } from '@/components/stock/StockPasswordGate';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
@@ -60,8 +60,8 @@ const AppSecurityPage = lazyPage(() => import('@/pages/admin/AppSecurity'));
 const AdminOrganizationsPage = lazyPage(() => import('@/pages/admin/Organizations'));
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
 const StaffPage = lazyPage(() => import('@/pages/organization/Staff'));
-const LicensePage = lazyPage(() => import('@/pages/organization/License'));
-const AdminLicensesPage = lazyPage(() => import('@/pages/admin/Licenses'));
+const SubscriptionPage = lazyPage(() => import('@/pages/organization/Subscription'));
+const AdminSubscriptionsPage = lazyPage(() => import('@/pages/admin/Subscriptions'));
 const StoresPage = lazyPage(() => import('@/pages/organization/Stores'));
 const StockPage = lazyPage(() => import('@/pages/organization/Stock'));
 const InventoryPage = lazyPage(() => import('@/pages/organization/Inventory'));
@@ -177,7 +177,7 @@ export default function App() {
       <AppLockGate />
       <ForcePasswordChangeGate />
       <OtpPromptDialog />
-      <LicensePromptDialog />
+      <SubscriptionPromptDialog />
       <AppCodeConfirmDialog />
       <StockPasswordGate />
       <Suspense fallback={<PageFallback fullScreen />}>
@@ -342,7 +342,7 @@ export default function App() {
           path="organization/sales"
           element={
             <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier']}>
-              <LicenseGate feature="sales"><SalesPage /></LicenseGate>
+              <SubscriptionGate><SalesPage /></SubscriptionGate>
             </ProtectedRoute>
           }
         />
@@ -350,7 +350,7 @@ export default function App() {
           path="organization/sales/history"
           element={
             <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier', 'comptable']}>
-              <LicenseGate feature="sales"><SalesHistoryPage /></LicenseGate>
+              <SubscriptionGate><SalesHistoryPage /></SubscriptionGate>
             </ProtectedRoute>
           }
         />
@@ -358,7 +358,7 @@ export default function App() {
           path="organization/sales/dashboard"
           element={
             <ProtectedRoute roles={['enterprise', 'vendeur', 'comptable']}>
-              <LicenseGate feature="sales"><SalesDashboardPage /></LicenseGate>
+              <SubscriptionGate><SalesDashboardPage /></SubscriptionGate>
             </ProtectedRoute>
           }
         />
@@ -366,7 +366,7 @@ export default function App() {
           path="organization/stock"
           element={
             <ProtectedRoute roles={['enterprise', 'magasinier']}>
-              <LicenseGate feature="stock"><StockPage /></LicenseGate>
+              <SubscriptionGate><StockPage /></SubscriptionGate>
             </ProtectedRoute>
           }
         />
@@ -374,7 +374,7 @@ export default function App() {
           path="organization/inventory"
           element={
             <ProtectedRoute roles={['enterprise', 'magasinier']}>
-              <LicenseGate feature="inventory"><InventoryPage /></LicenseGate>
+              <SubscriptionGate><InventoryPage /></SubscriptionGate>
             </ProtectedRoute>
           }
         />
@@ -390,7 +390,7 @@ export default function App() {
           path="organization/stats"
           element={
             <ProtectedRoute roles={['enterprise', 'comptable']}>
-              <LicenseGate feature="stats"><SalesStatsPage /></LicenseGate>
+              <SubscriptionGate><SalesStatsPage /></SubscriptionGate>
             </ProtectedRoute>
           }
         />
@@ -406,7 +406,7 @@ export default function App() {
           path="organization/audit"
           element={
             <ProtectedRoute roles={['enterprise', 'comptable']}>
-              <LicenseGate feature="audit"><AuditLogPage /></LicenseGate>
+              <SubscriptionGate><AuditLogPage /></SubscriptionGate>
             </ProtectedRoute>
           }
         />
@@ -422,23 +422,23 @@ export default function App() {
           path="pos"
           element={
             <ProtectedRoute roles={['enterprise', 'caissier']}>
-              <LicenseGate feature="pos"><PosPage /></LicenseGate>
+              <SubscriptionGate><PosPage /></SubscriptionGate>
             </ProtectedRoute>
           }
         />
         <Route
-          path="organization/license"
+          path="organization/subscription"
           element={
             <ProtectedRoute roles={['enterprise']}>
-              <LicensePage />
+              <SubscriptionPage />
             </ProtectedRoute>
           }
         />
         <Route
-          path="admin/licenses"
+          path="admin/subscriptions"
           element={
             <ProtectedRoute roles={['super_admin']}>
-              <AdminLicensesPage />
+              <AdminSubscriptionsPage />
             </ProtectedRoute>
           }
         />

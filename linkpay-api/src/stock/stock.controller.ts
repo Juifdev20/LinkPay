@@ -7,7 +7,7 @@ import { StockService } from './stock.service';
 import { StockPasswordService } from './stock-password.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { RequireLicense } from '../licenses/license.guard';
+import { RequireSubscription } from '../subscriptions/subscription.guard';
 
 const CONDITIONS = ['neuf', 'occasion', 'reconditionne'];
 const MOVEMENT_TYPES = ['in', 'out', 'adjustment'];
@@ -199,7 +199,7 @@ export class StockController {
   constructor(private stockService: StockService) {}
 
   @Post(':id/stock-items')
-  @RequireLicense('stock', 'merchant')
+  @RequireSubscription('merchant')
   @ApiOperation({ summary: 'Create a stock item for this store (owner or magasinier). Needs the stock password (x-stock-password header).' })
   async createItem(
     @Param('id') merchantId: string,
@@ -249,7 +249,7 @@ export class StockController {
   }
 
   @Post(':id/stock-items/image')
-  @RequireLicense('stock', 'merchant')
+  @RequireSubscription('merchant')
   @ApiOperation({ summary: "Upload a stock item's product image (max 2 Mo) — returns its public URL" })
   @ApiConsumes('multipart/form-data')
   @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
@@ -265,7 +265,7 @@ export class StockController {
   }
 
   @Put(':id/stock-items/:itemId')
-  @RequireLicense('stock', 'merchant')
+  @RequireSubscription('merchant')
   @ApiOperation({ summary: 'Update a stock item (owner or magasinier). A changed quantity is recorded as an adjustment movement. Requires the stock password.' })
   async updateItem(
     @Param('id') merchantId: string,
@@ -280,7 +280,7 @@ export class StockController {
   }
 
   @Delete(':id/stock-items/:itemId')
-  @RequireLicense('stock', 'merchant')
+  @RequireSubscription('merchant')
   @ApiOperation({ summary: 'Delete a stock item (owner or magasinier). Requires the stock password.' })
   async deleteItem(
     @Param('id') merchantId: string,
@@ -294,7 +294,7 @@ export class StockController {
   }
 
   @Post(':id/stock-items/:itemId/movements')
-  @RequireLicense('stock', 'merchant')
+  @RequireSubscription('merchant')
   @ApiOperation({ summary: 'Record a restock, loss or correction for a stock item (owner or magasinier)' })
   async createMovement(
     @Param('id') merchantId: string,

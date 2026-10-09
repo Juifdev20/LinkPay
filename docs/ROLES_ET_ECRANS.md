@@ -33,18 +33,10 @@ Chaque employé a son **propre portefeuille ScanLinkPay** (menu « Mon portefeui
 
 Il ne retire que **son** argent : les recettes du commerce restent dans le portefeuille du patron, hors de portée des employés.
 
-## Licences (par entreprise)
+## Abonnement (par entreprise)
 
-Le patron achète, depuis son portefeuille, des jours de licence pour les fonctionnalités qu'il coche (ou « Toute l'application »), page **Licence**. Les employés n'achètent rien : s'ils ouvrent un écran sans licence, ils lisent « Vous n'avez pas de licence pour cette fonctionnalité » et sont invités à prévenir le patron.
+Un seul abonnement mensuel, **tout est inclus** : caisse, ventes, stock, inventaire, statistiques, journal, ajout d'employés. Le patron le paie depuis son portefeuille (page **Abonnement**), au nombre de mois qu'il veut (boutons − et +). Les mois s'ajoutent à la suite de l'abonnement en cours ; s'il a expiré, l'accès reprend dès le paiement.
 
-| Fonctionnalité | Écrans / actions concernés |
-| --- | --- |
-| Caisse | Caisse (encaissement, sessions, mouvements d'espèces) |
-| Ventes | Ventes, historique, tableau de bord des ventes |
-| Stock | Ajouter / modifier / supprimer un article, mouvements, photo |
-| Inventaire | Inventaires |
-| Statistiques | Statistiques de la caisse |
-| Journal | Journal d'audit |
-| Employés | Ajouter un employé (retirer un accès ou changer un rôle reste toujours possible) |
+Les employés ne paient rien : si l'abonnement est inactif, ils lisent « Vous n'avez pas d'abonnement actif pour utiliser cette fonctionnalité » et sont invités à prévenir le patron. Selon le réglage du super admin, les écrans restent consultables (lecture simple) ou se ferment (bloqué).
 
-Toujours disponibles quelle que soit la licence : paiements des clients, portefeuille, retraits, notifications, paramètres.
+Toujours disponibles quelle que soit la situation : paiements des clients, portefeuille, retraits, notifications, paramètres, retirer l'accès d'un employé.

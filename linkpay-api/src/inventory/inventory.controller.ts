@@ -6,7 +6,7 @@ import { InventoryService } from './inventory.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { RequireLicense } from '../licenses/license.guard';
+import { RequireSubscription } from '../subscriptions/subscription.guard';
 
 class CreateCountDto {
   @ApiPropertyOptional({ description: 'Catégorie/rayon à inventorier — omis = inventaire total' })
@@ -45,7 +45,7 @@ class SaveLinesDto {
 @ApiTags('Inventory')
 @ApiBearerAuth()
 @Controller('merchants/:id/inventory-counts')
-@RequireLicense('inventory', 'merchant')
+@RequireSubscription('merchant')
 @Roles('enterprise', 'magasinier', 'admin', 'super_admin')
 @UseGuards(RolesGuard)
 export class InventoryController {
