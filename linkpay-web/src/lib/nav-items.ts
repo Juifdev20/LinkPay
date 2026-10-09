@@ -17,6 +17,13 @@ export interface NavItem {
   roles: string[];
 }
 
+// What each job sees (kept deliberately short, so nobody is lost in options
+// that aren't theirs):
+//   vendeur    — Ventes, Historique, Tableau de bord ventes (light)
+//   caissier   — Caisse (till), Ventes, Historique, Transactions, Recevoir
+//   magasinier — Stock & Approvisionnement, Inventaire
+//   comptable  — Historique, Transactions, Statistiques, Journal, Tableau de bord
+//   patron     — everything
 // Single source of truth for "where can this role go" — consumed by both
 // the desktop sidebar (DashboardLayout.tsx) and its mobile equivalent
 // (pages/More.tsx, the "Plus" tab), so the two never drift out of sync. Settings.tsx
@@ -61,18 +68,18 @@ export const navItems: NavItem[] = [
   // first-level module in the sidebar/drawer).
   { to: '/dashboard/organization/sales', label: 'Ventes', icon: ShoppingCart, roles: ['enterprise', 'vendeur', 'caissier'] },
   { to: '/dashboard/organization/sales/history', label: 'Historique', icon: History, roles: ['enterprise', 'vendeur', 'caissier', 'comptable'] },
-  { to: '/dashboard/organization/stock', label: 'Stock & Approvisionnement', icon: Boxes, roles: ['enterprise', 'magasinier', 'vendeur'] },
+  { to: '/dashboard/organization/stock', label: 'Stock & Approvisionnement', icon: Boxes, roles: ['enterprise', 'magasinier'] },
   // Supermarket module — the till is the staff's day-to-day screen.
   // Plain 'merchant' isn't in the POS controller's @Roles list (backend
   // resolves the store via merchant.owner_id for org owners), so it's not
   // listed here either.
-  { to: '/dashboard/pos', label: 'Caisse', icon: Store, roles: ['enterprise', 'caissier', 'magasinier'] },
+  { to: '/dashboard/pos', label: 'Caisse', icon: Store, roles: ['enterprise', 'caissier'] },
   { to: '/dashboard/organization/inventory', label: 'Inventaire', icon: ClipboardList, roles: ['enterprise', 'magasinier'] },
   { to: '/dashboard/organization/stats', label: 'Statistiques', icon: BarChart3, roles: ['enterprise', 'comptable'] },
   { to: '/dashboard/organization/audit', label: 'Journal', icon: ScrollText, roles: ['enterprise', 'comptable'] },
   // Staff-only finance entries (the enterprise owner reaches the same screens
   // from its own Settings → Gestion, so they aren't duplicated for enterprise).
-  { to: '/dashboard/organization/sales/dashboard', label: 'Tableau de bord ventes', icon: BarChart3, roles: ['vendeur', 'caissier', 'comptable'] },
+  { to: '/dashboard/organization/sales/dashboard', label: 'Tableau de bord ventes', icon: BarChart3, roles: ['vendeur', 'comptable'] },
   { to: '/dashboard/organization/transactions', label: 'Transactions', icon: Receipt, roles: ['enterprise', 'caissier', 'comptable'] },
   { to: '/dashboard/organization/receive', label: 'Recevoir', icon: QrCode, roles: ['caissier'] },
   // Org management — business modules, not account config, so they live

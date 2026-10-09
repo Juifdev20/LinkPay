@@ -74,3 +74,32 @@ describe('who did it — edits and deletions are recorded under the person\'s ow
     }));
   });
 });
+
+describe('selling staff never see what the shop paid for an item', () => {
+  const items = [{ id: 'i1', merchant_id: 'm1', name: 'Samsung A15', unit_price_cents: 90000, cost_price_cents: 60000, quantity: 3 }];
+  const build = () => {
+    const fake = createFakeSupabase((q: RecordedQuery) => {
+      if (q.target === 'merchants') return { data: { id: 'm1', owner_id: 'boss', organization_id: 'org1' } };
+      if (q.target === 'stock_items') return { data: items };
+      return { data: null };
+    });
+    return new StockService(fake.service, {} as any, {} as any, {} as any, {} as any);
+  };
+
+  it('vendeur and caissier get price and quantity, without cost_price_cents', async () => {
+    for (const role of ['vendeur', 'caissier']) {
+      const list = await build().listItems('m1', 'emp', role, 'org1');
+      expect(list[0]).toMatchObject({ name: 'Samsung A15', unit_price_cents: 90000, quantity: 3 });
+      expect(list[0]).not.toHaveProperty('cost_price_cents');
+    }
+  });
+
+  it('the patron and the stock keeper still see the cost', async () => {
+    expect((await build().listItems('m1', 'boss', 'enterprise', undefined))[0].cost_price_cents).toBe(60000);
+    expect((await build().listItems('m1', 'emp', 'magasinier', 'org1'))[0].cost_price_cents).toBe(60000);
+  });
+
+  it('the movement history is no longer open to sellers', async () => {
+    await expect(build().listMovements('m1', 'i1', 'emp', 'vendeur', 'org1')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});

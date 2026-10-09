@@ -350,7 +350,7 @@ export default function App() {
         <Route
           path="organization/sales/dashboard"
           element={
-            <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier', 'comptable']}>
+            <ProtectedRoute roles={['enterprise', 'vendeur', 'comptable']}>
               <SalesDashboardPage />
             </ProtectedRoute>
           }
@@ -358,7 +358,7 @@ export default function App() {
         <Route
           path="organization/stock"
           element={
-            <ProtectedRoute roles={['enterprise', 'magasinier', 'vendeur']}>
+            <ProtectedRoute roles={['enterprise', 'magasinier']}>
               <StockPage />
             </ProtectedRoute>
           }
@@ -414,7 +414,7 @@ export default function App() {
         <Route
           path="pos"
           element={
-            <ProtectedRoute roles={['enterprise', 'caissier', 'magasinier']}>
+            <ProtectedRoute roles={['enterprise', 'caissier']}>
               <PosPage />
             </ProtectedRoute>
           }

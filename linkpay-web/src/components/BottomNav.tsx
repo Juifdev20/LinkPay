@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Receipt, QrCode, Settings, ShoppingCart, Boxes, BarChart3, Bell, Menu } from 'lucide-react';
+import { Home, Receipt, QrCode, Settings, ShoppingCart, BarChart3, Bell, Menu, History, ClipboardList } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -28,7 +28,8 @@ const tabs: Tab[] = [
 const homeTab = tabs[0];
 const settingsTab = tabs[2];
 const salesTab: Tab = { to: '/dashboard/organization/sales', label: 'Ventes', icon: ShoppingCart, end: true, central: true };
-const stockTab: Tab = { to: '/dashboard/organization/stock', label: 'Stock', icon: Boxes, end: false };
+const historyTab: Tab = { to: '/dashboard/organization/sales/history', label: 'Historique', icon: History, end: false };
+const inventoryTab: Tab = { to: '/dashboard/organization/inventory', label: 'Inventaire', icon: ClipboardList, end: false };
 const orgTransactionsTab: Tab = { to: '/dashboard/organization/transactions', label: 'Transactions', icon: Receipt, end: false };
 const financeTab: Tab = { to: SALES_DASHBOARD_PATH, label: 'Finances', icon: BarChart3, end: true, central: true };
 const alertsTab: Tab = { to: '/dashboard/notifications', label: 'Alertes', icon: Bell, end: true, central: true };
@@ -40,10 +41,11 @@ const venteTab: Tab = { to: '/dashboard/pos', label: 'Vente', icon: ShoppingCart
 const staffTabsFor = (role: string, orgSector?: string): Tab[] | undefined => {
   const caissierSale = orgSector === 'supermarche' ? venteTab : salesTab;
   const map: Record<string, Tab[]> = {
-    vendeur: [homeTab, stockTab, salesTab, settingsTab],
+    vendeur: [homeTab, historyTab, salesTab, settingsTab],
     caissier: [homeTab, orgTransactionsTab, caissierSale, settingsTab],
     comptable: [homeTab, orgTransactionsTab, financeTab, settingsTab],
-    magasinier: [homeTab, stockTab, alertsTab, settingsTab],
+    // Accueil IS the stock page for the stock keeper, so the second tab is the inventory (no duplicate).
+    magasinier: [homeTab, inventoryTab, alertsTab, settingsTab],
   };
   return map[role];
 };

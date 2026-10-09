@@ -33,6 +33,17 @@ export class StockService {
     private auditService: AuditService,
   ) {}
 
+  /**
+   * Selling staff (vendeur, caissier) need the catalogue — name, price, quantity
+   * — to ring up a sale, but never what the shop paid for it: cost and margin
+   * stay with the patron and the stock keeper.
+   */
+  private redactForRole<T extends Record<string, any>>(item: T, role: string | undefined): T {
+    if (role !== 'vendeur' && role !== 'caissier') return item;
+    const { cost_price_cents: _cost, ...rest } = item;
+    return rest as T;
+  }
+
   private isAdmin(role: string | undefined): boolean {
     return role === 'admin' || role === 'super_admin';
   }
@@ -161,7 +172,7 @@ export class StockService {
       .order('created_at', { ascending: false });
 
     if (error) throw new Error(`Failed to fetch stock items: ${error.message}`);
-    return data || [];
+    return (data || []).map((item) => this.redactForRole(item, callerRole));
   }
 
   /** Both edit and delete are gated behind the organization's shared stock
@@ -489,7 +500,8 @@ export class StockService {
   }
 
   async listMovements(merchantId: string, itemId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
-    await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId, true);
+    // The movement history (restocks, losses, who did what) is for the patron and the stock keeper, not the sellers.
+    await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
 
     const { data, error } = await this.supabaseService.getClient()
       .from('stock_movements')
@@ -525,7 +537,7 @@ export class StockService {
     const merchantNameById: Record<string, string> = {};
     merchants.forEach((m) => { merchantNameById[m.id] = m.name; });
 
-    return (data || []).map((item) => ({ ...item, merchant_name: merchantNameById[item.merchant_id] || null }));
+    return (data || []).map((item) => this.redactForRole({ ...item, merchant_name: merchantNameById[item.merchant_id] || null }, callerRole));
   }
 
   async getOrgStockSummary(orgId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
