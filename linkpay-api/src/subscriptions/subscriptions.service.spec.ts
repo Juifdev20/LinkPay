@@ -15,6 +15,8 @@ function setup(opts: {
   prices?: Record<string, number>;
   rpc?: (args: any) => any;
   ownerId?: string;
+  subError?: boolean;
+  orgs?: any[];
 } = {}) {
   const writes: RecordedQuery[] = [];
   const prices = opts.prices ?? { CDF: 1_500_000, USD: 1000 };
@@ -24,14 +26,17 @@ function setup(opts: {
     const isSingle = q.calls.some((c) => c.method === 'maybeSingle' || c.method === 'single');
     switch (q.target) {
       case 'subscription_settings':
+        if (opts.subError) return { error: { message: 'relation "subscription_settings" does not exist' } };
         return { data: opts.settings ?? { trial_days: 30, trial_end_mode: 'read_only', expiry_mode: 'blocked', reminder_days: [7, 3, 1] } };
       case 'subscription_prices':
         return { data: Object.entries(prices).map(([currency, price_month_cents]) => ({ currency, price_month_cents })) };
       case 'organizations': {
+        if (opts.orgs && !isSingle) return { data: opts.orgs.shift() ?? [] };
         const org = { id: 'org1', owner_id: opts.ownerId ?? 'boss', name: 'Shop', validated_at: validatedAt, created_at: validatedAt };
         return { data: isSingle ? org : [org] };
       }
       case 'organization_subscriptions': {
+        if (opts.subError) return { error: { message: 'relation does not exist' } };
         if (q.calls.some((c) => c.method === 'update' || c.method === 'upsert')) writes.push(q);
         const row = { organization_id: 'org1', expires_at: opts.expiresAt ?? null, last_reminder_days: opts.lastReminder ?? null, trial_last_reminder_days: opts.trialLastReminder ?? null };
         const has = opts.expiresAt !== undefined && opts.expiresAt !== null || opts.trialLastReminder !== undefined;
@@ -107,6 +112,62 @@ describe('SubscriptionsService.assertAccess', () => {
     const { service } = setup();
     jest.spyOn(service, 'getState').mockRejectedValue(new Error('relation does not exist'));
     await expect(service.assertAccess('org1', true)).resolves.toBeUndefined();
+  });
+});
+
+describe('SubscriptionsService — flaws found in review', () => {
+  const longAgo = '2026-01-01T00:00:00Z';
+
+  it('deployed before migration 052: unreadable tables let the request through (no business is cut off)', async () => {
+    const { service } = setup({ validatedAt: longAgo, subError: true });
+    await expect(service.getState('org1')).rejects.toThrow(/unreadable/);
+    await expect(service.assertAccess('org1', true)).resolves.toBeUndefined();
+  });
+
+  it('a business that existed before billing started gets a full trial from the billing start date', async () => {
+    const billing = new Date(NOW - 2 * DAY).toISOString();
+    const { service } = setup({
+      validatedAt: longAgo,
+      settings: { trial_days: 30, trial_end_mode: 'read_only', expiry_mode: 'blocked', reminder_days: [7, 3, 1], billing_starts_at: billing },
+    });
+    const s = await service.getState('org1', NOW);
+    expect(s.status).toBe('trial');
+    expect(s.trial.days_left).toBe(28);
+  });
+
+  it('the owner can read the state and quote even if their token predates the business (no organization_id claim)', async () => {
+    const { service } = setup();
+    await expect(service.assertMember('org1', 'boss', undefined, 'enterprise')).resolves.toBeUndefined();
+  });
+
+  it('staff of the business, and admins, can; a stranger and staff of another business cannot', async () => {
+    const { service } = setup();
+    await expect(service.assertMember('org1', 'emp', 'org1', 'vendeur')).resolves.toBeUndefined();
+    await expect(service.assertMember('org1', 'adm', undefined, 'super_admin')).resolves.toBeUndefined();
+    await expect(service.assertMember('org1', 'x', undefined, 'client')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.assertMember('org1', 'emp2', 'org2', 'vendeur')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('the in-memory caches cannot grow without limit (ids come from request URLs)', async () => {
+    const { service } = setup();
+    for (let i = 0; i < 6_000; i++) await service.organizationOfMerchant(`m-${i}`);
+    expect((service as any).merchantOrg.size).toBeLessThanOrEqual(5_000);
+  });
+
+  it('a payment that went through is reported as success even if the journal or notification fails', async () => {
+    const { service, audit, notifications } = setup({ rpc: () => ({ data: [{ expires_at: '2026-08-15T00:00:00Z' }] }) });
+    audit.log.mockRejectedValue(new Error('audit down'));
+    notifications.create.mockRejectedValue(new Error('push down'));
+    await expect(service.subscribe('boss', 'org1', { months: 1, currency: 'CDF', pin: '1234' }, 'k9')).resolves.toMatchObject({ expires_at: '2026-08-15T00:00:00Z' });
+  });
+
+  it('reminders read every business, not just the first 1000', async () => {
+    const mkOrg = (i: number) => ({ id: `o${i}`, owner_id: `u${i}`, validated_at: new Date(NOW - 28 * DAY).toISOString(), created_at: '2026-01-01T00:00:00Z' });
+    const page1 = Array.from({ length: 1000 }, (_, i) => mkOrg(i));
+    const page2 = [mkOrg(1000), mkOrg(1001)];
+    const { service, notifications } = setup({ orgs: [page1, page2] });
+    await service.sendReminders(NOW);
+    expect(notifications.create).toHaveBeenCalledTimes(1002);
   });
 });
 

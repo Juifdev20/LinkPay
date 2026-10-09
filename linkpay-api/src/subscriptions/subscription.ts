@@ -18,6 +18,12 @@ export interface SubscriptionSettings {
   trial_end_mode: SubscriptionMode;
   expiry_mode: SubscriptionMode;
   reminder_days: number[];
+  /**
+   * Billing starts here: no business's free trial can start before this date. Set to the day
+   * migration 052 is applied, so businesses that existed before the subscription get a full
+   * trial instead of being cut off the moment it ships. null = no floor.
+   */
+  billing_starts_at: string | null;
 }
 
 export const DEFAULT_SUBSCRIPTION_SETTINGS: SubscriptionSettings = {
@@ -25,4 +31,5 @@ export const DEFAULT_SUBSCRIPTION_SETTINGS: SubscriptionSettings = {
   trial_end_mode: 'read_only',
   expiry_mode: 'read_only',
   reminder_days: [7, 3, 1],
+  billing_starts_at: null,
 };

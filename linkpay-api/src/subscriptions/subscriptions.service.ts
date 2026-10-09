@@ -11,6 +11,17 @@ import {
 
 const DAY_MS = 86_400_000;
 const CACHE_TTL_MS = 15_000;
+/** Hard cap of the in-memory caches: ids come from request URLs, so they must not be able to grow without limit. */
+const CACHE_MAX_ENTRIES = 5_000;
+const PAGE_SIZE = 1_000; // PostgREST returns at most 1000 rows per request
+
+function remember<V>(map: Map<string, V>, key: string, value: V) {
+  if (!map.has(key) && map.size >= CACHE_MAX_ENTRIES) {
+    const oldest = map.keys().next().value;
+    if (oldest !== undefined) map.delete(oldest);
+  }
+  map.set(key, value);
+}
 
 export type SubscriptionStatus = 'active' | 'trial' | 'expired' | 'none';
 
@@ -68,18 +79,21 @@ export class SubscriptionsService {
 
   // ------------------------------------------------------------------ settings & prices
 
-  async getSettings(): Promise<SubscriptionSettings> {
-    const { data, error } = await this.db.from('subscription_settings').select('*').eq('id', 1).maybeSingle();
-    if (error || !data) {
-      if (error) this.logger.warn(`subscription_settings unreadable (migration 052 applied?): ${error.message}`);
-      return { ...DEFAULT_SUBSCRIPTION_SETTINGS };
-    }
+  private toSettings(data: any): SubscriptionSettings {
+    if (!data) return { ...DEFAULT_SUBSCRIPTION_SETTINGS };
     return {
       trial_days: data.trial_days,
       trial_end_mode: data.trial_end_mode,
       expiry_mode: data.expiry_mode,
       reminder_days: [...(data.reminder_days || [])].sort((a: number, b: number) => b - a),
+      billing_starts_at: data.billing_starts_at ?? null,
     };
+  }
+
+  async getSettings(): Promise<SubscriptionSettings> {
+    const { data, error } = await this.db.from('subscription_settings').select('*').eq('id', 1).maybeSingle();
+    if (error) this.logger.warn(`subscription_settings unreadable (migration 052 applied?): ${error.message}`);
+    return this.toSettings(error ? null : data);
   }
 
   async getPrices(): Promise<Record<string, number>> {
@@ -107,8 +121,16 @@ export class SubscriptionsService {
     if (hit && Date.now() - hit.at < 60_000) return hit.orgId;
     const { data } = await this.db.from('merchants').select('organization_id').eq('id', merchantId).maybeSingle();
     const orgId = data?.organization_id || null;
-    this.merchantOrg.set(merchantId, { at: Date.now(), orgId });
+    remember(this.merchantOrg, merchantId, { at: Date.now(), orgId });
     return orgId;
+  }
+
+  /** Admins, the owner of the business, and staff of that business. The owner is checked in the database: their token may predate the business. */
+  async assertMember(orgId: string, userId: string, callerOrgId: string | undefined, role: string) {
+    if (role === 'admin' || role === 'super_admin') return;
+    if (callerOrgId === orgId) return;
+    const org = await this.loadOrg(orgId);
+    if (org.owner_id !== userId) throw new ForbiddenException('Accès refusé à cette entreprise');
   }
 
   invalidate(orgId: string) {
@@ -119,16 +141,26 @@ export class SubscriptionsService {
     const hit = this.cache.get(orgId);
     if (hit && now - hit.at < CACHE_TTL_MS) return hit.state;
 
-    const [org, settings, prices, sub] = await Promise.all([
+    const [org, settingsRes, prices, subRes] = await Promise.all([
       this.loadOrg(orgId),
-      this.getSettings(),
+      this.db.from('subscription_settings').select('*').eq('id', 1).maybeSingle(),
       this.getPrices(),
       this.db.from('organization_subscriptions').select('expires_at').eq('organization_id', orgId).maybeSingle(),
     ]);
+    // Unreadable tables (migration 052 not applied yet, an outage) must NOT read as "no subscription":
+    // that would cut every existing business off. Throwing lets assertAccess let the request through.
+    if (settingsRes.error) throw new Error(`subscription_settings unreadable: ${settingsRes.error.message}`);
+    if (subRes.error) throw new Error(`organization_subscriptions unreadable: ${subRes.error.message}`);
+    const settings = this.toSettings(settingsRes.data);
 
-    const trialEnd = new Date(org.validated_at || org.created_at).getTime() + settings.trial_days * DAY_MS;
+    // The trial starts when the business was validated, but never before billing started (see billing_starts_at).
+    const trialStart = Math.max(
+      new Date(org.validated_at || org.created_at).getTime(),
+      settings.billing_starts_at ? new Date(settings.billing_starts_at).getTime() : 0,
+    );
+    const trialEnd = trialStart + settings.trial_days * DAY_MS;
     const trialActive = now < trialEnd;
-    const expiry = (sub as any).data?.expires_at ? new Date((sub as any).data.expires_at).getTime() : undefined;
+    const expiry = subRes.data?.expires_at ? new Date(subRes.data.expires_at).getTime() : undefined;
     const running = expiry !== undefined && expiry > now;
     const status: SubscriptionStatus = running ? 'active' : trialActive ? 'trial' : expiry !== undefined ? 'expired' : 'none';
 
@@ -142,7 +174,7 @@ export class SubscriptionsService {
       settings: { trial_end_mode: settings.trial_end_mode, expiry_mode: settings.expiry_mode },
       prices,
     };
-    this.cache.set(orgId, { at: now, state });
+    remember(this.cache, orgId, { at: now, state });
     return state;
   }
 
@@ -219,25 +251,40 @@ export class SubscriptionsService {
     }
     this.invalidate(orgId);
 
-    await this.audit.log({
-      user_id: userId,
-      action: 'subscription_paid',
-      entity_type: 'organization',
-      entity_id: orgId,
-      changes: { months: quote.months, amount_cents: quote.amount_cents, currency: quote.currency },
-    });
     const row = Array.isArray(data) ? data[0] : data;
-    await this.notifications.create({
-      user_id: userId,
-      type: 'subscription',
-      title: 'Abonnement activé',
-      body: `${quote.months} mois ajouté${quote.months > 1 ? 's' : ''}. Montant débité : ${(quote.amount_cents / 100).toLocaleString('fr-FR')} ${quote.currency}.`,
-      data: { organization_id: orgId, months: quote.months, expires_at: row?.expires_at },
-    });
+    // The money has moved and the subscription is extended: a failing journal or notification must not report an error.
+    try {
+      await this.audit.log({
+        user_id: userId,
+        action: 'subscription_paid',
+        entity_type: 'organization',
+        entity_id: orgId,
+        changes: { months: quote.months, amount_cents: quote.amount_cents, currency: quote.currency },
+      });
+      await this.notifications.create({
+        user_id: userId,
+        type: 'subscription',
+        title: 'Abonnement activé',
+        body: `${quote.months} mois ajouté${quote.months > 1 ? 's' : ''}. Montant débité : ${(quote.amount_cents / 100).toLocaleString('fr-FR')} ${quote.currency}.`,
+        data: { organization_id: orgId, months: quote.months, expires_at: row?.expires_at },
+      });
+    } catch (err) {
+      this.logger.warn(`Subscription paid for ${orgId} but the journal/notification failed: ${(err as Error).message}`);
+    }
     return { quote, expires_at: row?.expires_at ?? null, state: await this.getState(orgId) };
   }
 
   // ------------------------------------------------------------------ reminders
+
+  /** Every row of a query, page by page (the database answers at most PAGE_SIZE rows at a time). */
+  private async fetchAll(page: (from: number, to: number) => PromiseLike<{ data: any[] | null }>): Promise<any[]> {
+    const rows: any[] = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data } = await page(from, from + PAGE_SIZE - 1);
+      rows.push(...(data || []));
+      if (!data || data.length < PAGE_SIZE) return rows;
+    }
+  }
 
   /**
    * Once a day: tell each patron when the free trial or the subscription is
@@ -250,18 +297,19 @@ export class SubscriptionsService {
     const thresholds = settings.reminder_days;
     let sent = 0;
 
-    const { data: orgs } = await this.db.from('organizations').select('id, owner_id, validated_at, created_at').not('owner_id', 'is', null);
-    const { data: subs } = await this.db
-      .from('organization_subscriptions')
-      .select('organization_id, expires_at, last_reminder_days, trial_last_reminder_days');
-    const subOf = new Map((subs || []).map((s: any) => [s.organization_id, s]));
+    const orgs = await this.fetchAll((from, to) =>
+      this.db.from('organizations').select('id, owner_id, validated_at, created_at').not('owner_id', 'is', null).order('id').range(from, to));
+    const subs = await this.fetchAll((from, to) =>
+      this.db.from('organization_subscriptions').select('organization_id, expires_at, last_reminder_days, trial_last_reminder_days').order('organization_id').range(from, to));
+    const subOf = new Map(subs.map((s: any) => [s.organization_id, s]));
+    const billingFloor = settings.billing_starts_at ? new Date(settings.billing_starts_at).getTime() : 0;
 
     const dueThreshold = (left: number, last: number | null | undefined) => {
       const due = thresholds.filter((t) => left <= t && (last === null || last === undefined || t < last));
       return due.length ? Math.min(...due) : null;
     };
 
-    for (const org of orgs || []) {
+    for (const org of orgs) {
       const sub: any = subOf.get(org.id);
       const expiry = sub?.expires_at ? new Date(sub.expires_at).getTime() : undefined;
 
@@ -290,7 +338,7 @@ export class SubscriptionsService {
       }
 
       // --- trial (only for businesses that are not subscribed)
-      const end = new Date(org.validated_at || org.created_at).getTime() + settings.trial_days * DAY_MS;
+      const end = Math.max(new Date(org.validated_at || org.created_at).getTime(), billingFloor) + settings.trial_days * DAY_MS;
       const last = sub?.trial_last_reminder_days as number | null | undefined;
       let threshold: number | null = null;
       if (end <= now) {

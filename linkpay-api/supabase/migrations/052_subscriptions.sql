@@ -40,9 +40,13 @@ CREATE TABLE IF NOT EXISTS subscription_settings (
   trial_end_mode TEXT NOT NULL DEFAULT 'read_only' CHECK (trial_end_mode IN ('read_only', 'blocked')),
   expiry_mode TEXT NOT NULL DEFAULT 'read_only' CHECK (expiry_mode IN ('read_only', 'blocked')),
   reminder_days INT[] NOT NULL DEFAULT '{7,3,1}',
+  -- No business's free trial starts before this date: the day this migration is applied, so that
+  -- businesses that already exist get a full trial instead of being cut off the day billing ships.
+  billing_starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_by UUID REFERENCES auth.users(id)
 );
+ALTER TABLE subscription_settings ADD COLUMN IF NOT EXISTS billing_starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 INSERT INTO subscription_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS organization_subscriptions (
@@ -110,17 +114,19 @@ BEGIN
   PERFORM 1 FROM wallets WHERE id = p_wallet AND user_id = p_user;
   IF NOT FOUND THEN RAISE EXCEPTION 'WALLET_USER_MISMATCH'; END IF;
 
-  -- Same request twice (double tap, retry): nothing is charged again.
-  SELECT * INTO v_existing FROM subscription_purchases WHERE reference = p_reference;
-  IF FOUND THEN
-    RETURN QUERY SELECT v_existing.expires_at;
-    RETURN;
-  END IF;
-
-  -- Serialise two payments of the same business so months stack instead of overlapping.
+  -- Serialise the payments of one business (so months stack instead of overlapping), and make a
+  -- same-reference retry wait for the first request instead of racing it.
   INSERT INTO organization_subscriptions (organization_id) VALUES (p_org) ON CONFLICT (organization_id) DO NOTHING;
   SELECT GREATEST(COALESCE(s.expires_at, NOW()), NOW()) INTO v_start
     FROM organization_subscriptions s WHERE s.organization_id = p_org FOR UPDATE;
+
+  -- Same request twice (double tap, retry): nothing is charged again, the first result is returned.
+  SELECT * INTO v_existing FROM subscription_purchases WHERE reference = p_reference;
+  IF FOUND THEN
+    IF v_existing.organization_id <> p_org THEN RAISE EXCEPTION 'SUBSCRIPTION_REFERENCE_CONFLICT'; END IF;
+    RETURN QUERY SELECT v_existing.expires_at;
+    RETURN;
+  END IF;
   v_end := v_start + make_interval(months => p_months);
 
   -- Raises 'Insufficient balance' when the wallet doesn't hold enough.

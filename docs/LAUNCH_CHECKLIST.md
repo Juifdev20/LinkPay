@@ -29,6 +29,7 @@ Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente
 
 - [ ] Migration `052` appliquée (elle supprime au passage l'ancien brouillon « licences par fonctionnalité » s'il avait été créé).
 - [ ] Super admin → **Abonnements** : fixer le **prix d'un mois** (CDF et/ou USD), la durée de l'essai gratuit, ce qui se passe à la fin de l'essai et à l'expiration (lecture simple ou bloqué) et les jours de rappel. Sans prix dans une devise, l'abonnement n'est pas vendable dans cette devise.
+- [ ] Les entreprises déjà inscrites reçoivent un essai complet **à partir du jour où la migration 052 est appliquée** (réglage `billing_starts_at`), pas depuis leur date d'inscription : personne n'est coupé le jour du lancement.
 - [ ] Faire un paiement de test avec un compte patron : le portefeuille est débité, l'abonnement apparaît, un deuxième paiement ajoute des mois à la suite ; un abonnement expiré reprend dès le paiement.
 - [ ] Les paiements des clients, le portefeuille et les retraits ne sont jamais bloqués par l'abonnement (c'est là que la commission est gagnée).
 

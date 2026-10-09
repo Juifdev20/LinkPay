@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Headers, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
 import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -10,7 +10,7 @@ import { AuditService } from '../audit/audit.service';
 import { SubscriptionsService } from './subscriptions.service';
 import { MAX_SUBSCRIPTION_MONTHS, SUBSCRIPTION_CURRENCIES, SUBSCRIPTION_MODES } from './subscription';
 
-class QuoteDto {
+export class QuoteDto {
   @ApiProperty({ minimum: 1, maximum: MAX_SUBSCRIPTION_MONTHS })
   @IsInt()
   @Min(1)
@@ -22,7 +22,7 @@ class QuoteDto {
   currency!: string;
 }
 
-class SubscribeDto extends QuoteDto {
+export class SubscribeDto extends QuoteDto {
   @ApiProperty({ description: 'Transaction PIN of the wallet' })
   @IsString()
   @Matches(/^\d{4,8}$/, { message: 'PIN invalide' })
@@ -41,8 +41,8 @@ export class SubscriptionsController {
   @Roles('enterprise', 'comptable', 'caissier', 'magasinier', 'vendeur', 'admin', 'super_admin')
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'Subscription status of this business (trial, active, expired) and the monthly price' })
-  async state(@Param('id') id: string, @CurrentUser('organization_id') callerOrgId: string | undefined, @CurrentUser('role') role: string) {
-    this.assertSameOrg(id, callerOrgId, role);
+  async state(@Param('id') id: string, @CurrentUser('id') userId: string, @CurrentUser('organization_id') callerOrgId: string | undefined, @CurrentUser('role') role: string) {
+    await this.subscriptions.assertMember(id, userId, callerOrgId, role);
     return this.subscriptions.getState(id);
   }
 
@@ -50,8 +50,8 @@ export class SubscriptionsController {
   @Roles('enterprise', 'admin', 'super_admin')
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'Price of N months before paying' })
-  async quote(@Param('id') id: string, @Body() dto: QuoteDto, @CurrentUser('organization_id') callerOrgId: string | undefined, @CurrentUser('role') role: string) {
-    this.assertSameOrg(id, callerOrgId, role);
+  async quote(@Param('id') id: string, @Body() dto: QuoteDto, @CurrentUser('id') userId: string, @CurrentUser('organization_id') callerOrgId: string | undefined, @CurrentUser('role') role: string) {
+    await this.subscriptions.assertMember(id, userId, callerOrgId, role);
     return this.subscriptions.quote(dto);
   }
 
@@ -68,21 +68,16 @@ export class SubscriptionsController {
     if (!idempotencyKey) throw new BadRequestException('Idempotency-Key header is required');
     return this.subscriptions.subscribe(userId, id, dto, idempotencyKey);
   }
-
-  private assertSameOrg(id: string, callerOrgId: string | undefined, role: string) {
-    if (role === 'admin' || role === 'super_admin') return;
-    if (callerOrgId !== id) throw new ForbiddenException('Accès refusé à cette entreprise');
-  }
 }
 
-class SettingsDto {
+export class SettingsDto {
   @IsOptional() @IsInt() @Min(0) @Max(365) trial_days?: number;
   @IsOptional() @IsIn(SUBSCRIPTION_MODES) trial_end_mode?: 'read_only' | 'blocked';
   @IsOptional() @IsIn(SUBSCRIPTION_MODES) expiry_mode?: 'read_only' | 'blocked';
   @IsOptional() @IsArray() @ArrayMaxSize(10) @IsInt({ each: true }) @Min(1, { each: true }) @Max(90, { each: true }) reminder_days?: number[];
 }
 
-class PricesDto {
+export class PricesDto {
   /** { CDF: 1500000, USD: 1000 } in cents per month; null removes the price. */
   @IsOptional() prices?: Record<string, number | null>;
 }
