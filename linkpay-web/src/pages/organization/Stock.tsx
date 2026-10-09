@@ -11,6 +11,7 @@ import { ProductTable } from '@/components/stock/ProductTable';
 import { StockItemFormSheet, emptyStockItemForm, type StockItemFormValues } from '@/components/stock/StockItemFormSheet';
 import { StockItemDetailDialog } from '@/components/stock/StockItemDetailDialog';
 import { StockPasswordDialog } from '@/components/stock/StockPasswordDialog';
+import { rememberStockPassword } from '@/lib/stock-password-prompt';
 
 export default function StockPage() {
   const queryClient = useQueryClient();
@@ -118,6 +119,7 @@ export default function StockPage() {
   };
 
   const handlePasswordUnlocked = (password: string) => {
+    rememberStockPassword(password); // adding stock right after doesn't ask again for a few minutes
     if (!pendingAction) return;
     const { type, item } = pendingAction;
     setPendingAction(null);

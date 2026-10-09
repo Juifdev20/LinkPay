@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, UseInterceptors, UploadedFile, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Headers, UseInterceptors, UploadedFile, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiConsumes, ApiBody } from '@nestjs/swagger';
@@ -6,7 +6,6 @@ import { IsString, IsOptional, IsNumber, IsIn, IsObject, MaxLength, Min, MinLeng
 import { StockService } from './stock.service';
 import { StockPasswordService } from './stock-password.service';
 import { OrganizationsService } from '../organizations/organizations.service';
-import { AppCodeConfirmGuard, RequireAppCode } from '../common/guards/app-code-confirm.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 const CONDITIONS = ['neuf', 'occasion', 'reconditionne'];
@@ -198,17 +197,17 @@ export function assertStockPasswordAccess(
 export class StockController {
   constructor(private stockService: StockService) {}
 
-  @UseGuards(AppCodeConfirmGuard)
-  @RequireAppCode()
   @Post(':id/stock-items')
-  @ApiOperation({ summary: 'Create a stock item for this store (owner or magasinier)' })
+  @ApiOperation({ summary: 'Create a stock item for this store (owner or magasinier). Needs the stock password (x-stock-password header).' })
   async createItem(
     @Param('id') merchantId: string,
     @Body() dto: CreateStockItemDto,
     @CurrentUser('id') callerId: string,
     @CurrentUser('role') callerRole: string,
+    @Headers('x-stock-password') stockPassword: string | undefined,
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
+    await this.stockService.assertManagementPassword(merchantId, callerId, callerRole, callerOrgId, stockPassword);
     return this.stockService.createItem(merchantId, callerId, callerRole, callerOrgId, dto);
   }
 
@@ -262,8 +261,6 @@ export class StockController {
     return this.stockService.uploadItemImage(merchantId, callerId, callerRole, callerOrgId, file);
   }
 
-  @UseGuards(AppCodeConfirmGuard)
-  @RequireAppCode()
   @Put(':id/stock-items/:itemId')
   @ApiOperation({ summary: 'Update a stock item (owner or magasinier). A changed quantity is recorded as an adjustment movement. Requires the stock password.' })
   async updateItem(
@@ -278,8 +275,6 @@ export class StockController {
     return this.stockService.updateItem(merchantId, itemId, callerId, callerRole, callerOrgId, updates, stock_password);
   }
 
-  @UseGuards(AppCodeConfirmGuard)
-  @RequireAppCode()
   @Delete(':id/stock-items/:itemId')
   @ApiOperation({ summary: 'Delete a stock item (owner or magasinier). Requires the stock password.' })
   async deleteItem(
@@ -293,8 +288,6 @@ export class StockController {
     return this.stockService.deleteItem(merchantId, itemId, callerId, callerRole, callerOrgId, dto.stock_password);
   }
 
-  @UseGuards(AppCodeConfirmGuard)
-  @RequireAppCode()
   @Post(':id/stock-items/:itemId/movements')
   @ApiOperation({ summary: 'Record a restock, loss or correction for a stock item (owner or magasinier)' })
   async createMovement(
@@ -303,8 +296,10 @@ export class StockController {
     @Body() dto: CreateMovementDto,
     @CurrentUser('id') callerId: string,
     @CurrentUser('role') callerRole: string,
+    @Headers('x-stock-password') stockPassword: string | undefined,
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
+    await this.stockService.assertManagementPassword(merchantId, callerId, callerRole, callerOrgId, stockPassword);
     return this.stockService.createMovement(merchantId, itemId, callerId, callerRole, callerOrgId, dto);
   }
 

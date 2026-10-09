@@ -17,7 +17,7 @@ export function AppCodeConfirmDialog() {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-primary" /> Confirmez avec votre code</DialogTitle>
           <DialogDescription>
-            Cette action modifie le stock ou la caisse. Saisissez votre code d'accès à 6 chiffres. Vous ne serez plus redemandé pendant 5 minutes.
+            Cette action modifie la caisse. Saisissez votre code d'accès à 6 chiffres. Vous ne serez plus redemandé pendant 5 minutes.
           </DialogDescription>
         </DialogHeader>
         <div className="mt-4 space-y-3">

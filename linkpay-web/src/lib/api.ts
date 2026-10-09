@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { useOtpPrompt } from './otp-prompt';
 import { useAppCodePrompt } from './app-code-prompt';
+import { useStockPasswordPrompt, rememberStockPassword, recalledStockPassword, forgetStockPassword } from './stock-password-prompt';
 import { getConfirmToken, setConfirmToken, clearConfirmToken } from './confirm-token';
 import { getToken, setTokens, clearTokens, TOKEN_ACCESS_KEY, TOKEN_REFRESH_KEY } from './token-storage';
 
@@ -20,6 +21,9 @@ api.interceptors.request.use((config) => {
   // Sent whenever the user confirmed with their access code in the last 5 minutes.
   const confirm = getConfirmToken();
   if (confirm) config.headers['x-confirm-token'] = confirm;
+  // The patron's stock password, if it was given in the last few minutes.
+  const stockPassword = recalledStockPassword();
+  if (stockPassword && !config.headers['x-stock-password']) config.headers['x-stock-password'] = stockPassword;
   return config;
 });
 
@@ -38,9 +42,21 @@ api.interceptors.response.use(
           return api(error.config);
         }
       }
-      // Sensitive action (stock, inventory, till): ask for the user's own
+      // Adding stock, recording a movement, validating an inventory: the API
+      // wants the patron's shared stock password. Ask, then repeat the request.
+      if ((code === 'STOCK_PASSWORD_REQUIRED' || code === 'STOCK_PASSWORD_INVALID') && !error.config._stockAsked) {
+        forgetStockPassword();
+        const password = await useStockPasswordPrompt.getState().ask();
+        if (password) {
+          rememberStockPassword(password);
+          error.config._stockAsked = true;
+          error.config.headers['x-stock-password'] = password;
+          return api(error.config);
+        }
+      }
+      // Sensitive action (till): ask for the user's own
       // access code, trade it for a 5-minute confirmation token, then repeat
-      // the request. Up to 3 wrong codes before giving up.
+      // the request. Up to 3 wrong codes before giving up. (Used for the till.)
       if (code === 'APP_CODE_CONFIRM_REQUIRED' && !error.config._confirmed) {
         clearConfirmToken();
         let message = '';

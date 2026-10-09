@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, HttpException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
 import { OrganizationsService } from '../organizations/organizations.service';
@@ -174,6 +174,38 @@ export class StockService {
       throw new BadRequestException('Mot de passe de gestion de stock requis');
     }
     await this.stockPasswordService.verifyPassword(merchant.organization_id, stockPassword);
+  }
+
+  /**
+   * The patron's shared stock password, for the operations that don't carry it
+   * in their body (add an item, record a movement, validate an inventory): sent
+   * in the `x-stock-password` header. Missing → 403 STOCK_PASSWORD_REQUIRED and
+   * the app asks for it; wrong → 403 STOCK_PASSWORD_INVALID with the reason
+   * (remaining tries, lock-out). Administrators are not asked.
+   */
+  async assertManagementPassword(
+    merchantId: string,
+    callerId: string,
+    callerRole: string,
+    callerOrgId: string | undefined,
+    password: string | undefined,
+  ) {
+    const merchant = await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
+    if (this.isAdmin(callerRole)) return;
+    if (!merchant.organization_id) {
+      throw new BadRequestException("Cette boutique ne fait partie d'aucune entreprise");
+    }
+    if (!password) {
+      throw new ForbiddenException({ statusCode: 403, code: 'STOCK_PASSWORD_REQUIRED', message: 'Mot de passe de gestion de stock requis' });
+    }
+    try {
+      await this.stockPasswordService.verifyPassword(merchant.organization_id, password);
+    } catch (err: any) {
+      if (err instanceof HttpException) {
+        throw new ForbiddenException({ statusCode: 403, code: 'STOCK_PASSWORD_INVALID', message: err.message });
+      }
+      throw err;
+    }
   }
 
   async updateItem(

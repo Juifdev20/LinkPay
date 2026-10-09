@@ -207,8 +207,10 @@ export class InventoryService {
    * into the démarque report, and the stock is realigned by counted −
    * CURRENT quantity via an 'adjustment' movement (mid-count sales were
    * already deducted by the POS, so expected-at-start isn't the base). */
-  async complete(merchantId: string, countId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
+  async complete(merchantId: string, countId: string, callerId: string, callerRole: string, callerOrgId: string | undefined, stockPassword?: string) {
     await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
+    // Validating a count rewrites the stock quantities: same gate as editing stock.
+    await this.stockService.assertManagementPassword(merchantId, callerId, callerRole, callerOrgId, stockPassword);
     const count = await this.getOwnCount(merchantId, countId);
     if (count.status !== 'counting') throw new BadRequestException('Cet inventaire est clôturé.');
 

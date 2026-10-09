@@ -1,5 +1,6 @@
 import { OtpPromptDialog } from '@/components/OtpPromptDialog';
 import { AppCodeConfirmDialog } from '@/components/AppCodeConfirmDialog';
+import { StockPasswordGate } from '@/components/stock/StockPasswordGate';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { useAuthStore } from '@/lib/auth-store';
@@ -172,6 +173,7 @@ export default function App() {
       <ForcePasswordChangeGate />
       <OtpPromptDialog />
       <AppCodeConfirmDialog />
+      <StockPasswordGate />
       <Suspense fallback={<PageFallback fullScreen />}>
       <Routes>
       <Route path="/" element={<RootRedirect />} />
