@@ -8,6 +8,7 @@ import { WalletPinService } from './wallet-pin.service';
 import { WalletLimitsService } from './wallet-limits.service';
 import { AuditService } from '../audit/audit.service';
 import { SavingsService } from '../savings/savings.service';
+import { WithdrawalPayoutService } from './withdrawal-payout.service';
 
 @Injectable()
 export class WalletsService {
@@ -22,6 +23,7 @@ export class WalletsService {
     private walletLimitsService: WalletLimitsService,
     private auditService: AuditService,
     private savingsService: SavingsService,
+    private withdrawalPayouts: WithdrawalPayoutService,
   ) {}
 
   async getWalletByUserId(userId: string) {
@@ -656,7 +658,7 @@ export class WalletsService {
         channel: dto.channel,
         destination: dto.destination,
         status: 'PENDING',
-        psp_provider: 'mock',
+        psp_provider: this.pspFactory.get().provider,
         idempotency_key: idempotencyKey,
       })
       .select()
@@ -702,50 +704,23 @@ export class WalletsService {
       data: { withdrawal_id: withdrawal.id },
     }).catch(() => null);
 
-    // Mock settlement only — see module comment above. Real payout would
-    // move this into a webhook-driven confirmation exactly like top-ups.
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    const { data: settled } = await this.supabaseService.getClient()
-      .from('withdrawals')
-      .update({ status: 'SUCCESS', psp_reference: `mock_wd_${uuidv4().slice(0, 12)}`, updated_at: new Date().toISOString() })
-      .eq('id', withdrawal.id)
-      .select()
-      .single();
+    // The payout goes out through the payment provider. The withdrawal is
+    // only reported as done once the provider confirms it; until then it
+    // stays "PROCESSING" and WithdrawalPayoutService settles it (including
+    // refunding the wallet if the provider confirms a failure).
+    const backendUrl = this.configService.get<string>('BACKEND_URL')
+      || this.configService.get<string>('RENDER_EXTERNAL_URL')
+      || `http://localhost:${this.configService.get<number>('PORT', 3000)}`;
+    const { withdrawal: settled, rejectedReason } = await this.withdrawalPayouts.dispatch(
+      withdrawal,
+      `${backendUrl}/api/v1/webhooks/${withdrawal.psp_provider}`,
+    );
 
-    await this.notificationsService.create({
-      user_id: userId,
-      type: 'withdrawal_success',
-      title: 'Retrait effectué',
-      body: `Votre retrait de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${dto.currency} a été effectué.`,
-      data: { withdrawal_id: withdrawal.id },
-    }).catch(() => null);
+    if (rejectedReason) {
+      throw new BadRequestException(`Le retrait n'a pas pu être effectué : ${rejectedReason} Votre argent est resté dans votre portefeuille.`);
+    }
 
     return { withdrawal: settled };
-  }
-
-  /** Restitution: credits back a reserved withdrawal that ultimately failed after reservation (e.g. a real payout PSP rejecting it later via webhook). Not currently wired to any caller — the mock provider never fails post-reservation — but kept ready for when a real payout integration replaces the settlement step. */
-  async reverseFailedWithdrawal(withdrawalId: string, reason: string) {
-    const { data: withdrawal } = await this.supabaseService.getClient()
-      .from('withdrawals')
-      .select('*')
-      .eq('id', withdrawalId)
-      .single();
-
-    if (!withdrawal || withdrawal.status === 'REVERSED' || withdrawal.status === 'SUCCESS') return;
-
-    await this.supabaseService.getClient().rpc('credit_wallet', {
-      p_wallet_id: withdrawal.wallet_id,
-      p_amount_cents: withdrawal.amount_cents + withdrawal.fee_cents,
-      p_entry_type: 'ADJUSTMENT',
-      p_reference: `WITHDRAWAL-REVERSAL-${withdrawal.id}`,
-      p_currency: withdrawal.currency,
-      p_metadata: { withdrawal_id: withdrawal.id, reason },
-    });
-
-    await this.supabaseService.getClient()
-      .from('withdrawals')
-      .update({ status: 'REVERSED', failure_reason: reason, updated_at: new Date().toISOString() })
-      .eq('id', withdrawalId);
   }
 
   async getMyWithdrawals(userId: string, filters?: { page?: number; limit?: number }) {

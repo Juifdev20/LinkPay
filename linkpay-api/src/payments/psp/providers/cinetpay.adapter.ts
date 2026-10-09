@@ -9,6 +9,10 @@ import {
   RefundParams,
   RefundResult,
   TransactionStatusResult,
+  PayoutParams,
+  PayoutResult,
+  PayoutStatusResult,
+  PayoutNotSentError,
 } from '../psp.adapter';
 
 // CinetPay integration — chosen over Flutterwave because it explicitly covers
@@ -151,6 +155,16 @@ export class CinetPayAdapter implements PspAdapter {
     throw new BadRequestException(
       'Le remboursement automatique n\'est pas disponible pour CinetPay — traitez-le manuellement depuis le tableau de bord CinetPay.',
     );
+  }
+
+  // This deployment pays out through another provider (FlexPaie): CinetPay
+  // is only kept for collecting payments, so no payout is ever attempted.
+  async payout(_params: PayoutParams): Promise<PayoutResult> {
+    throw new PayoutNotSentError("Les retraits automatiques ne sont pas disponibles avec ce fournisseur de paiement.");
+  }
+
+  async getPayoutStatus(_reference: string): Promise<PayoutStatusResult> {
+    return { status: 'NOT_FOUND' };
   }
 
   async getTransactionStatus(psp_intent_id: string): Promise<TransactionStatusResult> {
