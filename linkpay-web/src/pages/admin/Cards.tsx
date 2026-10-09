@@ -116,6 +116,7 @@ function SettingsPanel() {
 
         <div className="space-y-2">
           <Label className="text-xs">Logos des partenaires (verso, 6 au plus)</Label>
+          <p className="text-xs text-muted-foreground">Sans logo ajouté, la carte affiche Orange Money, Airtel Money et M-Pesa. Dès que vous en ajoutez, seuls les vôtres sont imprimés.</p>
           <div className="flex flex-wrap gap-3">
             {form.partner_logos.map((l, i) => (
               <div key={i} className="w-24 text-center space-y-1">

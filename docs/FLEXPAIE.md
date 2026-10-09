@@ -30,4 +30,4 @@ Comme le rappel peut se perdre et n'est pas renvoyé, une tâche de rattrapage i
 7. Le **mode test** (sandbox), ses adresses et ses numéros de test.
 
 ## Variables (Render → linkpay-api → Environment)
-`PSP_PROVIDER=flexpaie`, `FLEXPAIE_BASE_URL`, `FLEXPAIE_MERCHANT`, `FLEXPAIE_TOKEN` (et `PROXY_URL` si FlexPaie filtre l'IP). Jamais dans une conversation ni dans le dépôt.
+`PSP_PROVIDER=flexpaie` (à ne mettre **qu'une fois les trois suivantes renseignées et le mode test essayé** : tant que `PSP_PROVIDER` n'est pas `flexpaie`, le code FlexPaie est inactif et ne change rien), `FLEXPAIE_BASE_URL`, `FLEXPAIE_MERCHANT`, `FLEXPAIE_TOKEN` (et `PROXY_URL` si FlexPaie filtre l'IP). Jamais dans une conversation ni dans le dépôt.

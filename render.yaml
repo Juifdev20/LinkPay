@@ -90,8 +90,10 @@ services:
         value: 12h
       - key: ADMIN_ALLOWED_IPS
         sync: false
+      # Chosen in the Render dashboard (mock | flexpaie | cinetpay), NOT forced here: switching to flexpaie before its
+      # credentials exist would break every payment. See docs/FLEXPAIE.md.
       - key: PSP_PROVIDER
-        value: flexpaie
+        sync: false
       # FlexPaie (docs/FLEXPAIE.md): the address, merchant code and token come from FlexPaie with the account.
       - key: FLEXPAIE_BASE_URL
         sync: false

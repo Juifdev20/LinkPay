@@ -1,6 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import logo from '@/assets/logo.png';
+import orangeMoney from '@/assets/partners/orange-money.png';
+import airtelMoney from '@/assets/partners/airtel-money.png';
+import mpesa from '@/assets/partners/m-pesa.png';
 import { DRC_PATH } from './drc-map';
 import './card.css';
 
@@ -8,6 +11,16 @@ export interface PartnerLogo {
   name: string;
   image: string;
 }
+
+/**
+ * The partners shown on the back until the super admin sets his own (Cartes → Réglages): the card always looks like the
+ * approved design, never with an empty band.
+ */
+export const DEFAULT_PARTNER_LOGOS: PartnerLogo[] = [
+  { name: 'Orange Money', image: orangeMoney },
+  { name: 'Airtel Money', image: airtelMoney },
+  { name: 'M-Pesa', image: mpesa },
+];
 
 export interface CardFaceData {
   /** Printed in capitals, as on the card. */
@@ -123,7 +136,7 @@ export function CardFront({ data, bleedMm = 0 }: FaceProps) {
 
 /** The back: contact (only when the super admin set it), signature panel, terms, partner logos. */
 export function CardBack({ data, bleedMm = 0 }: FaceProps) {
-  const logos = data.partnerLogos ?? [];
+  const logos = data.partnerLogos?.length ? data.partnerLogos : DEFAULT_PARTNER_LOGOS;
   return (
     <div className={`slp-card back${bleedMm ? ' has-bleed' : ''}`} style={bleedMm ? ({ ['--b']: `calc(${bleedMm} * var(--u))` } as React.CSSProperties) : undefined}>
       <div className="slp-inner">
