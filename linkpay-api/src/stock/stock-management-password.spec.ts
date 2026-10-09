@@ -6,7 +6,7 @@ function setup(opts: { verify?: () => Promise<void> } = {}) {
   const fake = createFakeSupabase((q: RecordedQuery) =>
     q.target === 'merchants' ? { data: { id: 'm1', owner_id: 'boss', organization_id: 'org1' } } : { data: null });
   const stockPasswords = { verifyPassword: jest.fn(opts.verify ?? (async () => undefined)) };
-  const service = new StockService(fake.service, {} as any, {} as any, stockPasswords as any);
+  const service = new StockService(fake.service, {} as any, {} as any, stockPasswords as any, { log: jest.fn() } as any);
   return { service, stockPasswords };
 }
 
@@ -40,5 +40,37 @@ describe('StockService.assertManagementPassword — the patron\'s shared passwor
   it('a magasinier of the same organization can use it', async () => {
     const { service } = setup();
     await expect(service.assertManagementPassword('m1', 'emp', 'magasinier', 'org1', 'secret')).resolves.toBeUndefined();
+  });
+});
+
+describe('who did it — edits and deletions are recorded under the person\'s own account', () => {
+  function withAudit() {
+    const fake = createFakeSupabase((q: RecordedQuery) => {
+      if (q.target === 'merchants') return { data: { id: 'm1', owner_id: 'boss', organization_id: 'org1' } };
+      if (q.target === 'stock_items' && q.calls.some((c) => c.method === 'maybeSingle')) return { data: { name: 'Samsung A15', quantity: 12, unit_price_cents: 90000 } };
+      if (q.target === 'stock_items' && q.calls.some((c) => c.method === 'single')) return { data: { name: 'Samsung A15', quantity: 12, unit_price_cents: 90000 } };
+      return { data: null };
+    });
+    const audit = { log: jest.fn(async () => undefined) };
+    const passwords = { verifyPassword: jest.fn(async () => undefined) };
+    return { service: new StockService(fake.service, {} as any, {} as any, passwords as any, audit as any), audit };
+  }
+
+  it('a deleted article is logged with what it was and who removed it', async () => {
+    const { service, audit } = withAudit();
+    await service.deleteItem('m1', 'item1', 'emp-1', 'magasinier', 'org1', 'pw');
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: 'emp-1', action: 'stock_item_deleted', entity_id: 'item1',
+      changes: expect.objectContaining({ item: expect.objectContaining({ name: 'Samsung A15', quantity: 12 }) }),
+    }));
+  });
+
+  it('an edit is logged with the old and new values of what changed', async () => {
+    const { service, audit } = withAudit();
+    await service.updateItem('m1', 'item1', 'emp-1', 'magasinier', 'org1', { unit_price_cents: 50000 }, 'pw').catch(() => undefined);
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: 'emp-1', action: 'stock_item_updated',
+      changes: expect.objectContaining({ fields: { unit_price_cents: { from: 90000, to: 50000 } } }),
+    }));
   });
 });

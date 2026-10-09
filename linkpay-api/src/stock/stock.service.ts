@@ -4,6 +4,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StockPasswordService } from './stock-password.service';
+import { AuditService } from '../audit/audit.service';
 import { sumByCurrency } from '../common/utils/currency';
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -29,6 +30,7 @@ export class StockService {
     private organizationsService: OrganizationsService,
     private notificationsService: NotificationsService,
     private stockPasswordService: StockPasswordService,
+    private auditService: AuditService,
   ) {}
 
   private isAdmin(role: string | undefined): boolean {
@@ -241,7 +243,7 @@ export class StockService {
 
     const { data: current, error: currentError } = await this.supabaseService.getClient()
       .from('stock_items')
-      .select('quantity')
+      .select('*')
       .eq('id', itemId)
       .eq('merchant_id', merchantId)
       .single();
@@ -259,6 +261,22 @@ export class StockService {
     if (error) {
       this.throwIfDuplicate(error);
       throw new Error(`Failed to update stock item: ${error.message}`);
+    }
+
+    // Who changed what: kept in the audit journal (the shared password says
+    // nothing about the person, their own login does).
+    const changes: Record<string, { from: unknown; to: unknown }> = {};
+    for (const key of Object.keys(filtered)) {
+      if (JSON.stringify(current[key]) !== JSON.stringify(filtered[key])) changes[key] = { from: current[key], to: filtered[key] };
+    }
+    if (Object.keys(changes).length > 0) {
+      await this.auditService.log({
+        user_id: callerId,
+        action: 'stock_item_updated',
+        entity_type: 'stock_item',
+        entity_id: itemId,
+        changes: { name: current.name, merchant_id: merchantId, fields: changes },
+      });
     }
 
     const newQuantity = updates.quantity;
@@ -285,6 +303,13 @@ export class StockService {
     const merchant = await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
     await this.assertStockPassword(merchant, stockPassword);
 
+    const { data: before } = await this.supabaseService.getClient()
+      .from('stock_items')
+      .select('name, barcode, quantity, unit_price_cents, cost_price_cents, currency')
+      .eq('id', itemId)
+      .eq('merchant_id', merchantId)
+      .maybeSingle();
+
     const { error } = await this.supabaseService.getClient()
       .from('stock_items')
       .delete()
@@ -292,6 +317,15 @@ export class StockService {
       .eq('merchant_id', merchantId);
 
     if (error) throw new Error(`Failed to delete stock item: ${error.message}`);
+
+    // A deleted article leaves no row behind, so what it was and who removed it is recorded here.
+    await this.auditService.log({
+      user_id: callerId,
+      action: 'stock_item_deleted',
+      entity_type: 'stock_item',
+      entity_id: itemId,
+      changes: { merchant_id: merchantId, item: before || null },
+    });
     return { success: true };
   }
 

@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestEx
 import { randomBytes } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
 import { StockPasswordService } from '../stock/stock-password.service';
+import { AuditService } from '../audit/audit.service';
 
 // Internal staff roles (organization-staff module) per sales action. The
 // owner is always allowed on top of these — see assertOrgAccess().
@@ -26,6 +27,7 @@ export class SalesService {
   constructor(
     private supabaseService: SupabaseService,
     private stockPasswordService: StockPasswordService,
+    private auditService: AuditService,
   ) {}
 
   private db() {
@@ -440,6 +442,13 @@ export class SalesService {
       .maybeSingle();
     if (error) throw new Error(`Failed to archive sale: ${error.message}`);
     if (!data) throw new NotFoundException('Vente introuvable ou déjà archivée');
+    await this.auditService.log({
+      user_id: callerId,
+      action: 'sale_archived',
+      entity_type: 'sale',
+      entity_id: saleId,
+      changes: { organization_id: orgId },
+    });
     return { success: true };
   }
 }
