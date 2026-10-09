@@ -48,7 +48,7 @@ export function AccessCodeSettings() {
     }
   };
 
-  if (!appCodeApplies(role)) return null; // staff and administrators don't use the access code
+  if (!appCodeApplies(role)) return null; // administrators use the authenticator-app login instead
 
   return (
     <>

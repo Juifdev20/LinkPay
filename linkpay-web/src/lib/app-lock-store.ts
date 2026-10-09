@@ -32,13 +32,13 @@ export function setIdleLockMinutes(min: number) {
 }
 
 /**
- * Who is asked for the access code: clients, merchants and business owners.
- * NOT the staff who work the tills and the stock (vendeur, caissier,
- * magasinier, comptable, merchant cashiers) and not the administrators (they
- * have the authenticator-app login) — a code prompt in the middle of a sale
- * would only get in the way.
+ * Who has an access code: clients, merchants, business owners AND their
+ * employees (merchant cashiers, vendeurs, caissiers, magasiniers, comptables) —
+ * each person chooses their own, so every action is tied to someone. Not the
+ * administrators: they have the authenticator-app login instead.
+ * Employees are never interrupted mid-work: see SALES_ROUTE_PREFIXES below.
  */
-export const APP_CODE_ROLES = ['client', 'merchant', 'enterprise'];
+export const APP_CODE_ROLES = ['client', 'merchant', 'enterprise', 'cashier', 'vendeur', 'caissier', 'magasinier', 'comptable'];
 export const appCodeApplies = (role?: string) => !!role && APP_CODE_ROLES.includes(role);
 
 /**

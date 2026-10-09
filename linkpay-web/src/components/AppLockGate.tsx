@@ -19,8 +19,8 @@ const errorMessage = (err: any, fallback: string) => err?.response?.data?.messag
  *      existing accounts the first time they open this version);
  *   2. locks the app on launch, after the app was left, and after idle time;
  *   3. is an ENTRANCE check only: it never interrupts someone moving between
- *      tabs and screens, and it stays out of the selling/stock screens, staff
- *      and administrators altogether (see APP_CODE_ROLES / SALES_ROUTE_PREFIXES);
+ *      tabs and screens, and it stays out of the selling/stock screens and
+ *      away from administrators (see APP_CODE_ROLES / SALES_ROUTE_PREFIXES);
  *   4. unlocks with the 6-digit code (checked by the API: 5 tries, then a
  *      15-minute lock; two locks in a row end the session) or, as an optional
  *      shortcut, the device biometrics.
@@ -37,9 +37,10 @@ export function AppLockGate() {
   const lastActivity = useRef(Date.now());
   const hasCode = user?.has_app_code;
   const { pathname } = useLocation();
-  // Only for clients, merchants and business owners; the roles that work the
-  // till and the stock are never asked.
-  const applies = isAuthenticated && appCodeApplies(user?.role);
+  // Clients, merchants, business owners and their employees (not administrators).
+  // An employee's first login starts with the forced change of the temporary
+  // password; the access code is chosen right after, not on top of it.
+  const applies = isAuthenticated && appCodeApplies(user?.role) && !user?.must_change_password;
   const onSalesScreen = isSalesRoute(pathname);
   // A lock request while a sales/stock screen is open is dropped, not postponed:
   // the code is never asked later, mid-navigation, because of something that
