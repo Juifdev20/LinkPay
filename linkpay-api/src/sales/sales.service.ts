@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
+import { StockPasswordService } from '../stock/stock-password.service';
 
 // Internal staff roles (organization-staff module) per sales action. The
 // owner is always allowed on top of these — see assertOrgAccess().
@@ -24,6 +25,7 @@ export class SalesService {
 
   constructor(
     private supabaseService: SupabaseService,
+    private stockPasswordService: StockPasswordService,
   ) {}
 
   private db() {
@@ -415,16 +417,18 @@ export class SalesService {
     }));
   }
 
-  /** Archives a sale from the history list. The API controller makes the user
-   * re-type their own access code first (AppCodeConfirmGuard); never deletes the sale. */
+  /** Archives a sale from the history list. Requires the organization's stock
+   * management password (same gate as stock edits); never deletes the sale. */
   async archiveSale(
     orgId: string,
     saleId: string,
     callerId: string,
     callerOrgId: string | undefined,
     callerRole: string | undefined,
+    managementPassword: string,
   ) {
     await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SALES_VIEW_ROLES);
+    await this.stockPasswordService.verifyPassword(orgId, managementPassword);
 
     const { data, error } = await this.db()
       .from('sales')

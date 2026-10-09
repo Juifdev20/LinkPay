@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { StockPasswordResetDialog } from '@/components/stock/StockPasswordResetDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
-import { User, Phone, KeyRound, ArrowLeftRight, ChevronRight, LogOut, type LucideIcon } from 'lucide-react';
+import { User, Phone, KeyRound, ArrowLeftRight, ChevronRight, LogOut, Boxes, type LucideIcon } from 'lucide-react';
 
 export default function ProfilePage() {
   const user = useAuthStore((s) => s.user);
@@ -18,8 +21,21 @@ export default function ProfilePage() {
     navigate('/');
   };
 
+  // The stock-management password belongs to the organization; only its
+  // owner can reset it (same rule the Stock page used to apply).
+  const isOrgOwner = user?.role === 'enterprise';
+  const { data: org } = useQuery({
+    queryKey: ['my-organization'],
+    queryFn: async () => (await api.get('/organizations/me')).data,
+    enabled: isOrgOwner,
+  });
+  const [showStockPassword, setShowStockPassword] = useState(false);
+
   const securityLinks: { key: string; label: string; icon: LucideIcon; onClick: () => void }[] = [
     { key: 'pin', label: 'Code PIN de transaction', icon: KeyRound, onClick: () => navigate('/dashboard/wallet/pin') },
+    ...(isOrgOwner && org?.id
+      ? [{ key: 'stock', label: 'Mot de passe de gestion de stock', icon: Boxes, onClick: () => setShowStockPassword(true) }]
+      : []),
     { key: 'tx', label: 'Mes transactions ScanLinkPay', icon: ArrowLeftRight, onClick: () => navigate('/dashboard/wallet/transactions') },
   ];
 
@@ -82,6 +98,10 @@ export default function ProfilePage() {
         <LogOut className="w-4 h-4 mr-2" />
         Déconnexion
       </Button>
+
+      {showStockPassword && org?.id && (
+        <StockPasswordResetDialog orgId={org.id} open onClose={() => setShowStockPassword(false)} />
+      )}
 
       <LogoutConfirmDialog
         open={showLogoutConfirm}

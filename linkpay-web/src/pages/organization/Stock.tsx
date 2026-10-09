@@ -10,7 +10,7 @@ import { Plus, PackagePlus, AlertTriangle, Boxes, Loader2, X, Search } from 'luc
 import { ProductTable } from '@/components/stock/ProductTable';
 import { StockItemFormSheet, emptyStockItemForm, type StockItemFormValues } from '@/components/stock/StockItemFormSheet';
 import { StockItemDetailDialog } from '@/components/stock/StockItemDetailDialog';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { StockPasswordDialog } from '@/components/stock/StockPasswordDialog';
 
 export default function StockPage() {
   const queryClient = useQueryClient();
@@ -22,8 +22,8 @@ export default function StockPage() {
   const [query, setQuery] = useState('');
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [detailItem, setDetailItem] = useState<any | null>(null);
-  const [formState, setFormState] = useState<{ initial: StockItemFormValues; itemId?: string } | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [formState, setFormState] = useState<{ initial: StockItemFormValues; itemId?: string; stockPassword?: string } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ type: 'edit' | 'delete'; item: any } | null>(null);
 
   const { data: org } = useQuery({
     queryKey: ['my-organization'],
@@ -43,11 +43,16 @@ export default function StockPage() {
   });
 
   const deleteMutation = useMutation({
-    // The API asks for the user's own access code (dialog handled by api.ts).
-    mutationFn: async (item: any) => api.delete(`/merchants/${item.merchant_id}/stock-items/${item.id}`),
+    mutationFn: async ({ item, stockPassword }: { item: any; stockPassword: string }) =>
+      api.delete(`/merchants/${item.merchant_id}/stock-items/${item.id}`, { data: { stock_password: stockPassword } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org-stock-items', org.id] });
       setDetailItem(null);
+    },
+    onError: (err: any) => {
+      // Wrong/expired password — reopen the prompt instead of failing silently.
+      setPendingAction({ type: 'delete', item: deleteMutation.variables!.item });
+      void err;
     },
   });
 
@@ -86,10 +91,11 @@ export default function StockPage() {
     setSearchParams({}, { replace: true });
   }, [searchParams, merchants]);
 
-  const openEditForm = (item: any) => {
+  const openEditForm = (item: any, stockPassword: string) => {
     setDetailItem(null);
     setFormState({
       itemId: item.id,
+      stockPassword,
       initial: {
         merchant_id: item.merchant_id,
         category: item.category || '',
@@ -109,6 +115,17 @@ export default function StockPage() {
         low_stock_threshold: item.low_stock_threshold != null ? String(item.low_stock_threshold) : '5',
       },
     });
+  };
+
+  const handlePasswordUnlocked = (password: string) => {
+    if (!pendingAction) return;
+    const { type, item } = pendingAction;
+    setPendingAction(null);
+    if (type === 'edit') {
+      openEditForm(item, password);
+    } else {
+      deleteMutation.mutate({ item, stockPassword: password });
+    }
   };
 
   return (
@@ -230,8 +247,8 @@ export default function StockPage() {
           orgId={org.id}
           sector={org.sector}
           onClose={() => setDetailItem(null)}
-          onEdit={(item) => openEditForm(item)}
-          onDelete={(item) => setDeleteTarget(item)}
+          onEdit={(item) => setPendingAction({ type: 'edit', item })}
+          onDelete={(item) => setPendingAction({ type: 'delete', item })}
         />
       )}
 
@@ -242,20 +259,21 @@ export default function StockPage() {
           merchants={merchants}
           initial={formState.initial}
           itemId={formState.itemId}
+          stockPassword={formState.stockPassword}
           onClose={() => setFormState(null)}
           onSaved={() => setFormState(null)}
         />
       )}
 
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title="Supprimer cet article ?"
-        description={`« ${deleteTarget?.name || ''} » sera supprimé du stock. Vous devrez confirmer avec votre code d'accès.`}
-        confirmLabel="Supprimer"
-        variant="destructive"
-        onConfirm={() => { const item = deleteTarget; setDeleteTarget(null); deleteMutation.mutate(item); }}
-      />
+      {pendingAction && org?.id && (
+        <StockPasswordDialog
+          orgId={org.id}
+          open
+          onClose={() => setPendingAction(null)}
+          onUnlocked={handlePasswordUnlocked}
+        />
+      )}
+
 
       {deleteMutation.isPending && (
         <div className="fixed inset-0 z-[70] bg-black/30 flex items-center justify-center">

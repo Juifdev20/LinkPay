@@ -73,6 +73,7 @@ export function StockItemFormSheet({
   merchants,
   initial,
   itemId,
+  stockPassword,
   onClose,
   onSaved,
 }: {
@@ -83,6 +84,8 @@ export function StockItemFormSheet({
   /** Present → editing; absent → creating. */
   initial: StockItemFormValues;
   itemId?: string;
+  /** Required when editing — already confirmed via StockPasswordDialog by the parent. */
+  stockPassword?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -164,7 +167,7 @@ export function StockItemFormSheet({
       };
 
       if (isEditing) {
-        return (await api.put(`/merchants/${effectiveMerchantId}/stock-items/${itemId}`, payload)).data;
+        return (await api.put(`/merchants/${effectiveMerchantId}/stock-items/${itemId}`, { ...payload, stock_password: stockPassword })).data;
       }
       return (await api.post(`/merchants/${effectiveMerchantId}/stock-items`, payload)).data;
     },

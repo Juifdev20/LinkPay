@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, UseInterceptors, UploadedFile, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { IsString, IsOptional, IsNumber, IsIn, IsObject, MaxLength, Min, MinLength } from 'class-validator';
 import { StockService } from './stock.service';
+import { StockPasswordService } from './stock-password.service';
+import { OrganizationsService } from '../organizations/organizations.service';
 import { AppCodeConfirmGuard, RequireAppCode } from '../common/guards/app-code-confirm.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
@@ -111,8 +113,20 @@ class CreateStockItemDto {
   low_stock_threshold?: number;
 }
 
-// Editing and deleting are protected by the user's own access code (AppCodeConfirmGuard), checked by the API.
-class UpdateStockItemDto extends CreateStockItemDto {}
+// Editing is gated behind the module's shared stock password — see
+// StockPasswordService. Required here (not just checked client-side) so a
+// direct API call can't bypass the UI gate.
+class UpdateStockItemDto extends CreateStockItemDto {
+  @ApiProperty({ description: 'Mot de passe de gestion de stock de cette entreprise' })
+  @IsString()
+  stock_password!: string;
+}
+
+class DeleteStockItemDto {
+  @ApiProperty({ description: 'Mot de passe de gestion de stock de cette entreprise' })
+  @IsString()
+  stock_password!: string;
+}
 
 class CreateMovementDto {
   @ApiProperty({ enum: MOVEMENT_TYPES })
@@ -128,6 +142,54 @@ class CreateMovementDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+}
+
+class SetStockPasswordDto {
+  @ApiProperty({ example: '1234' })
+  @IsString()
+  @MinLength(4)
+  password!: string;
+
+  @ApiPropertyOptional({ description: 'Requis si un mot de passe existe déjà' })
+  @IsOptional()
+  @IsString()
+  current_password?: string;
+}
+
+class ResetStockPasswordDto {
+  @ApiProperty({ example: '1234' })
+  @IsString()
+  @MinLength(4)
+  new_password!: string;
+}
+
+class VerifyStockPasswordDto {
+  @ApiProperty({ example: '1234' })
+  @IsString()
+  password!: string;
+}
+
+/**
+ * Who may touch an organization's shared stock password.
+ *  - define / change it: the patron (owner) or an administrator — never an employee;
+ *  - check it or ask whether one exists: the patron, the organization's own
+ *    staff (they need it to confirm an edit) and administrators — nobody else,
+ *    so another company's account can neither guess it nor lock it by failing.
+ */
+export function assertStockPasswordAccess(
+  org: { id: string; owner_id: string },
+  caller: { id: string; role?: string; organizationId?: string },
+  level: 'member' | 'owner',
+) {
+  const isAdmin = caller.role === 'admin' || caller.role === 'super_admin';
+  const isOwner = org.owner_id === caller.id;
+  if (isAdmin || isOwner) return;
+  if (level === 'member' && !!caller.organizationId && caller.organizationId === org.id) return;
+  throw new ForbiddenException(
+    level === 'owner'
+      ? "Seul le patron peut définir ou modifier le mot de passe de gestion de stock."
+      : "Vous n'avez pas accès à la gestion de stock de cette entreprise",
+  );
 }
 
 @ApiTags('Stock')
@@ -203,7 +265,7 @@ export class StockController {
   @UseGuards(AppCodeConfirmGuard)
   @RequireAppCode()
   @Put(':id/stock-items/:itemId')
-  @ApiOperation({ summary: 'Update a stock item (owner or magasinier). A changed quantity is recorded as an adjustment movement. Needs the user own access code.' })
+  @ApiOperation({ summary: 'Update a stock item (owner or magasinier). A changed quantity is recorded as an adjustment movement. Requires the stock password.' })
   async updateItem(
     @Param('id') merchantId: string,
     @Param('itemId') itemId: string,
@@ -212,21 +274,23 @@ export class StockController {
     @CurrentUser('role') callerRole: string,
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
-    return this.stockService.updateItem(merchantId, itemId, callerId, callerRole, callerOrgId, dto);
+    const { stock_password, ...updates } = dto;
+    return this.stockService.updateItem(merchantId, itemId, callerId, callerRole, callerOrgId, updates, stock_password);
   }
 
   @UseGuards(AppCodeConfirmGuard)
   @RequireAppCode()
   @Delete(':id/stock-items/:itemId')
-  @ApiOperation({ summary: 'Delete a stock item (owner or magasinier). Needs the user own access code.' })
+  @ApiOperation({ summary: 'Delete a stock item (owner or magasinier). Requires the stock password.' })
   async deleteItem(
     @Param('id') merchantId: string,
     @Param('itemId') itemId: string,
+    @Body() dto: DeleteStockItemDto,
     @CurrentUser('id') callerId: string,
     @CurrentUser('role') callerRole: string,
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
-    return this.stockService.deleteItem(merchantId, itemId, callerId, callerRole, callerOrgId);
+    return this.stockService.deleteItem(merchantId, itemId, callerId, callerRole, callerOrgId, dto.stock_password);
   }
 
   @UseGuards(AppCodeConfirmGuard)
@@ -263,6 +327,8 @@ export class StockController {
 export class OrganizationStockController {
   constructor(
     private stockService: StockService,
+    private stockPasswordService: StockPasswordService,
+    private organizationsService: OrganizationsService,
   ) {}
 
   @Get(':id/stock-items')
@@ -285,5 +351,63 @@ export class OrganizationStockController {
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
     return this.stockService.getOrgStockSummary(orgId, callerId, callerRole, callerOrgId);
+  }
+
+  @Get(':id/stock-password/status')
+  @ApiOperation({ summary: 'Whether this organization has a stock management password set yet' })
+  async getStockPasswordStatus(
+    @Param('id') orgId: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    assertStockPasswordAccess(await this.organizationsService.getOrganizationById(orgId), { id: callerId, role: callerRole, organizationId: callerOrgId }, 'member');
+    return { is_set: await this.stockPasswordService.hasPasswordSet(orgId) };
+  }
+
+  @Post(':id/stock-password/verify')
+  @ApiOperation({ summary: 'Verify the stock password — used by the edit/delete confirm prompt' })
+  async verifyStockPassword(
+    @Param('id') orgId: string,
+    @Body() dto: VerifyStockPasswordDto,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    assertStockPasswordAccess(await this.organizationsService.getOrganizationById(orgId), { id: callerId, role: callerRole, organizationId: callerOrgId }, 'member');
+    await this.stockPasswordService.verifyPassword(orgId, dto.password);
+    return { ok: true };
+  }
+
+  @Post(':id/stock-password/set')
+  @ApiOperation({ summary: 'Set the stock password for the first time, or change it by providing the current one (patron / administrator only)' })
+  async setStockPassword(
+    @Param('id') orgId: string,
+    @Body() dto: SetStockPasswordDto,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    const org = await this.organizationsService.getOrganizationById(orgId);
+    assertStockPasswordAccess(org, { id: callerId, role: callerRole, organizationId: callerOrgId }, 'owner');
+    await this.stockPasswordService.setPassword(orgId, dto.password, dto.current_password);
+    return { success: true };
+  }
+
+  @Post(':id/stock-password/reset')
+  @ApiOperation({ summary: "Owner-only override — resets the stock password without knowing the current one" })
+  async resetStockPassword(
+    @Param('id') orgId: string,
+    @Body() dto: ResetStockPasswordDto,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+  ) {
+    const org = await this.organizationsService.getOrganizationById(orgId);
+    const isAdmin = callerRole === 'admin' || callerRole === 'super_admin';
+    if (!isAdmin && org.owner_id !== callerId) {
+      throw new ForbiddenException("Seul l'administrateur de l'entreprise peut réinitialiser ce mot de passe");
+    }
+    await this.stockPasswordService.resetPassword(orgId, dto.new_password);
+    return { success: true };
   }
 }

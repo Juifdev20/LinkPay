@@ -10,7 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { StockPasswordDialog } from '@/components/stock/StockPasswordDialog';
 import { SaleInvoice } from '@/components/sales/SaleInvoice';
 import { PRESETS, presetRange, type Preset } from '@/pages/organization/Transactions';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
@@ -219,8 +219,8 @@ export default function SalesHistoryPage() {
   );
 
   const archiveMutation = useMutation({
-    // The API asks for the user's own access code (dialog handled by api.ts).
-    mutationFn: async (sale: Row) => api.post(`/organizations/${org.id}/sales/${sale.id}/archive`),
+    mutationFn: async ({ sale, password }: { sale: Row; password: string }) =>
+      api.post(`/organizations/${org.id}/sales/${sale.id}/archive`, { stock_password: password }),
     onSuccess: () => {
       setArchiveTarget(null);
       queryClient.invalidateQueries({ queryKey: ['org-sales-history', org.id] });
@@ -355,14 +355,14 @@ export default function SalesHistoryPage() {
         )}
       </div>
 
-      <ConfirmDialog
-        open={!!archiveTarget}
-        onOpenChange={(open) => !open && setArchiveTarget(null)}
-        title="Archiver cette vente ?"
-        description="Elle disparaîtra de l'historique mais ses données sont conservées. Vous devrez confirmer avec votre code d'accès."
-        confirmLabel="Archiver"
-        onConfirm={() => { if (archiveTarget) archiveMutation.mutate(archiveTarget); }}
-      />
+      {archiveTarget && org && (
+        <StockPasswordDialog
+          orgId={org.id}
+          open
+          onClose={() => setArchiveTarget(null)}
+          onUnlocked={(password) => archiveMutation.mutate({ sale: archiveTarget, password })}
+        />
+      )}
 
       <style>{`
         @media print {

@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { StockPasswordService } from './stock-password.service';
 import { sumByCurrency } from '../common/utils/currency';
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -27,6 +28,7 @@ export class StockService {
     private supabaseService: SupabaseService,
     private organizationsService: OrganizationsService,
     private notificationsService: NotificationsService,
+    private stockPasswordService: StockPasswordService,
   ) {}
 
   private isAdmin(role: string | undefined): boolean {
@@ -160,6 +162,20 @@ export class StockService {
     return data || [];
   }
 
+  /** Both edit and delete are gated behind the organization's shared stock
+   * password (StockPasswordService) — consulting the list stays open, but
+   * changing anything requires it, verified server-side so a direct API
+   * call can't skip the UI prompt. */
+  private async assertStockPassword(merchant: any, stockPassword: string | undefined) {
+    if (!merchant.organization_id) {
+      throw new BadRequestException('Cette boutique ne fait partie d\'aucune entreprise');
+    }
+    if (!stockPassword) {
+      throw new BadRequestException('Mot de passe de gestion de stock requis');
+    }
+    await this.stockPasswordService.verifyPassword(merchant.organization_id, stockPassword);
+  }
+
   async updateItem(
     merchantId: string,
     itemId: string,
@@ -167,8 +183,10 @@ export class StockService {
     callerRole: string,
     callerOrgId: string | undefined,
     updates: Record<string, any>,
+    stockPassword: string | undefined,
   ) {
     const merchant = await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
+    await this.assertStockPassword(merchant, stockPassword);
 
     // quantity is not written directly. When the product sheet sends a new
     // quantity, the difference is recorded as an 'adjustment' movement via
@@ -230,8 +248,10 @@ export class StockService {
     callerId: string,
     callerRole: string,
     callerOrgId: string | undefined,
+    stockPassword: string | undefined,
   ) {
     const merchant = await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
+    await this.assertStockPassword(merchant, stockPassword);
 
     const { error } = await this.supabaseService.getClient()
       .from('stock_items')

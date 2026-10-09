@@ -1,9 +1,8 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty } from '@nestjs/swagger';
 import { IsArray, ArrayMinSize, ValidateNested, IsInt, IsString, Min, IsUUID } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SalesService } from './sales.service';
-import { AppCodeConfirmGuard, RequireAppCode } from '../common/guards/app-code-confirm.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 class SaleLineDto {
@@ -24,6 +23,12 @@ class CreateSaleDto {
   @ValidateNested({ each: true })
   @Type(() => SaleLineDto)
   items!: SaleLineDto[];
+}
+
+class ArchiveSaleDto {
+  @ApiProperty({ description: 'Mot de passe de gestion de cette entreprise' })
+  @IsString()
+  stock_password!: string;
 }
 
 @ApiTags('Sales')
@@ -71,18 +76,17 @@ export class SalesController {
     return this.salesService.getHistory(orgId, callerId, callerOrgId, callerRole, from, to);
   }
 
-  @UseGuards(AppCodeConfirmGuard)
-  @RequireAppCode()
   @Post(':id/sales/:saleId/archive')
-  @ApiOperation({ summary: "Archive a sale from the history (the user re-types their access code). The sale data is kept." })
+  @ApiOperation({ summary: 'Archive a sale from the history (requires the management password). The sale data is kept.' })
   async archiveSale(
     @Param('id') orgId: string,
     @Param('saleId') saleId: string,
+    @Body() dto: ArchiveSaleDto,
     @CurrentUser('id') callerId: string,
     @CurrentUser('organization_id') callerOrgId?: string,
     @CurrentUser('role') callerRole?: string,
   ) {
-    return this.salesService.archiveSale(orgId, saleId, callerId, callerOrgId, callerRole);
+    return this.salesService.archiveSale(orgId, saleId, callerId, callerOrgId, callerRole, dto.stock_password);
   }
 
   @Get(':id/sales/:saleId')
