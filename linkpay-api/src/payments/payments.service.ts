@@ -142,10 +142,12 @@ export class PaymentsService {
           payment_request_id: request.id,
           merchant_id: request.merchant_id,
           commission_model: request.commission_model,
+          payment_method: data.payment_method,
         },
       });
     } catch (err: any) {
       await revertClaim();
+      if (err instanceof BadRequestException) throw err;
       this.logger.error(`PSP payment init failed: ${err.message}`, err.stack);
       if (err.message?.includes('not withlisted') || err.message?.includes('Authentication failed')) {
         throw new ServiceUnavailableException('Le service de paiement est temporairement indisponible. Veuillez réessayer plus tard.');
@@ -851,13 +853,79 @@ export class PaymentsService {
         this.logger.log(`Expense Pro payment ${payment.id} confirmed via webhook, user ${payment.user_id} extended to ${newExpiry}`);
       }
     } else if (status === 'FAILED') {
+      // Only a payment still waiting can fail: a late "failed" (a refund, say) must never undo one that went through.
       await this.supabaseService.getClient()
         .from('expense_pro_payments')
         .update({ status: 'FAILED', updated_at: new Date().toISOString() })
-        .eq('id', payment.id);
+        .eq('id', payment.id)
+        .eq('status', 'PENDING');
     }
 
     return true;
+  }
+
+  /**
+   * Settles what the provider's callback never settled. A callback can be lost (a restart, a network cut), and some
+   * providers do not sign it nor resend it: a customer who paid and closed the app would otherwise never be credited.
+   * Every payment, top-up and Pro subscription still waiting after a minute is asked about at the provider, and
+   * settled by the same code paths the callback and the status check use (each is idempotent: a payment settled twice
+   * is credited once).
+   */
+  async reconcilePending(provider: string, limit = 50): Promise<{ checked: number; settled: number }> {
+    if (!provider || provider === 'mock' || provider === 'wallet') return { checked: 0, settled: 0 };
+    const adapter = this.pspFactory.get(provider);
+    const db = this.supabaseService.getClient();
+    const olderThan = new Date(Date.now() - 45_000).toISOString();
+    const newerThan = new Date(Date.now() - 72 * 3_600_000).toISOString();
+    let checked = 0;
+    let settled = 0;
+
+    const ask = async (psp_intent_id: string) => {
+      checked++;
+      try {
+        const live = await adapter.getTransactionStatus(psp_intent_id);
+        return live.status === 'PENDING' ? null : live;
+      } catch (err: any) {
+        this.logger.warn(`Reconciliation: could not ask ${provider} about ${psp_intent_id}: ${err.message}`);
+        return null;
+      }
+    };
+
+    const { data: intents } = await db.from('payment_intents').select('*')
+      .eq('psp_provider', provider).eq('status', 'PENDING').lt('created_at', olderThan).gt('created_at', newerThan)
+      .order('created_at', { ascending: true }).limit(limit);
+    for (const intent of intents ?? []) {
+      const live = await ask(intent.psp_intent_id);
+      if (!live) continue;
+      try {
+        if (live.status === 'SUCCESS') await this.handleSuccessfulPayment(intent, { psp_intent_id: intent.psp_intent_id, amount_cents: live.amount_cents });
+        else await this.handleFailedPayment(intent, { psp_intent_id: intent.psp_intent_id });
+        settled++;
+      } catch (err: any) {
+        this.logger.error(`Reconciliation: payment ${intent.id} could not be settled: ${err.message}`);
+      }
+    }
+
+    const { data: topups } = await db.from('wallet_topups').select('psp_intent_id')
+      .eq('psp_provider', provider).eq('status', 'PENDING').lt('created_at', olderThan).gt('created_at', newerThan)
+      .order('created_at', { ascending: true }).limit(limit);
+    for (const topup of topups ?? []) {
+      const live = await ask(topup.psp_intent_id);
+      if (!live) continue;
+      if (await this.tryHandleTopupWebhook(topup.psp_intent_id, live.status, live.amount_cents).catch(() => false)) settled++;
+    }
+
+    const { data: pros } = await db.from('expense_pro_payments').select('psp_intent_id')
+      .eq('psp_provider', provider).eq('status', 'PENDING').lt('created_at', olderThan).gt('created_at', newerThan)
+      .order('created_at', { ascending: true }).limit(limit);
+    for (const pro of pros ?? []) {
+      const live = await ask(pro.psp_intent_id);
+      if (!live) continue;
+      if (await this.tryHandleExpenseProWebhook(pro.psp_intent_id, live.status).catch(() => false)) settled++;
+    }
+
+    if (settled > 0) this.logger.log(`Reconciliation (${provider}): ${settled} of ${checked} waiting payment(s) settled`);
+    return { checked, settled };
   }
 
   private async generateReceipt(transaction: any, merchant: any) {

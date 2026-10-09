@@ -180,7 +180,9 @@ export class WalletsService {
         },
       });
     } catch (err: any) {
-      this.logger.error(`CinetPay payment init failed: ${err.message}`, err.stack);
+      // A clear refusal of ours (an amount with cents, a missing number) is told as it is, not hidden behind "unavailable".
+      if (err instanceof BadRequestException) throw err;
+      this.logger.error(`Payment provider init failed: ${err.message}`, err.stack);
       if (err.message?.includes('not withlisted') || err.message?.includes('Authentication failed')) {
         throw new ServiceUnavailableException('Le service de paiement est temporairement indisponible. Veuillez réessayer plus tard.');
       }

@@ -39,7 +39,7 @@ Ce document décrit les défenses en place et ce qu'il reste à faire. Il est te
   - paiement par portefeuille : le payeur n'est remboursé que si le marchand n'a pas été crédité ; une clé d'idempotence ne « rejoue » jamais l'opération d'un autre ni une autre opération ; une cotisation de tontine n'est « payée » que par un transfert réussi ;
   - remboursements refusés sur un portefeuille suspendu/gelé ou avant le crédit du marchand (migration `058`) ; plafonds comptés dans la devise concernée uniquement.
 - Limites et frais de portefeuille configurables (`wallet_limits`).
-- Webhooks PSP signés, rejouables sans effet, fournisseur vérifié.
+- Webhooks PSP rejouables sans effet, fournisseur vérifié. CinetPay et FlexPaie **ne signent pas** leur rappel : il n'est jamais cru, le statut et le montant sont relus chez le fournisseur avec le numéro de transaction que nous avons enregistré (`flexpaie_orders`, migration `060`) ; une tâche relit chaque minute les paiements restés en attente (rappel perdu). Détail dans `docs/FLEXPAIE.md`.
 - Journal d'audit (`audit_logs`) sur les actions sensibles.
 - Documentation Swagger désactivée en production (`ENABLE_SWAGGER=true` pour la réactiver).
 

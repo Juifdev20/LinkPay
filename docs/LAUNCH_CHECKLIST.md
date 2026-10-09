@@ -4,7 +4,7 @@ Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente
 
 ## 1. Base de données (Supabase → SQL Editor)
 
-- [ ] Exécuter dans l'ordre les migrations `040` → `059` (dossier `linkpay-api/supabase/migrations`). **La 043 d'abord si vous ne pouvez pas tout faire** : sans elle n'importe qui peut créditer un portefeuille.
+- [ ] Exécuter dans l'ordre les migrations `040` → `060` (dossier `linkpay-api/supabase/migrations`). **La 043 d'abord si vous ne pouvez pas tout faire** : sans elle n'importe qui peut créditer un portefeuille.
 - [ ] Exécuter `linkpay-api/supabase/verify_security.sql`. **Les 6 premières lignes doivent toutes afficher `OK`.** Une ligne `FAIL` dit ce qu'il reste à corriger.
 - [ ] Lire les 4 tableaux « à regarder à la main » en bas du résultat :
   - **A** : chaque administrateur est une personne que vous connaissez ;
@@ -18,12 +18,20 @@ Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente
 
 - [ ] Nouvelle clé `service_role` Supabase (Settings → API → *Roll*), puis `SUPABASE_SERVICE_ROLE_KEY` mis à jour.
 - [ ] Nouveau `JWT_SECRET` (48 caractères aléatoires minimum). Tous les utilisateurs devront se reconnecter.
-- [ ] Nouveau mot de passe / clés CinetPay, nouvelle clé FCM.
+- [ ] Nouveau mot de passe / clés CinetPay, nouvelle clé FCM, nouveau token FlexPaie si le précédent a été partagé.
 - [ ] `APP_CODE_PEPPER` : 32+ caractères aléatoires, à définir **avant** que les utilisateurs choisissent leur code d'accès, puis ne plus jamais le changer (sinon tous devront en choisir un nouveau).
 - [ ] `TWO_FACTOR_ENCRYPTION_KEY` : 32+ caractères aléatoires, à définir **avant** que les administrateurs activent la 2FA, puis ne plus jamais la changer.
 - [ ] `NODE_ENV=production`, `ENABLE_SWAGGER=false`, `PSP_PROVIDER` = le vrai fournisseur (jamais `mock`).
 - [ ] **Alertes par email** : créer un compte gratuit sur resend.com, vérifier votre domaine d'envoi, puis définir `RESEND_API_KEY` et `ALERT_EMAIL_FROM` (et `ALERT_EMAILS` pour des destinataires en plus). Tester : déclencher une alerte critique (ex. un mauvais code 2FA sur un compte admin) et vérifier la réception.
 - [ ] Optionnel mais recommandé : `ADMIN_ALLOWED_IPS` si les administrateurs ont une IP fixe (bureau/VPN).
+
+## 2 quater. FlexPaie (paiements)
+
+- [ ] Migration `060` appliquée (table `flexpaie_orders`).
+- [ ] Render → `linkpay-api` → Environment : `FLEXPAIE_BASE_URL`, `FLEXPAIE_MERCHANT`, `FLEXPAIE_TOKEN`, puis **en dernier** `PSP_PROVIDER=flexpaie` (voir `docs/FLEXPAIE.md`, et les questions à poser à FlexPaie : https, IP source, format du rappel, frais, API d'envoi d'argent).
+- [ ] Si FlexPaie filtre l'IP : `PROXY_URL` (IP fixe) — l'adresse FlexPaie y passe automatiquement.
+- [ ] Essai sur le **mode test** de FlexPaie, petits montants : recharge Mobile Money (valider le message sur le téléphone), recharge par carte, paiement d'une facture, paiement refusé / abandonné. Vérifier que le solde n'est crédité **qu'une fois**, même si on laisse la page ouverte et que le rappel arrive.
+- [ ] **Les retraits ne marchent pas encore** (l'API d'envoi d'argent n'est pas dans la documentation reçue) : prévenir les utilisateurs, ou garder les retraits désactivés jusqu'à l'avoir.
 
 ## 2 ter. Carte ScanLinkPay
 
