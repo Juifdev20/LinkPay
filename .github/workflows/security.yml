@@ -18,7 +18,7 @@ jobs:
         working-directory: linkpay-api
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
@@ -34,7 +34,7 @@ jobs:
         project: [linkpay-api, linkpay-web]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
       # Fails on known HIGH/CRITICAL vulnerabilities in what actually ships.
