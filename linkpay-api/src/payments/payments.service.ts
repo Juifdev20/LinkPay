@@ -18,6 +18,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
 import { completeTopupOnce } from '../wallets/topup-completion';
 import { confirmedAmountMatches } from './psp/amount-check';
+import { assertMerchantCanReceive } from '../common/merchant-status';
 
 @Injectable()
 export class PaymentsService {
@@ -85,6 +86,8 @@ export class PaymentsService {
     if (request.expires_at && new Date(request.expires_at) < new Date()) {
       throw new BadRequestException('Payment request has expired');
     }
+
+    await assertMerchantCanReceive(this.supabaseService.getClient(), request.merchant_id);
 
     // Atomically claim this request (CREATED -> PENDING) before doing
     // anything else — the check above is just a fast, friendly pre-check,
@@ -245,6 +248,7 @@ export class PaymentsService {
       return { payment_intent_id: existing.id, status: existing.status, message: 'Payment intent already exists (idempotent)' };
     }
 
+    await assertMerchantCanReceive(this.supabaseService.getClient(), request.merchant_id);
     if (request.status === 'PAID') {
       throw new BadRequestException('Cette facture a déjà été payée');
     }

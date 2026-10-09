@@ -76,6 +76,9 @@ Ce document décrit les défenses en place et ce qu'il reste à faire. Il est te
 - **Plafonds de retrait/transfert** : la vérification est faite puis l'opération, en deux temps ; des requêtes parallèles peuvent dépasser un plafond journalier d'un petit nombre d'opérations (les plafonds par opération, le PIN verrouillé et le moteur de risque limitent les dégâts).
 - **Jetons de rafraîchissement** : pas de rotation ni de détection de rejeu ; un jeton volé reste valable jusqu'à sa déconnexion (administrateurs : révocation et âge maximum 24 h).
 - **Inscription** : l'adresse e-mail est marquée confirmée sans vérification, et « e-mail déjà utilisé » permet de savoir qu'un compte existe.
+- **Paiement par numéro (public)** : permet de vérifier qu'un numéro correspond à un compte marchand actif (limité en débit par IP). À restreindre si cela gêne.
+- **Journal d'audit** : le comptable voit les actions de l'équipe (sans adresses IP ni appareils) ; le propriétaire et la plateforme voient tout.
+- **Verrou d'écran (application)** : la vente rapide reste utilisable écran verrouillé, par choix produit ; le déblocage reste exigé pour tout le reste.
 - Règlements manuels hérités (`fail_settlement`) : à revoir si l'ancien système est un jour réactivé.
 
 ## Signaler une faille

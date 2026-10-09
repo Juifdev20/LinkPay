@@ -5,6 +5,7 @@ import { ExpenseTrackerService } from './expense-tracker.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { OtpStepUpGuard, RequireOtp } from '../security/otp-step-up.guard';
 
 // Every non-enterprise role, spelled out explicitly — this project has no
 // deny-list mechanism (RolesGuard is a pure allow-list), so every
@@ -145,6 +146,8 @@ export class ExpenseTrackerController {
 
   @Put('admin/settings')
   @Roles('super_admin')
+  @UseGuards(OtpStepUpGuard)
+  @RequireOtp()
   @ApiOperation({ summary: 'Update trial report limit / monthly price (super_admin only) — never affects already-chosen trials' })
   async updateAdminSettings(@CurrentUser('id') adminUserId: string, @Body() dto: UpdateExpenseTrackerSettingsDto) {
     return this.expenseTrackerService.updateAdminSettings(adminUserId, dto);

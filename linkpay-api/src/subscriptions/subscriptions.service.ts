@@ -190,6 +190,8 @@ export class SubscriptionsService {
     try {
       state = await this.getState(orgId);
     } catch (err) {
+      // An unknown business is not "unreadable tables": there is nothing to let through.
+      if (err instanceof NotFoundException) throw err;
       // Never take a business offline because the subscription tables are unreachable or unmigrated.
       this.logger.warn(`Subscription check skipped (${(err as Error).message})`);
       return;

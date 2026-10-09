@@ -171,7 +171,7 @@ export class OrganizationStaffService {
     const roleByUser: Record<string, any> = {};
     (userRoles || []).forEach((ur: any) => { roleByUser[ur.user_id] = ur.role; });
 
-    return staff.map(({ temp_password, ...s }) => ({
+    return staff.map(({ temp_password, pos_pin_hash: _h, pos_pin_attempts: _a, pos_pin_locked_until: _l, ...s }: any) => ({
       ...s,
       has_temp_password: !!temp_password && !s.deactivated_at,
       active: !s.deactivated_at,
@@ -330,6 +330,8 @@ export class OrganizationStaffService {
       .update({ deactivated_at: new Date().toISOString(), deactivated_by: ownerId, temp_password: null })
       .eq('id', staffId);
     if (markError) this.logger.warn(`Account blocked but could not be marked (apply migration 051): ${markError.message}`);
+    // Their till PIN stops working too (it could otherwise still authorize a colleague's voids).
+    await client.from('organization_staff').update({ pos_pin_hash: null, pos_pin_attempts: 0, pos_pin_locked_until: null }).eq('id', staffId);
 
     await this.auditService.log({
       user_id: ownerId,
@@ -364,6 +366,8 @@ export class OrganizationStaffService {
       entity_id: staffId,
       changes: { employee: [staff.prenom, staff.nom].filter(Boolean).join(' '), email: staff.email },
     });
-    return { ...staff, temp_password: tempPassword };
+    // The temporary password is the point of this call; the till-PIN hash and its counters are not for any screen.
+    const { pos_pin_hash: _h, pos_pin_attempts: _a, pos_pin_locked_until: _l, ...safe } = staff as any;
+    return { ...safe, temp_password: tempPassword };
   }
 }

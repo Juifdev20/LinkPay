@@ -17,3 +17,22 @@ describe('who may handle the shared stock password', () => {
     expect(() => assertStockPasswordAccess(org, { id: 'client', role: 'client' }, 'member')).toThrow(ForbiddenException);
   });
 });
+
+describe('assertStockPasswordAccess — "manager" level (trying the password counts toward the company\'s lockout)', () => {
+  const org = { id: 'o1', owner_id: 'boss' };
+  const as = (role: string, organizationId = 'o1', id = 'u1') => () => assertStockPasswordAccess(org, { id, role, organizationId }, 'manager');
+
+  it('the owner, the stock keeper of this company and administrators may try it', () => {
+    expect(as('enterprise', 'o1', 'boss')).not.toThrow();
+    expect(as('magasinier')).not.toThrow();
+    expect(as('super_admin', 'x')).not.toThrow();
+  });
+
+  it('a seller, a cashier or an accountant may not (they could lock the stock keeper out by guessing)', () => {
+    for (const role of ['vendeur', 'caissier', 'comptable']) expect(as(role)).toThrow();
+  });
+
+  it('a stock keeper of ANOTHER company may not', () => {
+    expect(as('magasinier', 'other-org')).toThrow();
+  });
+});

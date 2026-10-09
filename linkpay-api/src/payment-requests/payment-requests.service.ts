@@ -4,6 +4,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { CommissionsService } from '../commissions/commissions.service';
 import { v4 as uuidv4 } from 'uuid';
 import * as QRCode from 'qrcode';
+import { assertMerchantCanReceive } from '../common/merchant-status';
 
 @Injectable()
 export class PaymentRequestsService {
@@ -23,6 +24,7 @@ export class PaymentRequestsService {
     commission_model?: string;
     expires_in_minutes?: number;
   }, options?: { withQrCode?: boolean }) {
+    await assertMerchantCanReceive(this.supabaseService.getClient(), merchantId);
     const reference = this.generateReference();
     const linkToken = uuidv4().replace(/-/g, '');
     const currency = data.currency || (await this.getMerchantDefaultCurrency(merchantId));
@@ -119,6 +121,7 @@ export class PaymentRequestsService {
     if (error || !request) {
       throw new NotFoundException('Payment request not found');
     }
+    await assertMerchantCanReceive(this.supabaseService.getClient(), request.merchant_id);
 
     if (request.status === 'EXPIRED' || (request.expires_at && new Date(request.expires_at) < new Date())) {
       await this.markExpired(request.id);

@@ -179,12 +179,16 @@ class VerifyStockPasswordDto {
 export function assertStockPasswordAccess(
   org: { id: string; owner_id: string },
   caller: { id: string; role?: string; organizationId?: string },
-  level: 'member' | 'owner',
+  level: 'member' | 'manager' | 'owner',
 ) {
   const isAdmin = caller.role === 'admin' || caller.role === 'super_admin';
   const isOwner = org.owner_id === caller.id;
   if (isAdmin || isOwner) return;
-  if (level === 'member' && !!caller.organizationId && caller.organizationId === org.id) return;
+  const sameOrg = !!caller.organizationId && caller.organizationId === org.id;
+  if (level === 'member' && sameOrg) return;
+  // Trying the password counts toward a lockout of the whole company's stock edits: only people who actually manage
+  // stock may try it (a seller or cashier guessing could otherwise lock the stock keeper out).
+  if (level === 'manager' && sameOrg && caller.role === 'magasinier') return;
   throw new ForbiddenException(
     level === 'owner'
       ? "Seul le patron peut définir ou modifier le mot de passe de gestion de stock."
@@ -375,7 +379,7 @@ export class OrganizationStockController {
     @CurrentUser('role') callerRole: string,
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
-    assertStockPasswordAccess(await this.organizationsService.getOrganizationById(orgId), { id: callerId, role: callerRole, organizationId: callerOrgId }, 'member');
+    assertStockPasswordAccess(await this.organizationsService.getOrganizationById(orgId), { id: callerId, role: callerRole, organizationId: callerOrgId }, 'manager');
     await this.stockPasswordService.verifyPassword(orgId, dto.password);
     return { ok: true };
   }

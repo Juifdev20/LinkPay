@@ -1,6 +1,6 @@
 import { Controller, Get, Put, Post, Body, Param, ParseUUIDPipe, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUUID, Matches } from 'class-validator';
+import { IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 import { AdminService } from './admin.service';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -21,6 +21,18 @@ class AssignRoleDto {
   @IsOptional()
   @IsUUID()
   merchant_id?: string;
+}
+
+export class MerchantStatusDto {
+  @ApiProperty({ enum: ['pending', 'active', 'suspended', 'rejected', 'closed'] })
+  @IsIn(['pending', 'active', 'suspended', 'rejected', 'closed'])
+  status!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string;
 }
 
 @ApiTags('Admin')
@@ -59,10 +71,13 @@ export class AdminController {
   @Put('merchants/:id/status')
   @ApiOperation({ summary: 'Update merchant status (approve/reject/suspend)' })
   async updateMerchantStatus(
-    @Param('id') id: string,
-    @Body() body: { status: string; notes?: string },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: MerchantStatusDto,
+    @CurrentUser('id') adminId: string,
   ) {
-    return this.adminService.updateMerchantStatus(id, body.status, body.notes);
+    const result = await this.adminService.updateMerchantStatus(id, body.status, body.notes);
+    await this.audit.log({ user_id: adminId, action: 'MERCHANT_STATUS_CHANGED', entity_type: 'merchant', entity_id: id, changes: { status: body.status, notes: body.notes } });
+    return result;
   }
 
   @Get('organizations')
@@ -142,7 +157,9 @@ export class AdminController {
 
   @Post('users/:userId/reset-session')
   @ApiOperation({ summary: 'Free a user\'s single-device session (e.g. they lost their phone)' })
-  async resetSession(@Param('userId') userId: string) {
-    return this.adminService.resetUserSession(userId);
+  async resetSession(@Param('userId', ParseUUIDPipe) userId: string, @CurrentUser('id') adminId: string) {
+    const result = await this.adminService.resetUserSession(userId);
+    await this.audit.log({ user_id: adminId, action: 'SESSION_RESET', entity_type: 'user', entity_id: userId });
+    return result;
   }
 }

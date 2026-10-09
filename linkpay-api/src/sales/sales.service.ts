@@ -8,6 +8,17 @@ import { AuditService } from '../audit/audit.service';
 // owner is always allowed on top of these — see assertOrgAccess().
 const SELLER_ROLES = ['vendeur', 'caissier'] as const;
 const SALES_VIEW_ROLES = ['vendeur', 'caissier', 'comptable'] as const;
+// Hiding a sale from the history is a finance decision (and a fraud vector: ring up, take cash, hide): owner and accountant only.
+const SALES_ARCHIVE_ROLES = ['comptable'] as const;
+// What the shop paid for an item (and so its margin) is for the owner and the finance role only: a seller or a
+// cashier sees prices and quantities. Stripped here, on the server — hiding it in the screen would not protect it.
+const COST_BLIND_ROLES = ['vendeur', 'caissier'];
+const withoutCost = <T extends Record<string, any>>(items: T[] | undefined, role?: string): T[] =>
+  (items || []).map((item) => {
+    if (!role || !COST_BLIND_ROLES.includes(role)) return item;
+    const { unit_cost_cents: _cost, ...rest } = item;
+    return rest as T;
+  });
 
 export interface SaleLineInput {
   stock_item_id: string;
@@ -168,7 +179,7 @@ export class SalesService {
       .insert(snapshot.map((s) => ({ ...s, sale_id: sale.id })));
     if (linesError) throw new Error(`Failed to create sale items: ${linesError.message}`);
 
-    return { sale, link_token: request.link_token, items: snapshot };
+    return { sale, link_token: request.link_token, items: withoutCost(snapshot as any[], callerRole) };
   }
 
   async getSale(orgId: string, saleId: string, callerId: string, callerOrgId: string | undefined, callerRole?: string) {
@@ -190,7 +201,7 @@ export class SalesService {
         .single();
       link_token = request?.link_token ?? null;
     }
-    return { ...sale, link_token };
+    return { ...sale, sale_items: withoutCost(sale.sale_items as any[], callerRole), link_token };
   }
 
   /** Records stock leaving the shelf for a paid sale. Writes stock_movements
@@ -355,7 +366,7 @@ export class SalesService {
     // Sellers see sales volume only — cost, margins and platform fees are
     // reserved for the owner and the finance role (stripped server-side, not
     // just hidden in the UI).
-    if (callerRole === 'vendeur') {
+    if (callerRole && COST_BLIND_ROLES.includes(callerRole)) {
       return {
         sales_count: (sales || []).length,
         revenue,
@@ -429,7 +440,7 @@ export class SalesService {
     callerRole: string | undefined,
     managementPassword: string,
   ) {
-    await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SALES_VIEW_ROLES);
+    await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SALES_ARCHIVE_ROLES);
     await this.stockPasswordService.verifyPassword(orgId, managementPassword);
 
     const { data, error } = await this.db()

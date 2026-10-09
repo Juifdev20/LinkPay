@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { createFakeSupabase, RecordedQuery } from '../test-utils/fake-supabase';
 import { SubscriptionsService } from './subscriptions.service';
 import { SubscriptionGuard } from './subscription.guard';
@@ -101,6 +101,12 @@ describe('SubscriptionsService.assertAccess', () => {
     const { service } = setup({ validatedAt: longAgo, expiresAt: new Date(Date.now() - DAY).toISOString() });
     const err: any = await service.assertAccess('org1', false).catch((e) => e);
     expect(err.getResponse()).toMatchObject({ code: 'SUBSCRIPTION_REQUIRED', reason: 'expired', mode: 'blocked' });
+  });
+
+  it('an unknown business is not let through as if the tables were unreadable', async () => {
+    const { service } = setup();
+    jest.spyOn(service, 'getState').mockRejectedValue(new NotFoundException('Entreprise introuvable'));
+    await expect(service.assertAccess('nope', true)).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('a running subscription always passes', async () => {
