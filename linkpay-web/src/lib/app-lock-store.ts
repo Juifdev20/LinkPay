@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getToken, TOKEN_ACCESS_KEY } from './token-storage';
+import { clearConfirmToken } from './confirm-token';
 
 /**
  * When the app asks for the access code again.
@@ -67,6 +68,7 @@ interface AppLockState {
 export const useAppLock = create<AppLockState>((set) => ({
   // A stored session at launch means "someone reopened the app": locked until the code is entered.
   locked: !!getToken(TOKEN_ACCESS_KEY),
-  lock: () => set({ locked: true }),
+  // Locking also forgets the 5-minute confirmation for sensitive actions.
+  lock: () => { clearConfirmToken(); set({ locked: true }); },
   unlock: () => set({ locked: false }),
 }));

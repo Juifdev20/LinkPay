@@ -7,6 +7,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { LoginAttemptsService } from '../auth/login-attempts.service';
 import { getRequiredJwtSecret } from '../auth/jwt-secret.util';
 import { weakAppCodeReason } from './code-strength';
+import { CONFIRM_TTL_S, signConfirmToken } from './confirm-token';
 
 const BCRYPT_COST = 12;
 const MAX_ATTEMPTS = 5;
@@ -36,6 +37,7 @@ export class SessionTerminatedException extends HttpException {
 export class AppCodeService {
   private readonly logger = new Logger(AppCodeService.name);
   private readonly pepper: string;
+  private readonly jwtSecret: string;
 
   constructor(
     private supabaseService: SupabaseService,
@@ -43,6 +45,7 @@ export class AppCodeService {
     private loginAttempts: LoginAttemptsService,
     config: ConfigService,
   ) {
+    this.jwtSecret = getRequiredJwtSecret(config);
     this.pepper = createHash('sha256').update(`app-code:${config.get<string>('APP_CODE_PEPPER') || getRequiredJwtSecret(config)}`).digest('hex');
   }
 
@@ -134,6 +137,15 @@ export class AppCodeService {
     if (f?.status === 'locked') this.throwLocked(f.locked_until);
     const left = Math.max(0, MAX_ATTEMPTS - (f?.attempts ?? start.attempts));
     throw new BadRequestException({ statusCode: 400, code: 'APP_CODE_INVALID', message: `Code incorrect. Il vous reste ${left} essai${left > 1 ? 's' : ''}.`, attempts_left: left });
+  }
+
+  /** The person re-types their code to authorise a sensitive action (stock, till…): returns a token valid for a few minutes. */
+  async confirm(userId: string, code: string): Promise<{ confirmation_token: string; expires_in: number }> {
+    if (!(await this.hasCode(userId))) {
+      throw new BadRequestException("Créez d'abord votre code d'accès.");
+    }
+    await this.verify(userId, code);
+    return { confirmation_token: signConfirmToken(this.jwtSecret, userId), expires_in: CONFIRM_TTL_S };
   }
 
   /** Forgot the code: the account password proves identity, and the code is wiped so a new one can be chosen. */

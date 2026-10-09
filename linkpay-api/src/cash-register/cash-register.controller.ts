@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/co
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsNumber, Min, IsOptional, IsString, MaxLength } from 'class-validator';
 import { CashRegisterService } from './cash-register.service';
+import { AppCodeConfirmGuard, RequireAppCode } from '../common/guards/app-code-confirm.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -44,6 +45,8 @@ class CloseSessionDto {
 @ApiTags('Cash Register')
 @ApiBearerAuth()
 @Controller('merchants/:id/cash-register')
+// The stock keeper may sell at the till (so can read/open a session), but only the patron and
+// the caissier in charge of it move cash in/out or close it — see the per-method @Roles below.
 @Roles('enterprise', 'caissier', 'magasinier', 'admin', 'super_admin')
 @UseGuards(RolesGuard)
 export class CashRegisterController {
@@ -101,6 +104,9 @@ export class CashRegisterController {
     return this.cashRegisterService.openSession(merchantId, callerId, callerRole, callerOrgId, dto);
   }
 
+  @Roles('enterprise', 'caissier', 'admin', 'super_admin')
+  @UseGuards(AppCodeConfirmGuard)
+  @RequireAppCode()
   @Post('sessions/:sessionId/movements')
   @ApiOperation({ summary: 'Record a manual cash movement (bank deposit, supply purchase, etc.) during an open session' })
   async addMovement(
@@ -114,6 +120,9 @@ export class CashRegisterController {
     return this.cashRegisterService.addMovement(merchantId, sessionId, callerId, callerRole, callerOrgId, dto);
   }
 
+  @Roles('enterprise', 'caissier', 'admin', 'super_admin')
+  @UseGuards(AppCodeConfirmGuard)
+  @RequireAppCode()
   @Post('sessions/:sessionId/close')
   @ApiOperation({ summary: 'Close the session — counts cash, computes the expected amount and the discrepancy' })
   async closeSession(

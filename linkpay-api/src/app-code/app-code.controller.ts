@@ -56,6 +56,14 @@ export class AppCodeController {
     return { success: true };
   }
 
+  @Throttle({ default: { limit: 15, ttl: 60_000 } })
+  @Post('confirm')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Re-type the access code to authorise a sensitive action: returns a 5-minute confirmation token (x-confirm-token header)' })
+  async confirm(@CurrentUser('id') userId: string, @Body() dto: VerifyAppCodeDto) {
+    return this.appCode.confirm(userId, dto.code);
+  }
+
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Put()
   @ApiOperation({ summary: 'Change the access code: current code, then the new one twice' })

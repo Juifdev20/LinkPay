@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiPropertyOptional, ApiProperty 
 import { IsString, IsOptional, IsNumber, IsArray, Min, ValidateNested, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import { InventoryService } from './inventory.service';
+import { AppCodeConfirmGuard, RequireAppCode } from '../common/guards/app-code-confirm.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -104,6 +105,8 @@ export class InventoryController {
     return this.inventoryService.saveLines(merchantId, countId, callerId, callerRole, callerOrgId, dto.lines);
   }
 
+  @UseGuards(AppCodeConfirmGuard)
+  @RequireAppCode()
   @Post(':countId/complete')
   @ApiOperation({ summary: 'Validate the count — applies stock adjustments for variances and produces the démarque report' })
   async complete(

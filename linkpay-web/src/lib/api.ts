@@ -1,5 +1,7 @@
 import axios from 'axios';
 import { useOtpPrompt } from './otp-prompt';
+import { useAppCodePrompt } from './app-code-prompt';
+import { getConfirmToken, setConfirmToken, clearConfirmToken } from './confirm-token';
 import { getToken, setTokens, clearTokens, TOKEN_ACCESS_KEY, TOKEN_REFRESH_KEY } from './token-storage';
 
 const rawUrl = (import.meta.env.VITE_API_URL || '/api/v1').toString().replace(/\/$/, '');
@@ -15,6 +17,9 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // Sent whenever the user confirmed with their access code in the last 5 minutes.
+  const confirm = getConfirmToken();
+  if (confirm) config.headers['x-confirm-token'] = confirm;
   return config;
 });
 
@@ -31,6 +36,29 @@ api.interceptors.response.use(
         if (otp) {
           error.config.headers['x-otp-code'] = otp;
           return api(error.config);
+        }
+      }
+      // Sensitive action (stock, inventory, till): ask for the user's own
+      // access code, trade it for a 5-minute confirmation token, then repeat
+      // the request. Up to 3 wrong codes before giving up.
+      if (code === 'APP_CODE_CONFIRM_REQUIRED' && !error.config._confirmed) {
+        clearConfirmToken();
+        let message = '';
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const typed = await useAppCodePrompt.getState().ask(message);
+          if (!typed) break;
+          try {
+            const { data } = await api.post('/auth/app-code/confirm', { code: typed });
+            setConfirmToken(data.confirmation_token, data.expires_in);
+            error.config._confirmed = true;
+            error.config.headers['x-confirm-token'] = data.confirmation_token;
+            return api(error.config);
+          } catch (confirmErr: any) {
+            const d = confirmErr?.response?.data;
+            if (d?.code === 'SESSION_TERMINATED') { clearTokens(); window.location.href = '/login'; break; }
+            message = d?.message || 'Code incorrect.';
+            if (confirmErr?.response?.status === 429) break; // locked: the error below tells the user
+          }
         }
       }
       // An administrator session without the second factor can only set it up.

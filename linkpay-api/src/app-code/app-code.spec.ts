@@ -101,4 +101,15 @@ describe('AppCodeService', () => {
     await expect(bad.service.resetWithPassword('u1', 'nope')).rejects.toThrow(/Mot de passe incorrect/);
     expect(bad.updates.find((u) => 'app_code_hash' in u)).toBeUndefined();
   });
+
+  it('confirm() checks the code (counted against the lockout) and returns a 5-minute token', async () => {
+    const hash = await bcrypt.hash(pepper('482915'), 4);
+    const { service } = setup({ hash });
+    const r = await service.confirm('u1', '482915');
+    expect(r.expires_in).toBe(300);
+    expect(r.confirmation_token).toContain('.');
+    const wrong = setup({ hash, fail: { status: 'ok', attempts: 1, locked_until: null } });
+    await expect(wrong.service.confirm('u1', '000001')).rejects.toMatchObject({ response: { code: 'APP_CODE_INVALID' } });
+    await expect(setup().service.confirm('u1', '482915')).rejects.toThrow(/Créez d'abord/);
+  });
 });
