@@ -49,6 +49,10 @@ export function FormSheet({ children, onClose, title = 'Formulaire' }: FormSheet
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-black/50 md:backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in data-[state=closed]:animate-out data-[state=closed]:fade-out" />
         <DialogPrimitive.Content
+          // The full-screen code screen (PinInput) lives outside the sheet: touching it must not close the sheet.
+          onInteractOutside={(e) => {
+            if ((e.target as HTMLElement | null)?.closest?.('[data-pin-screen]')) e.preventDefault();
+          }}
           className={cn(
             'fixed z-[60] flex flex-col bg-card shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out',
             isDesktop

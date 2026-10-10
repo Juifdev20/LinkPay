@@ -66,17 +66,17 @@ export function AccessCodeSettings() {
             {error && <p className="text-sm text-destructive font-medium">{error}</p>}
             <div className="space-y-2">
               <p className="text-xs font-semibold text-foreground text-center">Code actuel</p>
-              <PinInput value={current} onChange={setCurrent} length={6} autoFocus />
+              <PinInput value={current} onChange={setCurrent} length={6} autoFocus title="Code d'accès actuel" />
             </div>
             <div className="space-y-2">
               <p className="text-xs font-semibold text-foreground text-center">Nouveau code</p>
-              <PinInput value={code} onChange={setCode} length={6} error={!!weak || same} />
+              <PinInput value={code} onChange={setCode} length={6} error={!!weak || same} title="Nouveau code d'accès" message={weak || (same ? 'Le nouveau code doit être différent de l\'ancien.' : undefined)} />
               {weak && <p className="text-xs text-destructive text-center">{weak}</p>}
               {same && <p className="text-xs text-destructive text-center">Le nouveau code doit être différent de l'ancien.</p>}
             </div>
             <div className="space-y-2">
               <p className="text-xs font-semibold text-foreground text-center">Confirmez le nouveau code</p>
-              <PinInput value={confirm} onChange={setConfirm} length={6} error={mismatch} />
+              <PinInput value={confirm} onChange={setConfirm} length={6} error={mismatch} title="Confirmez le nouveau code" message={mismatch ? 'Les deux codes ne sont pas identiques.' : undefined} />
               {mismatch && <p className="text-xs text-destructive text-center">Les deux codes ne sont pas identiques.</p>}
             </div>
             <div className="flex gap-2">

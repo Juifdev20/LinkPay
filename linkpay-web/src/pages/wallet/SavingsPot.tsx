@@ -211,6 +211,9 @@ function CurrencyPotCard({ data }: { data: PotData }) {
                 }}
                 length={4}
                 autoFocus
+                title="Confirmer le retrait"
+                hint={`Retrait de ${formatCurrency(Math.round(parseFloat(withdrawAmount) * 100), currency)}`}
+                message={withdrawError || undefined}
               />
               {withdrawMutation.isPending && <Loader2 className="w-5 h-5 animate-spin text-primary mx-auto mt-3" />}
             </div>

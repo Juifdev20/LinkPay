@@ -107,6 +107,9 @@ export function ExpenseProUpgrade({ status, context = 'paywall' }: ExpenseProUpg
               length={4}
               autoFocus
               error={!!error}
+              title="Confirmer le paiement"
+              hint={`Abonnement de ${formatCurrency(status.monthly_price_cents, status.monthly_price_currency)}`}
+              message={error ? String(error) : undefined}
             />
             {walletMutation.isPending && <Loader2 className="w-5 h-5 animate-spin text-primary mx-auto mt-3" />}
             <button

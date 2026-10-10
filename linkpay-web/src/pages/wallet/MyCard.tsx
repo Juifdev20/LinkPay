@@ -135,7 +135,7 @@ export default function MyCardPage() {
           </div>
           <div>
             <Label>Votre PIN</Label>
-            <PinInput value={pin} onChange={setPin} length={4} />
+            <PinInput value={pin} onChange={setPin} length={4} title="Entrer votre code PIN" hint="Pour activer votre carte" />
           </div>
           <Button type="submit" className="w-full" disabled={busy || number.replace(/\D/g, '').length !== 16 || pin.length < 4}>
             {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Activer la carte
@@ -190,7 +190,7 @@ export default function MyCardPage() {
                 : 'Confirmez avec votre PIN.'}
             </DialogDescription>
           </DialogHeader>
-          <PinInput value={pin} onChange={setPin} length={4} autoFocus />
+          <PinInput value={pin} onChange={setPin} length={4} autoFocus message={error || undefined} hint={pinAction === 'lost' ? 'Déclarer la carte perdue' : undefined} />
           {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
           <Button className="w-full" variant={pinAction === 'lost' ? 'destructive' : 'default'} disabled={busy || pin.length < 4} onClick={confirmPin}>
             {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Confirmer
