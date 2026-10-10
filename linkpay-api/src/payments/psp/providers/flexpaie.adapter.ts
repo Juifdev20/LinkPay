@@ -137,7 +137,12 @@ export class FlexPaieAdapter implements PspAdapter {
         signal: controller.signal,
       });
     } catch (err: any) {
-      throw new Error(`FlexPaie unreachable: ${err?.name === 'AbortError' ? 'timeout' : err?.message}`);
+      // "fetch failed" alone says nothing: the cause (ENOTFOUND = unknown host, ECONNREFUSED, a certificate error, a
+      // proxy that does not answer…) and the host (never the path, the token or the body) are what tells them apart.
+      const cause = err?.cause?.code || err?.cause?.message || '';
+      let host = '';
+      try { host = new URL(url).host; } catch { host = 'invalid address'; }
+      throw new Error(`FlexPaie unreachable: ${err?.name === 'AbortError' ? 'timeout' : err?.message}${cause ? ` (${String(cause).slice(0, 120)})` : ''} [host: ${host}]`);
     } finally {
       clearTimeout(timer);
     }

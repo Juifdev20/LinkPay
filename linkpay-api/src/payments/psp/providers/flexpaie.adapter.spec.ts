@@ -344,4 +344,16 @@ describe('against a local FlexPaie double (real network calls)', () => {
     await expect(adapter.createPaymentIntent({ ...BASE, customer: { phone: '0891234567' } })).rejects.toThrow(/unreachable/);
     expect((await adapter.getTransactionStatus(BASE.reference)).status).toBe('PENDING');
   });
+
+  it('says WHY and at which host (never the token or the path), so "fetch failed" can be told apart', async () => {
+    const { adapter } = setup();
+    const err: any = new TypeError('fetch failed');
+    err.cause = { code: 'ENOTFOUND' };
+    fetchMock.mockRejectedValue(err);
+    const e: Error = await adapter.createPaymentIntent({ ...BASE, customer: { phone: '0891234567' } }).catch((x) => x);
+    expect(e.message).toContain('fetch failed (ENOTFOUND)');
+    expect(e.message).toContain('[host: pay.flexpay.test:8443]');
+    expect(e.message).not.toContain(TOKEN);
+    expect(e.message).not.toContain('paymentService');
+  });
 });
