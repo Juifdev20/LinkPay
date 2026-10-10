@@ -7,9 +7,8 @@ import { weakAppCodeReason } from '@/lib/code-strength';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Logo } from '@/components/Logo';
-import { PinInput } from '@/components/PinInput';
-import { Loader2, Fingerprint, Lock, ShieldCheck } from 'lucide-react';
+import { PinKeypadScreen, BlueCardScreen, maskPhone } from '@/components/PinKeypadScreen';
+import { Loader2, Fingerprint } from 'lucide-react';
 
 const errorMessage = (err: any, fallback: string) => err?.response?.data?.message || fallback;
 
@@ -110,23 +109,10 @@ export function AppLockGate() {
   return <UnlockScreen onUnlocked={onUnlocked} onForgot={async () => { await fetchProfile(); }} onLogout={logout} />;
 }
 
-function Shell({ icon, title, subtitle, children }: { icon: React.ReactNode; title: string; subtitle?: string; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-[100] bg-background overflow-y-auto">
-      <div className="min-h-full flex flex-col items-center justify-center gap-5 p-6">
-        <Logo size="lg" />
-        <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">{icon}</div>
-        <div className="text-center max-w-xs space-y-1">
-          <h1 className="text-lg font-bold text-foreground">{title}</h1>
-          {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
-        </div>
-        <div className="w-full max-w-xs space-y-4">{children}</div>
-      </div>
-    </div>
-  );
-}
+const CODE_LENGTH = 6;
 
 function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => void; onForgot: () => Promise<void>; onLogout: () => Promise<void> }) {
+  const phone = useAuthStore((s) => s.user?.phone);
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -180,92 +166,119 @@ function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => vo
 
   if (forgot) {
     return (
-      <Shell icon={<Lock className="w-8 h-8 text-primary" />} title="Code oublié ?" subtitle="Confirmez avec le mot de passe de votre compte, puis choisissez un nouveau code.">
+      <BlueCardScreen>
+        <p className="text-[19px]">Code oublié ?</p>
+        <p className="text-[13px] leading-snug text-slate-500">Confirmez avec le mot de passe de votre compte, puis choisissez un nouveau code.</p>
         <form onSubmit={reset} className="space-y-3">
-          {error && <p className="text-sm text-destructive text-center">{error}</p>}
+          {error && <p className="text-sm text-red-600 font-medium" role="alert">{error}</p>}
           <Input type="password" autoFocus placeholder="Mot de passe du compte" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
           <Button type="submit" className="w-full" disabled={busy || !password}>
             {busy && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}Continuer
           </Button>
-          <button type="button" className="text-xs text-muted-foreground underline w-full" onClick={() => { setForgot(false); setError(''); }}>Retour</button>
+          <button type="button" className="text-xs text-slate-500 underline w-full" onClick={() => { setForgot(false); setError(''); }}>Retour</button>
         </form>
-      </Shell>
+      </BlueCardScreen>
     );
   }
 
   return (
-    <Shell icon={<Lock className="w-8 h-8 text-primary" />} title="Saisissez votre code d'accès" subtitle="Pour votre sécurité, ScanLinkPay est verrouillé.">
-      {error && <p className="text-sm text-destructive text-center font-medium">{error}</p>}
-      <PinInput
-        key={error /* refocus the first box after a wrong code */}
-        value={code}
-        length={6}
-        autoFocus
-        error={!!error}
-        onChange={(v) => {
-          setCode(v);
-          if (v.length === 6 && !busy) void submit(v);
-        }}
-      />
-      {busy && <div className="flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>}
-      {biometric && (
-        <Button variant="outline" className="w-full" onClick={tryBiometric} disabled={busy}>
-          <Fingerprint className="mr-2 w-4 h-4" />Utiliser l'empreinte / le visage
-        </Button>
+    <PinKeypadScreen
+      title="Entrer votre code PIN"
+      value={code}
+      length={CODE_LENGTH}
+      busy={busy}
+      error={error}
+      note={maskPhone(phone) ? `Numéro de téléphone : ${maskPhone(phone)}` : undefined}
+      onChange={(v) => {
+        setCode(v);
+        if (v.length === CODE_LENGTH && !busy) void submit(v);
+      }}
+      onEnter={() => void submit(code)}
+      extra={biometric ? (
+        <button type="button" className="flex items-center gap-2 text-sm text-slate-600 underline" onClick={tryBiometric} disabled={busy}>
+          <Fingerprint className="w-4 h-4" />Utiliser l'empreinte / le visage
+        </button>
+      ) : undefined}
+      footer={(
+        <>
+          <button type="button" className="text-[19px]" onClick={() => { setForgot(true); setError(''); }}>Code PIN oublié?</button>
+          <button type="button" className="text-xs text-slate-500 underline" onClick={async () => { await onLogout(); window.location.href = '/login'; }}>Se déconnecter</button>
+        </>
       )}
-      <div className="flex justify-between text-xs text-muted-foreground">
-        <button className="underline" onClick={() => { setForgot(true); setError(''); }}>Code oublié ?</button>
-        <button className="underline" onClick={async () => { await onLogout(); window.location.href = '/login'; }}>Se déconnecter</button>
-      </div>
-    </Shell>
+    />
   );
 }
 
+/** First use (or after a reset): choose the code, then type it again. Same screen as the unlock one. */
 function CreateCode({ onDone }: { onDone: () => Promise<void> }) {
   const [code, setCode] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [step, setStep] = useState<'choose' | 'confirm'>('choose');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const weak = code.length === 6 ? weakAppCodeReason(code) : null;
-  const mismatch = confirm.length === 6 && confirm !== code;
-  const ready = code.length === 6 && confirm.length === 6 && !weak && !mismatch;
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const save = async (chosen: string, again: string) => {
     setBusy(true);
     setError('');
     try {
-      await api.post('/auth/app-code', { code, confirm_code: confirm });
+      await api.post('/auth/app-code', { code: chosen, confirm_code: again });
       await onDone();
     } catch (err: any) {
       setError(errorMessage(err, 'Impossible d’enregistrer le code.'));
+      setConfirm('');
     } finally {
       setBusy(false);
     }
   };
 
+  const chosen = (v: string) => {
+    setCode(v);
+    setError('');
+    if (v.length !== CODE_LENGTH) return;
+    const weak = weakAppCodeReason(v);
+    if (weak) {
+      setError(weak);
+      setTimeout(() => setCode(''), 0);
+      return;
+    }
+    setStep('confirm');
+  };
+
+  const confirmed = (v: string) => {
+    setConfirm(v);
+    setError('');
+    if (v.length !== CODE_LENGTH) return;
+    if (v !== code) {
+      setError('Les deux codes ne sont pas identiques.');
+      setConfirm('');
+      return;
+    }
+    void save(code, v);
+  };
+
+  if (step === 'choose') {
+    return (
+      <PinKeypadScreen
+        title="Créez votre code d'accès"
+        hint="Ce code à 6 chiffres vous sera demandé à chaque ouverture de l'application et après quelques minutes d'inactivité. Ne le partagez avec personne."
+        value={code}
+        length={CODE_LENGTH}
+        error={error}
+        onChange={chosen}
+      />
+    );
+  }
   return (
-    <Shell
-      icon={<ShieldCheck className="w-8 h-8 text-primary" />}
-      title="Créez votre code d'accès"
-      subtitle="Ce code à 6 chiffres vous sera demandé à chaque ouverture de l'application et après quelques minutes d'inactivité. Ne le partagez avec personne."
-    >
-      <form onSubmit={submit} className="space-y-4">
-        {error && <p className="text-sm text-destructive text-center font-medium">{error}</p>}
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-foreground text-center">Nouveau code</p>
-          <PinInput value={code} onChange={setCode} length={6} autoFocus error={!!weak} />
-          {weak && <p className="text-xs text-destructive text-center">{weak}</p>}
-        </div>
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-foreground text-center">Confirmez le code</p>
-          <PinInput value={confirm} onChange={setConfirm} length={6} error={mismatch} />
-          {mismatch && <p className="text-xs text-destructive text-center">Les deux codes ne sont pas identiques.</p>}
-        </div>
-        <Button type="submit" className="w-full" disabled={!ready || busy}>
-          {busy && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}Enregistrer mon code
-        </Button>
-      </form>
-    </Shell>
+    <PinKeypadScreen
+      title="Confirmez votre code"
+      hint="Saisissez de nouveau le même code."
+      value={confirm}
+      length={CODE_LENGTH}
+      busy={busy}
+      error={error}
+      onChange={confirmed}
+      onEnter={() => confirmed(confirm)}
+      footer={<button type="button" className="text-[17px]" onClick={() => { setStep('choose'); setCode(''); setConfirm(''); setError(''); }}>Changer de code</button>}
+    />
   );
 }
