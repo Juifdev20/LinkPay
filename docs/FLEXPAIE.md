@@ -29,5 +29,13 @@ Comme le rappel peut se perdre et n'est pas renvoyé, une tâche de rattrapage i
 6. Les **montants avec centimes** (USD) : par prudence, seuls les montants entiers sont acceptés pour l'instant.
 7. Le **mode test** (sandbox), ses adresses et ses numéros de test.
 
-## Variables (Render → linkpay-api → Environment)
-`PSP_PROVIDER=flexpaie` (à ne mettre **qu'une fois les trois suivantes renseignées et le mode test essayé** : tant que `PSP_PROVIDER` n'est pas `flexpaie`, le code FlexPaie est inactif et ne change rien), `FLEXPAIE_BASE_URL`, `FLEXPAIE_MERCHANT`, `FLEXPAIE_TOKEN` (et `PROXY_URL` si FlexPaie filtre l'IP). Jamais dans une conversation ni dans le dépôt.
+## Variables (Render → linkpay-api → Environment) — liste complète dans `docs/RENDER_ENV.md`
+`PSP_PROVIDER=flexpaie` (à ne mettre **qu'une fois les trois suivantes renseignées et le mode test essayé** : tant que `PSP_PROVIDER` n'est pas `flexpaie`, le code FlexPaie est inactif et ne change rien), `FLEXPAIE_MERCHANT`, `FLEXPAIE_TOKEN` et les adresses (et `PROXY_URL` si FlexPaie filtre l'IP). Jamais dans une conversation ni dans le dépôt.
+
+**Production** (e-mail de FlexPaie du 9 octobre) : trois adresses complètes, car elles sont sur des serveurs différents :
+- `FLEXPAIE_MOMO_URL` : l'adresse « Momo » (se termine par `/paymentService`) ;
+- `FLEXPAIE_CARD_URL` : l'adresse « Carte » (idem) ;
+- `FLEXPAIE_CHECK_URL` : `https://apicheck.flexpaie.com/api/rest/v1/check` (la fin `/ORDER_NUMBER_A_REMPLACER` de l'e-mail est tolérée, elle est retirée toute seule) ;
+- `FLEXPAIE_MERCHANT` : le code marchand de production (pas celui du test) ; `FLEXPAIE_TOKEN` : le jeton Bearer (avec ou sans le mot `Bearer`).
+
+`FLEXPAIE_BASE_URL` (un seul serveur pour tout, comme dans la documentation de test) reste utilisable : il sert pour chacune des trois adresses qui n'est pas renseignée. Tous ces serveurs passent par `PROXY_URL` quand il est défini.

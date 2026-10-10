@@ -6,7 +6,7 @@ import { createFakeSupabase, has, RecordedQuery } from '../../../test-utils/fake
 const TOKEN = 'sekret-token-123';
 const CONFIG: Record<string, string> = { FLEXPAIE_BASE_URL: 'https://pay.flexpay.test:8443/', FLEXPAIE_MERCHANT: 'SCANLINK', FLEXPAIE_TOKEN: TOKEN };
 
-function setup(opts: { recorded?: string | null; insertError?: boolean } = {}) {
+function setup(opts: { recorded?: string | null; insertError?: boolean; config?: Record<string, string> } = {}) {
   const fake = createFakeSupabase((q: RecordedQuery) => {
     if (q.target === 'flexpaie_orders') {
       if (has(q, 'insert')) return opts.insertError ? { error: { message: 'relation "flexpaie_orders" does not exist' } } : { data: null };
@@ -14,7 +14,7 @@ function setup(opts: { recorded?: string | null; insertError?: boolean } = {}) {
     }
     return { data: null };
   });
-  const adapter = new FlexPaieAdapter({ get: (k: string, d?: any) => CONFIG[k] ?? d } as any, fake.service);
+  const adapter = new FlexPaieAdapter({ get: (k: string, d?: any) => (opts.config ?? CONFIG)[k] ?? d } as any, fake.service);
   return { adapter, fake };
 }
 
@@ -100,6 +100,39 @@ describe('Mobile Money payment (type 1)', () => {
   it('is clear when it is not configured', async () => {
     const adapter = new FlexPaieAdapter({ get: (_k: string, d?: any) => d } as any, setup().fake.service);
     await expect(adapter.createPaymentIntent({ ...BASE, customer: { phone: '0891234567' } })).rejects.toThrow(/not configured/);
+  });
+});
+
+describe('production addresses: Mobile Money, card and status check on three different hosts', () => {
+  const PROD = { FLEXPAIE_MOMO_URL: 'https://momo.flex.test/api/rest/v1/paymentService', FLEXPAIE_CARD_URL: 'https://cards.flex.test/api/rest/v1/paymentService/', FLEXPAIE_CHECK_URL: 'https://apicheck.flex.test/api/rest/v1/check/ORDER_NUMBER_A_REMPLACER', FLEXPAIE_MERCHANT: 'SCANLINK', FLEXPAIE_TOKEN: TOKEN };
+
+  it('Mobile Money goes to its address, card to its own, status check to the third (the e-mail placeholder is dropped)', async () => {
+    const { adapter } = setup({ config: PROD, recorded: 'ORD-7' });
+    fetchMock.mockResolvedValueOnce(reply({ code: '0', orderNumber: 'ORD-1' }));
+    await adapter.createPaymentIntent({ ...BASE, customer: { phone: '0891234567' }, metadata: { payment_method: 'mobile_money' } });
+    expect(fetchMock.mock.calls[0][0]).toBe('https://momo.flex.test/api/rest/v1/paymentService');
+    fetchMock.mockResolvedValueOnce(reply({ code: '0', orderNumber: 'ORD-2', url: 'https://pay.bank.test/x' }));
+    await adapter.createPaymentIntent({ ...BASE, metadata: { payment_method: 'card' } });
+    expect(fetchMock.mock.calls[1][0]).toBe('https://cards.flex.test/api/rest/v1/paymentService');
+    fetchMock.mockResolvedValueOnce(reply({ code: '0', transaction: { reference: BASE.reference, amount: '5000', currency: 'CDF', status: '0' } }));
+    await adapter.getTransactionStatus(BASE.reference);
+    expect(fetchMock.mock.calls[2][0]).toBe('https://apicheck.flex.test/api/rest/v1/check/ORD-7');
+  });
+
+  it('an address that is not given falls back on FLEXPAIE_BASE_URL', async () => {
+    const { adapter } = setup({ config: { ...CONFIG, FLEXPAIE_CHECK_URL: 'https://apicheck.flex.test/api/rest/v1/check' }, recorded: 'ORD-7' });
+    fetchMock.mockResolvedValueOnce(reply({ code: '0', orderNumber: 'ORD-1' }));
+    await adapter.createPaymentIntent({ ...BASE, customer: { phone: '0891234567' }, metadata: { payment_method: 'mobile_money' } });
+    expect(fetchMock.mock.calls[0][0]).toBe('https://pay.flexpay.test:8443/api/rest/v1/paymentService');
+    fetchMock.mockResolvedValueOnce(reply({ code: '0', transaction: { reference: BASE.reference, amount: '5000', currency: 'CDF', status: '0' } }));
+    await adapter.getTransactionStatus(BASE.reference);
+    expect(fetchMock.mock.calls[1][0]).toBe('https://apicheck.flex.test/api/rest/v1/check/ORD-7');
+  });
+
+  it('with only the Mobile Money address, a card payment says it is not configured (nothing is sent)', async () => {
+    const { adapter } = setup({ config: { FLEXPAIE_MOMO_URL: PROD.FLEXPAIE_MOMO_URL, FLEXPAIE_MERCHANT: 'S', FLEXPAIE_TOKEN: TOKEN } });
+    await expect(adapter.createPaymentIntent({ ...BASE, metadata: { payment_method: 'card' } })).rejects.toThrow(/not configured/);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

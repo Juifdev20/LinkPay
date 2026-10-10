@@ -95,6 +95,12 @@ services:
       - key: PSP_PROVIDER
         sync: false
       # FlexPaie (docs/FLEXPAIE.md): the address, merchant code and token come from FlexPaie with the account.
+      - key: FLEXPAIE_MOMO_URL
+        sync: false
+      - key: FLEXPAIE_CARD_URL
+        sync: false
+      - key: FLEXPAIE_CHECK_URL
+        sync: false
       - key: FLEXPAIE_BASE_URL
         sync: false
       - key: FLEXPAIE_MERCHANT

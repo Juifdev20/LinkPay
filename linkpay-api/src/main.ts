@@ -15,13 +15,17 @@ import { configureTrustProxy, resolveTrustProxyHops } from './common/utils/trust
 // normal outbound path.
 const CINETPAY_HOSTS = ['api.cinetpay.net', 'api.cinetpay.co'];
 
-/** FlexPaie is reached at an address its own contract gives (FLEXPAIE_BASE_URL); it too is usually reachable only from a whitelisted IP. */
+/** FlexPaie is reached at the addresses its own contract gives (Mobile Money, card and status check can be three different hosts); it too is usually reachable only from a whitelisted IP. */
 function flexPaieHosts(): string[] {
-  try {
-    return process.env.FLEXPAIE_BASE_URL ? [new URL(process.env.FLEXPAIE_BASE_URL).hostname] : [];
-  } catch {
-    return [];
+  const hosts = new Set<string>();
+  for (const key of ['FLEXPAIE_BASE_URL', 'FLEXPAIE_MOMO_URL', 'FLEXPAIE_CARD_URL', 'FLEXPAIE_CHECK_URL']) {
+    try {
+      if (process.env[key]) hosts.add(new URL(String(process.env[key]).trim()).hostname);
+    } catch {
+      /* a malformed address is reported by the adapter when it is used */
+    }
   }
+  return [...hosts];
 }
 
 async function bootstrap() {

@@ -19,10 +19,15 @@ import { isWholeCurrencyUnits } from '../amount-check';
 /**
  * FlexPaie (Infoset) — "API de Paiement", corporate v2.0.
  *
- *   POST {base}/api/rest/v1/paymentService   Authorization: Bearer <token>   body JSON
+ *   POST <paymentService>   Authorization: Bearer <token>   body JSON
  *        type "1" = Mobile Money: a push message is sent to the customer's phone
  *        type "2" = bank card: the answer carries a page `url` to send the customer to
- *   GET  {base}/api/rest/v1/check/<orderNumber>
+ *   GET  <check>/<orderNumber>
+ *
+ * In production FlexPaie gives three separate addresses (Mobile Money, card, and status check on yet another
+ * host): FLEXPAIE_MOMO_URL, FLEXPAIE_CARD_URL and FLEXPAIE_CHECK_URL. FLEXPAIE_BASE_URL (one host serving
+ * `/api/rest/v1/paymentService` and `/api/rest/v1/check/…`, as in their test documentation) remains the fallback
+ * for any of the three that is not set.
  *
  * What the documentation does NOT give, and what that means here:
  *  - The callback sent to `callback_url` carries NO signature. It is therefore only ever a hint: the real status is
@@ -73,14 +78,34 @@ export class FlexPaieAdapter implements PspAdapter {
   private readonly logger = new Logger(FlexPaieAdapter.name);
 
   constructor(private configService: ConfigService, private supabaseService: SupabaseService) {
-    const base = this.baseUrl();
-    if (base && base.startsWith('http://') && this.configService.get('NODE_ENV') === 'production') {
-      this.logger.warn('FLEXPAIE_BASE_URL is plain http: the authorization token travels unencrypted. Ask FlexPaie for an https address.');
+    if (this.configService.get('NODE_ENV') === 'production') {
+      for (const url of [this.paymentUrl(false), this.paymentUrl(true), this.checkUrl()]) {
+        if (url.startsWith('http://')) {
+          this.logger.warn('A FlexPaie address is plain http: the authorization token travels unencrypted. Ask FlexPaie for an https address.');
+          break;
+        }
+      }
     }
   }
 
-  private baseUrl(): string {
-    return String(this.configService.get<string>('FLEXPAIE_BASE_URL', '') ?? '').trim().replace(/\/+$/, '');
+  private env(key: string): string {
+    return String(this.configService.get<string>(key, '') ?? '').trim().replace(/\/+$/, '');
+  }
+
+  /** The address to POST a payment to: Mobile Money and card can live on different hosts. */
+  private paymentUrl(card: boolean): string {
+    const own = this.env(card ? 'FLEXPAIE_CARD_URL' : 'FLEXPAIE_MOMO_URL');
+    if (own) return own;
+    const base = this.env('FLEXPAIE_BASE_URL');
+    return base ? `${base}/api/rest/v1/paymentService` : '';
+  }
+
+  /** The address to ask about an order, WITHOUT the order number. The "…/ORDER_NUMBER_A_REMPLACER" placeholder of the e-mail is tolerated. */
+  private checkUrl(): string {
+    const own = this.env('FLEXPAIE_CHECK_URL').replace(/\/ORDER[A-Z_]*$/i, '');
+    if (own) return own;
+    const base = this.env('FLEXPAIE_BASE_URL');
+    return base ? `${base}/api/rest/v1/check` : '';
   }
 
   private merchant(): string {
@@ -92,20 +117,20 @@ export class FlexPaieAdapter implements PspAdapter {
     return /^bearer\s/i.test(token) ? token : `Bearer ${token}`;
   }
 
-  private assertConfigured() {
-    if (!this.baseUrl() || !this.merchant() || !String(this.configService.get('FLEXPAIE_TOKEN', '') ?? '').trim()) {
-      throw new Error('FlexPaie is not configured (FLEXPAIE_BASE_URL, FLEXPAIE_MERCHANT, FLEXPAIE_TOKEN)');
+  private assertConfigured(url: string) {
+    if (!url || !this.merchant() || !String(this.configService.get('FLEXPAIE_TOKEN', '') ?? '').trim()) {
+      throw new Error('FlexPaie is not configured (FLEXPAIE_MOMO_URL / FLEXPAIE_CARD_URL / FLEXPAIE_CHECK_URL or FLEXPAIE_BASE_URL, FLEXPAIE_MERCHANT, FLEXPAIE_TOKEN)');
     }
   }
 
-  /** One call to FlexPaie. Never logs the token or the body. */
-  private async call(method: 'GET' | 'POST', path: string, body?: Record<string, unknown>): Promise<any> {
-    this.assertConfigured();
+  /** One call to FlexPaie at a full address. Never logs the token or the body. */
+  private async call(method: 'GET' | 'POST', url: string, body?: Record<string, unknown>): Promise<any> {
+    this.assertConfigured(url);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     let res: Response;
     try {
-      res = await fetch(`${this.baseUrl()}${path}`, {
+      res = await fetch(url, {
         method,
         headers: { Authorization: this.authorization(), 'Content-Type': 'application/json', Accept: 'application/json' },
         body: body ? JSON.stringify(body) : undefined,
@@ -149,7 +174,7 @@ export class FlexPaieAdapter implements PspAdapter {
       base.phone = toFlexPaieMsisdn(params.customer.phone);
     }
 
-    const answer = await this.call('POST', '/api/rest/v1/paymentService', base);
+    const answer = await this.call('POST', this.paymentUrl(card), base);
     if (String(answer?.code) !== '0' || !answer?.orderNumber) {
       this.logger.warn(`FlexPaie refused ${params.reference}: code=${answer?.code} message=${String(answer?.message).slice(0, 120)}`);
       throw new Error(`FlexPaie refused the payment: ${String(answer?.message ?? 'no message').slice(0, 200)}`);
@@ -190,7 +215,7 @@ export class FlexPaieAdapter implements PspAdapter {
 
   /** Asks FlexPaie about one order. `transaction` is null when they know no such order. */
   private async check(orderNumber: string): Promise<{ transaction: any | null }> {
-    const answer = await this.call('GET', `/api/rest/v1/check/${encodeURIComponent(orderNumber)}`);
+    const answer = await this.call('GET', `${this.checkUrl()}/${encodeURIComponent(orderNumber)}`);
     return { transaction: answer?.transaction ?? null };
   }
 
