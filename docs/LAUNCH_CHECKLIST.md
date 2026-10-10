@@ -28,7 +28,7 @@ Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente
 ## 2 quater. FlexPaie (paiements)
 
 - [ ] Migration `060` appliquée (table `flexpaie_orders`).
-- [ ] Render → `linkpay-api` → Environment : `FLEXPAIE_BASE_URL`, `FLEXPAIE_MERCHANT`, `FLEXPAIE_TOKEN`, puis **en dernier** `PSP_PROVIDER=flexpaie` (voir `docs/FLEXPAIE.md`, et les questions à poser à FlexPaie : https, IP source, format du rappel, frais, API d'envoi d'argent).
+- [ ] Render → `linkpay-api` → Environment : `FLEXPAIE_MOMO_URL`, `FLEXPAIE_CARD_URL`, `FLEXPAIE_CHECK_URL` (ou `FLEXPAIE_BASE_URL` seul), `FLEXPAIE_MERCHANT`, `FLEXPAIE_TOKEN`, puis **en dernier** `PSP_PROVIDER=flexpaie` (voir `docs/FLEXPAIE.md`, et les questions à poser à FlexPaie : https, IP source, format du rappel, frais, API d'envoi d'argent).
 - [ ] Si FlexPaie filtre l'IP : `PROXY_URL` (IP fixe) — l'adresse FlexPaie y passe automatiquement.
 - [ ] Essai sur le **mode test** de FlexPaie, petits montants : recharge Mobile Money (valider le message sur le téléphone), recharge par carte, paiement d'une facture, paiement refusé / abandonné. Vérifier que le solde n'est crédité **qu'une fois**, même si on laisse la page ouverte et que le rappel arrive.
 - [ ] **Les retraits ne marchent pas encore** (l'API d'envoi d'argent n'est pas dans la documentation reçue) : prévenir les utilisateurs, ou garder les retraits désactivés jusqu'à l'avoir.
