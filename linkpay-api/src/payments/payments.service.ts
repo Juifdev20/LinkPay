@@ -19,6 +19,7 @@ import { createHash } from 'crypto';
 import { completeTopupOnce } from '../wallets/topup-completion';
 import { confirmedAmountMatches } from './psp/amount-check';
 import { assertMerchantCanReceive } from '../common/merchant-status';
+import { assertNumberMatchesOperator } from './mobile-money';
 
 @Injectable()
 export class PaymentsService {
@@ -50,6 +51,9 @@ export class PaymentsService {
     mobile_money_operator?: string;
     customer?: { email?: string; phone?: string; name?: string };
   }) {
+    // Before anything is claimed: a number of another network than the chosen one never starts a payment.
+    if (data.payment_method === 'mobile_money') assertNumberMatchesOperator(data.mobile_money_operator, data.customer?.phone);
+
     const { data: request, error } = await this.supabaseService.getClient()
       .from('payment_requests')
       .select('*')

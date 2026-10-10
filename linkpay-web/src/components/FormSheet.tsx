@@ -88,7 +88,7 @@ export function FormSheet({ children, onClose, title = 'Formulaire' }: FormSheet
           >
             <X className="w-4 h-4" />
           </DialogPrimitive.Close>
-          <div className="flex-1 overflow-y-auto overscroll-contain">{children}</div>
+          <div className="flex-1 overflow-y-auto overscroll-contain rounded-b-[inherit]">{children}</div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

@@ -12,6 +12,7 @@ import { SavingsService } from '../savings/savings.service';
 import { WithdrawalPayoutService } from './withdrawal-payout.service';
 import { completeTopupOnce } from './topup-completion';
 import { confirmedAmountMatches } from '../payments/psp/amount-check';
+import { assertNumberMatchesOperator } from '../payments/mobile-money';
 
 @Injectable()
 export class WalletsService {
@@ -126,6 +127,8 @@ export class WalletsService {
     if (paymentMethod === 'mobile_money' && !mobileMoneyPhone) {
       throw new BadRequestException('Numéro Mobile Money requis pour cette méthode de paiement');
     }
+    // The number has to be the chosen network's own (the push goes to the line, not to the operator named on screen).
+    if (paymentMethod === 'mobile_money') assertNumberMatchesOperator(mobileMoneyOperator, mobileMoneyPhone);
 
     const wallet = await this.getWalletByUserId(userId);
 
@@ -653,6 +656,7 @@ export class WalletsService {
     if (!dto.destination || Object.keys(dto.destination).length === 0) {
       throw new BadRequestException('Compte de destination requis');
     }
+    if (dto.channel === 'mobile_money') assertNumberMatchesOperator(dto.destination.operator, dto.destination.phone);
 
     const wallet = await this.getWalletByUserId(userId);
 
