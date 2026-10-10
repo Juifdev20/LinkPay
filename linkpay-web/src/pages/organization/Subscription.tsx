@@ -139,7 +139,7 @@ export default function SubscriptionPage() {
 
               <div className="space-y-2">
                 <Label className="font-semibold">Code PIN de transaction</Label>
-                <PinInput value={pin} onChange={setPin} length={4} />
+                <PinInput value={pin} onChange={setPin} length={4} title="Confirmer le paiement" message={payError || undefined} />
               </div>
 
               {payError && <p className="text-sm text-destructive font-medium">{payError}</p>}

@@ -98,7 +98,7 @@ export function CardChargePrompt() {
               {current?.description ? ` ${current.description}.` : ''} Confirmez avec votre PIN, ou refusez si vous ne reconnaissez pas ce paiement.
             </DialogDescription>
           </DialogHeader>
-          <PinInput value={pin} onChange={setPin} length={4} autoFocus error={!!error} />
+          <PinInput value={pin} onChange={setPin} length={4} autoFocus error={!!error} title="Confirmer le paiement" hint={current ? `${current.merchant_name} demande ${formatCurrency(current.amount_cents, current.currency)}` : undefined} message={error || undefined} />
           {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1" disabled={busy} onClick={decline}>Refuser</Button>

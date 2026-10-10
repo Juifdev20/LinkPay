@@ -28,6 +28,9 @@ export function AppCodeConfirmDialog() {
             length={6}
             autoFocus
             error={!!message}
+            title="Entrer votre code d'accès"
+            hint="Action sensible : confirmez avec votre code d'accès"
+            message={message || undefined}
             onChange={(v) => {
               setCode(v);
               if (v.length === 6) close(v);

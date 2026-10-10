@@ -175,7 +175,7 @@ export default function WithdrawPage() {
             )}
             <h2 className="text-lg font-bold text-foreground mb-1 mt-10 clear-left">Code PIN</h2>
             <p className="text-sm text-muted-foreground mb-6">Confirmez le retrait de {formatCurrency(amountCents, currency)}</p>
-            <PinInput value={pin} onChange={handlePinComplete} length={4} autoFocus />
+            <PinInput value={pin} onChange={handlePinComplete} length={4} autoFocus title="Confirmer le retrait" hint={`Retrait de ${formatCurrency(amountCents, currency)}`} message={error} />
           </CardContent>
         </Card>
       </div>

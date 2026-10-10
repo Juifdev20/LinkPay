@@ -7,7 +7,7 @@ import { weakAppCodeReason } from '@/lib/code-strength';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PinKeypadScreen, BlueCardScreen, maskPhone } from '@/components/PinKeypadScreen';
+import { PinKeypadScreen, BlueCardScreen, identityNote } from '@/components/PinKeypadScreen';
 import { Loader2, Fingerprint } from 'lucide-react';
 
 const errorMessage = (err: any, fallback: string) => err?.response?.data?.message || fallback;
@@ -112,7 +112,7 @@ export function AppLockGate() {
 const CODE_LENGTH = 6;
 
 function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => void; onForgot: () => Promise<void>; onLogout: () => Promise<void> }) {
-  const phone = useAuthStore((s) => s.user?.phone);
+  const user = useAuthStore((s) => s.user);
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -188,7 +188,7 @@ function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => vo
       length={CODE_LENGTH}
       busy={busy}
       error={error}
-      note={maskPhone(phone) ? `Numéro de téléphone : ${maskPhone(phone)}` : undefined}
+      note={identityNote(user)}
       onChange={(v) => {
         setCode(v);
         if (v.length === CODE_LENGTH && !busy) void submit(v);

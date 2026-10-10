@@ -11,6 +11,21 @@ export function maskPhone(phone?: string | null): string {
   return digits.length > 3 ? `${'*'.repeat(digits.length - 3)}${digits.slice(-3)}` : '';
 }
 
+/** "jean.dupont@gmail.com" → "je*********@gmail.com": for accounts that have no phone number. */
+export function maskEmail(email?: string | null): string {
+  const [name, domain] = String(email ?? '').split('@');
+  if (!name || !domain) return '';
+  return `${name.slice(0, 2)}${'*'.repeat(Math.max(name.length - 2, 3))}@${domain}`;
+}
+
+/** The line shown under the field: the phone number if the account has one, else the e-mail address. */
+export function identityNote(user?: { phone?: string | null; email?: string | null } | null): string | undefined {
+  const phone = maskPhone(user?.phone);
+  if (phone) return `Numéro de téléphone : ${phone}`;
+  const email = maskEmail(user?.email);
+  return email ? `Compte : ${email}` : undefined;
+}
+
 function Logo() {
   return (
     <div className="h-[clamp(100px,18vh,176px)] flex items-center justify-center" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
@@ -95,7 +110,8 @@ export function PinKeypadScreen({ title, value, length, onChange, onEnter, error
   const cell = 'h-[clamp(56px,9.5vh,76px)] flex items-center justify-center select-none touch-manipulation active:bg-slate-300/70 transition-colors disabled:opacity-60';
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col overflow-y-auto" style={{ background: BLUE }}>
+    // pointerEvents: auto — an open Radix dialog sets pointer-events:none on <body>, this screen must stay usable on top of it.
+    <div data-pin-screen className="fixed inset-0 z-[100] flex flex-col overflow-y-auto" style={{ background: BLUE, pointerEvents: 'auto' }}>
       <div className="w-full max-w-md mx-auto flex flex-col flex-1">
         <Logo />
 
