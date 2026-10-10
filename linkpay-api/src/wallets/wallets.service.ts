@@ -108,6 +108,17 @@ export class WalletsService {
     return { data, total: count || 0, page, limit };
   }
 
+  /**
+   * Which ways of paying the app offers for a top-up. The bank card goes through the provider's own payment page
+   * (FlexPaie, type 2): it is offered only when the provider supports it AND it was switched on (CARD_PAYMENTS_ENABLED=true
+   * on Render, after a real test), so a half-tested channel is never open to everybody. The mock provider (demo) allows it.
+   */
+  paymentMethods(): { mobile_money: boolean; card: boolean } {
+    const provider = this.pspFactory.get().provider;
+    const switchedOn = String(this.configService.get<string>('CARD_PAYMENTS_ENABLED', '') ?? '').trim().toLowerCase() === 'true';
+    return { mobile_money: true, card: provider === 'mock' || (provider === 'flexpaie' && switchedOn) };
+  }
+
   async initiateTopup(
     userId: string,
     amountCents: number,
@@ -129,6 +140,9 @@ export class WalletsService {
     }
     // The number has to be the chosen network's own (the push goes to the line, not to the operator named on screen).
     if (paymentMethod === 'mobile_money') assertNumberMatchesOperator(mobileMoneyOperator, mobileMoneyPhone);
+    if (paymentMethod === 'card' && !this.paymentMethods().card) {
+      throw new BadRequestException("Le paiement par carte bancaire n'est pas encore disponible.");
+    }
 
     const wallet = await this.getWalletByUserId(userId);
 
@@ -172,7 +186,11 @@ export class WalletsService {
         // the account's registered profile phone — someone may be recharging
         // from a line that isn't the one they signed up with.
         customer: { email: profile?.email, phone: mobileMoneyPhone || profile?.phone, name: profile?.full_name },
-        redirect_url: `${frontendUrl}/dashboard/wallet/topup/result?ref=${reference}`,
+        // Mobile Money: our own result page (opened inside the app). Card: the customer comes back from the provider's
+        // page, possibly in the phone's browser where nobody is signed in — a neutral return page handles both.
+        redirect_url: paymentMethod === 'card'
+          ? `${frontendUrl}/payment/return?to=topup&ref=${reference}`
+          : `${frontendUrl}/dashboard/wallet/topup/result?ref=${reference}`,
         webhook_url: `${backendUrl}/api/v1/webhooks/${provider}`,
         metadata: {
           kind: 'wallet_topup',
@@ -695,11 +713,14 @@ export class WalletsService {
       changes: { amount_cents: dto.amount_cents, channel: dto.channel },
     });
 
+    const manualPayout = this.pspFactory.get(withdrawal.psp_provider || undefined).supportsPayout === false;
     await this.notificationsService.create({
       user_id: userId,
       type: 'withdrawal_processing',
-      title: 'Retrait en cours',
-      body: `Votre retrait de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${dto.currency} est en cours.`,
+      title: manualPayout ? 'Demande de retrait enregistrée' : 'Retrait en cours',
+      body: manualPayout
+        ? `Votre demande de retrait de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${dto.currency} est enregistrée. Elle sera traitée par notre équipe : vous serez averti dès que l'argent est envoyé.`
+        : `Votre retrait de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${dto.currency} est en cours.`,
       data: { withdrawal_id: withdrawal.id },
     }).catch(() => null);
 
@@ -710,7 +731,7 @@ export class WalletsService {
     const backendUrl = this.configService.get<string>('BACKEND_URL')
       || this.configService.get<string>('RENDER_EXTERNAL_URL')
       || `http://localhost:${this.configService.get<number>('PORT', 3000)}`;
-    const { withdrawal: settled, rejectedReason } = await this.withdrawalPayouts.dispatch(
+    const { withdrawal: settled, rejectedReason, manual } = await this.withdrawalPayouts.dispatch(
       withdrawal,
       `${backendUrl}/api/v1/webhooks/${withdrawal.psp_provider}`,
     );
@@ -719,7 +740,7 @@ export class WalletsService {
       throw new BadRequestException(`Le retrait n'a pas pu être effectué : ${rejectedReason} Votre argent est resté dans votre portefeuille.`);
     }
 
-    return { withdrawal: settled };
+    return { withdrawal: settled, ...(manual ? { manual: true } : {}) };
   }
 
   /** A key replays only the SAME withdrawal by the SAME wallet; anything else is a reused or guessed key. */

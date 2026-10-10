@@ -334,6 +334,43 @@ describe('against a local FlexPaie double (real network calls)', () => {
     expect(await adapter.parseWebhookEvent(callback, {})).toMatchObject({ status: 'SUCCESS', psp_intent_id: BASE.reference, amount_cents: 500000 });
   });
 
+  it('a bank card payment: the provider page, the three ways back, and what is credited', async () => {
+    const stored = new Map<string, string>();
+    const db: any = {
+      getClient: () => ({
+        from: () => ({
+          insert: async (row: any) => { stored.set(row.reference, row.order_number); return { error: null }; },
+          select: () => ({ eq: (_c: string, ref: string) => ({ maybeSingle: async () => ({ data: stored.has(ref) ? { order_number: stored.get(ref) } : null }) }) }),
+        }),
+      }),
+    };
+    const adapter = new FlexPaieAdapter({ get: (k: string, d?: any) => ({ ...CONFIG, FLEXPAIE_BASE_URL: base })[k] ?? d } as any, db);
+    const cardRef = (n: number) => `TOPUP-20261010-CARD0${n}`;
+    const RETURN = 'https://app.example/payment/return?to=topup&ref=';
+
+    const created = await adapter.createPaymentIntent({ ...BASE, reference: cardRef(1), redirect_url: `${RETURN}${cardRef(1)}`, metadata: { payment_method: 'card' } });
+    const sent = seen[seen.length - 1];
+    // type 2, no phone, and whatever the outcome the customer comes back to the SAME neutral page
+    expect(sent.body).toMatchObject({ merchant: 'SCANLINK', type: '2', amount: '5000', currency: 'CDF', approve_url: `${RETURN}${cardRef(1)}`, cancel_url: `${RETURN}${cardRef(1)}`, decline_url: `${RETURN}${cardRef(1)}` });
+    expect(sent.body.phone).toBeUndefined();
+    expect(created.checkout_url).toMatch(/^https:\/\/gwvisa\.flexpay\.cd\/ORD\d+$/);
+    expect(created.psp_intent_id).toBe(cardRef(1));
+
+    // left on the bank page: still waiting
+    expect((await adapter.getTransactionStatus(cardRef(1))).status).toBe('PENDING');
+    // paid: credited the amount WITHOUT the customer's fee
+    const order = [...orders.values()].find((o: any) => o.reference === cardRef(1));
+    order.status = '0';
+    expect(await adapter.getTransactionStatus(cardRef(1))).toEqual({ status: 'SUCCESS', amount_cents: 500000, currency: 'CDF' });
+
+    // cancelled / declined / failed on the bank page: never credited
+    for (const [n, code] of [[2, '1'], [3, '3'], [4, '4'], [5, '5']] as const) {
+      await adapter.createPaymentIntent({ ...BASE, reference: cardRef(n), redirect_url: `${RETURN}${cardRef(n)}`, metadata: { payment_method: 'card' } });
+      [...orders.values()].find((o: any) => o.reference === cardRef(n)).status = code;
+      expect((await adapter.getTransactionStatus(cardRef(n))).status).toBe('FAILED');
+    }
+  });
+
   it('a wrong token is refused by FlexPaie and reported as an authentication problem', async () => {
     const adapter = new FlexPaieAdapter({ get: (k: string, d?: any) => ({ ...CONFIG, FLEXPAIE_BASE_URL: base, FLEXPAIE_TOKEN: 'wrong' })[k] ?? d } as any, setup().fake.service);
     await expect(adapter.createPaymentIntent({ ...BASE, customer: { phone: '0891234567' } })).rejects.toThrow(/Authentication failed/);

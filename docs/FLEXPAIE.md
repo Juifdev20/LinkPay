@@ -52,3 +52,29 @@ FlexPaie envoie la demande de confirmation **au numéro** : l'opérateur affich�
 | Africell (reconnu, pas encore proposé) | 90, 91 |
 
 Un préfixe qui n'est pas dans ce tableau **n'est pas refusé** (FlexPaie reste juge) : une table incomplète ne doit pas bloquer de vrais clients. Les préfixes viennent de sources publiques qui concordent (pas de table officielle de l'ARPTC consultable) : à confirmer avec FlexPaie ou l'ARPTC, et à corriger dans les deux fichiers ci-dessus s'ils diffèrent.
+
+
+## Retraits en attendant l'API d'envoi d'argent
+FlexPaie n'a (pour l'instant) aucune API pour **envoyer** de l'argent. Quand `PSP_PROVIDER=flexpaie`, un retrait demandé dans l'application :
+1. débite tout de suite le portefeuille (montant + frais, en une seule opération atomique) ;
+2. reste **« en attente »** : rien n'est envoyé à FlexPaie, et la vérification automatique n'en conclut rien (elle ne le rembourse jamais d'elle-même) ;
+3. apparaît dans **Administration → Retraits à traiter** (admin et super admin), avec le client, le montant à envoyer, les frais retenus, l'opérateur et le numéro (boutons « Copier »).
+
+L'administrateur envoie l'argent à la main (Mobile Money de l'entreprise, ou l'interface FlexPaie si elle le permet), puis :
+- **« J'ai envoyé »** (avec la référence du transfert si elle existe) : le retrait devient « effectué », le client est averti, les frais restent à ScanLinkPay ;
+- **« Refuser »** (avec la raison) : le montant **et** les frais sont rendus au portefeuille, le client est averti avec la raison.
+
+Règles de sécurité : le code de l'application d'authentification est demandé pour chaque décision ; un administrateur ne peut pas traiter un retrait de son propre portefeuille ; chaque décision est écrite dans le journal d'audit (`withdrawal_manual_sent`, `withdrawal_manual_rejected`) ; deux administrateurs qui cliquent en même temps ne règlent le retrait qu'une fois.
+
+Dès que FlexPaie fournit son API d'envoi : il suffira de l'écrire dans `FlexPaieAdapter.payout()` / `getPayoutStatus()` et de retirer `supportsPayout = false` ; les retraits suivent alors le chemin automatique (ceux déjà en attente restent à traiter dans la page).
+
+
+## Carte bancaire (Visa — Mastercard à confirmer avec FlexPaie)
+Ce n'est **pas** la carte ScanLinkPay (docs/carte/) : c'est le moyen de **recharger son portefeuille avec la carte d'une banque**, via la page de paiement sécurisée de FlexPaie (type 2).
+
+1. Dans « Recharger », la personne choisit **Carte bancaire** (aucun numéro de téléphone demandé) et confirme.
+2. L'API crée la recharge « en attente » et demande à FlexPaie une page de paiement ; la personne y est envoyée. **Elle saisit les informations de sa carte chez FlexPaie : ScanLinkPay ne les voit, ne les reçoit et ne les stocke jamais.**
+3. Quelle que soit l'issue (payé, annulé, refusé), la banque la renvoie vers `/payment/return?to=topup&ref=…`. Cette adresse **ne dit rien du résultat** : si la personne est connectée sur ce navigateur, elle est envoyée sur la page de résultat, qui interroge l'API ; sinon (application Android : la page de la banque s'ouvre dans le navigateur du téléphone, sans session) un message neutre l'invite à retourner dans l'application.
+4. Le résultat n'est jamais cru sur parole : l'API demande à FlexPaie le statut de la commande enregistrée (page de résultat, rappel de FlexPaie qui n'est qu'un signal, et rattrapage automatique chaque minute). Seul un statut « payé » **avec le bon montant** crédite le portefeuille (le montant crédité est celui demandé, sans les frais de FlexPaie), une seule fois.
+
+**Ouverture :** fermée par défaut. Elle s'ouvre avec `CARD_PAYMENTS_ENABLED=true` sur Render (avec `PSP_PROVIDER=flexpaie`), après ce test réel : recharge de 1000 CDF par carte, payée, puis une seconde annulée sur la page de la banque (le solde ne doit augmenter qu'une fois), puis une troisième avec le navigateur fermé en cours de route (le rattrapage doit la créditer en une minute). L'API refuse de toute façon une recharge par carte tant que l'option est fermée.

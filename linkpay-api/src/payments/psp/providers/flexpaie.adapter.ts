@@ -75,6 +75,8 @@ const toCents = (value: unknown): number => {
 @Injectable()
 export class FlexPaieAdapter implements PspAdapter {
   readonly provider = 'flexpaie';
+  // No API to send money out is documented: withdrawals are settled by an admin, by hand.
+  readonly supportsPayout = false;
   private readonly logger = new Logger(FlexPaieAdapter.name);
 
   constructor(private configService: ConfigService, private supabaseService: SupabaseService) {

@@ -110,6 +110,8 @@ export default function WithdrawPage() {
     // Only the payment provider can confirm that the money was sent; until
     // it does the withdrawal is "in progress", never "done".
     const done = w?.status === 'SUCCESS';
+    // No payout API at the provider: our team sends the money, so the request is only "registered".
+    const manual = !!result?.manual;
     return (
       <div className="p-6 max-w-md mx-auto">
         <Card>
@@ -117,10 +119,10 @@ export default function WithdrawPage() {
             <div className={cn('w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4', done ? 'bg-success/10' : 'bg-warning/10')}>
               {done ? <Check className="w-8 h-8 text-success" /> : <Clock className="w-8 h-8 text-warning" />}
             </div>
-            <h2 className="text-xl font-bold text-foreground mb-1">{done ? 'Retrait effectué !' : 'Retrait en cours'}</h2>
+            <h2 className="text-xl font-bold text-foreground mb-1">{done ? 'Retrait effectué !' : manual ? 'Demande enregistrée' : 'Retrait en cours'}</h2>
             <p className="text-sm text-muted-foreground mb-6">
               {formatCurrency(amountCents, currency)} vers {channel === 'mobile_money' ? operatorById(operator)?.label : bankName}
-              {!done && <><br />Vous serez notifié dès que l'argent est envoyé.</>}
+              {!done && <><br />{manual ? 'Notre équipe va envoyer l\'argent. Vous serez notifié dès que c\'est fait.' : 'Vous serez notifié dès que l\'argent est envoyé.'}</>}
             </p>
             <div className="rounded-xl bg-secondary p-4 text-left space-y-2">
               <div className="flex justify-between text-sm">
@@ -135,7 +137,7 @@ export default function WithdrawPage() {
               )}
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Statut</span>
-                <span className={cn('font-semibold', done ? 'text-success' : 'text-warning')}>{done ? 'Effectué' : 'En cours'}</span>
+                <span className={cn('font-semibold', done ? 'text-success' : 'text-warning')}>{done ? 'Effectué' : manual ? 'En attente de traitement' : 'En cours'}</span>
               </div>
             </div>
             <Button className="w-full mt-6" size="lg" onClick={() => navigate('/dashboard')}>

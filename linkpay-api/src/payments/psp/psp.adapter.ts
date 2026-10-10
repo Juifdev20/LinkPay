@@ -90,6 +90,12 @@ export class PayoutNotSentError extends Error {
 
 export interface PspAdapter {
   readonly provider: string;
+  /**
+   * false when the provider has NO API to send money out (FlexPaie, for now). Withdrawals then wait for an admin to
+   * send the money by hand and mark it done (ManualWithdrawalsService); nothing is sent to the provider and the
+   * reconciliation never concludes anything about them. Left out = payouts are supported.
+   */
+  readonly supportsPayout?: boolean;
 
   createPaymentIntent(params: CreatePaymentIntentParams): Promise<PaymentIntentResult>;
   verifyWebhook(payload: Buffer, signature: string, headers: Record<string, string>): boolean;

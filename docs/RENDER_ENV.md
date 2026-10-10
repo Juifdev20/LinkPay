@@ -20,6 +20,8 @@ Deux services : **`linkpay-api`** (l'API) et **`linkpay-web`** (le site). Une va
 | `FLEXPAIE_TOKEN` | le token Bearer de l'e-mail | avec ou sans le mot `Bearer` devant |
 | `PSP_PROVIDER` | `flexpaie` | **en dernier**, seulement après un petit paiement de test réussi |
 
+`CARD_PAYMENTS_ENABLED` = `true` (**optionnelle**) : ouvre le paiement par **carte bancaire** pour les recharges. Fermée par défaut (le choix « Carte bancaire » reste grisé avec « Bientôt »). À ne mettre qu'après un vrai test par carte (voir `docs/FLEXPAIE.md`, section « Carte bancaire »).
+
 Ne pas créer `FLEXPAIE_BASE_URL` : elle ne sert que s'il n'y a **qu'une seule** adresse pour tout (documentation de test) ; avec les trois adresses ci-dessus elle est inutile.
 
 `PROXY_URL` (optionnelle) : seulement si FlexPaie refuse les appels parce que l'adresse IP de Render n'est pas autorisée (erreur de connexion, délai dépassé ou `403`). Valeur : l'adresse du proxy à IP fixe (`http://utilisateur:motdepasse@hôte:port`).

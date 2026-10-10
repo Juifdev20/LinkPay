@@ -5,6 +5,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PspFactory } from '../payments/psp/psp.factory';
 import { PayoutNotSentError } from '../payments/psp/psp.adapter';
 import { JobLockService } from '../common/job-lock/job-lock.service';
+import { SecurityAlertsService } from '../security/security-alerts.service';
 
 const RECONCILE_BATCH_SIZE = 50;
 // A withdrawal is looked at again only once it has been open this long, so
@@ -44,6 +45,7 @@ export class WithdrawalPayoutService {
     private pspFactory: PspFactory,
     private notificationsService: NotificationsService,
     @Optional() private jobLock?: JobLockService,
+    @Optional() private alerts?: SecurityAlertsService,
   ) {}
 
   private get db() {
@@ -51,8 +53,23 @@ export class WithdrawalPayoutService {
   }
 
   /** Starts the payout of a withdrawal whose funds are already reserved. */
-  async dispatch(withdrawal: any, callbackUrl?: string): Promise<{ withdrawal: any; rejectedReason?: string }> {
+  async dispatch(withdrawal: any, callbackUrl?: string): Promise<{ withdrawal: any; rejectedReason?: string; manual?: boolean }> {
     const adapter = this.pspFactory.get(withdrawal.psp_provider || undefined);
+
+    // No payout API (FlexPaie): the request stays PENDING, funds reserved, for an admin to send by hand.
+    if (adapter.supportsPayout === false) {
+      // Somebody has to send this money: tell the administrators now (bell + push), never fail the request over it.
+      const label = `${(Number(withdrawal.amount_cents) / 100).toLocaleString('fr-FR')} ${withdrawal.currency}`;
+      void Promise.resolve().then(() => this.alerts?.alert({
+        severity: 'warning',
+        audience: 'admins',
+        title: 'Nouveau retrait à traiter',
+        body: `${label} à envoyer. Administration → Retraits à traiter.`,
+        dedupeKey: `withdrawal-new:${withdrawal.id}`,
+        data: { withdrawal_id: withdrawal.id, kind: 'manual_withdrawal' },
+      })).catch((err) => this.logger.error(`Could not alert the administrators: ${err?.message}`));
+      return { withdrawal, manual: true };
+    }
 
     let result;
     try {
@@ -159,6 +176,9 @@ export class WithdrawalPayoutService {
 
   private async reconcileOne(w: any): Promise<boolean> {
     const adapter = this.pspFactory.get(w.psp_provider || undefined);
+    // A manual withdrawal is unknown to the provider by design: "not found" must NEVER be read as "never sent"
+    // (that would refund the wallet while an admin may be sending the money).
+    if (adapter.supportsPayout === false) return false;
     const status = await adapter.getPayoutStatus(w.id);
 
     if (status.status === 'SUCCESS') {

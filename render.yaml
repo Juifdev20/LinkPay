@@ -107,6 +107,9 @@ services:
         sync: false
       - key: FLEXPAIE_TOKEN
         sync: false
+      # Bank card top-ups: put "true" only after a real card test (docs/FLEXPAIE.md). Closed by default.
+      - key: CARD_PAYMENTS_ENABLED
+        sync: false
       - key: CINETPAY_API_KEY_CD
         sync: false
       - key: CINETPAY_API_PASSWORD_CD
