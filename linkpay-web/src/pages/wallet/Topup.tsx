@@ -3,20 +3,18 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
-import { CurrencySelector } from '@/components/CurrencySelector';
-import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
-import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicker';
-import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
+import { AmountEntry } from '@/components/payment/AmountEntry';
+import { PaymentMethodPicker, PaymentMethodId } from '@/components/payment/PaymentMethodPicker';
+import { MobileMoneyFields } from '@/components/payment/MobileMoneyFields';
+import { PaymentStep } from '@/components/payment/PaymentStep';
+import { MobileMoneyWaiting } from '@/components/payment/MobileMoneyWaiting';
+import { displayPhone, isNumberReady, operatorById, toApiPhone } from '@/lib/mobile-money';
 import { formatCurrency } from '@/lib/utils';
 import { TopupStatusCard, TopupCardStatus } from '@/components/TopupStatusCard';
 import { FormSheet } from '@/components/FormSheet';
-import { Loader2, DollarSign, ArrowLeft, Wallet as WalletIcon, Smartphone, Phone } from 'lucide-react';
-import { checkoutUrl } from '@/lib/safe-url';
-
-const PRESETS = [5000, 10000, 25000, 50000];
+import { Loader2 } from 'lucide-react';
+import { followCheckout } from '@/lib/safe-url';
 
 type Step = 'amount' | 'method' | 'confirm' | 'processing' | 'success' | 'pending';
 
@@ -25,12 +23,14 @@ export default function TopupPage() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const [step, setStep] = useState<Step>('amount');
+  // Whole units, digits only ("25000"): the payment providers do not take cents.
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState<'CDF' | 'USD'>(
     searchParams.get('currency') === 'USD' ? 'USD' : 'CDF',
   );
-  const [paymentMethod, setPaymentMethod] = useState<'mobile_money' | 'card'>('mobile_money');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId>('mobile_money');
   const [operator, setOperator] = useState('airtel');
+  // The 9 national digits of the number ("828497218"), see lib/mobile-money.
   const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [result, setResult] = useState<any>(null);
@@ -49,13 +49,14 @@ export default function TopupPage() {
     },
   });
 
-  const amountCents = Math.round((parseFloat(amount) || 0) * 100);
+  const amountCents = (parseInt(amount, 10) || 0) * 100;
+  const op = operatorById(operator)!;
+  const balanceCents: number | undefined = wallet?.balances ? (wallet.balances[currency] ?? 0) : undefined;
 
-  const goToMethod = (e: React.FormEvent) => {
-    e.preventDefault();
+  const goToMethod = () => {
     setError('');
-    if (!amountCents || amountCents < 100) {
-      setError('Montant minimum : 1');
+    if (amountCents < 100) {
+      setError('Saisissez un montant d\'au moins 1.');
       return;
     }
     setStep('method');
@@ -76,12 +77,12 @@ export default function TopupPage() {
           currency,
           payment_method: paymentMethod,
           mobile_money_operator: paymentMethod === 'mobile_money' ? operator : undefined,
-          mobile_money_phone: paymentMethod === 'mobile_money' ? phone : undefined,
+          mobile_money_phone: paymentMethod === 'mobile_money' ? toApiPhone(phone) : undefined,
         },
         {
           headers: { 'Idempotency-Key': key },
-          // The CinetPay SDK itself times out server-side at 30s — give this
-          // request a bit more room, then fail client-side rather than
+          // The payment provider itself can take a while to answer — give
+          // this request a bit more room, then fail client-side rather than
           // leaving the "Confirmez sur votre téléphone" screen spinning
           // forever (e.g. if the tab was backgrounded while the user
           // switched apps to enter their Mobile Money PIN, and the response
@@ -90,10 +91,10 @@ export default function TopupPage() {
         },
       );
 
-      // Real PSPs (e.g. CinetPay) return a checkout_url and confirm later via
-      // webhook — send the user there instead of claiming success early.
+      // Real PSPs return a checkout_url and confirm later (webhook / status check) —
+      // send the user there instead of claiming success early.
       if (data.checkout_url) {
-        window.location.href = checkoutUrl(data.checkout_url);
+        followCheckout(data.checkout_url, navigate);
         return;
       }
 
@@ -124,14 +125,11 @@ export default function TopupPage() {
     }
   };
 
-  // Everything below renders inside the single FormSheet at the bottom of
-  // this component — kept as the exact same step-branching logic/JSX as
-  // before, just no longer each wrapped in its own top-level page div.
   function renderStep() {
     if (step === 'success' || step === 'pending') {
       const status: TopupCardStatus = (step === 'pending' || result?.status === 'PENDING') ? 'PENDING' : 'SUCCESS';
       const extraRows = paymentMethod === 'mobile_money'
-        ? [{ label: 'Moyen de paiement', value: `${MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label} — ${phone}` }]
+        ? [{ label: 'Moyen de paiement', value: `${op.label} — ${displayPhone(phone)}` }]
         : [];
       return (
         <TopupStatusCard
@@ -146,31 +144,10 @@ export default function TopupPage() {
     }
 
     if (step === 'processing') {
-      // Mirrors the same real-world Mobile Money STK/USSD push flow shown to
-      // payers on the public payment page: ScanLinkPay never sees the PIN, the
+      // The real-world Mobile Money push flow: ScanLinkPay never sees the PIN, the
       // confirmation happens entirely on the user's own phone.
       if (paymentMethod === 'mobile_money') {
-        const operatorLabel = MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label;
-        return (
-          <div className="p-6 max-w-lg mx-auto">
-            <Card>
-              <CardContent className="pt-6 text-center py-10">
-                <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                  <Smartphone className="w-8 h-8 text-primary animate-pulse" />
-                </div>
-                <h2 className="text-lg font-bold text-foreground mb-2">Confirmez sur votre téléphone</h2>
-                <p className="text-muted-foreground text-sm mb-1">
-                  Une demande {operatorLabel} a été envoyée au {phone}.
-                </p>
-                <p className="text-muted-foreground text-sm mb-6">
-                  Ouvrez l'application et entrez votre code PIN Mobile Money pour confirmer le retrait de{' '}
-                  {formatCurrency(amountCents, currency)}.
-                </p>
-                <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" />
-              </CardContent>
-            </Card>
-          </div>
-        );
+        return <MobileMoneyWaiting operator={operator} phone={phone} amountCents={amountCents} currency={currency} />;
       }
       return (
         <div className="p-6 max-w-lg mx-auto">
@@ -187,166 +164,114 @@ export default function TopupPage() {
 
     if (step === 'confirm') {
       return (
-        <div className="p-6 max-w-lg mx-auto">
-          <Card>
-            <CardContent className="pt-6">
-              <button
-                onClick={() => setStep('method')}
-                className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"
-              >
-                <ArrowLeft className="w-4 h-4" /> Modifier
-              </button>
-              {error && (
-                <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium mb-4">
-                  {error}
-                </div>
-              )}
-              <div className="text-center mb-6">
-                <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                  <WalletIcon className="w-7 h-7 text-primary" />
-                </div>
-                <p className="text-sm text-muted-foreground">Confirmer la recharge de</p>
-                <p className="text-3xl font-bold text-foreground mt-1">{formatCurrency(amountCents, currency)}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {paymentMethod === 'mobile_money'
-                    ? `via ${MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label} — ${phone}`
-                    : 'via carte bancaire'}
-                </p>
-                {wallet?.wallet_number && (
-                  <p className="text-xs text-muted-foreground">vers {wallet.wallet_number}</p>
-                )}
-              </div>
-              <Button className="w-full" size="lg" onClick={confirmTopup}>
-                Confirmer
+        <PaymentStep
+          title="Vérifiez et confirmez"
+          onBack={() => setStep('method')}
+          error={error}
+          footer={
+            <div className="space-y-2">
+              <Button className="h-12 w-full rounded-xl text-base font-semibold" size="lg" onClick={confirmTopup}>
+                Confirmer la recharge
               </Button>
-            </CardContent>
-          </Card>
-        </div>
+              <p className="text-center text-xs text-muted-foreground">
+                {paymentMethod === 'mobile_money' ? 'Vous validerez ensuite la demande sur votre téléphone avec votre code Mobile Money.' : 'Vous serez dirigé vers la page de paiement sécurisée.'}
+              </p>
+            </div>
+          }
+        >
+          <div className="rounded-3xl bg-gradient-to-br from-primary to-[#1a3cff] px-5 py-6 text-center text-primary-foreground shadow-lg">
+            <p className="text-sm opacity-80">Vous rechargez</p>
+            <p className="mt-1 text-4xl font-bold tabular-nums">{formatCurrency(amountCents, currency)}</p>
+          </div>
+
+          <dl className="divide-y divide-border rounded-2xl border border-border text-sm">
+            {paymentMethod === 'mobile_money' ? (
+              <>
+                <div className="flex items-center justify-between gap-3 px-4 py-3.5">
+                  <dt className="text-muted-foreground">Opérateur</dt>
+                  <dd className="flex items-center gap-2 font-semibold text-foreground">
+                    <img src={op.logo} alt="" className="h-6 w-6 rounded-md object-cover" /> {op.label}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3 px-4 py-3.5">
+                  <dt className="text-muted-foreground">Numéro</dt>
+                  <dd className="font-semibold tabular-nums text-foreground">{displayPhone(phone)}</dd>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-between gap-3 px-4 py-3.5">
+                <dt className="text-muted-foreground">Moyen de paiement</dt>
+                <dd className="font-semibold text-foreground">Carte bancaire</dd>
+              </div>
+            )}
+            {wallet?.wallet_number && (
+              <div className="flex items-center justify-between gap-3 px-4 py-3.5">
+                <dt className="text-muted-foreground">Compte crédité</dt>
+                <dd className="font-semibold text-foreground">{wallet.wallet_number}</dd>
+              </div>
+            )}
+          </dl>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Des frais de l'opérateur peuvent s'ajouter au montant prélevé sur votre ligne. Votre compte est crédité du montant ci-dessus.
+          </p>
+        </PaymentStep>
       );
     }
 
     if (step === 'method') {
-      const canContinue = paymentMethod !== 'mobile_money' || phone.trim().length >= 9;
+      const methodReady = paymentMethod !== 'mobile_money' || isNumberReady(operator, phone);
       return (
-        <div className="p-6 max-w-lg mx-auto">
-          <Card>
-            <CardContent className="pt-6">
-              <button
-                onClick={() => setStep('amount')}
-                className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"
-              >
-                <ArrowLeft className="w-4 h-4" /> Modifier le montant
-              </button>
-              {error && (
-                <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium mb-4">
-                  {error}
-                </div>
-              )}
-              <p className="text-sm text-muted-foreground mb-4">
-                Recharger de {formatCurrency(amountCents, currency)}
-              </p>
-              <div className="space-y-4">
-                <PaymentMethodSelector value={paymentMethod} onChange={setPaymentMethod} />
-                {paymentMethod === 'mobile_money' && (
-                  <>
-                    <MobileMoneyOperatorPicker value={operator} onChange={setOperator} />
-                    <div className="space-y-2">
-                      <Label htmlFor="mm_phone" className="font-semibold">
-                        Numéro {MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label}
-                      </Label>
-                      <div className="relative">
-                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input
-                          id="mm_phone"
-                          placeholder="+243 8XX XXX XXX"
-                          value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
-                          className="pl-10"
-                          autoFocus
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Une demande de paiement sera envoyée à ce numéro pour confirmer le retrait.
-                      </p>
-                    </div>
-                  </>
-                )}
-                <Button
-                  className="w-full"
-                  size="lg"
-                  disabled={!canContinue}
-                  onClick={() => {
-                    setError('');
-                    if (!canContinue) {
-                      setError('Numéro Mobile Money requis');
-                      return;
-                    }
-                    setStep('confirm');
-                  }}
-                >
-                  Continuer
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <PaymentStep
+          title="Moyen de paiement"
+          subtitle={`Recharge de ${formatCurrency(amountCents, currency)}`}
+          onBack={() => { setError(''); setStep('amount'); }}
+          error={error}
+          footer={
+            <Button
+              className="h-12 w-full rounded-xl text-base font-semibold"
+              size="lg"
+              disabled={!methodReady}
+              onClick={() => { setError(''); setStep('confirm'); }}
+            >
+              Continuer
+            </Button>
+          }
+        >
+          <PaymentMethodPicker value={paymentMethod} onChange={setPaymentMethod} methods={['mobile_money', 'card']} disabled={['card']} />
+          {paymentMethod === 'mobile_money' && (
+            <MobileMoneyFields
+              operator={operator}
+              onOperatorChange={setOperator}
+              phone={phone}
+              onPhoneChange={setPhone}
+              autoFocusPhone
+              hint="Une demande de paiement sera envoyée à ce numéro, que vous validerez avec votre code Mobile Money."
+            />
+          )}
+        </PaymentStep>
       );
     }
 
     return (
-      <div className="p-6 max-w-lg mx-auto">
-        <Card>
-          <CardContent className="pt-6">
-            <h2 className="text-xl font-bold text-foreground mb-1">Recharger mon compte</h2>
-            <p className="text-sm text-muted-foreground mb-6">
-              {wallet?.wallet_number ? `Compte ${wallet.wallet_number}` : 'Ajoutez des fonds à votre solde ScanLinkPay'}
-            </p>
-            <form onSubmit={goToMethod} className="space-y-4">
-              {error && (
-                <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
-                  {error}
-                </div>
-              )}
-              <div className="space-y-2">
-                <Label className="font-semibold">Devise</Label>
-                <CurrencySelector value={currency} onChange={setCurrency} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="amount" className="font-semibold">Montant ({currency})</Label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="amount"
-                    type="number"
-                    step="0.01"
-                    placeholder="10000"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    required
-                    autoFocus
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                {PRESETS.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setAmount(String(p))}
-                    className="rounded-xl border border-border py-2 text-xs font-semibold text-foreground hover:border-primary/50 hover:bg-primary/5 transition-colors"
-                  >
-                    {p.toLocaleString('fr-FR')}
-                  </button>
-                ))}
-              </div>
-              <Button type="submit" className="w-full" size="lg">
-                Continuer
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
+      <PaymentStep
+        title="Recharger mon compte"
+        subtitle={wallet?.wallet_number ? `Compte ${wallet.wallet_number}` : 'Ajoutez des fonds à votre solde ScanLinkPay'}
+        error={error}
+        footer={
+          <Button className="h-12 w-full rounded-xl text-base font-semibold" size="lg" disabled={amountCents < 100} onClick={goToMethod}>
+            Continuer
+          </Button>
+        }
+      >
+        <AmountEntry
+          value={amount}
+          onChange={(v) => { setError(''); setAmount(v); }}
+          currency={currency}
+          onCurrencyChange={setCurrency}
+          balanceCents={balanceCents}
+          autoFocus
+        />
+      </PaymentStep>
     );
   }
 

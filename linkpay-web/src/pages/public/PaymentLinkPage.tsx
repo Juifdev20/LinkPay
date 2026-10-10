@@ -7,12 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Logo } from '@/components/Logo';
-import { PaymentMethodSelector } from '@/components/PaymentMethodSelector';
-import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicker';
-import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
+import { PaymentMethodPicker } from '@/components/payment/PaymentMethodPicker';
+import { MobileMoneyFields } from '@/components/payment/MobileMoneyFields';
+import { MobileMoneyWaiting } from '@/components/payment/MobileMoneyWaiting';
+import { isNumberReady, toApiPhone } from '@/lib/mobile-money';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Loader2, CheckCircle, AlertCircle, Lock, User, Phone, Smartphone, Wallet as WalletIcon, Sparkles, ArrowLeft } from 'lucide-react';
-import { checkoutUrl } from '@/lib/safe-url';
+import { Loader2, CheckCircle, AlertCircle, Lock, User, Wallet as WalletIcon, Sparkles, ArrowLeft } from 'lucide-react';
+import { followCheckout } from '@/lib/safe-url';
 
 export default function PaymentLinkPage() {
   const { token } = useParams<{ token: string }>();
@@ -23,9 +24,9 @@ export default function PaymentLinkPage() {
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState('');
   const [customerName, setCustomerName] = useState('');
+  // The 9 national digits of the Mobile Money number ("828497218"), see lib/mobile-money.
   const [customerPhone, setCustomerPhone] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'mobile_money' | 'card'>('mobile_money');
-  const [operator, setOperator] = useState(MOBILE_MONEY_OPERATORS[0].value);
+  const [operator, setOperator] = useState('airtel');
 
   useEffect(() => {
     api.get(`/payment-requests/link/${encodeURIComponent(token ?? "")}`)
@@ -60,16 +61,16 @@ export default function PaymentLinkPage() {
         {
           link_token: token,
           customer_name: customerName,
-          customer_phone: customerPhone,
-          payment_method: paymentMethod,
-          mobile_money_operator: paymentMethod === 'mobile_money' ? operator : undefined,
+          customer_phone: toApiPhone(customerPhone),
+          payment_method: 'mobile_money',
+          mobile_money_operator: operator,
         },
         { headers: { 'Idempotency-Key': crypto.randomUUID() } },
       );
       if (data.status === 'SUCCESS') {
         navigate('/payment/result', { state: { status: 'success', reference: data.reference } });
       } else if (data.checkout_url) {
-        window.location.href = checkoutUrl(data.checkout_url);
+        followCheckout(data.checkout_url, navigate);
       } else {
         navigate('/payment/result', { state: { status: 'failed' } });
       }
@@ -156,28 +157,14 @@ export default function PaymentLinkPage() {
   // real mobile money STK/USSD push, where ScanLinkPay never sees the PIN and the
   // confirmation happens entirely on the customer's device.
   if (paying) {
-    const operatorLabel = MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label;
     return (
       <div className="min-h-screen flex items-center justify-center px-4 bg-background">
         <div className="w-full max-w-md">
           <div className="flex justify-center mb-8">
             <Logo size="lg" />
           </div>
-          <Card className="text-center">
-            <CardContent className="pt-6">
-              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                <Smartphone className="w-8 h-8 text-primary animate-pulse" />
-              </div>
-              <h2 className="text-xl font-bold text-foreground mb-2">Confirmez sur votre téléphone</h2>
-              <p className="text-muted-foreground text-sm mb-1">
-                Une demande {operatorLabel} a été envoyée au {customerPhone || 'numéro indiqué'}.
-              </p>
-              <p className="text-muted-foreground text-sm mb-6">
-                Ouvrez l'application et entrez votre code PIN pour confirmer le paiement de{' '}
-                {formatCurrency(request.amount_cents, request.currency)}.
-              </p>
-              <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" />
-            </CardContent>
+          <Card>
+            <MobileMoneyWaiting operator={operator} phone={customerPhone} amountCents={request.amount_cents} currency={request.currency} />
           </Card>
         </div>
       </div>
@@ -253,29 +240,17 @@ export default function PaymentLinkPage() {
               </div>
             </div>
 
-            <PaymentMethodSelector value={paymentMethod} onChange={setPaymentMethod} className="mb-4" />
-
-            <div className="space-y-4">
-              {paymentMethod === 'mobile_money' && (
-                <MobileMoneyOperatorPicker value={operator} onChange={setOperator} />
-              )}
+            <div className="space-y-5">
+              <PaymentMethodPicker value="mobile_money" onChange={() => {}} methods={['mobile_money', 'card']} disabled={['card']} />
               <div className="space-y-2">
                 <Label htmlFor="name" className="font-semibold">Votre nom</Label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input id="name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Kambale Doli Delphin" className="pl-10" />
+                  <Input id="name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Kambale Doli Delphin" className="pl-10 h-12 rounded-xl" />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone" className="font-semibold">
-                  {paymentMethod === 'mobile_money' ? 'Numéro Mobile Money' : 'Téléphone'}
-                </Label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input id="phone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="+243 8XX XXX XXX" className="pl-10" />
-                </div>
-              </div>
-              <Button className="w-full" size="lg" onClick={handlePay} disabled={paying || !customerPhone}>
+              <MobileMoneyFields operator={operator} onOperatorChange={setOperator} phone={customerPhone} onPhoneChange={setCustomerPhone} />
+              <Button className="w-full" size="lg" onClick={handlePay} disabled={paying || !isNumberReady(operator, customerPhone)}>
                 <Lock className="mr-2 w-4 h-4" />
                 Payer {formatCurrency(request.amount_cents, request.currency)}
               </Button>

@@ -39,3 +39,16 @@ Comme le rappel peut se perdre et n'est pas renvoyé, une tâche de rattrapage i
 - `FLEXPAIE_MERCHANT` : le code marchand de production (pas celui du test) ; `FLEXPAIE_TOKEN` : le jeton Bearer (avec ou sans le mot `Bearer`).
 
 `FLEXPAIE_BASE_URL` (un seul serveur pour tout, comme dans la documentation de test) reste utilisable : il sert pour chacune des trois adresses qui n'est pas renseignée. Tous ces serveurs passent par `PROXY_URL` quand il est défini.
+
+
+## Numéro et opérateur (Mobile Money)
+FlexPaie envoie la demande de confirmation **au numéro** : l'opérateur affiché à l'écran ne leur est pas transmis. Un client qui choisirait « Airtel Money » et saisirait un numéro M-Pesa recevrait donc la demande sur M-Pesa alors que nos écrans et nos comptes diraient Airtel. L'API (`linkpay-api/src/payments/mobile-money.ts`) et l'application (`linkpay-web/src/lib/mobile-money.ts`, mêmes tables) refusent donc un numéro d'un autre réseau que celui choisi, pour les recharges, les paiements de facture et les retraits.
+
+| Réseau | Préfixes (après +243, ou 0 en national) |
+|---|---|
+| M-Pesa (Vodacom) | 81, 82, 83 |
+| Orange Money | 80, 84, 85, 89 |
+| Airtel Money | 97, 98, 99 |
+| Africell (reconnu, pas encore proposé) | 90, 91 |
+
+Un préfixe qui n'est pas dans ce tableau **n'est pas refusé** (FlexPaie reste juge) : une table incomplète ne doit pas bloquer de vrais clients. Les préfixes viennent de sources publiques qui concordent (pas de table officielle de l'ARPTC consultable) : à confirmer avec FlexPaie ou l'ARPTC, et à corriger dans les deux fichiers ci-dessus s'ils diffèrent.

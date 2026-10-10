@@ -8,8 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { PinInput } from '@/components/PinInput';
 import { CurrencySelector } from '@/components/CurrencySelector';
-import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicker';
-import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
+import { MobileMoneyFields } from '@/components/payment/MobileMoneyFields';
+import { displayPhone, isNumberReady, operatorById, toApiPhone } from '@/lib/mobile-money';
 import { formatCurrency, cn } from '@/lib/utils';
 import { FormSheet } from '@/components/FormSheet';
 import { Loader2, Check, Clock, ArrowLeft, ArrowUpFromLine, Smartphone, Landmark } from 'lucide-react';
@@ -26,7 +26,8 @@ export default function WithdrawPage() {
     searchParams.get('currency') === 'USD' ? 'USD' : 'CDF',
   );
   const [channel, setChannel] = useState<'mobile_money' | 'bank'>('mobile_money');
-  const [operator, setOperator] = useState(MOBILE_MONEY_OPERATORS[0].value);
+  const [operator, setOperator] = useState('airtel');
+  // The 9 national digits of the Mobile Money number ("828497218"), see lib/mobile-money.
   const [phone, setPhone] = useState('');
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
@@ -57,8 +58,8 @@ export default function WithdrawPage() {
   const handleDestinationContinue = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (channel === 'mobile_money' && !phone) {
-      setError('Numéro Mobile Money requis');
+    if (channel === 'mobile_money' && !isNumberReady(operator, phone)) {
+      setError('Numéro Mobile Money incomplet ou ne correspondant pas à l\'opérateur choisi.');
       return;
     }
     if (channel === 'bank' && (!bankName || !accountNumber || !accountName)) {
@@ -78,7 +79,7 @@ export default function WithdrawPage() {
   };
 
   const destination =
-    channel === 'mobile_money' ? { operator, phone } : { bank: bankName, account_number: accountNumber, account_name: accountName };
+    channel === 'mobile_money' ? { operator, phone: toApiPhone(phone) } : { bank: bankName, account_number: accountNumber, account_name: accountName };
 
   const handlePinComplete = async (val: string) => {
     setPin(val);
@@ -118,7 +119,7 @@ export default function WithdrawPage() {
             </div>
             <h2 className="text-xl font-bold text-foreground mb-1">{done ? 'Retrait effectué !' : 'Retrait en cours'}</h2>
             <p className="text-sm text-muted-foreground mb-6">
-              {formatCurrency(amountCents, currency)} vers {channel === 'mobile_money' ? MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label : bankName}
+              {formatCurrency(amountCents, currency)} vers {channel === 'mobile_money' ? operatorById(operator)?.label : bankName}
               {!done && <><br />Vous serez notifié dès que l'argent est envoyé.</>}
             </p>
             <div className="rounded-xl bg-secondary p-4 text-left space-y-2">
@@ -199,7 +200,7 @@ export default function WithdrawPage() {
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Destination</span>
                 <span className="font-semibold text-foreground text-right">
-                  {channel === 'mobile_money' ? `${MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label} — ${phone}` : `${bankName} — ${accountNumber}`}
+                  {channel === 'mobile_money' ? `${operatorById(operator)?.label} — ${displayPhone(phone)}` : `${bankName} — ${accountNumber}`}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
@@ -249,13 +250,14 @@ export default function WithdrawPage() {
               </div>
 
               {channel === 'mobile_money' ? (
-                <>
-                  <MobileMoneyOperatorPicker value={operator} onChange={setOperator} />
-                  <div className="space-y-2">
-                    <Label htmlFor="phone" className="font-semibold">Numéro Mobile Money</Label>
-                    <Input id="phone" placeholder="+243 8XX XXX XXX" value={phone} onChange={(e) => setPhone(e.target.value)} autoFocus />
-                  </div>
-                </>
+                <MobileMoneyFields
+                  operator={operator}
+                  onOperatorChange={setOperator}
+                  phone={phone}
+                  onPhoneChange={setPhone}
+                  autoFocusPhone
+                  hint="L'argent sera envoyé sur ce numéro Mobile Money."
+                />
               ) : (
                 <>
                   <div className="space-y-2">
@@ -272,7 +274,7 @@ export default function WithdrawPage() {
                   </div>
                 </>
               )}
-              <Button type="submit" className="w-full" size="lg" disabled={destinationLoading}>
+              <Button type="submit" className="w-full" size="lg" disabled={destinationLoading || (channel === 'mobile_money' && !isNumberReady(operator, phone))}>
                 {destinationLoading && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
                 Continuer
               </Button>
