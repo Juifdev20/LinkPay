@@ -44,7 +44,7 @@ interface PaymentMethodPickerProps {
 export function PaymentMethodPicker({ value, onChange, methods, walletNote, disabled = [] }: PaymentMethodPickerProps) {
   const catalog: Record<PaymentMethodId, Option> = {
     mobile_money: { id: 'mobile_money', title: 'Mobile Money', subtitle: 'Airtel, Orange, M-Pesa', visual: MOBILE_MONEY_VISUAL },
-    card: { id: 'card', title: 'Carte bancaire', subtitle: 'Carte Visa', visual: tile(<CreditCard className="h-5 w-5 text-primary" />, 'bg-primary/10'), badge: 'Bientôt' },
+    card: { id: 'card', title: 'Carte bancaire', subtitle: 'Visa, Mastercard, Amex, Diners', visual: tile(<CreditCard className="h-5 w-5 text-primary" />, 'bg-primary/10'), badge: 'Bientôt' },
     wallet: { id: 'wallet', title: 'Solde ScanLinkPay', subtitle: walletNote ?? 'Payez avec votre portefeuille', visual: tile(<Wallet className="h-5 w-5 text-primary" />, 'bg-primary/10') },
   };
 

@@ -69,7 +69,9 @@ Règles de sécurité : le code de l'application d'authentification est demandé
 Dès que FlexPaie fournit son API d'envoi : il suffira de l'écrire dans `FlexPaieAdapter.payout()` / `getPayoutStatus()` et de retirer `supportsPayout = false` ; les retraits suivent alors le chemin automatique (ceux déjà en attente restent à traiter dans la page).
 
 
-## Carte bancaire (Visa — Mastercard à confirmer avec FlexPaie)
+## Carte bancaire (Visa, Mastercard, American Express, Diners Club)
+La page de paiement de FlexPaie affiche les logos Visa, Mastercard, American Express et Diners Club (constaté lors d'un test réel le 10 octobre 2026 ; la documentation v2.0 ne cite que Visa : cartes locales et prépayées à confirmer avec FlexPaie). Les frais de la carte sont à la charge du client : 100 CDF demandés → 103 CDF débités (environ 3 %), le portefeuille est crédité de 100.
+
 Ce n'est **pas** la carte ScanLinkPay (docs/carte/) : c'est le moyen de **recharger son portefeuille avec la carte d'une banque**, via la page de paiement sécurisée de FlexPaie (type 2).
 
 1. Dans « Recharger », la personne choisit **Carte bancaire** (aucun numéro de téléphone demandé) et confirme.
