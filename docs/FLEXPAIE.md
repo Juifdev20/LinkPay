@@ -52,3 +52,18 @@ FlexPaie envoie la demande de confirmation **au numéro** : l'opérateur affich�
 | Africell (reconnu, pas encore proposé) | 90, 91 |
 
 Un préfixe qui n'est pas dans ce tableau **n'est pas refusé** (FlexPaie reste juge) : une table incomplète ne doit pas bloquer de vrais clients. Les préfixes viennent de sources publiques qui concordent (pas de table officielle de l'ARPTC consultable) : à confirmer avec FlexPaie ou l'ARPTC, et à corriger dans les deux fichiers ci-dessus s'ils diffèrent.
+
+
+## Retraits en attendant l'API d'envoi d'argent
+FlexPaie n'a (pour l'instant) aucune API pour **envoyer** de l'argent. Quand `PSP_PROVIDER=flexpaie`, un retrait demandé dans l'application :
+1. débite tout de suite le portefeuille (montant + frais, en une seule opération atomique) ;
+2. reste **« en attente »** : rien n'est envoyé à FlexPaie, et la vérification automatique n'en conclut rien (elle ne le rembourse jamais d'elle-même) ;
+3. apparaît dans **Administration → Retraits à traiter** (admin et super admin), avec le client, le montant à envoyer, les frais retenus, l'opérateur et le numéro (boutons « Copier »).
+
+L'administrateur envoie l'argent à la main (Mobile Money de l'entreprise, ou l'interface FlexPaie si elle le permet), puis :
+- **« J'ai envoyé »** (avec la référence du transfert si elle existe) : le retrait devient « effectué », le client est averti, les frais restent à ScanLinkPay ;
+- **« Refuser »** (avec la raison) : le montant **et** les frais sont rendus au portefeuille, le client est averti avec la raison.
+
+Règles de sécurité : le code de l'application d'authentification est demandé pour chaque décision ; un administrateur ne peut pas traiter un retrait de son propre portefeuille ; chaque décision est écrite dans le journal d'audit (`withdrawal_manual_sent`, `withdrawal_manual_rejected`) ; deux administrateurs qui cliquent en même temps ne règlent le retrait qu'une fois.
+
+Dès que FlexPaie fournit son API d'envoi : il suffira de l'écrire dans `FlexPaieAdapter.payout()` / `getPayoutStatus()` et de retirer `supportsPayout = false` ; les retraits suivent alors le chemin automatique (ceux déjà en attente restent à traiter dans la page).

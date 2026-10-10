@@ -695,11 +695,14 @@ export class WalletsService {
       changes: { amount_cents: dto.amount_cents, channel: dto.channel },
     });
 
+    const manualPayout = this.pspFactory.get(withdrawal.psp_provider || undefined).supportsPayout === false;
     await this.notificationsService.create({
       user_id: userId,
       type: 'withdrawal_processing',
-      title: 'Retrait en cours',
-      body: `Votre retrait de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${dto.currency} est en cours.`,
+      title: manualPayout ? 'Demande de retrait enregistrée' : 'Retrait en cours',
+      body: manualPayout
+        ? `Votre demande de retrait de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${dto.currency} est enregistrée. Elle sera traitée par notre équipe : vous serez averti dès que l'argent est envoyé.`
+        : `Votre retrait de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${dto.currency} est en cours.`,
       data: { withdrawal_id: withdrawal.id },
     }).catch(() => null);
 
@@ -710,7 +713,7 @@ export class WalletsService {
     const backendUrl = this.configService.get<string>('BACKEND_URL')
       || this.configService.get<string>('RENDER_EXTERNAL_URL')
       || `http://localhost:${this.configService.get<number>('PORT', 3000)}`;
-    const { withdrawal: settled, rejectedReason } = await this.withdrawalPayouts.dispatch(
+    const { withdrawal: settled, rejectedReason, manual } = await this.withdrawalPayouts.dispatch(
       withdrawal,
       `${backendUrl}/api/v1/webhooks/${withdrawal.psp_provider}`,
     );
@@ -719,7 +722,7 @@ export class WalletsService {
       throw new BadRequestException(`Le retrait n'a pas pu être effectué : ${rejectedReason} Votre argent est resté dans votre portefeuille.`);
     }
 
-    return { withdrawal: settled };
+    return { withdrawal: settled, ...(manual ? { manual: true } : {}) };
   }
 
   /** A key replays only the SAME withdrawal by the SAME wallet; anything else is a reused or guessed key. */

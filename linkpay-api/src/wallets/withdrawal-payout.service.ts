@@ -51,8 +51,13 @@ export class WithdrawalPayoutService {
   }
 
   /** Starts the payout of a withdrawal whose funds are already reserved. */
-  async dispatch(withdrawal: any, callbackUrl?: string): Promise<{ withdrawal: any; rejectedReason?: string }> {
+  async dispatch(withdrawal: any, callbackUrl?: string): Promise<{ withdrawal: any; rejectedReason?: string; manual?: boolean }> {
     const adapter = this.pspFactory.get(withdrawal.psp_provider || undefined);
+
+    // No payout API (FlexPaie): the request stays PENDING, funds reserved, for an admin to send by hand.
+    if (adapter.supportsPayout === false) {
+      return { withdrawal, manual: true };
+    }
 
     let result;
     try {
@@ -159,6 +164,9 @@ export class WithdrawalPayoutService {
 
   private async reconcileOne(w: any): Promise<boolean> {
     const adapter = this.pspFactory.get(w.psp_provider || undefined);
+    // A manual withdrawal is unknown to the provider by design: "not found" must NEVER be read as "never sent"
+    // (that would refund the wallet while an admin may be sending the money).
+    if (adapter.supportsPayout === false) return false;
     const status = await adapter.getPayoutStatus(w.id);
 
     if (status.status === 'SUCCESS') {

@@ -51,6 +51,7 @@ const WalletTransactionsPage = lazyPage(() => import('@/pages/wallet/Transaction
 const MyCardPage = lazyPage(() => import('@/pages/wallet/MyCard'));
 const ChargeCardPage = lazyPage(() => import('@/pages/merchant/ChargeCard'));
 const AdminCardsPage = lazyPage(() => import('@/pages/admin/Cards'));
+const AdminWithdrawalsPage = lazyPage(() => import('@/pages/admin/Withdrawals'));
 const CardPrintPage = lazyPage(() => import('@/pages/admin/CardPrint'));
 
 const AdminDashboard = lazyPage(() => import('@/pages/admin/Dashboard'));
@@ -266,6 +267,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={['merchant', 'cashier', 'enterprise', 'caissier', 'vendeur']}>
               <ChargeCardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/withdrawals"
+          element={
+            <ProtectedRoute roles={['admin', 'super_admin']}>
+              <AdminWithdrawalsPage />
             </ProtectedRoute>
           }
         />
