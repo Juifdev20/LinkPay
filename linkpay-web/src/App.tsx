@@ -52,6 +52,7 @@ const MyCardPage = lazyPage(() => import('@/pages/wallet/MyCard'));
 const ChargeCardPage = lazyPage(() => import('@/pages/merchant/ChargeCard'));
 const AdminCardsPage = lazyPage(() => import('@/pages/admin/Cards'));
 const AdminWithdrawalsPage = lazyPage(() => import('@/pages/admin/Withdrawals'));
+const PaymentReturnPage = lazyPage(() => import('@/pages/public/PaymentReturn'));
 const CardPrintPage = lazyPage(() => import('@/pages/admin/CardPrint'));
 
 const AdminDashboard = lazyPage(() => import('@/pages/admin/Dashboard'));
@@ -213,6 +214,7 @@ export default function App() {
         }
       />
       <Route path="/payment/result" element={<PaymentResultPage />} />
+      <Route path="/payment/return" element={<PaymentReturnPage />} />
 
       <Route path="/admin-2fa" element={<AdminTwoFactorSetupPage />} />
       <Route

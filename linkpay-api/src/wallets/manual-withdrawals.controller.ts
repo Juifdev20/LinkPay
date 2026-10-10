@@ -39,6 +39,13 @@ export class ManualWithdrawalsController {
     return this.manual.list(status === 'done' ? 'done' : 'open', toLimit(limit));
   }
 
+  // Declared before ':id' routes so "count" is never taken for an id.
+  @Get('count')
+  @ApiOperation({ summary: 'How many withdrawals wait for an admin (badge in the menu)' })
+  count() {
+    return this.manual.openCount();
+  }
+
   @Post(':id/sent')
   @UseGuards(OtpStepUpGuard)
   @RequireOtp()

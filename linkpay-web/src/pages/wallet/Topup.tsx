@@ -49,6 +49,13 @@ export default function TopupPage() {
     },
   });
 
+  // Which ways of paying are open (the bank card is switched on by the platform once tested).
+  const { data: methods } = useQuery<{ mobile_money: boolean; card: boolean }>({
+    queryKey: ['wallet-payment-methods'],
+    queryFn: async () => (await api.get('/wallet/payment-methods')).data,
+  });
+  const cardOpen = !!methods?.card;
+
   const amountCents = (parseInt(amount, 10) || 0) * 100;
   const op = operatorById(operator)!;
   const balanceCents: number | undefined = wallet?.balances ? (wallet.balances[currency] ?? 0) : undefined;
@@ -154,8 +161,8 @@ export default function TopupPage() {
           <Card>
             <CardContent className="pt-6 text-center py-16">
               <Loader2 className="w-10 h-10 text-primary animate-spin mx-auto mb-4" />
-              <p className="text-foreground font-semibold">Traitement de la recharge...</p>
-              <p className="text-sm text-muted-foreground mt-1">Merci de patienter quelques instants</p>
+              <p className="text-foreground font-semibold">{paymentMethod === 'card' ? 'Ouverture de la page de paiement sécurisée…' : 'Traitement de la recharge...'}</p>
+              <p className="text-sm text-muted-foreground mt-1">{paymentMethod === 'card' ? 'Vous allez saisir les informations de votre carte chez notre partenaire de paiement.' : 'Merci de patienter quelques instants'}</p>
             </CardContent>
           </Card>
         </div>
@@ -174,7 +181,7 @@ export default function TopupPage() {
                 Confirmer la recharge
               </Button>
               <p className="text-center text-xs text-muted-foreground">
-                {paymentMethod === 'mobile_money' ? 'Vous validerez ensuite la demande sur votre téléphone avec votre code Mobile Money.' : 'Vous serez dirigé vers la page de paiement sécurisée.'}
+                {paymentMethod === 'mobile_money' ? 'Vous validerez ensuite la demande sur votre téléphone avec votre code Mobile Money.' : 'Vous saisirez les informations de votre carte sur la page sécurisée de notre partenaire de paiement : ScanLinkPay ne les voit jamais.'}
               </p>
             </div>
           }
@@ -237,7 +244,7 @@ export default function TopupPage() {
             </Button>
           }
         >
-          <PaymentMethodPicker value={paymentMethod} onChange={setPaymentMethod} methods={['mobile_money', 'card']} disabled={['card']} />
+          <PaymentMethodPicker value={paymentMethod} onChange={setPaymentMethod} methods={['mobile_money', 'card']} disabled={cardOpen ? [] : ['card']} />
           {paymentMethod === 'mobile_money' && (
             <MobileMoneyFields
               operator={operator}

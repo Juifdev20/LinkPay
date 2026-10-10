@@ -100,3 +100,62 @@ describe('withdrawals the provider cannot send', () => {
     });
   });
 });
+
+describe('alerts to the administrators', () => {
+  it('a new manual withdrawal alerts the admins (warning: bell + push), without failing the request if the alert breaks', async () => {
+    const fake = createFakeSupabase(() => undefined);
+    const alerts = { alert: jest.fn(async () => undefined) };
+    const service = new WithdrawalPayoutService(fake.service, factory, { create: jest.fn() } as any, undefined, alerts as any);
+    await service.dispatch(W());
+    expect(alerts.alert).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warning', audience: 'admins', title: 'Nouveau retrait à traiter', dedupeKey: `withdrawal-new:${W().id}` }));
+    const broken = new WithdrawalPayoutService(fake.service, factory, { create: jest.fn() } as any, undefined, { alert: () => { throw new Error('push down'); } } as any);
+    await expect(broken.dispatch(W())).resolves.toMatchObject({ manual: true });
+  });
+
+  it('a provider that sends by itself raises no alert', async () => {
+    const fake = createFakeSupabase(() => undefined);
+    const alerts = { alert: jest.fn() };
+    const adapter = { payout: async () => ({ psp_payout_id: 'p', status: 'PENDING' }) };
+    const service = new WithdrawalPayoutService(fake.service, { get: () => adapter } as any, { create: jest.fn() } as any, undefined, alerts as any);
+    await service.dispatch(W({ psp_provider: 'mock' }));
+    expect(alerts.alert).not.toHaveBeenCalled();
+  });
+
+  describe('reminder', () => {
+    const now = Date.UTC(2026, 9, 10, 12, 0, 0);
+    const at = (hoursAgo: number) => new Date(now - hoursAgo * 3_600_000).toISOString();
+    function reminder(rows: any[]) {
+      const fake = createFakeSupabase((q) => (q.target === 'withdrawals' ? { data: rows } : undefined));
+      const alerts = { alert: jest.fn() };
+      const service = new ManualWithdrawalsService(fake.service, factory, {} as any, {} as any, alerts as any);
+      return { service, alerts, fake };
+    }
+    it('nothing waiting: silence', async () => {
+      const { service, alerts } = reminder([]);
+      expect(await service.remindOverdue(now)).toBe(0);
+      expect(alerts.alert).not.toHaveBeenCalled();
+    });
+    it('waiting more than 2 h: a warning with the count and the age of the oldest', async () => {
+      const { service, alerts } = reminder([W({ created_at: at(3) }), W({ id: '33333333-3333-4333-8333-333333333333', created_at: at(2.5) })]);
+      expect(await service.remindOverdue(now)).toBe(2);
+      expect(alerts.alert).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warning', audience: 'admins', title: '2 retraits attendent depuis plus de 2 h', body: expect.stringContaining('3 h') }));
+    });
+    it('waiting 6 h or more: critical (SMS + e-mail reach people whose phone is silent)', async () => {
+      const { service, alerts } = reminder([W({ created_at: at(7) })]);
+      await service.remindOverdue(now);
+      expect(alerts.alert).toHaveBeenCalledWith(expect.objectContaining({ severity: 'critical', title: 'Un retrait attend depuis plus de 2 h' }));
+    });
+    it('only counts the ones settled by hand', async () => {
+      const { service, alerts } = reminder([W({ psp_provider: 'mock', created_at: at(9) })]);
+      expect(await service.remindOverdue(now)).toBe(0);
+      expect(alerts.alert).not.toHaveBeenCalled();
+    });
+    it('does nothing when another instance already ran the job', async () => {
+      const fake = createFakeSupabase(() => ({ data: [W({ created_at: at(9) })] }));
+      const alerts = { alert: jest.fn() };
+      const service = new ManualWithdrawalsService(fake.service, factory, {} as any, {} as any, alerts as any, { acquire: async () => false } as any);
+      expect(await service.remindOverdue(now)).toBe(0);
+      expect(alerts.alert).not.toHaveBeenCalled();
+    });
+  });
+});

@@ -1,11 +1,17 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { SupabaseService } from '../supabase/supabase.service';
 import { PspFactory } from '../payments/psp/psp.factory';
 import { AuditService } from '../audit/audit.service';
 import { WithdrawalPayoutService } from './withdrawal-payout.service';
+import { JobLockService } from '../common/job-lock/job-lock.service';
+import { SecurityAlertsService } from '../security/security-alerts.service';
 
 const MAX_REFERENCE = 80;
 const MAX_REASON = 300;
+/** A withdrawal waiting longer than this is reminded to the administrators, every hour; after URGENT it is critical (SMS + e-mail). */
+const OVERDUE_MS = 2 * 3_600_000;
+const URGENT_MS = 6 * 3_600_000;
 
 /**
  * Withdrawals that wait for an admin, because the payment provider has no API to send money out (FlexPaie).
@@ -24,7 +30,11 @@ export class ManualWithdrawalsService {
     private pspFactory: PspFactory,
     private payouts: WithdrawalPayoutService,
     private audit: AuditService,
+    @Optional() private alerts?: SecurityAlertsService,
+    @Optional() private jobLock?: JobLockService,
   ) {}
+
+  private readonly logger = new Logger(ManualWithdrawalsService.name);
 
   private get db() {
     return this.supabase.getClient();
@@ -71,6 +81,47 @@ export class ManualWithdrawalsService {
         owner: owners.get(w.wallet_id) ? { name: owners.get(w.wallet_id).full_name ?? null, email: owners.get(w.wallet_id).email ?? null, phone: owners.get(w.wallet_id).phone ?? null, wallet_number: owners.get(w.wallet_id).wallet_number ?? null } : null,
       })),
     };
+  }
+
+  /** Number of withdrawals waiting for an admin (the badge in the menu). */
+  async openCount(): Promise<{ open: number }> {
+    const { data, error } = await this.db.from('withdrawals').select('id, psp_provider').eq('status', 'PENDING').limit(500);
+    if (error) throw new Error(`Failed to count withdrawals: ${error.message}`);
+    return { open: (data || []).filter((w: any) => this.isManual(w)).length };
+  }
+
+  /**
+   * Hourly: withdrawals nobody has settled for more than 2 hours are reminded to the administrators. A person who asked
+   * to withdraw money is waiting; after 6 hours the reminder is critical (SMS and e-mail too).
+   */
+  @Cron(CronExpression.EVERY_HOUR)
+  async remindOverdue(now: number = Date.now()): Promise<number> {
+    if (this.jobLock && !(await this.jobLock.acquire('manual-withdrawal-reminder', 300))) return 0;
+    try {
+      const { data, error } = await this.db
+        .from('withdrawals').select('id, created_at, psp_provider').eq('status', 'PENDING')
+        .lt('created_at', new Date(now - OVERDUE_MS).toISOString()).order('created_at', { ascending: true }).limit(200);
+      if (error) {
+        this.logger.error(`Could not look for overdue withdrawals: ${error.message}`);
+        return 0;
+      }
+      const overdue = (data || []).filter((w: any) => this.isManual(w));
+      if (overdue.length === 0) return 0;
+      const hours = Math.floor((now - new Date(overdue[0].created_at).getTime()) / 3_600_000);
+      const urgent = now - new Date(overdue[0].created_at).getTime() >= URGENT_MS;
+      void this.alerts?.alert({
+        severity: urgent ? 'critical' : 'warning',
+        audience: 'admins',
+        title: overdue.length === 1 ? 'Un retrait attend depuis plus de 2 h' : `${overdue.length} retraits attendent depuis plus de 2 h`,
+        body: `Le plus ancien attend depuis ${hours} h. Administration → Retraits à traiter.`,
+        dedupeKey: `withdrawal-overdue:${Math.floor(now / 3_600_000)}`,
+        data: { kind: 'manual_withdrawal_overdue', count: overdue.length },
+      });
+      return overdue.length;
+    } catch (err: any) {
+      this.logger.error(`Overdue withdrawal reminder failed: ${err?.message}`);
+      return 0;
+    }
   }
 
   private async load(id: string, adminId: string) {

@@ -65,6 +65,7 @@ export default function WithdrawalsPage() {
   const done = () => {
     setSendFor(null); setRejectFor(null); setReference(''); setReason(''); setError('');
     queryClient.invalidateQueries({ queryKey: ['admin-withdrawals'] });
+    queryClient.invalidateQueries({ queryKey: ['admin-withdrawals-count'] });
   };
   const sent = useMutation({
     mutationFn: async () => api.post(`/admin/withdrawals/${sendFor!.id}/sent`, { reference: reference.trim() || undefined }),

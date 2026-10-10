@@ -5,6 +5,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PspFactory } from '../payments/psp/psp.factory';
 import { PayoutNotSentError } from '../payments/psp/psp.adapter';
 import { JobLockService } from '../common/job-lock/job-lock.service';
+import { SecurityAlertsService } from '../security/security-alerts.service';
 
 const RECONCILE_BATCH_SIZE = 50;
 // A withdrawal is looked at again only once it has been open this long, so
@@ -44,6 +45,7 @@ export class WithdrawalPayoutService {
     private pspFactory: PspFactory,
     private notificationsService: NotificationsService,
     @Optional() private jobLock?: JobLockService,
+    @Optional() private alerts?: SecurityAlertsService,
   ) {}
 
   private get db() {
@@ -56,6 +58,16 @@ export class WithdrawalPayoutService {
 
     // No payout API (FlexPaie): the request stays PENDING, funds reserved, for an admin to send by hand.
     if (adapter.supportsPayout === false) {
+      // Somebody has to send this money: tell the administrators now (bell + push), never fail the request over it.
+      const label = `${(Number(withdrawal.amount_cents) / 100).toLocaleString('fr-FR')} ${withdrawal.currency}`;
+      void Promise.resolve().then(() => this.alerts?.alert({
+        severity: 'warning',
+        audience: 'admins',
+        title: 'Nouveau retrait à traiter',
+        body: `${label} à envoyer. Administration → Retraits à traiter.`,
+        dedupeKey: `withdrawal-new:${withdrawal.id}`,
+        data: { withdrawal_id: withdrawal.id, kind: 'manual_withdrawal' },
+      })).catch((err) => this.logger.error(`Could not alert the administrators: ${err?.message}`));
       return { withdrawal, manual: true };
     }
 

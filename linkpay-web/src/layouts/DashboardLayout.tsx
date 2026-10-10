@@ -40,6 +40,14 @@ export default function DashboardLayout() {
     queryFn: async () => (await api.get('/organizations/me')).data,
     enabled: user?.role === 'enterprise' || !!user?.organization_id,
   });
+  // Admins: how many withdrawals wait to be sent by hand (badge on "Retraits à traiter").
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const { data: openWithdrawals } = useQuery<{ open: number }>({
+    queryKey: ['admin-withdrawals-count'],
+    queryFn: async () => (await api.get('/admin/withdrawals/count')).data,
+    enabled: isAdmin,
+    refetchInterval: 60000,
+  });
   const navLocked = user?.role === 'enterprise' && !!org && org.status !== 'active';
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -104,7 +112,7 @@ export default function DashboardLayout() {
                   end={item.to === '/dashboard'}
                   className={({ isActive }) =>
                     cn(
-                      'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
+                      'relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
                       isActive
                         ? 'bg-primary text-primary-foreground shadow-sm'
                         : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
@@ -114,6 +122,11 @@ export default function DashboardLayout() {
                 >
                   <item.icon className="w-5 h-5 flex-shrink-0" />
                   {!sidebarCollapsed && <span>{item.label}</span>}
+                  {item.to === '/dashboard/admin/withdrawals' && !!openWithdrawals?.open && (
+                    <span className={cn('ml-auto rounded-full bg-destructive px-2 py-0.5 text-[11px] font-bold text-destructive-foreground', sidebarCollapsed && 'absolute right-1 top-1 ml-0 px-1.5')}>
+                      {openWithdrawals.open}
+                    </span>
+                  )}
                 </NavLink>
               ))}
             </nav>

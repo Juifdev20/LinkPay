@@ -108,6 +108,17 @@ export class WalletsService {
     return { data, total: count || 0, page, limit };
   }
 
+  /**
+   * Which ways of paying the app offers for a top-up. The bank card goes through the provider's own payment page
+   * (FlexPaie, type 2): it is offered only when the provider supports it AND it was switched on (CARD_PAYMENTS_ENABLED=true
+   * on Render, after a real test), so a half-tested channel is never open to everybody. The mock provider (demo) allows it.
+   */
+  paymentMethods(): { mobile_money: boolean; card: boolean } {
+    const provider = this.pspFactory.get().provider;
+    const switchedOn = String(this.configService.get<string>('CARD_PAYMENTS_ENABLED', '') ?? '').trim().toLowerCase() === 'true';
+    return { mobile_money: true, card: provider === 'mock' || (provider === 'flexpaie' && switchedOn) };
+  }
+
   async initiateTopup(
     userId: string,
     amountCents: number,
@@ -129,6 +140,9 @@ export class WalletsService {
     }
     // The number has to be the chosen network's own (the push goes to the line, not to the operator named on screen).
     if (paymentMethod === 'mobile_money') assertNumberMatchesOperator(mobileMoneyOperator, mobileMoneyPhone);
+    if (paymentMethod === 'card' && !this.paymentMethods().card) {
+      throw new BadRequestException("Le paiement par carte bancaire n'est pas encore disponible.");
+    }
 
     const wallet = await this.getWalletByUserId(userId);
 
@@ -172,7 +186,11 @@ export class WalletsService {
         // the account's registered profile phone — someone may be recharging
         // from a line that isn't the one they signed up with.
         customer: { email: profile?.email, phone: mobileMoneyPhone || profile?.phone, name: profile?.full_name },
-        redirect_url: `${frontendUrl}/dashboard/wallet/topup/result?ref=${reference}`,
+        // Mobile Money: our own result page (opened inside the app). Card: the customer comes back from the provider's
+        // page, possibly in the phone's browser where nobody is signed in — a neutral return page handles both.
+        redirect_url: paymentMethod === 'card'
+          ? `${frontendUrl}/payment/return?to=topup&ref=${reference}`
+          : `${frontendUrl}/dashboard/wallet/topup/result?ref=${reference}`,
         webhook_url: `${backendUrl}/api/v1/webhooks/${provider}`,
         metadata: {
           kind: 'wallet_topup',

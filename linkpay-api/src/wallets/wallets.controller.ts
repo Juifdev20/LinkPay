@@ -137,6 +137,12 @@ export class WalletsController {
     );
   }
 
+  @Get('payment-methods')
+  @ApiOperation({ summary: 'Ways of paying a top-up that are open (Mobile Money, bank card)' })
+  paymentMethods() {
+    return this.walletsService.paymentMethods();
+  }
+
   @Get('topups/:reference/status')
   @ApiOperation({ summary: "Check a wallet top-up's status by reference. Re-verifies with the PSP if still pending." })
   async getTopupStatus(
