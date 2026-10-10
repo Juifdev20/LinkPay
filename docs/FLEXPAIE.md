@@ -69,7 +69,7 @@ Règles de sécurité : le code de l'application d'authentification est demandé
 Dès que FlexPaie fournit son API d'envoi : il suffira de l'écrire dans `FlexPaieAdapter.payout()` / `getPayoutStatus()` et de retirer `supportsPayout = false` ; les retraits suivent alors le chemin automatique (ceux déjà en attente restent à traiter dans la page).
 
 
-## Carte bancaire (Visa / Mastercard)
+## Carte bancaire (Visa — Mastercard à confirmer avec FlexPaie)
 Ce n'est **pas** la carte ScanLinkPay (docs/carte/) : c'est le moyen de **recharger son portefeuille avec la carte d'une banque**, via la page de paiement sécurisée de FlexPaie (type 2).
 
 1. Dans « Recharger », la personne choisit **Carte bancaire** (aucun numéro de téléphone demandé) et confirme.
