@@ -12,7 +12,7 @@ import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicke
 import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Loader2, CheckCircle, AlertCircle, Lock, User, Phone, Smartphone, Wallet as WalletIcon, Sparkles, ArrowLeft } from 'lucide-react';
-import { checkoutUrl } from '@/lib/safe-url';
+import { followCheckout } from '@/lib/safe-url';
 
 export default function PaymentLinkPage() {
   const { token } = useParams<{ token: string }>();
@@ -69,7 +69,7 @@ export default function PaymentLinkPage() {
       if (data.status === 'SUCCESS') {
         navigate('/payment/result', { state: { status: 'success', reference: data.reference } });
       } else if (data.checkout_url) {
-        window.location.href = checkoutUrl(data.checkout_url);
+        followCheckout(data.checkout_url, navigate);
       } else {
         navigate('/payment/result', { state: { status: 'failed' } });
       }
