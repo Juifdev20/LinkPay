@@ -28,7 +28,7 @@ export function identityNote(user?: { phone?: string | null; email?: string | nu
 
 function Logo() {
   return (
-    <div className="h-[clamp(100px,18vh,176px)] flex items-center justify-center" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+    <div className="h-[clamp(84px,14vh,176px)] flex items-center justify-center" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       <img src={logoSrc} alt="ScanLinkPay" className="w-[84px] h-[84px] rounded-[22px] shadow-lg ring-2 ring-white/30 object-cover" />
     </div>
   );
@@ -107,7 +107,7 @@ export function PinKeypadScreen({ title, value, length, onChange, onEnter, error
   }, []);
 
   const complete = value.length === length;
-  const cell = 'h-[clamp(56px,9.5vh,76px)] flex items-center justify-center select-none touch-manipulation active:bg-slate-300/70 transition-colors disabled:opacity-60';
+  const cell = 'h-[clamp(48px,8.5vh,76px)] flex items-center justify-center select-none touch-manipulation active:bg-slate-300/70 transition-colors disabled:opacity-60';
 
   return (
     // pointerEvents: auto — an open Radix dialog sets pointer-events:none on <body>, this screen must stay usable on top of it.
@@ -115,25 +115,25 @@ export function PinKeypadScreen({ title, value, length, onChange, onEnter, error
       <div className="w-full max-w-md mx-auto flex flex-col flex-1">
         <Logo />
 
-        <div className="mx-4 rounded-xl bg-white px-5 py-7 text-center shadow-xl">
+        <div className="mx-4 rounded-xl bg-white px-5 py-6 text-center shadow-xl">
           <p className="text-[19px] text-slate-700">{title}</p>
           {hint && <p className="mt-2 text-[13px] leading-snug text-slate-500">{hint}</p>}
-          <div className="relative mt-7">
+          <div className="relative mt-5">
             <input
               type="password"
               readOnly
               inputMode="none"
               aria-label={title}
               value={value}
-              className={`w-full h-[76px] rounded-lg border bg-white text-center text-[34px] tracking-[0.35em] text-slate-800 outline-none ${error ? 'border-red-400' : 'border-slate-300'}`}
+              className={`w-full h-[68px] rounded-lg border bg-white text-center text-[34px] tracking-[0.35em] text-slate-800 outline-none ${error ? 'border-red-400' : 'border-slate-300'}`}
             />
             {busy && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 animate-spin text-slate-400" />}
           </div>
-          {error && <p className="mt-4 text-[14px] font-medium text-red-600" role="alert">{error}</p>}
-          {note && <p className="mt-6 text-[15px] text-slate-500">{note}</p>}
+          {error && <p className="mt-3 text-[14px] font-medium text-red-600" role="alert">{error}</p>}
+          {note && <p className="mt-4 text-[15px] text-slate-500">{note}</p>}
         </div>
 
-        <div className="flex-1" />
+        <div className="flex-1 min-h-5" />
 
         <div className="bg-[#e6ebf2] sm:rounded-t-2xl" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' }}>
           <div className="grid grid-cols-3">
