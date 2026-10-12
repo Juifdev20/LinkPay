@@ -184,7 +184,12 @@ export class FlexPaieAdapter implements PspAdapter {
     const answer = await this.call('POST', this.paymentUrl(card), base);
     if (String(answer?.code) !== '0' || !answer?.orderNumber) {
       this.logger.warn(`FlexPaie refused ${params.reference}: code=${answer?.code} message=${String(answer?.message).slice(0, 120)}`);
-      throw new Error(`FlexPaie refused the payment: ${String(answer?.message ?? 'no message').slice(0, 200)}`);
+      // FlexPaie's refusal message is already French and actionable ("Le
+      // montant est inférieur au montant minimal pour le CDF") — pass it to
+      // the payer as a 400. Every caller lets BadRequestException through;
+      // hiding it behind the generic "service unavailable" made a fixable
+      // problem (an amount below their ~100 CDF minimum) look like an outage.
+      throw new BadRequestException(String(answer?.message ?? 'Paiement refusé par le fournisseur').slice(0, 200));
     }
     const orderNumber = String(answer.orderNumber);
 

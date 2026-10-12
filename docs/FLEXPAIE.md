@@ -24,6 +24,7 @@ Comme le rappel peut se perdre et n'est pas renvoyé, une tâche de rattrapage i
 - **Pas de sandbox** : les tests se font directement en production, avec de petits montants réels. Les options sensibles restent fermées par défaut (`PSP_PROVIDER`, `CARD_PAYMENTS_ENABLED`).
 - **Frais** : envoi d'argent (payout) environ 2 %, encaissement (pay-in) environ 2,5 % (« souvent » : pas un tarif ferme ; 3 % observé par carte). Vérifier que nos frais de retrait (Administration → limites et frais) couvrent au moins 2 % plus une marge.
 - **Adresses IP** : FlexPaie utilise ses propres adresses, sans configuration de notre côté : pas de proxy à acheter. `PROXY_URL` reste facultative. Les tests réels ont été faits depuis un PC, **pas depuis Render** : à valider au premier appel réel depuis Render.
+- **Montant minimal** : **100 CDF** par opération — mesuré en production le 12 octobre 2026 (99 CDF refusé « Le montant est inférieur au montant minimal pour le CDF », 100 CDF accepté, canal carte ; Mobile Money supposé identique). En USD : inconnu, à mesurer. Le message de refus FlexPaie est renvoyé tel quel au payeur (400), il n'est plus masqué par « impossible d'initialiser le paiement ».
 - **Rappel (callback) et codes d'erreur** : jugés couverts par la documentation (qui ne donne que les champs du résultat et un `code` 0/1 avec un message). Sans impact : le rappel n'est jamais cru, le statut est toujours relu par `check`.
 
 ## Les trois remboursements

@@ -75,10 +75,11 @@ describe('Mobile Money payment (type 1)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('a refusal by FlexPaie (code 1) is an error, and nothing is recorded', async () => {
+  it('a refusal by FlexPaie (code 1) reaches the payer as a 400 with THEIR message, and nothing is recorded', async () => {
     const { adapter, fake } = setup();
     fetchMock.mockResolvedValue(reply({ code: '1', message: 'Solde marchand insuffisant' }));
-    await expect(adapter.createPaymentIntent({ ...BASE, customer: { phone: '0891234567' } })).rejects.toThrow(/refused the payment: Solde marchand insuffisant/);
+    await expect(adapter.createPaymentIntent({ ...BASE, customer: { phone: '0891234567' } })).rejects.toThrow(BadRequestException);
+    await expect(adapter.createPaymentIntent({ ...BASE, customer: { phone: '0891234567' } })).rejects.toThrow('Solde marchand insuffisant');
     expect(fake.queries.some((q) => has(q, 'insert'))).toBe(false);
   });
 

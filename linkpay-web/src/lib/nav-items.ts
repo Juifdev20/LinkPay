@@ -42,6 +42,10 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   { to: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: [...ALL_ROLES, ...STAFF_ROLES] },
   { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: QrCode, roles: ['merchant', 'cashier'] },
+  // The merchant's fixed payment QR + ScanLinkPay number — on mobile it is
+  // the bottom bar's central tab (so More.tsx's already-visible filter keeps
+  // it out of Plus); on desktop this sidebar entry is the only way to reach it.
+  { to: '/dashboard/wallet/receive', label: 'Encaisser', icon: QrCode, roles: ['merchant', 'cashier'] },
   { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, roles: ['merchant', 'cashier'] },
   { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'] },
   // Deliberately excludes 'enterprise' — wallet/tontine/savings features are
