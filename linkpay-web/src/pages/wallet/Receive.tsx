@@ -98,7 +98,7 @@ export default function ReceivePage() {
       <div className="p-6 max-w-md mx-auto text-center">
         <h2 className="text-xl font-bold text-foreground mb-1">Recevoir de l'argent</h2>
         <p className="text-sm text-muted-foreground mb-6">
-          Montrez ce QR ou communiquez votre numéro pour recevoir un virement
+          Montrez ce QR ou communiquez votre numéro pour recevoir un paiement
         </p>
 
         {isLoading ? (

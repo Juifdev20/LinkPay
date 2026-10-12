@@ -76,8 +76,10 @@ export function computeVisibleTabs(
   // The central tab is the account's main daily action, and its label says
   // whether the user SHOWS a QR or SCANS one:
   //  - enterprise: "Vente" → the POS till.
-  //  - plain merchant: "Encaisser" → creates the payment QR the customer scans.
-  //    (It used to be labelled just "QR", which reads as "scan".)
+  //  - plain merchant: "Encaisser" → shows the merchant's own QR + ScanLinkPay
+  //    number (wallet/Receive page) so a customer pays them on the spot.
+  //    Creating a per-amount payment request stays in Plus → Demandes de
+  //    paiement → Créer, so this tab is the quick "show my code" screen.
   //  - client: "Recevoir" → their own wallet QR.
   // Scanning to pay is deliberately NOT in the bar: the big balance card
   // already offers it ("Payer" → pay screen → "Scanner un QR"), for clients
@@ -85,7 +87,7 @@ export function computeVisibleTabs(
   const qrTab: Tab = isEnterprise
     ? venteTab
     : hasMerchantId
-    ? { to: '/dashboard/payment-requests/new', label: 'Encaisser', icon: QrCode, end: false, central: true }
+    ? { to: '/dashboard/wallet/receive', label: 'Encaisser', icon: QrCode, end: false, central: true }
     : { to: '/dashboard/wallet/receive', label: 'Recevoir', icon: QrCode, end: false, central: true };
   const transactionsTab = isEnterprise
     ? { ...tabs[1], to: '/dashboard/organization/transactions' }
