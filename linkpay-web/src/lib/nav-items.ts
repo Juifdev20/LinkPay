@@ -1,5 +1,7 @@
 import { LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, type LucideIcon } from 'lucide-react';
 
+import { FEATURES } from '@/lib/features';
+
 export const ALL_ROLES = ['merchant', 'cashier', 'enterprise', 'client', 'admin', 'super_admin'];
 
 // Enterprise-internal staff (created via OrganizationStaffController, see
@@ -46,8 +48,8 @@ export const navItems: NavItem[] = [
   // personal-account concepts; an organization has its own separate stock,
   // expenses, etc. modules instead (see OrganizationProfile.tsx).
   { to: '/dashboard/client/transactions', label: 'Mes paiements', icon: Receipt, roles: ALL_ROLES.filter((r) => r !== 'enterprise') },
-  { to: '/dashboard/tontines', label: 'Tontines', icon: RefreshCcw, roles: ALL_ROLES.filter((r) => r !== 'enterprise') },
-  { to: '/dashboard/savings', label: 'Épargne', icon: PiggyBank, roles: ALL_ROLES.filter((r) => r !== 'enterprise') },
+  ...(FEATURES.tontines ? [{ to: '/dashboard/tontines', label: 'Tontines', icon: RefreshCcw, roles: ALL_ROLES.filter((r) => r !== 'enterprise') }] : []),
+  ...(FEATURES.savings ? [{ to: '/dashboard/savings', label: 'Épargne', icon: PiggyBank, roles: ALL_ROLES.filter((r) => r !== 'enterprise') }] : []),
   // Deliberately excludes 'enterprise' — organizations have their own,
   // separate expense feature (see OrganizationProfile.tsx's expense tile),
   // unlike tontines/savings above which enterprise can currently also see.

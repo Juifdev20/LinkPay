@@ -7,6 +7,7 @@ import { StockPasswordGate } from '@/components/stock/StockPasswordGate';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { useAuthStore } from '@/lib/auth-store';
+import { FEATURES } from '@/lib/features';
 import { useEffect, Suspense } from 'react';
 import { lazyPage, prefetchPages, PageFallback } from '@/lib/lazy-page';
 import { startScreenProtection } from '@/lib/screen-protection';
@@ -244,7 +245,7 @@ export default function App() {
         <Route path="wallet/topup/result" element={<TopupResultPage />} />
         <Route path="wallet/send" element={<SendPage />} />
         <Route path="wallet/receive" element={<ReceivePage />} />
-        <Route path="savings" element={<SavingsPotPage />} />
+        {FEATURES.savings && <Route path="savings" element={<SavingsPotPage />} />}
         <Route
           path="expenses"
           element={
@@ -254,10 +255,14 @@ export default function App() {
           }
         />
         <Route path="expenses/pro/result" element={<ProActivationResultPage />} />
-        <Route path="tontines" element={<TontinesListPage />} />
-        <Route path="tontines/new" element={<CreateTontinePage />} />
-        <Route path="tontines/:id" element={<TontineDetailPage />} />
-        <Route path="tontines/:id/settings" element={<TontineSettingsPage />} />
+        {FEATURES.tontines && (
+          <>
+            <Route path="tontines" element={<TontinesListPage />} />
+            <Route path="tontines/new" element={<CreateTontinePage />} />
+            <Route path="tontines/:id" element={<TontineDetailPage />} />
+            <Route path="tontines/:id/settings" element={<TontineSettingsPage />} />
+          </>
+        )}
         <Route path="wallet/pay" element={<PayInvoicePage />} />
         <Route path="wallet/scan" element={<ScanQrPage />} />
         <Route path="wallet/withdraw" element={<WithdrawPage />} />
