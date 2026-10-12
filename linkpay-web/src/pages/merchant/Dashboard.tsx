@@ -9,6 +9,7 @@ import { BalanceCard } from '@/components/BalanceCard';
 import { WalletActions } from '@/components/WalletActions';
 import { TransactionItem } from '@/components/TransactionItem';
 import { StatTile } from '@/components/StatTile';
+import { ShortcutButton } from '@/components/ShortcutButton';
 import { Plus, TrendingUp, Receipt, Wallet, QrCode, RefreshCcw, PiggyBank, Wallet2 } from 'lucide-react';
 import { FEATURES } from '@/lib/features';
 import { useNavigate } from 'react-router-dom';
@@ -80,20 +81,16 @@ export default function MerchantDashboard() {
         actions={<WalletActions currency={walletCurrency} />}
       />
 
+      <div className="grid grid-cols-2 gap-3 [&>*:last-child:nth-child(odd)]:col-span-2">
+        {FEATURES.tontines && <ShortcutButton icon={RefreshCcw} label="Tontines" onClick={() => navigate('/dashboard/tontines')} />}
+        {FEATURES.savings && <ShortcutButton icon={PiggyBank} label="Épargne" onClick={() => navigate('/dashboard/savings')} />}
+        <ShortcutButton icon={Wallet2} label="Mes dépenses" onClick={() => navigate('/dashboard/expenses')} />
+      </div>
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {cards.map((c) => (
           <StatTile key={c.label} icon={c.icon} label={c.label} money={c.money} value={c.value} />
         ))}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 [&>*:last-child:nth-child(odd)]:col-span-2">
-        {FEATURES.tontines && (
-          <StatTile icon={RefreshCcw} label="Tontines" subtitle="Épargne en groupe" onClick={() => navigate('/dashboard/tontines')} />
-        )}
-        {FEATURES.savings && (
-          <StatTile icon={PiggyBank} label="Épargne" subtitle="Par arrondi" onClick={() => navigate('/dashboard/savings')} />
-        )}
-        <StatTile icon={Wallet2} label="Mes dépenses" subtitle="Suivi au jour le jour" onClick={() => navigate('/dashboard/expenses')} />
       </div>
 
       <Card>

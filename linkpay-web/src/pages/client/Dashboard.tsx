@@ -8,6 +8,7 @@ import { QuickAction } from '@/components/QuickAction';
 import { TransactionItem } from '@/components/TransactionItem';
 import { WalletActions } from '@/components/WalletActions';
 import { StatTile } from '@/components/StatTile';
+import { ShortcutButton } from '@/components/ShortcutButton';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { Receipt, TrendingUp, QrCode, ArrowUpRight, ArrowDownLeft, History, RefreshCcw, PiggyBank, Wallet2 } from 'lucide-react';
 import { FEATURES } from '@/lib/features';
@@ -60,15 +61,14 @@ export default function ClientDashboard() {
       />
 
       <div className="grid grid-cols-2 gap-3 [&>*:last-child:nth-child(odd)]:col-span-2">
+        {FEATURES.tontines && <ShortcutButton icon={RefreshCcw} label="Tontines" onClick={() => navigate('/dashboard/tontines')} />}
+        {FEATURES.savings && <ShortcutButton icon={PiggyBank} label="Épargne" onClick={() => navigate('/dashboard/savings')} />}
+        <ShortcutButton icon={Wallet2} label="Mes dépenses" onClick={() => navigate('/dashboard/expenses')} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
         <StatTile icon={TrendingUp} label="Total dépensé" money={stats?.spent || { CDF: 0, USD: 0 }} />
         <StatTile icon={Receipt} label="Paiements effectués" value={String(stats?.total_payments || 0)} />
-        {FEATURES.tontines && (
-          <StatTile icon={RefreshCcw} label="Tontines" subtitle="Épargne en groupe" onClick={() => navigate('/dashboard/tontines')} />
-        )}
-        {FEATURES.savings && (
-          <StatTile icon={PiggyBank} label="Épargne" subtitle="Par arrondi" onClick={() => navigate('/dashboard/savings')} />
-        )}
-        <StatTile icon={Wallet2} label="Mes dépenses" subtitle="Suivi au jour le jour" onClick={() => navigate('/dashboard/expenses')} />
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-2">
