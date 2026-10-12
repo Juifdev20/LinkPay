@@ -20,6 +20,13 @@ import { followCheckout } from '@/lib/safe-url';
 type Step = 'reference' | 'confirm' | 'method' | 'pin' | 'processing' | 'success';
 type Source = 'wallet' | 'mobile_money';
 
+// A business's fixed ScanLinkPay number (SLP-000123 — organization or
+// standalone merchant, same namespace) vs an invoice reference
+// (SLP-20260904-A1B2C3 — date + random suffix, never all-digits) vs a
+// wallet number (SLP-CLI-/SLP-MER-…, never bare digits). Only the first
+// shape redirects to the pay-by-number page instead of the invoice lookup.
+const BUSINESS_NUMBER_RE = /^SLP-\d{4,10}$/i;
+
 export default function PayInvoicePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -38,10 +45,15 @@ export default function PayInvoicePage() {
   const autoLookedUp = useRef(false);
 
   const lookup = async (ref: string) => {
+    const cleaned = ref.trim();
+    if (BUSINESS_NUMBER_RE.test(cleaned)) {
+      navigate(`/pay/${cleaned.toUpperCase()}`);
+      return;
+    }
     setError('');
     setLooking(true);
     try {
-      const { data } = await api.get(`/payment-requests/reference/${encodeURIComponent(ref.trim())}`);
+      const { data } = await api.get(`/payment-requests/reference/${encodeURIComponent(cleaned)}`);
       setInvoice(data);
       setStep('confirm');
     } catch (err: any) {
@@ -297,7 +309,7 @@ export default function PayInvoicePage() {
             <ScanLine className="w-7 h-7 text-primary" />
           </div>
           <h2 className="text-xl font-bold text-foreground mb-1 text-center">Payer une facture</h2>
-          <p className="text-sm text-muted-foreground mb-6 text-center">Scannez le QR du marchand ou entrez la référence</p>
+          <p className="text-sm text-muted-foreground mb-6 text-center">Scannez le QR du commerce ou entrez la référence de facture / le numéro ScanLinkPay</p>
           <Button
             type="button"
             variant="outline"
@@ -323,7 +335,7 @@ export default function PayInvoicePage() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="reference" className="font-semibold">Référence de la facture</Label>
+              <Label htmlFor="reference" className="font-semibold">Référence ou numéro ScanLinkPay</Label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input

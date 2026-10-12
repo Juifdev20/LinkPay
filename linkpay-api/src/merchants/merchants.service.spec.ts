@@ -26,7 +26,7 @@ function setup(opts: { targetRoles?: string[]; existingMembership?: boolean; rem
     if (q.target === 'merchant_users' && has(q, 'insert')) return { data: { id: 'mu-new' } };
     return { data: null };
   });
-  const service = new MerchantsService(fake.service, {} as any);
+  const service = new MerchantsService(fake.service, {} as any, {} as any);
   const userRoleWrites = () =>
     fake.queries.filter((q) => q.target === 'user_roles' && (has(q, 'insert') || (has(q, 'delete') && !has(q, 'select', 'id'))));
   return { service, fake, userRoleWrites };
@@ -50,7 +50,7 @@ describe('MerchantsService.addMerchantUser', () => {
 
   it('refuses inviting oneself', async () => {
     const fake = createFakeSupabase((q) => (q.target === 'profiles' ? { data: { id: OWNER } } : { data: null }));
-    const service = new MerchantsService(fake.service, {} as any);
+    const service = new MerchantsService(fake.service, {} as any, {} as any);
     await expect(service.addMerchantUser(MERCHANT, OWNER, { email: 'me@y.cd' })).rejects.toBeInstanceOf(BadRequestException);
   });
 

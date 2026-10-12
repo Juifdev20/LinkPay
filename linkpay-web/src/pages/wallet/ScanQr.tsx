@@ -28,6 +28,15 @@ function extractCardToken(scanned: string): string | null {
   return match ? match[1].toUpperCase() : null;
 }
 
+/** A business's fixed payment QR (organizations' and merchants'
+ * scanlinkpay_qr_url) encodes `{FRONTEND_URL}/pay/{SLP-…}` — the public
+ * pay-by-number page where the payer picks the amount. Same host-agnostic
+ * reasoning as extractPaymentToken above. */
+function extractPayNumber(scanned: string): string | null {
+  const match = scanned.match(/\/pay\/([0-9A-Za-z-]+)/);
+  return match ? match[1] : null;
+}
+
 function extractWalletNumber(scanned: string): string | null {
   const trimmed = scanned.trim();
   return /^S?LP-[A-Z0-9-]+$/.test(trimmed) ? trimmed : null;
@@ -63,6 +72,12 @@ export default function ScanQrPage() {
           scanner.stop();
           // The landing page sends a seller to the till and anybody else to "send money to this card's holder".
           navigate(`/c/${cardToken}`);
+          return;
+        }
+        const payNumber = extractPayNumber(result.data);
+        if (payNumber) {
+          scanner.stop();
+          navigate(`/pay/${payNumber}`);
           return;
         }
         const walletNumber = extractWalletNumber(result.data);

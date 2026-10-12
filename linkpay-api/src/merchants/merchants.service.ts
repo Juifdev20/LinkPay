@@ -1,13 +1,18 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import { AuthService } from '../auth/auth.service';
 import { sumByCurrency } from '../common/utils/currency';
+import * as QRCode from 'qrcode';
 
 @Injectable()
 export class MerchantsService {
+  private readonly logger = new Logger(MerchantsService.name);
+
   constructor(
     private supabaseService: SupabaseService,
     private authService: AuthService,
+    private configService: ConfigService,
   ) {}
 
   async createMerchant(
@@ -98,7 +103,7 @@ export class MerchantsService {
       throw new NotFoundException('Merchant not found');
     }
 
-    return data;
+    return this.ensureScanLinkPayQr(data);
   }
 
   async getMerchantByOwner(ownerId: string) {
@@ -112,7 +117,73 @@ export class MerchantsService {
       throw new NotFoundException('No merchant account found');
     }
 
-    return data;
+    return this.ensureScanLinkPayQr(data);
+  }
+
+  /** Public lookup for the "pay by ScanLinkPay number" flow — the merchant
+   * counterpart of OrganizationsService.getOrganizationByScanLinkPayNumber().
+   * Returns the same shape ({..., merchants: [self]}) so the payer's screen
+   * and the quick-pay endpoint treat a standalone store exactly like an
+   * organization with a single store. */
+  async getMerchantByScanLinkPayNumber(scanlinkpayNumber: string) {
+    const { data, error } = await this.supabaseService.getClient()
+      .from('merchants')
+      .select('id, name, legal_name, logo_url, scanlinkpay_number')
+      .eq('scanlinkpay_number', scanlinkpayNumber)
+      .maybeSingle();
+
+    if (error || !data) {
+      throw new NotFoundException('Numéro ScanLinkPay introuvable');
+    }
+
+    return {
+      ...data,
+      merchants: [{ id: data.id, name: data.name, logo_url: data.logo_url }],
+    };
+  }
+
+  /** Lazily generates and persists the merchant's fixed payment QR (encodes
+   * the public /pay/{scanlinkpay_number} page) the first time the merchant
+   * record is read — same recipe as the organization version in
+   * organizations.service.ts. Tolerates a missing column by leaving the row
+   * untouched, so nothing breaks while migration 061 is still pending. */
+  private async ensureScanLinkPayQr(merchant: any) {
+    if (!('scanlinkpay_number' in merchant)) return merchant;
+    if (merchant.scanlinkpay_qr_url || !merchant.scanlinkpay_number) return merchant;
+
+    try {
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:5173');
+      const payUrl = `${frontendUrl}/pay/${merchant.scanlinkpay_number}`;
+      const qrBuffer = await QRCode.toBuffer(payUrl, {
+        width: 400,
+        margin: 2,
+        color: { dark: '#0F172A', light: '#FFFFFF' },
+      });
+
+      const fileName = `merchant-${merchant.id}.png`;
+      const { error: uploadError } = await this.supabaseService.getClient()
+        .storage
+        .from('qr-codes')
+        .upload(fileName, qrBuffer, { contentType: 'image/png', upsert: true });
+
+      if (uploadError) {
+        this.logger.warn(`Failed to upload ScanLinkPay QR for merchant ${merchant.id}: ${uploadError.message}`);
+        return merchant;
+      }
+
+      const { data: urlData } = this.supabaseService.getClient().storage.from('qr-codes').getPublicUrl(fileName);
+      const { data: updated } = await this.supabaseService.getClient()
+        .from('merchants')
+        .update({ scanlinkpay_qr_url: urlData.publicUrl })
+        .eq('id', merchant.id)
+        .select()
+        .single();
+
+      return updated || { ...merchant, scanlinkpay_qr_url: urlData.publicUrl };
+    } catch (err: any) {
+      this.logger.warn(`ScanLinkPay QR generation failed for merchant ${merchant.id}: ${err.message}`);
+      return merchant;
+    }
   }
 
   async updateMerchant(id: string, updates: Record<string, any>) {

@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Body, Param, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { PaymentRequestsService } from './payment-requests.service';
 import { OrganizationsService } from '../organizations/organizations.service';
+import { MerchantsService } from '../merchants/merchants.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { IsNumber, IsString, IsOptional, IsObject, IsIn, Min, Max, MaxLength } from 'class-validator';
@@ -74,6 +75,7 @@ export class PaymentRequestsController {
   constructor(
     private paymentRequestsService: PaymentRequestsService,
     private organizationsService: OrganizationsService,
+    private merchantsService: MerchantsService,
   ) {}
 
   @Post()
@@ -96,19 +98,32 @@ export class PaymentRequestsController {
   @Post('quick-pay')
   @ApiOperation({ summary: "Create a payment request by ScanLinkPay number (public — payer chooses the amount, no merchant-side invoice needed)" })
   async quickPay(@Body() dto: QuickPayDto) {
-    const org = await this.organizationsService.getOrganizationByScanLinkPayNumber(dto.scanlinkpay_number);
-
-    let merchantId = dto.merchant_id;
-    if (merchantId) {
-      if (!org.merchants.some((m: any) => m.id === merchantId)) {
-        throw new BadRequestException("Cette boutique n'appartient pas à cette entreprise");
+    // One shared number namespace: the business behind an SLP-… number is
+    // either an organization (possibly multi-store) or a standalone merchant.
+    let merchantId: string | undefined;
+    try {
+      const org = await this.organizationsService.getOrganizationByScanLinkPayNumber(dto.scanlinkpay_number);
+      merchantId = dto.merchant_id;
+      if (merchantId) {
+        if (!org.merchants.some((m: any) => m.id === merchantId)) {
+          throw new BadRequestException("Cette boutique n'appartient pas à cette entreprise");
+        }
+      } else if (org.merchants.length === 1) {
+        merchantId = org.merchants[0].id;
+      } else if (org.merchants.length === 0) {
+        throw new BadRequestException("Cette entreprise n'a pas encore de boutique pouvant recevoir un paiement");
+      } else {
+        throw new BadRequestException('merchant_id requis — cette entreprise a plusieurs boutiques');
       }
-    } else if (org.merchants.length === 1) {
-      merchantId = org.merchants[0].id;
-    } else if (org.merchants.length === 0) {
-      throw new BadRequestException("Cette entreprise n'a pas encore de boutique pouvant recevoir un paiement");
-    } else {
-      throw new BadRequestException('merchant_id requis — cette entreprise a plusieurs boutiques');
+    } catch (err) {
+      if (!(err instanceof NotFoundException)) throw err;
+      // Not an organization number — try a standalone merchant's number
+      // (migration 061). The merchant is its own only store.
+      const merchant = await this.merchantsService.getMerchantByScanLinkPayNumber(dto.scanlinkpay_number);
+      if (dto.merchant_id && dto.merchant_id !== merchant.id) {
+        throw new BadRequestException("Cette boutique ne correspond pas à ce numéro ScanLinkPay");
+      }
+      merchantId = merchant.id;
     }
 
     return this.paymentRequestsService.createPaymentRequest(merchantId!, undefined, {
