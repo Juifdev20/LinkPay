@@ -54,7 +54,7 @@ async function bootstrap() {
     }) as typeof fetch;
     logger.log(`Payment provider requests (${[...CINETPAY_HOSTS, ...flexPaieHosts()].join(', ')}) routed via proxy: ${process.env.PROXY_URL.replace(/\/\/.*@/, '//***@')}`);
   } else {
-    logger.warn('PROXY_URL not set — outbound requests use the raw platform IP (CinetPay / FlexPaie IP whitelisting will fail on Render\'s shared IPs)');
+    logger.log('PROXY_URL not set — outbound requests use the platform IP (CinetPay may require a fixed IP; FlexPaie does not, per FlexPaie)');
   }
 
   const app = await NestFactory.create(AppModule, {

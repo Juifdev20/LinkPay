@@ -17,17 +17,28 @@ Le document ne prévoit **aucune signature** sur le rappel. Il n'est donc qu'un 
 Comme le rappel peut se perdre et n'est pas renvoyé, une tâche de rattrapage interroge FlexPaie **chaque minute** pour tout paiement, recharge ou abonnement Pro resté « en attente » depuis plus de 45 secondes (jusqu'à 3 jours) et le règle comme le ferait le rappel (une seule fois, même si les deux se croisent).
 
 ## Pas branché : le document ne le décrit pas
-- **Retraits vers un numéro de téléphone** et **paiement des commerçants** : le journal des versions (v1.4, 2021) annonce un « module de paiement vers un numéro de téléphone pour les marchands », mais le document ne le décrit pas. Tant que nous n'avons pas cette partie, **tout retrait est refusé proprement** et l'argent reste dans le portefeuille.
-- **Remboursement automatique** : aucun appel documenté. Les remboursements se font avec FlexPaie.
+- **Retraits vers un numéro de téléphone** et **paiement des commerçants** : le journal des versions (v1.4, 2021) annonce un « module de paiement vers un numéro de téléphone pour les marchands », mais le document ne le décrit pas. FlexPaie a confirmé oralement que l'envoi d'argent existe (frais d'environ 2 %) : **la documentation reste à obtenir**. D'ici là, **les retraits sont traités à la main** (voir plus bas).
+- **Remboursement automatique** : aucun appel documenté (voir « Les trois remboursements »).
+
+## Réponses de FlexPaie (oral, à confirmer par écrit)
+- **Pas de sandbox** : les tests se font directement en production, avec de petits montants réels. Les options sensibles restent fermées par défaut (`PSP_PROVIDER`, `CARD_PAYMENTS_ENABLED`).
+- **Frais** : envoi d'argent (payout) environ 2 %, encaissement (pay-in) environ 2,5 % (« souvent » : pas un tarif ferme ; 3 % observé par carte). Vérifier que nos frais de retrait (Administration → limites et frais) couvrent au moins 2 % plus une marge.
+- **Adresses IP** : FlexPaie utilise ses propres adresses, sans configuration de notre côté : pas de proxy à acheter. `PROXY_URL` reste facultative. Les tests réels ont été faits depuis un PC, **pas depuis Render** : à valider au premier appel réel depuis Render.
+- **Rappel (callback) et codes d'erreur** : jugés couverts par la documentation (qui ne donne que les champs du résultat et un `code` 0/1 avec un message). Sans impact : le rappel n'est jamais cru, le statut est toujours relu par `check`.
+
+## Les trois remboursements
+Le mot recouvre trois situations différentes.
+- **A. Un paiement entré par FlexPaie doit être rendu au client** (recharge ou facture payée par Mobile Money ou carte ; par exemple payé mais non crédité parce que le montant confirmé ne correspondait pas, ou payé par erreur). C'est **FlexPaie qui rembourse**, sur demande de ScanLinkPay : un administrateur leur envoie la référence, le numéro et le montant, ils vérifient que c'est remboursable puis remboursent. Procédure manuelle, aucun appel d'API (le `check` montre les statuts 3 « va être remboursé » et 4 « remboursé »).
+- **B. Un retrait échoue ou est refusé** : rendu en interne. Le portefeuille est débité à la demande ; « Refuser » (ou un échec) rend montant **et** frais (`fail_withdrawal`). FlexPaie n'est pas concerné.
+- **C. Un marchand rembourse un client sur une vente** : `RefundsService` déplace l'argent du portefeuille du marchand vers celui du client, en base. FlexPaie n'est pas concerné.
 
 ## À demander à FlexPaie
-1. La documentation de l'API d'**envoi d'argent vers un numéro** (retraits, paiement des commerçants), avec le statut d'une opération et les erreurs.
-2. Une adresse **https** (le document donne `http://ip:port` : le token circulerait en clair).
-3. **Leur adresse IP source attendue** : si elle est filtrée, il faut une IP fixe (variable `PROXY_URL` de Render, déjà prise en charge pour l'adresse FlexPaie).
-4. Le **format exact du rappel** (méthode, corps JSON ou formulaire) et s'il est **renvoyé** en cas d'échec.
-5. **Qui paie les frais** : `amountCustomer` (ce que paie le client) est supérieur à `amount` (102 pour 100 dans leur exemple). Nous créditons `amount`.
+1. La documentation de l'API d'**envoi d'argent vers un numéro** (retraits, paiement des commerçants), avec le statut d'une opération, les opérateurs, les montants minimum et maximum, et les erreurs.
+2. **Doublons** : une `reference` déjà utilisée est-elle refusée ? Peut-on interroger une transaction par notre référence ? (`check` ne marche que par `orderNumber` : si la réponse de la demande de paiement se perd, nous ne pouvons pas la retrouver.)
+3. **Durée du message à valider** (Mobile Money) : au bout de combien de temps un paiement « en attente » (2) devient-il « échoué » (1) ?
+4. **Règlement** : quand et comment l'argent encaissé arrive chez nous (délai, compte, relevé).
+5. **Cartes acceptées** : le document ne cite que Visa, la page de test affiche aussi Mastercard, American Express et Diners Club ; cartes locales ou prépayées, et devises acceptées par carte.
 6. Les **montants avec centimes** (USD) : par prudence, seuls les montants entiers sont acceptés pour l'instant.
-7. Le **mode test** (sandbox), ses adresses et ses numéros de test.
 
 ## Variables (Render → linkpay-api → Environment) — liste complète dans `docs/RENDER_ENV.md`
 `PSP_PROVIDER=flexpaie` (à ne mettre **qu'une fois les trois suivantes renseignées et le mode test essayé** : tant que `PSP_PROVIDER` n'est pas `flexpaie`, le code FlexPaie est inactif et ne change rien), `FLEXPAIE_MERCHANT`, `FLEXPAIE_TOKEN` et les adresses (et `PROXY_URL` si FlexPaie filtre l'IP). Jamais dans une conversation ni dans le dépôt.
