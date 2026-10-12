@@ -7,7 +7,7 @@ import { BalanceCard } from '@/components/BalanceCard';
 import { QuickAction } from '@/components/QuickAction';
 import { TransactionItem } from '@/components/TransactionItem';
 import { WalletActions } from '@/components/WalletActions';
-import { DualCurrencyStat } from '@/components/DualCurrencyStat';
+import { StatTile } from '@/components/StatTile';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { Receipt, TrendingUp, QrCode, ArrowUpRight, ArrowDownLeft, History, RefreshCcw, PiggyBank, Wallet2 } from 'lucide-react';
 import { FEATURES } from '@/lib/features';
@@ -59,68 +59,16 @@ export default function ClientDashboard() {
         actions={<WalletActions currency={walletCurrency} />}
       />
 
-      {FEATURES.tontines && (
-        <button
-          onClick={() => navigate('/dashboard/tontines')}
-          className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
-        >
-          <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
-            <RefreshCcw className="w-5 h-5 text-primary" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-foreground">Tontines</p>
-            <p className="text-sm text-muted-foreground">Épargnez en groupe, à tour de rôle</p>
-          </div>
-        </button>
-      )}
-
-      {FEATURES.savings && (
-        <button
-          onClick={() => navigate('/dashboard/savings')}
-          className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
-        >
-          <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
-            <PiggyBank className="w-5 h-5 text-primary" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-foreground">Épargne par arrondi</p>
-            <p className="text-sm text-muted-foreground">Épargnez sans y penser, à chaque paiement</p>
-          </div>
-        </button>
-      )}
-
-      <button
-        onClick={() => navigate('/dashboard/expenses')}
-        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
-      >
-        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
-          <Wallet2 className="w-5 h-5 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-foreground">Mes dépenses</p>
-          <p className="text-sm text-muted-foreground">Suivez vos dépenses au jour le jour</p>
-        </div>
-      </button>
-
-      <div className="grid grid-cols-2 gap-4">
-        <Card>
-          <CardContent className="pt-5">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-3">
-              <TrendingUp className="w-5 h-5 text-primary" />
-            </div>
-            <DualCurrencyStat amounts={stats?.spent || { CDF: 0, USD: 0 }} />
-            <p className="text-sm text-muted-foreground">Total dépensé</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-3">
-              <Receipt className="w-5 h-5 text-primary" />
-            </div>
-            <p className="text-xl font-bold text-foreground">{String(stats?.total_payments || 0)}</p>
-            <p className="text-sm text-muted-foreground">Paiements effectués</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 gap-3 [&>*:last-child:nth-child(odd)]:col-span-2">
+        <StatTile icon={TrendingUp} label="Total dépensé" money={stats?.spent || { CDF: 0, USD: 0 }} />
+        <StatTile icon={Receipt} label="Paiements effectués" value={String(stats?.total_payments || 0)} />
+        {FEATURES.tontines && (
+          <StatTile icon={RefreshCcw} label="Tontines" subtitle="Épargne en groupe" onClick={() => navigate('/dashboard/tontines')} />
+        )}
+        {FEATURES.savings && (
+          <StatTile icon={PiggyBank} label="Épargne" subtitle="Par arrondi" onClick={() => navigate('/dashboard/savings')} />
+        )}
+        <StatTile icon={Wallet2} label="Mes dépenses" subtitle="Suivi au jour le jour" onClick={() => navigate('/dashboard/expenses')} />
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-2">
