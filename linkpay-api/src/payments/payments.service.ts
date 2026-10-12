@@ -17,6 +17,7 @@ import { MerchantWalletCreditService } from './merchant-wallet-credit.service';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
 import { completeTopupOnce } from '../wallets/topup-completion';
+import { completeFundedTransferOnce } from '../wallets/funded-transfer-completion';
 import { confirmedAmountMatches } from './psp/amount-check';
 import { assertMerchantCanReceive } from '../common/merchant-status';
 import { assertNumberMatchesOperator } from './mobile-money';
@@ -566,6 +567,12 @@ export class PaymentsService {
         return { status: 'processed', event_type: event.event_type };
       }
 
+      const handledAsTransfer = await this.tryHandleFundedTransferWebhook(event.psp_intent_id, event.status, event.amount_cents);
+      if (handledAsTransfer) {
+        await this.markWebhookProcessed(dedupHash);
+        return { status: 'processed', event_type: event.event_type };
+      }
+
       this.logger.warn(`No payment intent found for psp_intent_id: ${event.psp_intent_id}`);
       await this.markWebhookProcessed(dedupHash, 'no_intent_found');
       return { status: 'no_intent' };
@@ -868,6 +875,63 @@ export class PaymentsService {
     return true;
   }
 
+  /** Returns true if a PSP-funded transfers row was found for this psp_intent_id (handled either way). */
+  private async tryHandleFundedTransferWebhook(pspIntentId: string, status: string, confirmedAmountCents?: number): Promise<boolean> {
+    const { data: transfer } = await this.supabaseService.getClient()
+      .from('transfers')
+      .select('*')
+      .eq('psp_intent_id', pspIntentId)
+      .single();
+
+    if (!transfer) {
+      return false;
+    }
+
+    if (status === 'SUCCESS') {
+      // The sender was charged amount + fee: that total is what must match the provider's confirmation.
+      if (!this.amountAccepted('transfert', transfer.id, transfer.amount_cents + (transfer.fee_cents || 0), confirmedAmountCents)) return true;
+      let outcome;
+      try {
+        outcome = await completeFundedTransferOnce(this.supabaseService.getClient(), transfer.id, pspIntentId, this.logger);
+      } catch (err: any) {
+        // Left PENDING: the next confirmation (a webhook retry, the status check, the sweep) credits it.
+        this.logger.error(`Failed to credit recipient for funded transfer ${transfer.id}: ${err.message}`);
+        return true;
+      }
+      if (outcome.credited) {
+        const amount = ((outcome.amountCents ?? 0) / 100).toLocaleString('fr-FR');
+        if (outcome.senderUserId) {
+          await this.notificationsService.create({
+            user_id: outcome.senderUserId,
+            type: 'transfer_sent',
+            title: 'Transfert envoyé',
+            body: `Votre transfert de ${amount} ${outcome.currency} a été effectué.`,
+            data: { transfer_id: transfer.id },
+          }).catch(() => null);
+        }
+        if (outcome.recipientUserId) {
+          await this.notificationsService.create({
+            user_id: outcome.recipientUserId,
+            type: 'transfer_received',
+            title: 'Transfert reçu',
+            body: `Vous avez reçu ${amount} ${outcome.currency}.`,
+            data: { transfer_id: transfer.id, amount_cents: outcome.amountCents, currency: outcome.currency },
+          }).catch(() => null);
+        }
+        this.logger.log(`Funded transfer ${transfer.id} confirmed via webhook, wallet ${transfer.recipient_wallet_id} credited`);
+      }
+    } else if (status === 'FAILED') {
+      // Only a transfer still waiting can fail: a late "failed" must never undo one that already succeeded.
+      await this.supabaseService.getClient()
+        .from('transfers')
+        .update({ status: 'FAILED', failure_reason: 'PSP_FAILED', updated_at: new Date().toISOString() })
+        .eq('id', transfer.id)
+        .eq('status', 'PENDING');
+    }
+
+    return true;
+  }
+
   /**
    * Settles what the provider's callback never settled. A callback can be lost (a restart, a network cut), and some
    * providers do not sign it nor resend it: a customer who paid and closed the app would otherwise never be credited.
@@ -926,6 +990,15 @@ export class PaymentsService {
       const live = await ask(pro.psp_intent_id);
       if (!live) continue;
       if (await this.tryHandleExpenseProWebhook(pro.psp_intent_id, live.status).catch(() => false)) settled++;
+    }
+
+    const { data: transfers } = await db.from('transfers').select('psp_intent_id')
+      .eq('psp_provider', provider).eq('status', 'PENDING').lt('created_at', olderThan).gt('created_at', newerThan)
+      .order('created_at', { ascending: true }).limit(limit);
+    for (const transfer of transfers ?? []) {
+      const live = await ask(transfer.psp_intent_id);
+      if (!live) continue;
+      if (await this.tryHandleFundedTransferWebhook(transfer.psp_intent_id, live.status, live.amount_cents).catch(() => false)) settled++;
     }
 
     if (settled > 0) this.logger.log(`Reconciliation (${provider}): ${settled} of ${checked} waiting payment(s) settled`);

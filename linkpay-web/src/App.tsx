@@ -36,6 +36,7 @@ const ClientTransactionsPage = lazyPage(() => import('@/pages/client/Transaction
 const TopupPage = lazyPage(() => import('@/pages/wallet/Topup'));
 const TopupResultPage = lazyPage(() => import('@/pages/wallet/TopupResult'));
 const SendPage = lazyPage(() => import('@/pages/wallet/Send'));
+const SendResultPage = lazyPage(() => import('@/pages/wallet/SendResult'));
 const ReceivePage = lazyPage(() => import('@/pages/wallet/Receive'));
 const SavingsPotPage = lazyPage(() => import('@/pages/wallet/SavingsPot'));
 const ExpenseTrackerPage = lazyPage(() => import('@/pages/expense-tracker/ExpenseTracker'));
@@ -244,6 +245,7 @@ export default function App() {
         <Route path="wallet/topup" element={<TopupPage />} />
         <Route path="wallet/topup/result" element={<TopupResultPage />} />
         <Route path="wallet/send" element={<SendPage />} />
+        <Route path="wallet/send/result" element={<SendResultPage />} />
         <Route path="wallet/receive" element={<ReceivePage />} />
         {FEATURES.savings && <Route path="savings" element={<SavingsPotPage />} />}
         <Route

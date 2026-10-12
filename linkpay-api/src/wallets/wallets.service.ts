@@ -11,6 +11,7 @@ import { RiskService } from '../risk/risk.service';
 import { SavingsService } from '../savings/savings.service';
 import { WithdrawalPayoutService } from './withdrawal-payout.service';
 import { completeTopupOnce } from './topup-completion';
+import { completeFundedTransferOnce } from './funded-transfer-completion';
 import { confirmedAmountMatches } from '../payments/psp/amount-check';
 import { assertNumberMatchesOperator } from '../payments/mobile-money';
 
@@ -622,6 +623,253 @@ export class WalletsService {
       sender_balance: (result as any)?.sender_balance,
       roundup,
     };
+  }
+
+  // ==========================================================================
+  // PSP-funded transfer — "send money to a person" paid by Mobile Money (or
+  // card, when open) instead of the wallet balance: paying a friend or
+  // refunding a client without topping up first. The provider collects
+  // amount + fee from the sender's line; on confirmation (webhook, status
+  // check or the reconciliation sweep) only the recipient is credited via
+  // complete_funded_transfer — the sender's wallet is never debited, so no
+  // PIN is required: the Mobile Money prompt on the sender's own phone is
+  // the confirmation, and money only comes IN to the platform.
+  // ==========================================================================
+
+  async transferViaPsp(
+    userId: string,
+    dto: {
+      recipient_wallet_number: string;
+      amount_cents: number;
+      currency: string;
+      description?: string;
+      payment_method: string;
+      mobile_money_operator?: string;
+      mobile_money_phone?: string;
+    },
+    idempotencyKey: string,
+  ) {
+    if (!dto.amount_cents || dto.amount_cents < 100) {
+      throw new BadRequestException('Montant invalide — le minimum est de 1.');
+    }
+    if (dto.payment_method === 'mobile_money' && !dto.mobile_money_phone) {
+      throw new BadRequestException('Numéro Mobile Money requis pour cette méthode de paiement');
+    }
+    if (dto.payment_method === 'mobile_money') assertNumberMatchesOperator(dto.mobile_money_operator, dto.mobile_money_phone);
+    if (dto.payment_method === 'card' && !this.paymentMethods().card) {
+      throw new BadRequestException("Le paiement par carte bancaire n'est pas encore disponible.");
+    }
+
+    const senderWallet = await this.getWalletByUserId(userId);
+    if (senderWallet.status !== 'ACTIVE') {
+      throw new BadRequestException(`Votre wallet est ${senderWallet.status}, transfert impossible`);
+    }
+
+    const recipient = await this.lookupWallet(dto.recipient_wallet_number);
+    if (recipient.accepts_transfers === false) {
+      throw new BadRequestException(
+        "Ce compte est un compte marchand : il ne reçoit pas de transferts. Pour le payer, demandez-lui une facture (scannez son QR de paiement ou saisissez sa référence).",
+      );
+    }
+    const { data: recipientWallet, error: recipientError } = await this.supabaseService.getClient()
+      .from('wallets')
+      .select('id, user_id')
+      .eq('wallet_number', recipient.wallet_number)
+      .single();
+    if (recipientError || !recipientWallet) {
+      throw new NotFoundException('Destinataire introuvable');
+    }
+    if (recipientWallet.id === senderWallet.id) {
+      throw new BadRequestException('Vous ne pouvez pas vous transférer de l\'argent à vous-même');
+    }
+
+    const { data: existing } = await this.supabaseService.getClient()
+      .from('transfers')
+      .select('*')
+      .eq('idempotency_key', idempotencyKey)
+      .single();
+    if (existing) {
+      // Same replay semantics as transfer(): a key only replays the SAME operation by the SAME person.
+      if (
+        existing.sender_wallet_id !== senderWallet.id ||
+        existing.recipient_wallet_id !== recipientWallet.id ||
+        Number(existing.amount_cents) !== dto.amount_cents ||
+        existing.currency !== dto.currency
+      ) {
+        throw new ConflictException("Cette clé d'idempotence a déjà été utilisée pour une autre opération.");
+      }
+      return { transfer: existing, reference: existing.psp_intent_id, message: 'Transfer already exists (idempotent)' };
+    }
+
+    // The transfer rule's fee applies on top (0 today), same as a wallet-funded
+    // send — the sender is charged amount + fee, the recipient gets amount.
+    const rule = await this.walletLimitsService.getRule('TRANSFER', dto.currency);
+    const fee = this.walletLimitsService.quoteFee(dto.amount_cents, rule);
+    await this.walletLimitsService.assertWithinLimits(senderWallet.id, 'TRANSFER', fee.total_cents, rule);
+
+    const { data: profile } = await this.supabaseService.getClient()
+      .from('profiles')
+      .select('full_name, email, phone')
+      .eq('id', userId)
+      .single();
+
+    const adapter = this.pspFactory.get();
+    const provider = adapter.provider;
+    const reference = `TRF-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${uuidv4().slice(0, 6).toUpperCase()}`;
+
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:5173');
+    const backendUrl = this.configService.get<string>('BACKEND_URL')
+      || this.configService.get<string>('RENDER_EXTERNAL_URL')
+      || `http://localhost:${this.configService.get<number>('PORT', 3000)}`;
+
+    let pspResult;
+    try {
+      pspResult = await adapter.createPaymentIntent({
+        amount_cents: fee.total_cents,
+        currency: dto.currency,
+        reference,
+        customer: { email: profile?.email, phone: dto.mobile_money_phone || profile?.phone, name: profile?.full_name },
+        redirect_url: `${frontendUrl}/dashboard/wallet/send/result?ref=${reference}`,
+        webhook_url: `${backendUrl}/api/v1/webhooks/${provider}`,
+        metadata: {
+          kind: 'wallet_transfer',
+          payment_method: dto.payment_method,
+          mobile_money_operator: dto.mobile_money_operator,
+          mobile_money_phone: dto.mobile_money_phone,
+        },
+      });
+    } catch (err: any) {
+      // A provider refusal (e.g. an amount under its minimum) is told as it is — never hidden behind "unavailable".
+      if (err instanceof BadRequestException) throw err;
+      this.logger.error(`Transfer PSP init failed: ${err.message}`, err.stack);
+      if (err.message?.includes('not withlisted') || err.message?.includes('Authentication failed')) {
+        throw new ServiceUnavailableException('Le service de paiement est temporairement indisponible. Veuillez réessayer plus tard.');
+      }
+      if (err.message?.includes('phone') || err.message?.includes('PhoneNumber') || err.message?.includes('international format')) {
+        throw new BadRequestException('Numéro de téléphone invalide. Utilisez le format international (ex: +243XXXXXXXXX).');
+      }
+      throw new ServiceUnavailableException('Impossible d\'initialiser le paiement. Veuillez réessayer ou contacter le support.');
+    }
+
+    const { data: transferRow, error: insertError } = await this.supabaseService.getClient()
+      .from('transfers')
+      .insert({
+        sender_wallet_id: senderWallet.id,
+        recipient_wallet_id: recipientWallet.id,
+        amount_cents: dto.amount_cents,
+        fee_cents: fee.fee_cents,
+        currency: dto.currency,
+        status: 'PENDING',
+        description: dto.description,
+        idempotency_key: idempotencyKey,
+        psp_provider: provider,
+        psp_intent_id: pspResult.psp_intent_id,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      throw new Error(`Failed to create transfer: ${insertError.message}`);
+    }
+
+    // Mock PSP has no real checkout/webhook delivery — settle like a top-up does.
+    if (provider === 'mock') {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      await this.completeFundedTransfer(transferRow.id, pspResult.psp_intent_id);
+      const { data: settled } = await this.supabaseService.getClient().from('transfers').select('*').eq('id', transferRow.id).single();
+      return { transfer: settled, reference: transferRow.psp_intent_id };
+    }
+
+    return { transfer: transferRow, reference: transferRow.psp_intent_id, checkout_url: pspResult.checkout_url };
+  }
+
+  /**
+   * Credits the recipient of a PSP-funded transfer — called by the webhook
+   * dispatcher (via completeFundedTransferOnce), the status check and the
+   * mock-provider path. Idempotent: already SUCCESS is a no-op.
+   */
+  async completeFundedTransfer(transferId: string, pspIntentId?: string): Promise<void> {
+    let outcome;
+    try {
+      outcome = await completeFundedTransferOnce(this.supabaseService.getClient(), transferId, pspIntentId, this.logger);
+    } catch (err: any) {
+      if (/not found/i.test(err?.message)) throw new NotFoundException('Transfer not found');
+      throw err;
+    }
+    if (!outcome.credited) return;
+    await this.notifyFundedTransferSettled(transferId, outcome);
+  }
+
+  /** Counterpart of completeFundedTransfer for a provider-reported failure. */
+  async failFundedTransfer(transferId: string): Promise<void> {
+    await this.supabaseService.getClient()
+      .from('transfers')
+      .update({ status: 'FAILED', failure_reason: 'PSP_FAILED', updated_at: new Date().toISOString() })
+      .eq('id', transferId)
+      .eq('status', 'PENDING');
+  }
+
+  /**
+   * Polls a funded transfer's status by its PSP reference — authenticated and
+   * ownership-checked (only the sender may follow their own transfer). While
+   * PENDING, re-verifies with the provider and applies the same
+   * complete/fail transition the webhook uses.
+   */
+  async getTransferStatus(userId: string, reference: string) {
+    const wallet = await this.getWalletByUserId(userId);
+    const { data: transfer } = await this.supabaseService.getClient()
+      .from('transfers')
+      .select('*')
+      .eq('psp_intent_id', reference)
+      .eq('sender_wallet_id', wallet.id)
+      .maybeSingle();
+    if (!transfer) {
+      throw new NotFoundException('Transfert introuvable');
+    }
+
+    if (transfer.status === 'PENDING' && transfer.psp_provider) {
+      const adapter = this.pspFactory.get(transfer.psp_provider);
+      const live = await adapter.getTransactionStatus(transfer.psp_intent_id);
+      if (live.status === 'SUCCESS') {
+        if (!confirmedAmountMatches(transfer.amount_cents + (transfer.fee_cents || 0), live.amount_cents)) {
+          this.logger.error(`Funded transfer ${transfer.id}: the provider confirmed ${live.amount_cents} but ${transfer.amount_cents + (transfer.fee_cents || 0)} was expected — not credited`);
+        } else {
+          await this.completeFundedTransfer(transfer.id, transfer.psp_intent_id);
+        }
+      } else if (live.status === 'FAILED') {
+        await this.failFundedTransfer(transfer.id);
+      }
+    }
+
+    const { data: refreshed } = await this.supabaseService.getClient()
+      .from('transfers')
+      .select('*')
+      .eq('id', transfer.id)
+      .single();
+    return { transfer: refreshed };
+  }
+
+  /** "Transfert envoyé/reçu" notifications, whoever settled the transfer (webhook, poll or mock). */
+  private async notifyFundedTransferSettled(transferId: string, outcome: { senderUserId?: string; recipientUserId?: string; amountCents?: number; currency?: string }) {
+    const amount = ((outcome.amountCents ?? 0) / 100).toLocaleString('fr-FR');
+    if (outcome.senderUserId) {
+      await this.notificationsService.create({
+        user_id: outcome.senderUserId,
+        type: 'transfer_sent',
+        title: 'Transfert envoyé',
+        body: `Votre transfert de ${amount} ${outcome.currency} a été effectué.`,
+        data: { transfer_id: transferId },
+      }).catch(() => null);
+    }
+    if (outcome.recipientUserId) {
+      await this.notificationsService.create({
+        user_id: outcome.recipientUserId,
+        type: 'transfer_received',
+        title: 'Transfert reçu',
+        body: `Vous avez reçu ${amount} ${outcome.currency}.`,
+        data: { transfer_id: transferId, amount_cents: outcome.amountCents, currency: outcome.currency },
+      }).catch(() => null);
+    }
   }
 
   private classifyTransferFailure(message: string): string {

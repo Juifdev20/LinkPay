@@ -10,9 +10,17 @@ import { PinInput } from '@/components/PinInput';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { formatCurrency } from '@/lib/utils';
 import { FormSheet } from '@/components/FormSheet';
+import { PaymentMethodPicker, PaymentMethodId } from '@/components/payment/PaymentMethodPicker';
+import { MobileMoneyFields } from '@/components/payment/MobileMoneyFields';
+import { MobileMoneyWaiting } from '@/components/payment/MobileMoneyWaiting';
+import { PaymentStep } from '@/components/payment/PaymentStep';
+import { TopupStatusCard } from '@/components/TopupStatusCard';
+import { usePaymentStatusPoll } from '@/hooks/usePaymentStatusPoll';
+import { displayPhone, isNumberReady, operatorById, toApiPhone } from '@/lib/mobile-money';
+import { followCheckout } from '@/lib/safe-url';
 import { Loader2, Check, Search, ArrowLeft, Send as SendIcon, User, Store } from 'lucide-react';
 
-type Step = 'number' | 'amount' | 'confirm' | 'pin' | 'processing' | 'success';
+type Step = 'number' | 'amount' | 'method' | 'confirm' | 'pin' | 'processing' | 'waiting' | 'success' | 'failed' | 'pending';
 
 export default function SendPage() {
   const navigate = useNavigate();
@@ -33,13 +41,54 @@ export default function SendPage() {
   const [amountLoading, setAmountLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const autoLookedUp = useRef(false);
+  // How the send is funded: the wallet balance (PIN to confirm) or the
+  // provider (Mobile Money prompt / card page — no PIN, money comes in).
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId>('wallet');
+  const [operator, setOperator] = useState('airtel');
+  // The 9 national digits of the number ("828497218"), see lib/mobile-money.
+  const [phone, setPhone] = useState('');
+  const [transferRef, setTransferRef] = useState('');
+  // Stable across retries of the same sequence — same reason as Topup.tsx:
+  // a timed-out request may still have created the transfer server-side.
+  const [idempotencyKey, setIdempotencyKey] = useState('');
 
   const { data: wallet } = useQuery({
     queryKey: ['wallet'],
     queryFn: async () => (await api.get('/wallet')).data,
   });
 
+  // Which funding methods are open (the bank card is switched on by the platform once tested).
+  const { data: methods } = useQuery<{ mobile_money: boolean; card: boolean }>({
+    queryKey: ['wallet-payment-methods'],
+    queryFn: async () => (await api.get('/wallet/payment-methods')).data,
+  });
+  const cardOpen = !!methods?.card;
+
   const amountCents = Math.round((parseFloat(amount) || 0) * 100);
+
+  // While the Mobile Money confirmation is pending, poll the transfer's
+  // status — the same fallback the top-up flow uses for a missing webhook.
+  const { data: polled, timedOut: pollTimedOut } = usePaymentStatusPoll<{ transfer: { status: string } }>(
+    ['transfer-status', transferRef],
+    async () => (await api.get(`/wallet/transfers/${encodeURIComponent(transferRef)}/status`)).data,
+    (d) => d.transfer.status,
+    step === 'waiting' && !!transferRef,
+  );
+
+  useEffect(() => {
+    const s = polled?.transfer?.status;
+    if (step !== 'waiting' || !s) return;
+    if (s === 'SUCCESS') {
+      setResult({ transfer: polled.transfer });
+      queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['wallet-transactions'] });
+      setStep('success');
+    } else if (s === 'FAILED') {
+      setStep('failed');
+    } else if (pollTimedOut) {
+      setStep('pending');
+    }
+  }, [polled, pollTimedOut, step, queryClient]);
 
   const lookup = async (number: string) => {
     setError('');
@@ -89,12 +138,59 @@ export default function SendPage() {
     try {
       const { data } = await api.get(`/wallet/fees/TRANSFER?amount_cents=${amountCents}&currency=${currency}`);
       setFee(data);
-      setStep('confirm');
+      setStep('method');
     } catch {
       setFee({ fee_cents: 0, amount_cents: amountCents, total_cents: amountCents });
-      setStep('confirm');
+      setStep('method');
     } finally {
       setAmountLoading(false);
+    }
+  };
+
+  // PSP-funded send: the provider charges the sender's Mobile Money line (or
+  // card) amount + fee; the recipient is credited once the provider confirms.
+  const handleFundedSubmit = async () => {
+    setError('');
+    setStep('processing');
+    const key = idempotencyKey || crypto.randomUUID();
+    if (!idempotencyKey) setIdempotencyKey(key);
+    try {
+      const { data } = await api.post(
+        '/wallet/transfers',
+        {
+          recipient_wallet_number: recipient.wallet_number,
+          amount_cents: amountCents,
+          currency,
+          description,
+          payment_method: paymentMethod,
+          mobile_money_operator: paymentMethod === 'mobile_money' ? operator : undefined,
+          mobile_money_phone: paymentMethod === 'mobile_money' ? toApiPhone(phone) : undefined,
+        },
+        { headers: { 'Idempotency-Key': key }, timeout: 45000 },
+      );
+      setTransferRef(data.reference || '');
+      if (data.checkout_url) {
+        followCheckout(data.checkout_url, navigate);
+        return;
+      }
+      if (data.transfer?.status === 'SUCCESS') {
+        setResult(data);
+        queryClient.invalidateQueries({ queryKey: ['wallet'] });
+        setStep('success');
+        return;
+      }
+      // PENDING — wait for the sender to confirm on their own phone.
+      setStep('waiting');
+    } catch (err: any) {
+      if (err.code === 'ECONNABORTED') {
+        // The transfer may well exist server-side — the user is told it is
+        // still running rather than invited into a blind retry (the stable
+        // idempotency key makes a real retry safe anyway).
+        setStep('pending');
+        return;
+      }
+      setError(err.response?.data?.message || 'Le transfert a échoué');
+      setStep('confirm');
     }
   };
 
@@ -148,6 +244,12 @@ export default function SendPage() {
                 <span className="text-muted-foreground">Montant</span>
                 <span className="font-semibold text-foreground">{formatCurrency(amountCents, currency)}</span>
               </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Moyen</span>
+                <span className="text-foreground">
+                  {paymentMethod === 'wallet' ? 'Solde ScanLinkPay' : paymentMethod === 'mobile_money' ? 'Mobile Money' : 'Carte bancaire'}
+                </span>
+              </div>
               {fee?.fee_cents > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Frais</span>
@@ -171,6 +273,31 @@ export default function SendPage() {
         </Card>
       </div>
     );
+  }
+
+  if (step === 'failed' || step === 'pending') {
+    const extraRows = [
+      { label: 'Destinataire', value: recipient?.display_name ?? '—' },
+      ...(paymentMethod === 'mobile_money' ? [{ label: 'Moyen de paiement', value: `${operatorById(operator)!.label} — ${displayPhone(phone)}` }] : []),
+      ...(paymentMethod === 'card' ? [{ label: 'Moyen de paiement', value: 'Carte bancaire' }] : []),
+    ];
+    return (
+      <TopupStatusCard
+        kind="transfer"
+        status={step === 'failed' ? 'FAILED' : 'PENDING'}
+        amountCents={amountCents}
+        currency={currency}
+        extraRows={extraRows}
+        reference={transferRef}
+        onBack={() => navigate('/dashboard')}
+      />
+    );
+  }
+
+  if (step === 'waiting') {
+    // The Mobile Money push is on the sender's phone — the poll above turns
+    // the provider's confirmation into success/failed/pending.
+    return <MobileMoneyWaiting operator={operator} phone={phone} amountCents={fee?.total_cents ?? amountCents} currency={currency} />;
   }
 
   if (step === 'processing') {
@@ -215,7 +342,7 @@ export default function SendPage() {
       <div className="p-6 max-w-md mx-auto">
         <Card>
           <CardContent className="pt-6">
-            <button onClick={() => setStep('amount')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4">
+            <button onClick={() => setStep('method')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4">
               <ArrowLeft className="w-4 h-4" /> Modifier
             </button>
             {error && (
@@ -232,6 +359,12 @@ export default function SendPage() {
             </div>
             <div className="rounded-xl bg-secondary p-4 space-y-2 mb-6">
               <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Moyen de paiement</span>
+                <span className="font-semibold text-foreground">
+                  {paymentMethod === 'wallet' ? 'Solde ScanLinkPay' : paymentMethod === 'mobile_money' ? `${operatorById(operator)!.label} — ${displayPhone(phone)}` : 'Carte bancaire'}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Montant</span>
                 <span className="font-semibold text-foreground">{formatCurrency(amountCents, currency)}</span>
               </div>
@@ -240,16 +373,63 @@ export default function SendPage() {
                 <span className="text-foreground">{fee?.fee_cents ? formatCurrency(fee.fee_cents, currency) : 'Aucun'}</span>
               </div>
               <div className="flex justify-between text-sm font-bold pt-2 border-t border-border">
-                <span className="text-foreground">Total débité</span>
+                <span className="text-foreground">Total à payer</span>
                 <span className="text-foreground">{formatCurrency(fee?.total_cents ?? amountCents, currency)}</span>
               </div>
             </div>
-            <Button className="w-full" size="lg" onClick={() => setStep('pin')}>
+            <Button className="w-full" size="lg" onClick={() => (paymentMethod === 'wallet' ? setStep('pin') : handleFundedSubmit())}>
               Continuer
             </Button>
+            {paymentMethod !== 'wallet' && (
+              <p className="text-center text-xs text-muted-foreground mt-3">
+                {paymentMethod === 'mobile_money'
+                  ? 'Vous validerez ensuite la demande sur votre téléphone avec votre code Mobile Money.'
+                  : 'Vous saisirez les informations de votre carte sur la page sécurisée de notre partenaire de paiement.'}
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
+    );
+  }
+
+  if (step === 'method') {
+    const methodReady = paymentMethod !== 'mobile_money' || isNumberReady(operator, phone);
+    return (
+      <PaymentStep
+        title="Moyen de paiement"
+        subtitle={`${formatCurrency(amountCents, currency)} pour ${recipient?.display_name}`}
+        onBack={() => { setError(''); setStep('amount'); }}
+        error={error}
+        footer={
+          <Button
+            className="h-12 w-full rounded-xl text-base font-semibold"
+            size="lg"
+            disabled={!methodReady}
+            onClick={() => { setError(''); setStep('confirm'); }}
+          >
+            Continuer
+          </Button>
+        }
+      >
+        <PaymentMethodPicker
+          value={paymentMethod}
+          onChange={setPaymentMethod}
+          methods={['wallet', 'mobile_money', 'card']}
+          disabled={cardOpen ? [] : ['card']}
+          walletNote={wallet ? `Solde disponible : ${formatCurrency(wallet.balances?.[currency] || 0, currency)}` : undefined}
+        />
+        {paymentMethod === 'mobile_money' && (
+          <MobileMoneyFields
+            operator={operator}
+            onOperatorChange={setOperator}
+            phone={phone}
+            onPhoneChange={setPhone}
+            autoFocusPhone
+            hint="Une demande de paiement sera envoyée à ce numéro, que vous validerez avec votre code Mobile Money."
+          />
+        )}
+      </PaymentStep>
     );
   }
 
