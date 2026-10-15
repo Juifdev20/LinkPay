@@ -27,3 +27,9 @@ Tout le travail est dans `main` (dernière fusion : PR #25). Rien n'est en atten
 - Supervision des paiements en attente (page de rapprochement avec les relevés FlexPaie).
 - Brancher l'envoi d'argent dès que FlexPaie fournit son API : `FlexPaieAdapter.payout()` et retirer `supportsPayout = false`.
 - Règlements aux commerçants (non couverts par les retraits manuels).
+
+## Intégrations (HotelSaver) — ajouts compatibles (15/10/2026)
+- `POST /payment-requests/quick-pay` accepte en plus `commission_model` (`MERCHANT_PAID` par défaut, `CUSTOMER_PAID`, `SHARED`), `description` (≤ 200 caractères, nettoyée) et `expires_in_minutes` ; la réponse contient `fees` (commission ScanLinkPay, frais du fournisseur, total payé, net reçu). Sans ces champs, rien ne change.
+- `GET /payment-requests/fees-preview?scanlinkpay_number=…&amount_cents=…&currency=…&commission_model=…` (public, 30/min) : montre les frais AVANT de créer quoi que ce soit.
+- `POST /payments` et `GET /payments/status/:référence` renvoient aussi `fees_cents` et `total_cents` (ce que le payeur a réellement payé).
+- Les commissions suivent les règles du super admin ScanLinkPay (par devise : USD et CDF), comme pour tout autre paiement.

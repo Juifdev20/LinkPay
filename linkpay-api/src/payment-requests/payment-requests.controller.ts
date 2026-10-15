@@ -65,7 +65,57 @@ class QuickPayDto {
   @IsOptional()
   @IsIn(['CDF', 'USD'])
   currency?: string;
+
+  @ApiPropertyOptional({
+    enum: ['MERCHANT_PAID', 'CUSTOMER_PAID', 'SHARED'],
+    default: 'MERCHANT_PAID',
+    description: "Who bears the ScanLinkPay commission: the business (default), the payer (the payer pays amount + commission) or both halves.",
+  })
+  @IsOptional()
+  @IsIn(['MERCHANT_PAID', 'CUSTOMER_PAID', 'SHARED'])
+  commission_model?: string;
+
+  @ApiPropertyOptional({ description: "What the payment is for, shown to the business in its transactions (e.g. « Abonnement HotelSaver — Hôtel X »)." })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  description?: string;
+
+  @ApiPropertyOptional({ default: 30, description: 'Minutes before the payment request expires (1–1440).' })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(1440)
+  expires_in_minutes?: number;
 }
+
+class FeesPreviewQuery {
+  @ApiProperty({ example: 'SLP-000123' })
+  @IsString()
+  scanlinkpay_number!: string;
+
+  @ApiPropertyOptional({ description: 'Required when the business has several stores' })
+  @IsOptional()
+  @IsString()
+  merchant_id?: string;
+
+  @ApiProperty({ example: 50000, description: 'Amount in cents' })
+  @IsString()
+  amount_cents!: string;
+
+  @ApiPropertyOptional({ default: 'CDF', enum: ['CDF', 'USD'] })
+  @IsOptional()
+  @IsIn(['CDF', 'USD'])
+  currency?: string;
+
+  @ApiPropertyOptional({ enum: ['MERCHANT_PAID', 'CUSTOMER_PAID', 'SHARED'], default: 'MERCHANT_PAID' })
+  @IsOptional()
+  @IsIn(['MERCHANT_PAID', 'CUSTOMER_PAID', 'SHARED'])
+  commission_model?: string;
+}
+
+/** Control characters out of a free-text label (it ends up in lists and exports). */
+const cleanLabel = (value?: string) => (value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
 
 @ApiTags('Payment Requests')
 @ApiBearerAuth()
@@ -91,14 +141,11 @@ export class PaymentRequestsController {
 
   // Public and unauthenticated: a tighter per-IP limit than the global one,
   // so nobody can flood a business with junk payment requests.
-  @Public()
-  @Throttle({ default: { limit: 10, ttl: 60000 } })
-  @Post('quick-pay')
-  @ApiOperation({ summary: "Create a payment request by ScanLinkPay number (public — payer chooses the amount, no merchant-side invoice needed)" })
-  async quickPay(@Body() dto: QuickPayDto) {
-    const org = await this.organizationsService.getOrganizationByScanLinkPayNumber(dto.scanlinkpay_number);
+  /** The store that receives a payment made with a ScanLinkPay number: the one named, or the only one. */
+  private async resolveQuickPayMerchant(scanlinkpayNumber: string, merchantIdWanted?: string) {
+    const org = await this.organizationsService.getOrganizationByScanLinkPayNumber(scanlinkpayNumber);
 
-    let merchantId = dto.merchant_id;
+    let merchantId = merchantIdWanted;
     if (merchantId) {
       if (!org.merchants.some((m: any) => m.id === merchantId)) {
         throw new BadRequestException("Cette boutique n'appartient pas à cette entreprise");
@@ -110,12 +157,42 @@ export class PaymentRequestsController {
     } else {
       throw new BadRequestException('merchant_id requis — cette entreprise a plusieurs boutiques');
     }
+    return { org, merchantId: merchantId! };
+  }
 
-    return this.paymentRequestsService.createPaymentRequest(merchantId!, undefined, {
+  // Public and unauthenticated: a tighter per-IP limit than the global one,
+  // so nobody can flood a business with junk payment requests.
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Post('quick-pay')
+  @ApiOperation({ summary: "Create a payment request by ScanLinkPay number (public — payer chooses the amount, no merchant-side invoice needed). The answer carries the fees (`fees`) for the chosen commission model." })
+  async quickPay(@Body() dto: QuickPayDto) {
+    const { merchantId } = await this.resolveQuickPayMerchant(dto.scanlinkpay_number, dto.merchant_id);
+    const label = cleanLabel(dto.description);
+
+    return this.paymentRequestsService.createPaymentRequest(merchantId, undefined, {
       amount_cents: dto.amount_cents,
       currency: dto.currency,
-      description: `Paiement via numéro ScanLinkPay ${dto.scanlinkpay_number}`,
+      description: label || `Paiement via numéro ScanLinkPay ${dto.scanlinkpay_number}`,
+      commission_model: dto.commission_model,
+      expires_in_minutes: dto.expires_in_minutes,
     }, { withQrCode: false });
+  }
+
+  // Public: lets an integrator (a hotel booking site, a subscription page) show the payer what will be charged BEFORE anything is created.
+  @Public()
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @Get('fees-preview')
+  @ApiOperation({ summary: 'Preview the ScanLinkPay fees of a payment to a business (public) — nothing is created' })
+  async feesPreview(@Query() query: FeesPreviewQuery) {
+    const amount = Number(query.amount_cents);
+    if (!Number.isInteger(amount) || amount < 100 || amount > 99999999999) {
+      throw new BadRequestException('amount_cents doit être un entier entre 100 et 99999999999');
+    }
+    const { org, merchantId } = await this.resolveQuickPayMerchant(query.scanlinkpay_number, query.merchant_id);
+    return this.paymentRequestsService.previewFees(merchantId, amount, query.currency ?? 'CDF', query.commission_model ?? 'MERCHANT_PAID', {
+      business: org.legal_name || org.name,
+    });
   }
 
   @Public()
