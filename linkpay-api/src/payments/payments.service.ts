@@ -212,6 +212,8 @@ export class PaymentsService {
       psp_intent_id: pspResult.psp_intent_id,
       checkout_url: pspResult.checkout_url,
       status: pspResult.status,
+      fees_cents: fees.total_fees_cents,
+      total_cents: fees.total_cents,
     };
   }
 
@@ -470,6 +472,9 @@ export class PaymentsService {
       status,
       amount_cents: intent.amount_cents,
       currency: intent.currency,
+      // What the payer was actually charged (amount plus the commission when the payer bears it).
+      total_cents: intent.total_cents ?? intent.amount_cents,
+      fees_cents: intent.fees_cents ?? 0,
     };
   }
 
