@@ -27,7 +27,22 @@ export class CommissionsService {
     const rule = await this.getActiveRule(merchantId, currency);
 
     const pspFeeCents = this.estimatePspFee(amountCents);
-    const platformFeeCents = this.calculateCommission(amountCents, rule);
+    let platformFeeCents = this.calculateCommission(amountCents, rule);
+    // SHARED: the merchant's half is fixed on the fee BEFORE any rounding below.
+    const sharedMerchantShare = Math.floor(platformFeeCents / 2);
+
+    // Mobile Money / card providers (FlexPaie, CinetPay) only take whole currency
+    // units (see psp/amount-check.ts). When the payer covers the fee (CUSTOMER_PAID,
+    // or their half of SHARED) on a whole amount, the payer's total almost always
+    // ended up with cents — 59 USD + 1.47 = 60.47 — and the payment was refused.
+    // Round the payer's share UP to the next whole unit; the few extra cents go to
+    // the platform fee, so the merchant's net is exactly what it would have been.
+    if ((commissionModel === 'CUSTOMER_PAID' || commissionModel === 'SHARED') && amountCents % 100 === 0) {
+      const merchantShare = commissionModel === 'SHARED' ? sharedMerchantShare : 0;
+      const payerShare = platformFeeCents - merchantShare;
+      const roundedPayerShare = Math.ceil(payerShare / 100) * 100;
+      platformFeeCents = merchantShare + roundedPayerShare;
+    }
 
     let netCents: number;
     let totalCents: number;
@@ -42,9 +57,8 @@ export class CommissionsService {
         totalCents = amountCents + platformFeeCents;
         break;
       case 'SHARED':
-        const merchantShare = Math.floor(platformFeeCents / 2);
-        netCents = amountCents - pspFeeCents - merchantShare;
-        totalCents = amountCents + (platformFeeCents - merchantShare);
+        netCents = amountCents - pspFeeCents - sharedMerchantShare;
+        totalCents = amountCents + (platformFeeCents - sharedMerchantShare);
         break;
       default:
         netCents = amountCents - pspFeeCents - platformFeeCents;
