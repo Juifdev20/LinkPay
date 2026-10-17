@@ -42,6 +42,8 @@ const staffTabsFor = (role: string, orgSector?: string): Tab[] | undefined => {
   const caissierSale = orgSector === 'supermarche' ? venteTab : salesTab;
   const map: Record<string, Tab[]> = {
     vendeur: [homeTab, historyTab, salesTab, settingsTab],
+    // The station manager: their station's dashboard, its payments and the till (the rest is under Plus).
+    gerant: [homeTab, orgTransactionsTab, caissierSale, settingsTab],
     caissier: [homeTab, orgTransactionsTab, caissierSale, settingsTab],
     comptable: [homeTab, orgTransactionsTab, financeTab, settingsTab],
     // Accueil IS the stock page for the stock keeper, so the second tab is the inventory (no duplicate).

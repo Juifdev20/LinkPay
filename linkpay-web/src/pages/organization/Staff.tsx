@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { useAuthStore } from '@/lib/auth-store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,26 +11,60 @@ import { Select } from '@/components/ui/select';
 import { PageHeader } from '@/components/PageHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { downloadStaffCredentialPdf } from '@/lib/staff-credential-pdf';
-import { Loader2, Plus, X, Printer, KeyRound, Warehouse, ShoppingBag, Wallet, Calculator, UserX, UserCheck } from 'lucide-react';
+import { Loader2, Plus, X, Printer, KeyRound, Warehouse, ShoppingBag, Wallet, Calculator, UserX, UserCheck, BadgeCheck } from 'lucide-react';
 
 const ROLES = [
+  { slug: 'gerant', label: 'Gérant', icon: BadgeCheck },
   { slug: 'magasinier', label: 'Magasinier', icon: Warehouse },
   { slug: 'vendeur', label: 'Vendeur', icon: ShoppingBag },
   { slug: 'caissier', label: 'Caissier', icon: Wallet },
   { slug: 'comptable', label: 'Comptable', icon: Calculator },
 ];
 
+const EMPTY_FORM = { nom: '', postnom: '', prenom: '', telephone: '', email: '', role_slug: 'caissier', merchant_id: '' };
+
+/** A supermarket has no sales staff: the cashier sells and takes the money (the API refuses it too). */
+const rolesForSector = (sector?: string) => (sector === 'supermarche' ? ROLES.filter((r) => r.slug !== 'vendeur') : ROLES);
+
+/** "ABC · Station Gombe" on the credentials sheet, so the person knows where they work. */
+function stationLabel(orgName: string, station?: string | null) {
+  return station ? `${orgName} · ${station}` : orgName;
+}
+
+/**
+ * The business's staff. Every person works in one station. The owner staffs
+ * every station and names the managers; a station manager (gerant) sees and
+ * staffs their own station only, never another manager. The API enforces
+ * the same rules.
+ */
 export default function StaffPage() {
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const isOwner = user?.role === 'enterprise' || !!user?.acting_as_org_id;
+  const [searchParams] = useSearchParams();
   const [showAdd, setShowAdd] = useState(false);
   const [roleFilter, setRoleFilter] = useState<string | null>(null);
-  const [form, setForm] = useState({ nom: '', postnom: '', prenom: '', telephone: '', email: '', role_slug: 'vendeur' });
+  const [stationFilter, setStationFilter] = useState<string>(() => searchParams.get('station') || '');
+  const [form, setForm] = useState(EMPTY_FORM);
   const [reprintingId, setReprintingId] = useState<string | null>(null);
 
   const { data: org } = useQuery({
     queryKey: ['my-organization'],
     queryFn: async () => (await api.get('/organizations/me')).data,
   });
+
+  // The roles of this kind of business; a manager can't name managers.
+  const sectorRoles = rolesForSector(org?.sector);
+  const assignableRoles = isOwner ? sectorRoles : sectorRoles.filter((r) => r.slug !== 'gerant');
+
+  const { data: stations } = useQuery({
+    queryKey: ['org-merchants', org?.id],
+    queryFn: async () => (await api.get(`/organizations/${org.id}/merchants`)).data as { id: string; name: string }[],
+    enabled: !!org?.id && isOwner,
+  });
+  const stationName = (id?: string | null) => stations?.find((st) => st.id === id)?.name;
+  // The station a new person joins: the one chosen, the filtered one, or the only one there is.
+  const formStation = form.merchant_id || stationFilter || (stations?.length === 1 ? stations[0].id : '');
 
   const { data: staff } = useQuery({
     queryKey: ['org-staff', org?.id],
@@ -37,11 +73,16 @@ export default function StaffPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async () => (await api.post(`/organizations/${org.id}/staff`, form)).data,
+    mutationFn: async () => (await api.post(`/organizations/${org.id}/staff`, {
+      ...form,
+      // A manager's new staff always join the manager's station (the API sets it).
+      merchant_id: isOwner ? formStation : undefined,
+    })).data,
     onSuccess: async (created) => {
       setShowAdd(false);
-      setForm({ nom: '', postnom: '', prenom: '', telephone: '', email: '', role_slug: 'vendeur' });
+      setForm(EMPTY_FORM);
       queryClient.invalidateQueries({ queryKey: ['org-staff', org.id] });
+      queryClient.invalidateQueries({ queryKey: ['org-stores-breakdown', org.id] });
 
       // The user is created either way — the PDF/share is a courtesy on
       // top, not a condition for it. Share.share() rejects with "Share
@@ -58,7 +99,7 @@ export default function StaffPage() {
           email: form.email,
           temp_password: created.temp_password,
           role_name: role?.label,
-          orgName: org.name,
+          orgName: stationLabel(org.name, isOwner ? stationName(formStation) : user?.station_name),
         });
       } catch {
         // Cancelled/failed share — the credential is still safely archived
@@ -70,10 +111,11 @@ export default function StaffPage() {
   const [resetTarget, setResetTarget] = useState<any>(null);
   const [removeTarget, setRemoveTarget] = useState<any>(null);
   const [roleChange, setRoleChange] = useState<{ member: any; role_slug: string } | null>(null);
+  const [stationChange, setStationChange] = useState<{ member: any; merchant_id: string } | null>(null);
   const [actionError, setActionError] = useState('');
 
-  // These three change who may do what: the API asks the patron for their own
-  // access code first (dialog handled by the API client).
+  // These change who may do what (and where): the API asks for the access
+  // code first (dialog handled by the API client).
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['org-staff', org.id] });
   const fail = (err: any) => setActionError(err?.response?.data?.message || 'Action impossible, réessayez.');
 
@@ -83,6 +125,18 @@ export default function StaffPage() {
     onSuccess: () => { setActionError(''); refresh(); },
     onError: fail,
     onSettled: () => setRoleChange(null),
+  });
+
+  const changeStationMutation = useMutation({
+    mutationFn: async ({ member, merchant_id }: { member: any; merchant_id: string }) =>
+      api.put(`/organizations/${org.id}/staff/${member.id}/station`, { merchant_id }),
+    onSuccess: () => {
+      setActionError('');
+      refresh();
+      queryClient.invalidateQueries({ queryKey: ['org-stores-breakdown', org.id] });
+    },
+    onError: fail,
+    onSettled: () => setStationChange(null),
   });
 
   const removeMutation = useMutation({
@@ -108,7 +162,7 @@ export default function StaffPage() {
         email: data.email,
         temp_password: data.temp_password,
         role_name: role?.label,
-        orgName: org.name,
+        orgName: stationLabel(org.name, member.station_name),
       });
     } catch {
       // Cancelled share sheet — nothing else depends on it here.
@@ -139,19 +193,38 @@ export default function StaffPage() {
     }
   };
 
+  const inStation = stationFilter ? (staff || []).filter((s: any) => s.merchant_id === stationFilter) : (staff || []);
   const counts = ROLES.reduce((acc: Record<string, number>, r) => {
-    acc[r.slug] = (staff || []).filter((s: any) => s.role === r.slug).length;
+    acc[r.slug] = inStation.filter((s: any) => s.role === r.slug).length;
     return acc;
   }, {});
-
-  const visibleStaff = roleFilter ? (staff || []).filter((s: any) => s.role === roleFilter) : (staff || []);
+  const visibleStaff = roleFilter ? inStation.filter((s: any) => s.role === roleFilter) : inStation;
+  const unassigned = (staff || []).filter((s: any) => !s.merchant_id && s.active !== false).length;
+  // A manager acts on the staff of their station, never on another manager.
+  const canActOn = (member: any) => isOwner || member.role !== 'gerant';
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
-      <PageHeader title="Utilisateurs internes" />
+      <PageHeader title={isOwner ? 'Utilisateurs internes' : `Employés · ${user?.station_name || 'ma station'}`} />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {ROLES.map((r) => (
+      {isOwner && stations && stations.length > 1 && (
+        <Select aria-label="Station" value={stationFilter} onChange={(e) => setStationFilter(e.target.value)}>
+          <option value="">Toutes les stations</option>
+          {stations.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+        </Select>
+      )}
+
+      {isOwner && unassigned > 0 && (
+        <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          {unassigned === 1
+            ? "1 employé n'a pas encore de station : il ne peut rien faire tant que vous ne l'y affectez pas (champ « Station » ci-dessous)."
+            : `${unassigned} employés n'ont pas encore de station : ils ne peuvent rien faire tant que vous ne les y affectez pas (champ « Station » ci-dessous).`}
+        </p>
+      )}
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {/* Role cards: the roles one can give, plus any role someone already holds (a former vendeur, the station's manager). */}
+        {ROLES.filter((r) => assignableRoles.includes(r) || counts[r.slug]).map((r) => (
           <button
             key={r.slug}
             type="button"
@@ -211,11 +284,27 @@ export default function StaffPage() {
               <div className="space-y-2">
                 <Label htmlFor="staff_role">Rôle</Label>
                 <Select id="staff_role" value={form.role_slug} onChange={(e) => setForm({ ...form, role_slug: e.target.value })}>
-                  {ROLES.map((r) => (
+                  {assignableRoles.map((r) => (
                     <option key={r.slug} value={r.slug}>{r.label}</option>
                   ))}
                 </Select>
               </div>
+              {isOwner ? (
+                <div className="space-y-2">
+                  <Label htmlFor="staff_station">Station</Label>
+                  <Select id="staff_station" value={formStation} onChange={(e) => setForm({ ...form, merchant_id: e.target.value })}>
+                    <option value="" disabled>Choisir la station…</option>
+                    {(stations || []).map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+                  </Select>
+                  {stations && !stations.length && (
+                    <p className="text-xs text-muted-foreground">Créez d'abord une station (menu Stations).</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Station : <span className="font-medium text-foreground">{user?.station_name}</span>
+                </p>
+              )}
               {createMutation.isError && (
                 <p className="text-sm text-destructive font-medium rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3">
                   {(createMutation.error as any)?.response?.data?.message || "Échec de la création — réessayez."}
@@ -223,7 +312,7 @@ export default function StaffPage() {
               )}
               <Button
                 className="w-full"
-                disabled={!form.nom || !form.prenom || !form.email || createMutation.isPending}
+                disabled={!form.nom || !form.prenom || !form.email || (isOwner && !formStation) || createMutation.isPending}
                 onClick={() => createMutation.mutate()}
               >
                 {createMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
@@ -243,41 +332,59 @@ export default function StaffPage() {
                         {[s.prenom, s.postnom, s.nom].filter(Boolean).join(' ')}
                         {s.active === false && <span className="ml-2 text-xs font-medium rounded-full bg-destructive/10 text-destructive px-2 py-0.5">Accès retiré</span>}
                       </p>
-                      <p className="text-sm text-muted-foreground truncate">{s.role_name || s.role} · {s.email}</p>
+                      <p className="text-sm text-muted-foreground truncate">
+                        {[s.role_name || s.role, isOwner ? s.station_name || 'Sans station' : null, s.email].filter(Boolean).join(' · ')}
+                      </p>
                     </div>
-                    <div className="flex items-center flex-shrink-0">
-                      {s.active === false ? (
-                        <Button variant="outline" size="sm" title="Rétablir l'accès (nouveau mot de passe temporaire)" disabled={restoreMutation.isPending && restoreMutation.variables?.id === s.id} onClick={() => restoreMutation.mutate(s)}>
-                          {restoreMutation.isPending && restoreMutation.variables?.id === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><UserCheck className="w-4 h-4 mr-1" />Rétablir</>}
-                        </Button>
-                      ) : (
-                        <>
-                          {s.has_temp_password ? (
-                            <Button variant="ghost" size="icon" title="Ré-imprimer le mot de passe temporaire" disabled={reprintingId === s.id} onClick={() => reprint(s)}>
-                              {reprintingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4 text-muted-foreground" />}
-                            </Button>
-                          ) : (
-                            <Button variant="ghost" size="icon" title="Réinitialiser le mot de passe (génère un nouveau mot de passe temporaire)" disabled={reprintingId === s.id} onClick={() => setResetTarget(s)}>
-                              {reprintingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4 text-muted-foreground" />}
-                            </Button>
-                          )}
-                          <Button variant="ghost" size="icon" title="Retirer l'accès (l'employé part)" onClick={() => setRemoveTarget(s)}>
-                            <UserX className="w-4 h-4 text-destructive" />
+                    {canActOn(s) && (
+                      <div className="flex items-center flex-shrink-0">
+                        {s.active === false ? (
+                          <Button variant="outline" size="sm" title="Rétablir l'accès (nouveau mot de passe temporaire)" disabled={restoreMutation.isPending && restoreMutation.variables?.id === s.id} onClick={() => restoreMutation.mutate(s)}>
+                            {restoreMutation.isPending && restoreMutation.variables?.id === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><UserCheck className="w-4 h-4 mr-1" />Rétablir</>}
                           </Button>
-                        </>
-                      )}
-                    </div>
+                        ) : (
+                          <>
+                            {s.has_temp_password ? (
+                              <Button variant="ghost" size="icon" title="Ré-imprimer le mot de passe temporaire" disabled={reprintingId === s.id} onClick={() => reprint(s)}>
+                                {reprintingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4 text-muted-foreground" />}
+                              </Button>
+                            ) : (
+                              <Button variant="ghost" size="icon" title="Réinitialiser le mot de passe (génère un nouveau mot de passe temporaire)" disabled={reprintingId === s.id} onClick={() => setResetTarget(s)}>
+                                {reprintingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4 text-muted-foreground" />}
+                              </Button>
+                            )}
+                            <Button variant="ghost" size="icon" title="Retirer l'accès (l'employé part)" onClick={() => setRemoveTarget(s)}>
+                              <UserX className="w-4 h-4 text-destructive" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  {s.active !== false && (
-                    <div className="mt-2 flex items-center gap-2">
+                  {s.active !== false && canActOn(s) && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
                       <span className="text-xs text-muted-foreground">Rôle</span>
                       <Select
                         value={s.role || ''}
                         onChange={(e) => e.target.value !== s.role && setRoleChange({ member: s, role_slug: e.target.value })}
                         className="h-8 text-sm w-40"
                       >
-                        {ROLES.map((r) => <option key={r.slug} value={r.slug}>{r.label}</option>)}
+                        {/* Their current role stays shown even when it can't be given any more (a supermarket's former vendeur). */}
+                        {ROLES.filter((r) => assignableRoles.includes(r) || r.slug === s.role).map((r) => <option key={r.slug} value={r.slug} disabled={!assignableRoles.includes(r)}>{r.label}</option>)}
                       </Select>
+                      {isOwner && stations && (
+                        <>
+                          <span className="text-xs text-muted-foreground">Station</span>
+                          <Select
+                            value={s.merchant_id || ''}
+                            onChange={(e) => e.target.value && e.target.value !== s.merchant_id && setStationChange({ member: s, merchant_id: e.target.value })}
+                            className="h-8 text-sm w-44"
+                          >
+                            {!s.merchant_id && <option value="">Sans station</option>}
+                            {stations.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+                          </Select>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -306,6 +413,15 @@ export default function StaffPage() {
         description={`${[roleChange?.member?.prenom, roleChange?.member?.nom].filter(Boolean).join(' ')} deviendra ${ROLES.find((r) => r.slug === roleChange?.role_slug)?.label || ''}. Il sera déconnecté et verra les écrans de son nouveau rôle à sa prochaine connexion. Vous devrez confirmer avec votre code d'accès.`}
         confirmLabel="Changer le rôle"
         onConfirm={() => roleChange && changeRoleMutation.mutate(roleChange)}
+      />
+
+      <ConfirmDialog
+        open={!!stationChange}
+        onOpenChange={(open) => !open && setStationChange(null)}
+        title="Changer de station ?"
+        description={`${[stationChange?.member?.prenom, stationChange?.member?.nom].filter(Boolean).join(' ')} travaillera à la station « ${stationName(stationChange?.merchant_id) || ''} ». Il sera déconnecté et ne verra plus que cette station à sa prochaine connexion. Vous devrez confirmer avec votre code d'accès.`}
+        confirmLabel="Changer de station"
+        onConfirm={() => stationChange && changeStationMutation.mutate(stationChange)}
       />
 
       <ConfirmDialog

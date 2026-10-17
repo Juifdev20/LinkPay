@@ -38,7 +38,7 @@ export function setIdleLockMinutes(min: number) {
  * administrators: they have the authenticator-app login instead.
  * Employees are never interrupted mid-work: see SALES_ROUTE_PREFIXES below.
  */
-export const APP_CODE_ROLES = ['client', 'merchant', 'enterprise', 'cashier', 'vendeur', 'caissier', 'magasinier', 'comptable'];
+export const APP_CODE_ROLES = ['client', 'merchant', 'enterprise', 'cashier', 'gerant', 'vendeur', 'caissier', 'magasinier', 'comptable'];
 export const appCodeApplies = (role?: string) => !!role && APP_CODE_ROLES.includes(role);
 
 /**

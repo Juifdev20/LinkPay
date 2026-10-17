@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { writeFile, unlink } from 'fs/promises';
@@ -8,11 +8,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { StockService, POS_SALE_ROLES } from '../stock/stock.service';
 import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
 import { AuditService } from '../audit/audit.service';
-import { CashierPinService } from '../organization-staff/cashier-pin.service';
-
-// Job roles of organization-internal staff (seeded in 029) — used to decide
-// whether voiding a ticket line requires a second employee's PIN.
-const STAFF_JOB_ROLES = ['magasinier', 'vendeur', 'caissier', 'comptable'];
+import { OWN_TILL_ONLY_ROLES } from '../common/org-access';
 
 /**
  * Point of sale — a ticket is always a single currency, chosen when the
@@ -42,7 +38,6 @@ export class PosService {
     private stockService: StockService,
     private paymentRequestsService: PaymentRequestsService,
     private auditService: AuditService,
-    private cashierPinService: CashierPinService,
   ) {}
 
   private get db() {
@@ -298,9 +293,12 @@ export class PosService {
     callerId: string,
     callerRole: string,
     callerOrgId: string | undefined,
-    filters: { status?: string; session_id?: string; held?: boolean; page?: number; limit?: number },
+    filters: { status?: string; from?: string; to?: string; session_id?: string; held?: boolean; page?: number; limit?: number },
   ) {
     await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
+    const validDate = (value?: string) => (value && !Number.isNaN(Date.parse(value)) ? new Date(value).toISOString() : undefined);
+    const from = validDate(filters.from);
+    const to = validDate(filters.to);
 
     let query = this.db
       .from('pos_tickets')
@@ -308,9 +306,13 @@ export class PosService {
       .eq('merchant_id', merchantId)
       .order('created_at', { ascending: false });
 
+    if (OWN_TILL_ONLY_ROLES.includes(callerRole)) query = query.eq('cashier_user_id', callerId);
     if (filters.status) query = query.eq('status', filters.status);
     if (filters.session_id) query = query.eq('cash_register_session_id', filters.session_id);
     if (filters.held) query = query.eq('is_held', true);
+    // Paid within [from, to) — a cashier's day or week, for their dashboard.
+    if (from) query = query.gte('paid_at', from);
+    if (to) query = query.lt('paid_at', to);
 
     const page = filters.page || 1;
     const limit = Math.min(filters.limit || 30, 100);
@@ -522,11 +524,11 @@ export class PosService {
     return { ...saved.ticket, items: saved.items, payments, merchant };
   }
 
-  /** "Annulation de lignes avec autorisation" — the line is VOIDED (kept on
-   * the ticket, excluded from totals) rather than deleted, so the receipt
-   * and the audit trail both show what happened. Staff callers must have a
-   * second employee type their own till PIN to authorize; the org owner and
-   * platform admins void freely. */
+  /** Voiding a line — the line is VOIDED (kept on the ticket, excluded from
+   * totals) rather than deleted, so the receipt and the audit trail both
+   * show what happened. Anyone selling at the till voids freely, with no
+   * colleague's code; `supervisor_pin` is still accepted from older app
+   * versions and ignored. */
   async voidItem(
     merchantId: string,
     ticketId: string,
@@ -542,14 +544,10 @@ export class PosService {
       throw new NotFoundException('Ligne introuvable sur ce ticket');
     }
 
-    let authorizedBy: string | null = null;
-    if (STAFF_JOB_ROLES.includes(callerRole)) {
-      if (!callerOrgId) throw new ForbiddenException('Compte employé sans organisation associée.');
-      if (!data.supervisor_pin) {
-        throw new BadRequestException("Un code PIN d'un autre employé est requis pour autoriser l'annulation.");
-      }
-      authorizedBy = await this.cashierPinService.verifyOtherStaffPin(callerOrgId, data.supervisor_pin, callerId);
-    }
+    // No colleague's code any more: the cashier corrects their own open ticket
+    // (a wrong scan) freely, and every void stays traced — who, when, which
+    // line, why — on the line itself and in the audit journal below.
+    const authorizedBy: string | null = null;
 
     const { error } = await this.db
       .from('pos_ticket_items')

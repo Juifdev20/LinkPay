@@ -446,15 +446,20 @@ describe('which store is paid', () => {
   it('a merchant is paid into their own store (from the token)', async () => {
     expect(await setup().service.resolveSellerMerchant({ userId: 'u', role: 'merchant', merchantId: 'm9' })).toBe('m9');
   });
-  it("the owner of a business and its staff are paid into the business's oldest store, or the one chosen", async () => {
+  it("the owner of a business is paid into its oldest store, or the one chosen", async () => {
     const { service } = setup(stores(['m1', 'm2']));
     expect(await service.resolveSellerMerchant({ userId: 'boss', role: 'enterprise' })).toBe('m1');
-    expect(await service.resolveSellerMerchant({ userId: 's', role: 'caissier', organizationId: 'o1' })).toBe('m1');
+    expect(await service.resolveSellerMerchant({ userId: 'boss', role: 'enterprise' }, 'm2')).toBe('m2');
+  });
+  it('staff are paid into their own station, never another one', async () => {
+    const { service } = setup({ ...stores(['m1', 'm2']), organization_staff: () => ({ data: { merchant_id: 'm2', deactivated_at: null } }) });
+    expect(await service.resolveSellerMerchant({ userId: 's', role: 'caissier', organizationId: 'o1' })).toBe('m2');
     expect(await service.resolveSellerMerchant({ userId: 's', role: 'caissier', organizationId: 'o1' }, 'm2')).toBe('m2');
+    await expect(service.resolveSellerMerchant({ userId: 's', role: 'caissier', organizationId: 'o1' }, 'm1')).rejects.toBeInstanceOf(ForbiddenException);
   });
   it("never into a store of another business", async () => {
     const { service } = setup(stores(['m1', 'm2']));
-    await expect(service.resolveSellerMerchant({ userId: 's', role: 'caissier', organizationId: 'o1' }, 'm-other')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.resolveSellerMerchant({ userId: 'boss', role: 'enterprise' }, 'm-other')).rejects.toBeInstanceOf(ForbiddenException);
     await expect(setup().service.resolveSellerMerchant({ userId: 'u', role: 'merchant', merchantId: 'm9' }, 'm-other')).rejects.toBeInstanceOf(ForbiddenException);
   });
   it('a business without a store, or an account without any, is told so', async () => {

@@ -47,9 +47,10 @@ class CloseSessionDto {
 @ApiBearerAuth()
 @Controller('merchants/:id/cash-register')
 @RequireSubscription('merchant')
-// The stock keeper may sell at the till (so can read/open a session), but only the patron and
-// the caissier in charge of it move cash in/out or close it — see the per-method @Roles below.
-@Roles('enterprise', 'caissier', 'magasinier', 'admin', 'super_admin')
+// The stock keeper may read the till's state, but the cash itself is the money people's job:
+// only the owner, the station manager and the caissier open a till (declaring the float they
+// start with), move cash in/out or close it — see the per-method @Roles below.
+@Roles('enterprise', 'gerant', 'caissier', 'magasinier', 'admin', 'super_admin')
 @UseGuards(RolesGuard)
 export class CashRegisterController {
   constructor(private cashRegisterService: CashRegisterService) {}
@@ -95,7 +96,8 @@ export class CashRegisterController {
   }
 
   @Post('sessions')
-  @ApiOperation({ summary: 'Open a cash-register session with a starting float' })
+  @Roles('enterprise', 'gerant', 'caissier', 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Open a cash-register session with a starting float (owner, station manager, caissier)' })
   async openSession(
     @Param('id') merchantId: string,
     @Body() dto: OpenSessionDto,
@@ -106,7 +108,7 @@ export class CashRegisterController {
     return this.cashRegisterService.openSession(merchantId, callerId, callerRole, callerOrgId, dto);
   }
 
-  @Roles('enterprise', 'caissier', 'admin', 'super_admin')
+  @Roles('enterprise', 'gerant', 'caissier', 'admin', 'super_admin')
   @UseGuards(AppCodeConfirmGuard)
   @RequireAppCode()
   @Post('sessions/:sessionId/movements')
@@ -122,7 +124,7 @@ export class CashRegisterController {
     return this.cashRegisterService.addMovement(merchantId, sessionId, callerId, callerRole, callerOrgId, dto);
   }
 
-  @Roles('enterprise', 'caissier', 'admin', 'super_admin')
+  @Roles('enterprise', 'gerant', 'caissier', 'admin', 'super_admin')
   @UseGuards(AppCodeConfirmGuard)
   @RequireAppCode()
   @Post('sessions/:sessionId/close')

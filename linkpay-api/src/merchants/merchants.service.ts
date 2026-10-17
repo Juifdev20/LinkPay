@@ -128,7 +128,7 @@ export class MerchantsService {
   async getMerchantByScanLinkPayNumber(scanlinkpayNumber: string) {
     const { data, error } = await this.supabaseService.getClient()
       .from('merchants')
-      .select('id, name, legal_name, logo_url, scanlinkpay_number')
+      .select('id, name, legal_name, logo_url, scanlinkpay_number, organization:organizations(name)')
       .eq('scanlinkpay_number', scanlinkpayNumber)
       .maybeSingle();
 
@@ -136,9 +136,14 @@ export class MerchantsService {
       throw new NotFoundException('Numéro ScanLinkPay introuvable');
     }
 
+    // A station of a business: the payer sees "Business · Station", so they
+    // know whom they pay, and the payment is booked to that station only.
+    const { organization, ...merchant } = data as typeof data & { organization?: { name?: string } | null };
+    const orgName = organization?.name;
     return {
-      ...data,
-      merchants: [{ id: data.id, name: data.name, logo_url: data.logo_url }],
+      ...merchant,
+      name: orgName ? `${orgName} · ${merchant.name}` : merchant.name,
+      merchants: [{ id: merchant.id, name: merchant.name, logo_url: merchant.logo_url }],
     };
   }
 
@@ -402,6 +407,7 @@ export class MerchantsService {
       return {
         total_transactions: 0,
         today_transactions: 0,
+        today_volume: sumByCurrency(null, 'amount_cents'),
         volume: sumByCurrency(null, 'amount_cents'),
         net: sumByCurrency(null, 'net_cents'),
         pending: sumByCurrency(null, 'amount_cents'),
@@ -430,6 +436,13 @@ export class MerchantsService {
       .in('merchant_id', merchantIds)
       .eq('status', 'SUCCESS');
 
+    const { data: todayVolumeData } = await this.supabaseService.getClient()
+      .from('transactions')
+      .select('amount_cents, currency')
+      .in('merchant_id', merchantIds)
+      .eq('status', 'SUCCESS')
+      .gte('created_at', today.toISOString());
+
     const { data: pendingData, count: pendingCount } = await this.supabaseService.getClient()
       .from('transactions')
       .select('amount_cents, currency', { count: 'exact' })
@@ -445,6 +458,7 @@ export class MerchantsService {
     return {
       total_transactions: totalTransactions || 0,
       today_transactions: todayTransactions || 0,
+      today_volume: sumByCurrency(todayVolumeData, 'amount_cents'),
       // Independent per-currency figures — never summed together (a CDF
       // volume and a USD volume added as raw cents is a meaningless number).
       volume: sumByCurrency(volumeData, 'amount_cents'),

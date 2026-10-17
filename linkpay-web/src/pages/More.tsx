@@ -28,12 +28,15 @@ const SECTIONS: { title: string; match: (to: string) => boolean }[] = [
       to.startsWith('/dashboard/organization/sales') ||
       to === '/dashboard/organization/stock' ||
       to === '/dashboard/organization/inventory' ||
+      to === '/dashboard/organization/restock' ||
       to === '/dashboard/pos',
   },
   {
     title: 'Rapports',
     match: (to) =>
       to === '/dashboard/organization/stats' ||
+      to === '/dashboard/organization/reports' ||
+      to === '/dashboard/organization/my-sales' ||
       to === '/dashboard/organization/audit' ||
       to === '/dashboard/organization/transactions',
   },
@@ -47,12 +50,14 @@ const SECTIONS: { title: string; match: (to: string) => boolean }[] = [
       to.startsWith('/dashboard/team') ||
       to.startsWith('/dashboard/wallet') ||
       to.startsWith('/dashboard/card') ||
-      to.startsWith('/dashboard/client/'),
+      to.startsWith('/dashboard/client/') ||
+      to === '/dashboard/organization/receive',
   },
   {
     title: 'Organisation',
     match: (to) =>
       to === '/dashboard/organization/profile' ||
+      to === '/dashboard/organization/wallet' ||
       to === '/dashboard/organization/stores' ||
       to === '/dashboard/organization/staff',
   },
@@ -96,7 +101,7 @@ export default function MorePage() {
 
   const displayName = org?.name || user?.full_name || user?.email || '?';
   const displaySub = org
-    ? SECTORS.find((s) => s.value === org.sector)?.label || org.sector
+    ? user?.station_name || SECTORS.find((s) => s.value === org.sector)?.label || org.sector
     : role;
   const initial = displayName.charAt(0).toUpperCase();
 

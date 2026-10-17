@@ -124,7 +124,7 @@ class UpdatePosSettingsDto {
 @ApiBearerAuth()
 @Controller('merchants/:id/pos')
 @RequireSubscription('merchant')
-@Roles('enterprise', 'caissier', 'magasinier', 'admin', 'super_admin')
+@Roles('enterprise', 'gerant', 'caissier', 'magasinier', 'admin', 'super_admin')
 @UseGuards(RolesGuard)
 export class PosController {
   constructor(private posService: PosService) {}
@@ -165,10 +165,12 @@ export class PosController {
   }
 
   @Get('tickets')
-  @ApiOperation({ summary: 'List tickets — held tickets to resume, or paid ones for sales history' })
+  @ApiOperation({ summary: 'List tickets — held tickets to resume, or paid ones for sales history (optionally paid within [from, to))' })
   async listTickets(
     @Param('id') merchantId: string,
     @Query('status') status: string | undefined,
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
     @Query('session_id') sessionId: string | undefined,
     @Query('held') held: string | undefined,
     @Query('page') page: string | undefined,
@@ -179,6 +181,8 @@ export class PosController {
   ) {
     return this.posService.listTickets(merchantId, callerId, callerRole, callerOrgId, {
       status,
+      from,
+      to,
       session_id: sessionId,
       held: held === 'true' ? true : undefined,
       page: page ? parseInt(page, 10) : undefined,

@@ -6,6 +6,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { StockPasswordService } from './stock-password.service';
 import { AuditService } from '../audit/audit.service';
 import { sumByCurrency } from '../common/utils/currency';
+import { requireStaffStation } from '../common/org-access';
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -17,11 +18,14 @@ const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const STOCK_STAFF_ROLES = ['magasinier'];
 // Read-only stock access (lists, movement history, org summary) — vendeur and
 // caissier need it to know what they can sell, but never to change anything.
-const STOCK_READ_ROLES = ['magasinier', 'vendeur', 'caissier'];
+const STOCK_READ_ROLES = ['magasinier', 'vendeur', 'caissier', 'gerant'];
 // Roles that can SELL from the POS till (supermarket module) — selling writes
 // a 'sale' stock movement, so it needs more than read but less than the full
 // magasinier management access.
-export const POS_SALE_ROLES = ['magasinier', 'vendeur', 'caissier'];
+export const POS_SALE_ROLES = ['magasinier', 'vendeur', 'caissier', 'gerant'];
+// Who in a station is told when an article runs low (with the owner): the people who
+// sell it or keep the stock — not the accountant.
+const LOW_STOCK_ALERT_ROLES = ['gerant', 'magasinier', 'vendeur', 'caissier'];
 
 @Injectable()
 export class StockService {
@@ -78,8 +82,11 @@ export class StockService {
     const allowedRoles = Array.isArray(access)
       ? access
       : access ? STOCK_READ_ROLES : STOCK_STAFF_ROLES;
+    // Staff only ever reach the station they're assigned to.
     if (callerOrgId && merchant.organization_id === callerOrgId && allowedRoles.includes(callerRole || '')) {
-      return merchant;
+      const station = await requireStaffStation(this.supabaseService.getClient(), callerId, callerOrgId);
+      if (station === merchant.id) return merchant;
+      throw new ForbiddenException("Cette station n'est pas la vôtre");
     }
 
     throw new ForbiddenException('You do not manage this store\'s stock');
@@ -183,6 +190,8 @@ export class StockService {
     if (!merchant.organization_id) {
       throw new BadRequestException('Cette boutique ne fait partie d\'aucune entreprise');
     }
+    // Off (the default): the role check already done is enough.
+    if (!(await this.stockPasswordService.isRequired(merchant.organization_id))) return;
     if (!stockPassword) {
       throw new BadRequestException('Mot de passe de gestion de stock requis');
     }
@@ -208,6 +217,8 @@ export class StockService {
     if (!merchant.organization_id) {
       throw new BadRequestException("Cette boutique ne fait partie d'aucune entreprise");
     }
+    // Off (the default): the role check above is enough.
+    if (!(await this.stockPasswordService.isRequired(merchant.organization_id))) return;
     if (!password) {
       throw new ForbiddenException({ statusCode: 403, code: 'STOCK_PASSWORD_REQUIRED', message: 'Mot de passe de gestion de stock requis' });
     }
@@ -445,20 +456,52 @@ export class StockService {
       .eq('id', itemId)
       .single();
 
-    if (item && merchant.organization_id && item.quantity <= item.low_stock_threshold) {
-      const organization = await this.organizationsService.getOrganizationById(merchant.organization_id).catch(() => null);
-      if (organization) {
-        await this.notificationsService.create({
-          user_id: organization.owner_id,
-          type: 'stock_low',
-          title: 'Stock bas',
-          body: `${item.name} (${merchant.name}) — il ne reste que ${item.quantity} unité(s).`,
-          data: { merchant_id: merchantId, stock_item_id: itemId },
-        });
-      }
+    // Alert once when the item crosses its threshold, and again when it runs
+    // out — not on every sale below it, which would bury the alert.
+    const before = currentItem.quantity;
+    const crossedThreshold = item && before > item.low_stock_threshold && item.quantity <= item.low_stock_threshold;
+    const ranOut = item && before > 0 && item.quantity <= 0;
+    if (item && merchant.organization_id && (crossedThreshold || ranOut)) {
+      await this.notifyLowStock(merchant, itemId, item).catch(() => undefined);
     }
 
     return movement;
+  }
+
+  /**
+   * "Stock bas" goes to the owner AND to the station's people who sell or
+   * keep the stock (manager, stock keeper, sellers, cashiers): the owner may
+   * be busy elsewhere, the people on the floor see the shelf and remind them.
+   * Best effort — never blocks the sale or the movement.
+   */
+  private async notifyLowStock(merchant: any, itemId: string, item: { name: string; quantity: number }) {
+    const client = this.supabaseService.getClient();
+    const organization = await this.organizationsService.getOrganizationById(merchant.organization_id).catch(() => null);
+
+    const { data: staff } = await client
+      .from('organization_staff')
+      .select('user_id')
+      .eq('merchant_id', merchant.id)
+      .is('deactivated_at', null);
+    const staffIds = (staff || []).map((s) => s.user_id);
+    const { data: roles } = staffIds.length
+      ? await client.from('user_roles').select('user_id, role:roles(slug)').in('user_id', staffIds)
+      : { data: [] as any[] };
+    const onTheFloor = (roles || [])
+      .filter((r: any) => LOW_STOCK_ALERT_ROLES.includes(r.role?.slug))
+      .map((r: any) => r.user_id as string);
+
+    const recipients = [...new Set([organization?.owner_id, ...onTheFloor].filter(Boolean))] as string[];
+    const out = item.quantity <= 0;
+    await Promise.all(recipients.map((userId) => this.notificationsService.create({
+      user_id: userId,
+      type: 'stock_low',
+      title: out ? 'Rupture de stock' : 'Stock bas',
+      body: out
+        ? `${item.name} (${merchant.name}) — il n'en reste plus. À réapprovisionner.`
+        : `${item.name} (${merchant.name}) — il ne reste que ${item.quantity} unité(s). Pensez à réapprovisionner.`,
+      data: { merchant_id: merchant.id, stock_item_id: itemId },
+    }).catch(() => undefined)));
   }
 
   /** POS barcode scan lookup — read-level access, caissier included
@@ -522,7 +565,12 @@ export class StockService {
     const org = await this.organizationsService.getOrganizationById(orgId);
     this.assertOrgAccess(org, callerId, callerRole, callerOrgId, true);
 
-    const merchants = await this.organizationsService.getOrganizationMerchants(orgId);
+    let merchants = await this.organizationsService.getOrganizationMerchants(orgId);
+    // Staff: their own station only — the cross-station view is the owner's.
+    if (callerId !== org.owner_id && !this.isAdmin(callerRole)) {
+      const station = await requireStaffStation(this.supabaseService.getClient(), callerId, callerOrgId);
+      merchants = merchants.filter((m) => m.id === station);
+    }
     const merchantIds = merchants.map((m) => m.id);
     if (!merchantIds.length) return [];
 

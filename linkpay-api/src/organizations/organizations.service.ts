@@ -5,6 +5,7 @@ import { AuthService } from '../auth/auth.service';
 import { MerchantsService } from '../merchants/merchants.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { sumByCurrency } from '../common/utils/currency';
+import { requireStaffStation } from '../common/org-access';
 import * as QRCode from 'qrcode';
 
 /**
@@ -14,6 +15,23 @@ import * as QRCode from 'qrcode';
  * hash left in them would let any staff member recover the stock password.
  */
 const ORGANIZATION_PRIVATE_FIELDS = ['stock_password_hash', 'stock_password_attempts', 'stock_password_locked_until'] as const;
+
+/**
+ * What a staff member (cashier, manager...) sees of their organization: enough
+ * to run their screens and print receipts — never its payout account, legal
+ * representative, identifiers or tax regime, which are the owner's.
+ */
+const ORGANIZATION_STAFF_FIELDS = [
+  'id', 'name', 'legal_name', 'sector', 'currency', 'secondary_currencies', 'status', 'scanlinkpay_number',
+  'scanlinkpay_qr_url', 'receipt_footer_message', 'logo_url', 'contact', 'onboarding_completed_at', 'created_at',
+  'stock_password_required',
+] as const;
+
+export function toStaffOrganization<T extends Record<string, any>>(row: T): Partial<T> {
+  const out: Record<string, any> = {};
+  for (const field of ORGANIZATION_STAFF_FIELDS) if (field in row) out[field] = row[field];
+  return out as Partial<T>;
+}
 
 export function toPublicOrganization<T extends Record<string, any>>(row: T): T {
   const publicRow: Record<string, any> = { ...row };
@@ -200,12 +218,35 @@ export class OrganizationsService {
     return { merchant };
   }
 
-  async getOrganizationMerchants(orgId: string) {
+  /** Renames one of the organization's stations (owner only — checked by the controller). */
+  async renameOrganizationMerchant(orgId: string, merchantId: string, name: string) {
+    const trimmed = (name || '').trim();
+    if (!trimmed) throw new BadRequestException('Donnez un nom à la station');
     const { data, error } = await this.supabaseService.getClient()
       .from('merchants')
-      .select('*')
+      .update({ name: trimmed, updated_at: new Date().toISOString() })
+      .eq('id', merchantId)
       .eq('organization_id', orgId)
-      .order('created_at', { ascending: false });
+      .select('id, name')
+      .maybeSingle();
+    if (error) throw new Error(`Failed to rename station: ${error.message}`);
+    if (!data) throw new NotFoundException("Cette station n'appartient pas à votre entreprise");
+    return data;
+  }
+
+  /** The station a staff member works in (refused when they have none — see common/org-access). */
+  staffStation(userId: string, orgId: string): Promise<string> {
+    return requireStaffStation(this.supabaseService.getClient(), userId, orgId);
+  }
+
+  /** The organization's stores (its stations), or just one of them when `stationId` is given. */
+  async getOrganizationMerchants(orgId: string, stationId?: string) {
+    let query = this.supabaseService.getClient()
+      .from('merchants')
+      .select('*')
+      .eq('organization_id', orgId);
+    if (stationId) query = query.eq('id', stationId);
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
       throw new Error(`Failed to fetch organization merchants: ${error.message}`);
@@ -213,32 +254,52 @@ export class OrganizationsService {
     return data || [];
   }
 
-  async getOrganizationStats(orgId: string) {
-    const merchants = await this.getOrganizationMerchants(orgId);
+  async getOrganizationStats(orgId: string, stationId?: string) {
+    const merchants = await this.getOrganizationMerchants(orgId, stationId);
     return this.merchantsService.getStatsForMerchantIds(merchants.map((m) => m.id));
   }
 
-  /** Per-store stats for the "Meilleures boutiques" dashboard widget — same
-   * getMerchantStats() the individual merchant dashboard already uses, just
-   * called once per store instead of once aggregated across all of them. */
-  async getOrganizationStoresBreakdown(orgId: string) {
-    const merchants = await this.getOrganizationMerchants(orgId);
+  /** Per-station figures for the owner's "Meilleures stations" widget, the
+   * station chips and the Stations page: till sales today and over 7 days,
+   * head count, plus the ScanLinkPay stats getMerchantStats() gives. */
+  async getOrganizationStoresBreakdown(orgId: string, stationId?: string) {
+    const merchants = await this.getOrganizationMerchants(orgId, stationId);
+    const client = this.supabaseService.getClient();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const weekStart = new Date(today);
+    weekStart.setDate(weekStart.getDate() - 6); // today and the 6 days before, like the home chart
 
     const breakdown = await Promise.all(
-      merchants.map(async (m) => ({
-        merchant_id: m.id,
-        merchant_name: m.name,
-        ...(await this.merchantsService.getMerchantStats(m.id)),
-      })),
+      merchants.map(async (m) => {
+        const [stats, { data: tickets }, { count: staffCount }] = await Promise.all([
+          this.merchantsService.getMerchantStats(m.id),
+          // The till's paid tickets (cash and ScanLinkPay) of the last 7 days — a cash sale never
+          // becomes a wallet transaction, so `volume` alone would miss most of a station's takings.
+          client.from('pos_tickets').select('total_cents, currency, paid_at').eq('merchant_id', m.id).eq('status', 'paid').gte('paid_at', weekStart.toISOString()),
+          client.from('organization_staff').select('id', { count: 'exact', head: true }).eq('merchant_id', m.id).is('deactivated_at', null),
+        ]);
+        const todays = (tickets || []).filter((t) => t.paid_at && new Date(t.paid_at) >= today);
+        return {
+          merchant_id: m.id,
+          merchant_name: m.name,
+          city: m.city ?? null,
+          staff_count: staffCount || 0,
+          today_pos_sales: sumByCurrency(todays, 'total_cents'),
+          week_pos_sales: sumByCurrency(tickets, 'total_cents'),
+          ...stats,
+        };
+      }),
     );
 
-    return breakdown.sort((a, b) => (b.volume.CDF + b.volume.USD) - (a.volume.CDF + a.volume.USD));
+    // Best station first: by till sales of the week — CDF, then USD (never added together).
+    return breakdown.sort((a, b) => (b.week_pos_sales.CDF - a.week_pos_sales.CDF) || (b.week_pos_sales.USD - a.week_pos_sales.USD));
   }
 
   /** Latest transactions across every store this organization owns, for the
    * "Transactions récentes" dashboard widget. */
-  async getOrganizationRecentTransactions(orgId: string, limit = 10) {
-    const merchants = await this.getOrganizationMerchants(orgId);
+  async getOrganizationRecentTransactions(orgId: string, limit = 10, stationId?: string) {
+    const merchants = await this.getOrganizationMerchants(orgId, stationId);
     const merchantIds = merchants.map((m) => m.id);
     if (!merchantIds.length) return [];
 
@@ -263,8 +324,8 @@ export class OrganizationsService {
    * auto-created default store), but this still fans out across every
    * merchant_id the org owns rather than assuming exactly one, same
    * reasoning as the rest of this service. */
-  async getOrganizationTransactions(orgId: string, options: { from?: string; to?: string; page?: number; limit?: number }) {
-    const merchants = await this.getOrganizationMerchants(orgId);
+  async getOrganizationTransactions(orgId: string, options: { from?: string; to?: string; page?: number; limit?: number; stationId?: string }) {
+    const merchants = await this.getOrganizationMerchants(orgId, options.stationId);
     const merchantIds = merchants.map((m) => m.id);
     if (!merchantIds.length) return { items: [], total: 0 };
 
@@ -409,14 +470,16 @@ export class OrganizationsService {
       throw new Error(`Failed to validate organization: ${error.message}`);
     }
 
-    // The organization IS its first store — no separate "create a boutique"
-    // step for the owner. Guarded on zero existing merchants so this never
+    // The organization gets its first store (station) — no separate "create a
+    // boutique" step for the owner. Named "<org> — Principale" so it isn't
+    // mistaken for the business itself; the owner can rename it.
+    // Guarded on zero existing merchants so this never
     // duplicates a store on a re-validate call, and never touches orgs that
     // already created additional stores manually before this changed.
     const existingMerchants = await this.getOrganizationMerchants(id);
     if (existingMerchants.length === 0) {
       await this.createOrganizationMerchant(id, org.owner_id, '', {
-        name: org.name,
+        name: `${org.name} — Principale`,
         legal_name: org.legal_name,
         city: org.contact?.address?.city,
         address: [org.contact?.address?.avenue, org.contact?.address?.commune].filter(Boolean).join(', ') || undefined,

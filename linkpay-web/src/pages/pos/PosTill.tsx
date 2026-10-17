@@ -19,7 +19,6 @@ import { useNavigate } from 'react-router-dom';
 import { BarcodeScannerView } from '@/components/BarcodeScannerView';
 import { beepError, beepOk, listenForScannerBursts } from '@/lib/barcode';
 
-const STAFF_ROLES = ['magasinier', 'vendeur', 'caissier', 'comptable'];
 
 /**
  * The selling screen itself. Desktop (lg+) is a real till: product catalog
@@ -31,6 +30,10 @@ const STAFF_ROLES = ['magasinier', 'vendeur', 'caissier', 'comptable'];
 export function PosTill({
   merchantId,
   currency,
+  view = 'ALL',
+  onWantsCurrency,
+  pendingProduct,
+  onPendingDone,
   ticket,
   setTicket,
   ticketKey,
@@ -39,6 +42,13 @@ export function PosTill({
 }: {
   merchantId: string;
   currency: string;
+  /** Which products the catalog shows: every one (default) or one currency. */
+  view?: 'ALL' | 'CDF' | 'USD';
+  /** "Tous": a product of the other currency, tapped with no ticket open — switch the till to its currency. */
+  onWantsCurrency?: (item: any) => void;
+  /** The product that asked for that switch, to put on the new ticket once the till is in its currency. */
+  pendingProduct?: any;
+  onPendingDone?: () => void;
   ticket: any;
   setTicket: (t: any) => void;
   ticketKey: string;
@@ -47,7 +57,6 @@ export function PosTill({
 }) {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
-  const isStaff = STAFF_ROLES.includes(user?.role || '');
   // Same roles as the stock write endpoints (StockService STOCK_STAFF_ROLES).
   const canCreateProducts = ['enterprise', 'magasinier'].includes(user?.role || '');
   const navigate = useNavigate();
@@ -125,7 +134,9 @@ export function PosTill({
     queryFn: async () => (await api.get(`/merchants/${merchantId}/stock-items`)).data,
     enabled: !!merchantId,
   });
-  const catalogItems: any[] = (catalog || []).filter((i: any) => i.currency === ticketCurrency);
+  // "Tous" shows every product (each priced in its own currency); once a ticket is open,
+  // only its currency can go on it, so the others stay listed but are refused with a reason.
+  const catalogItems: any[] = (catalog || []).filter((i: any) => view === 'ALL' || i.currency === view);
 
   // ------------------------------------------------------------------
   // Cart quantities — ONE mechanism for a tap on a product, "+" and "−".
@@ -217,10 +228,26 @@ export function PosTill({
   };
 
   const addProduct = (item: any) => {
+    if (item.currency !== ticketCurrency) {
+      // No ticket yet: the till follows the product's currency.
+      if (!ticket && onWantsCurrency) { onWantsCurrency(item); return; }
+      beepError();
+      setError(`« ${item.name} » est vendu en ${item.currency}, ce ticket est en ${ticketCurrency} — encaissez-le ou mettez-le en attente d'abord.`);
+      return;
+    }
     changeQty(item, wantedQty(item.id) + 1);
     setQuery('');
     focusSearch();
   };
+
+  // The product tapped in "Tous" that switched the till to its currency: put
+  // it on the ticket as soon as the till is in that currency (and open).
+  useEffect(() => {
+    if (!pendingProduct || pendingProduct.currency !== currency || ticket) return;
+    onPendingDone?.();
+    addProduct(pendingProduct);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingProduct, currency]);
 
   /** Ticket line → the product shape changeQty works with. */
   const productOf = (line: any) => ({
@@ -266,9 +293,9 @@ export function PosTill({
       setUnknownCode(code);
       return;
     }
-    if (item.currency !== ticketCurrency) {
+    if (item.currency !== ticketCurrency && (ticket || !onWantsCurrency)) {
       beepError();
-      setError(`« ${item.name} » est vendu en ${item.currency}, ce ticket est en ${ticketCurrency}.`);
+      setError(`« ${item.name} » est vendu en ${item.currency}, ce ticket est en ${ticketCurrency} — encaissez-le ou mettez-le en attente d'abord.`);
       return;
     }
     if (item.quantity <= 0) {
@@ -331,12 +358,11 @@ export function PosTill({
   };
 
   // ------------------------------------------------------------------
-  // Line void — a staff member needs a colleague's till PIN to authorize;
-  // owners void directly. The line stays on the ticket marked "Annulée".
+  // Line void — free (no colleague's code), traced under the person's name.
+  // The line stays on the ticket marked "Annulée".
   // ------------------------------------------------------------------
   const [voidTarget, setVoidTarget] = useState<any>(null);
   const [voidReason, setVoidReason] = useState('');
-  const [voidPin, setVoidPin] = useState('');
   const [voiding, setVoiding] = useState(false);
 
   const confirmVoid = async () => {
@@ -345,12 +371,11 @@ export function PosTill({
     try {
       const { data } = await api.post(
         `/merchants/${merchantId}/pos/tickets/${ticket.id}/items/${voidTarget.id}/void`,
-        { reason: voidReason || undefined, supervisor_pin: isStaff ? voidPin : undefined },
+        { reason: voidReason || undefined },
       );
       setTicket(data);
       setVoidTarget(null);
       setVoidReason('');
-      setVoidPin('');
     } catch (err: any) {
       setError(posErrorMessage(err, "Impossible d'annuler la ligne"));
     } finally {
@@ -614,13 +639,13 @@ export function PosTill({
           {unknownCode && (
             <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 flex items-center gap-3">
               <p className="flex-1 min-w-0 text-sm text-destructive">
-                Code <span className="font-mono font-semibold">{unknownCode}</span> inconnu dans cette boutique.
+                Code <span className="font-mono font-semibold">{unknownCode}</span> inconnu dans cette station.
               </p>
               {canCreateProducts && (
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => navigate(`/dashboard/organization/stock?nouveau=${encodeURIComponent(unknownCode)}&boutique=${merchantId}`)}
+                  onClick={() => navigate(`/dashboard/organization/stock?nouveau=${encodeURIComponent(unknownCode)}&boutique=${merchantId}&devise=${ticketCurrency}`)}
                 >
                   Créer le produit
                 </Button>
@@ -646,9 +671,20 @@ export function PosTill({
               scrollClassName="lg:max-h-[calc(100vh-300px)]"
             />
           ) : (
-            <p className="text-sm text-muted-foreground text-center py-6">
-              Aucun produit en {ticketCurrency} dans cette boutique — ajoutez-en depuis la page Stock.
-            </p>
+            <div className="text-center py-6 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {view === 'ALL' ? 'Aucun produit dans cette station' : `Aucun produit en ${view} dans cette station`}
+                {canCreateProducts ? '.' : " — demandez au magasinier ou au gérant d'en ajouter."}
+              </p>
+              {canCreateProducts && (
+                <Button
+                  size="sm"
+                  onClick={() => navigate(`/dashboard/organization/stock?ajouter=1&boutique=${merchantId}&devise=${ticketCurrency}`)}
+                >
+                  Ajouter un produit
+                </Button>
+              )}
+            </div>
           )}
         </div>
 
@@ -841,22 +877,8 @@ export function PosTill({
               <Label htmlFor="void-reason">Motif (optionnel)</Label>
               <Input id="void-reason" placeholder="Erreur de scan, client a changé d'avis…" value={voidReason} onChange={(e) => setVoidReason(e.target.value)} />
             </div>
-            {isStaff && (
-              <div className="space-y-2">
-                <Label htmlFor="void-pin">Code PIN d'un autre employé (autorisation)</Label>
-                <Input
-                  id="void-pin"
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={6}
-                  placeholder="••••"
-                  value={voidPin}
-                  onChange={(e) => setVoidPin(e.target.value.replace(/\D/g, ''))}
-                />
-                <p className="text-xs text-muted-foreground">Un collègue ou superviseur saisit son propre code PIN de caisse.</p>
-              </div>
-            )}
-            <Button variant="destructive" className="w-full" disabled={voiding || (isStaff && voidPin.length < 4)} onClick={confirmVoid}>
+            <p className="text-xs text-muted-foreground">L'annulation est enregistrée à votre nom et visible par le gérant et le patron.</p>
+            <Button variant="destructive" className="w-full" disabled={voiding} onClick={confirmVoid}>
               {voiding && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
               Annuler la ligne
             </Button>

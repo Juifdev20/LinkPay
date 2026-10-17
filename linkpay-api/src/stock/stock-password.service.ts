@@ -28,6 +28,32 @@ export class StockPasswordService {
     return !!data?.stock_password_hash;
   }
 
+  /**
+   * Whether the owner switched the password on (migration 064, off by default).
+   * Before that migration is applied the column doesn't exist: keep asking, as before.
+   */
+  async isRequired(orgId: string): Promise<boolean> {
+    const { data, error } = await this.supabaseService.getClient()
+      .from('organizations')
+      .select('stock_password_required')
+      .eq('id', orgId)
+      .single();
+    if (error) return true;
+    return !!data?.stock_password_required;
+  }
+
+  /** Switches the password on or off. It can only be switched on once one has been chosen. */
+  async setRequired(orgId: string, required: boolean): Promise<void> {
+    if (required && !(await this.hasPasswordSet(orgId))) {
+      throw new BadRequestException("Définissez d'abord le mot de passe de gestion du stock.");
+    }
+    const { error } = await this.supabaseService.getClient()
+      .from('organizations')
+      .update({ stock_password_required: required })
+      .eq('id', orgId);
+    if (error) throw new Error(`Failed to update stock password setting: ${error.message}`);
+  }
+
   /** Sets or changes the password. If one already exists, currentPassword must verify first. */
   async setPassword(orgId: string, newPassword: string, currentPassword?: string): Promise<void> {
     if (!newPassword || newPassword.length < 4) {

@@ -47,6 +47,18 @@ export class UsersService {
       throw new NotFoundException('Profile not found');
     }
 
+    // Enterprise staff: the station they work in (organization_staff.merchant_id), for their screens.
+    let station: { id: string; name: string } | null = null;
+    if (organizationId) {
+      const { data: staffRow } = await this.supabaseService.getClient()
+        .from('organization_staff')
+        .select('merchant:merchants(id, name)')
+        .eq('user_id', userId)
+        .eq('organization_id', organizationId)
+        .maybeSingle();
+      station = ((staffRow as any)?.merchant as { id: string; name: string } | null) || null;
+    }
+
     return {
       ...toPublicProfile(data),
       // Whether the access code was chosen (the hash itself never leaves the server).
@@ -55,6 +67,8 @@ export class UsersService {
       merchant_id: merchantId || undefined,
       acting_as_org_id: actingAsOrgId || undefined,
       organization_id: organizationId || undefined,
+      station_id: station?.id,
+      station_name: station?.name,
     };
   }
 

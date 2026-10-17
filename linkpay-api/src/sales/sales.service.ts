@@ -3,11 +3,12 @@ import { randomBytes } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
 import { StockPasswordService } from '../stock/stock-password.service';
 import { AuditService } from '../audit/audit.service';
+import { requireStaffStation } from '../common/org-access';
 
 // Internal staff roles (organization-staff module) per sales action. The
 // owner is always allowed on top of these — see assertOrgAccess().
-const SELLER_ROLES = ['vendeur', 'caissier'] as const;
-const SALES_VIEW_ROLES = ['vendeur', 'caissier', 'comptable'] as const;
+const SELLER_ROLES = ['vendeur', 'caissier', 'gerant'] as const;
+const SALES_VIEW_ROLES = ['vendeur', 'caissier', 'comptable', 'gerant'] as const;
 // Hiding a sale from the history is a finance decision (and a fraud vector: ring up, take cash, hide): owner and accountant only.
 const SALES_ARCHIVE_ROLES = ['comptable'] as const;
 // What the shop paid for an item (and so its margin) is for the owner and the finance role only: a seller or a
@@ -45,8 +46,10 @@ export class SalesService {
     return this.supabaseService.getClient();
   }
 
-  /** Owner always has access. Internal staff only if their role is in
-   * `allowedRoles` AND they belong to this organization (JWT organization_id). */
+  /** Owner always has access (every station: returns null). Internal staff
+   * only if their role is in `allowedRoles` AND they belong to this
+   * organization (JWT organization_id) — and then only to their station,
+   * which is returned so every query can be narrowed to it. */
   private async assertOrgAccess(
     orgId: string,
     callerId: string,
@@ -61,7 +64,13 @@ export class SalesService {
     if (!isOwner && !isAllowedStaff) {
       throw new ForbiddenException("Vous n'avez pas accès aux ventes de cette entreprise");
     }
-    return org;
+    if (isOwner) return null;
+    return requireStaffStation(this.db(), callerId, orgId);
+  }
+
+  /** Narrows a sales query to a staff member's station (null = the owner, every station). */
+  private inStation<Q extends { eq: (column: string, value: string) => Q }>(query: Q, station: string | null): Q {
+    return station ? query.eq('merchant_id', station) : query;
   }
 
   private async getOrgMerchant(orgId: string) {
@@ -77,7 +86,7 @@ export class SalesService {
   }
 
   async createSale(orgId: string, callerId: string, callerOrgId: string | undefined, lines: SaleLineInput[], callerRole?: string) {
-    await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SELLER_ROLES);
+    const station = await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SELLER_ROLES);
 
     if (!Array.isArray(lines) || lines.length === 0) {
       throw new BadRequestException('Le panier est vide');
@@ -88,7 +97,7 @@ export class SalesService {
       }
     }
 
-    const merchant = await this.getOrgMerchant(orgId);
+    const merchant = station ? { id: station } : await this.getOrgMerchant(orgId);
     const ids = lines.map((l) => l.stock_item_id);
     const { data: items, error: itemsError } = await this.db()
       .from('stock_items')
@@ -183,12 +192,12 @@ export class SalesService {
   }
 
   async getSale(orgId: string, saleId: string, callerId: string, callerOrgId: string | undefined, callerRole?: string) {
-    await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SALES_VIEW_ROLES);
-    const { data: sale, error } = await this.db()
+    const station = await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SALES_VIEW_ROLES);
+    const { data: sale, error } = await this.inStation(this.db()
       .from('sales')
       .select('*, sale_items(*)')
       .eq('id', saleId)
-      .eq('organization_id', orgId)
+      .eq('organization_id', orgId), station)
       .single();
     if (error || !sale) throw new NotFoundException('Vente introuvable');
 
@@ -249,13 +258,14 @@ export class SalesService {
   }
 
   async payCash(orgId: string, saleId: string, callerId: string, callerOrgId: string | undefined, callerRole?: string) {
-    await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SELLER_ROLES);
+    const station = await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SELLER_ROLES);
     const { data: sale, error } = await this.db()
       .from('sales')
       .select('id, reference, merchant_id, created_by, status, payment_request_id')
       .eq('id', saleId)
       .eq('organization_id', orgId)
       .single();
+    if (station && sale && sale.merchant_id !== station) throw new NotFoundException('Vente introuvable');
     if (error || !sale) throw new NotFoundException('Vente introuvable');
     if (sale.status !== 'PENDING') throw new BadRequestException('Cette vente a déjà été traitée');
 
@@ -285,13 +295,14 @@ export class SalesService {
    * kept per currency — CDF and USD are never summed together. Net margin
    * deducts the platform/PSP fees recorded on the linked wallet transaction. */
   async getStats(orgId: string, callerId: string, callerOrgId: string | undefined, from?: string, to?: string, callerRole?: string) {
-    await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SALES_VIEW_ROLES);
+    const station = await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SALES_VIEW_ROLES);
 
     let query = this.db()
       .from('sales')
       .select('id, currency, total_cents, paid_at, transaction_id, sale_items(name, category, stock_item_id, quantity, unit_price_cents, unit_cost_cents)')
       .eq('organization_id', orgId)
       .eq('status', 'PAID');
+    query = this.inStation(query, station);
     if (from) query = query.gte('paid_at', from);
     if (to) query = query.lt('paid_at', to);
     const { data: sales, error } = await query;
@@ -401,7 +412,7 @@ export class SalesService {
     from?: string,
     to?: string,
   ) {
-    await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SALES_VIEW_ROLES);
+    const station = await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SALES_VIEW_ROLES);
 
     let query = this.db()
       .from('sales')
@@ -410,6 +421,7 @@ export class SalesService {
       .is('history_hidden_at', null)
       .order('created_at', { ascending: false })
       .limit(500);
+    query = this.inStation(query, station);
     if (from) query = query.gte('created_at', from);
     if (to) query = query.lt('created_at', to);
 
@@ -438,16 +450,20 @@ export class SalesService {
     callerId: string,
     callerOrgId: string | undefined,
     callerRole: string | undefined,
-    managementPassword: string,
+    managementPassword: string | undefined,
   ) {
-    await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SALES_ARCHIVE_ROLES);
-    await this.stockPasswordService.verifyPassword(orgId, managementPassword);
+    const station = await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SALES_ARCHIVE_ROLES);
+    // Only when the owner switched the stock password on.
+    if (await this.stockPasswordService.isRequired(orgId)) {
+      if (!managementPassword) throw new BadRequestException('Mot de passe de gestion requis');
+      await this.stockPasswordService.verifyPassword(orgId, managementPassword);
+    }
 
-    const { data, error } = await this.db()
+    const { data, error } = await this.inStation(this.db()
       .from('sales')
       .update({ history_hidden_at: new Date().toISOString() })
       .eq('id', saleId)
-      .eq('organization_id', orgId)
+      .eq('organization_id', orgId), station)
       .is('history_hidden_at', null)
       .select('id')
       .maybeSingle();

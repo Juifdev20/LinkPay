@@ -43,7 +43,7 @@ export class AuditService {
   }) {
     let query = this.supabaseService.getClient()
       .from('audit_logs')
-      .select('*, user:profiles!user_id(email, full_name)', { count: 'exact' })
+      .select('*', { count: 'exact' })
       .order('created_at', { ascending: false });
 
     if (filters?.user_id) query = query.eq('user_id', filters.user_id);
@@ -57,6 +57,20 @@ export class AuditService {
 
     const { data, error, count } = await query;
     if (error) throw new Error(`Failed to fetch audit logs: ${error.message}`);
-    return { data, total: count || 0, page, limit };
+
+    // audit_logs.user_id references auth.users, not profiles (001_initial_schema),
+    // so the author is looked up in a second query rather than embedded.
+    const userIds = [...new Set((data || []).map((row) => row.user_id).filter(Boolean))];
+    const { data: users } = userIds.length
+      ? await this.supabaseService.getClient().from('profiles').select('id, email, full_name').in('id', userIds)
+      : { data: [] as { id: string; email: string | null; full_name: string | null }[] };
+    const byId = new Map((users || []).map((u) => [u.id, { email: u.email, full_name: u.full_name }]));
+
+    return {
+      data: (data || []).map((row) => ({ ...row, user: row.user_id ? byId.get(row.user_id) || null : null })),
+      total: count || 0,
+      page,
+      limit,
+    };
   }
 }
