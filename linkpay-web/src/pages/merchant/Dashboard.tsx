@@ -8,8 +8,10 @@ import { PageHeader } from '@/components/PageHeader';
 import { BalanceCard } from '@/components/BalanceCard';
 import { WalletActions } from '@/components/WalletActions';
 import { TransactionItem } from '@/components/TransactionItem';
-import { DualCurrencyStat } from '@/components/DualCurrencyStat';
+import { StatTile } from '@/components/StatTile';
+import { ShortcutButton } from '@/components/ShortcutButton';
 import { Plus, TrendingUp, Receipt, Wallet, QrCode, RefreshCcw, PiggyBank, Wallet2 } from 'lucide-react';
+import { FEATURES } from '@/lib/features';
 import { useNavigate } from 'react-router-dom';
 
 export default function MerchantDashboard() {
@@ -79,60 +81,15 @@ export default function MerchantDashboard() {
         actions={<WalletActions currency={walletCurrency} />}
       />
 
-      <button
-        onClick={() => navigate('/dashboard/tontines')}
-        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
-      >
-        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
-          <RefreshCcw className="w-5 h-5 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-foreground">Tontines</p>
-          <p className="text-sm text-muted-foreground">Épargnez en groupe, à tour de rôle</p>
-        </div>
-      </button>
+      <div className="grid grid-cols-2 gap-3 [&>*:last-child:nth-child(odd)]:col-span-2">
+        {FEATURES.tontines && <ShortcutButton icon={RefreshCcw} label="Tontines" onClick={() => navigate('/dashboard/tontines')} />}
+        {FEATURES.savings && <ShortcutButton icon={PiggyBank} label="Épargne" onClick={() => navigate('/dashboard/savings')} />}
+        <ShortcutButton icon={Wallet2} label="Mes dépenses" onClick={() => navigate('/dashboard/expenses')} />
+      </div>
 
-      <button
-        onClick={() => navigate('/dashboard/savings')}
-        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
-      >
-        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
-          <PiggyBank className="w-5 h-5 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-foreground">Épargne par arrondi</p>
-          <p className="text-sm text-muted-foreground">Épargnez sans y penser, à chaque paiement</p>
-        </div>
-      </button>
-
-      <button
-        onClick={() => navigate('/dashboard/expenses')}
-        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
-      >
-        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
-          <Wallet2 className="w-5 h-5 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-foreground">Mes dépenses</p>
-          <p className="text-sm text-muted-foreground">Suivez vos dépenses au jour le jour</p>
-        </div>
-      </button>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {cards.map((c) => (
-          <Card key={c.label}>
-            <CardContent className="pt-5">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-3">
-                <c.icon className="w-5 h-5 text-primary" />
-              </div>
-              {c.money ? (
-                <DualCurrencyStat amounts={c.money} />
-              ) : (
-                <p className="text-xl font-bold text-foreground">{c.value}</p>
-              )}
-              <p className="text-sm text-muted-foreground">{c.label}</p>
-            </CardContent>
-          </Card>
+          <StatTile key={c.label} icon={c.icon} label={c.label} money={c.money} value={c.value} />
         ))}
       </div>
 

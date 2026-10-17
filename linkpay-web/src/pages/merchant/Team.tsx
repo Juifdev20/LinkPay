@@ -51,6 +51,7 @@ export default function MerchantTeamPage() {
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['merchant-team', merchant?.id] }),
   });
+  const removeError = (removeMutation.error as any)?.response?.data?.message;
 
   return (
     <div className="p-6 space-y-6 max-w-2xl mx-auto">
@@ -98,6 +99,9 @@ export default function MerchantTeamPage() {
           <CardTitle className="text-base font-bold">{team?.length || 0} membre(s)</CardTitle>
         </CardHeader>
         <CardContent>
+          {removeMutation.isError && (
+            <p className="text-sm text-destructive mb-3">{removeError || 'Échec du retrait'}</p>
+          )}
           {team?.length ? (
             <div>
               {team.map((m: any) => (
@@ -108,19 +112,22 @@ export default function MerchantTeamPage() {
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <Badge variant="secondary" className="capitalize">{m.role?.slug}</Badge>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-destructive"
-                      disabled={removeMutation.isPending}
-                      onClick={() => removeMutation.mutate(m.user_id)}
-                    >
-                      {removeMutation.isPending && removeMutation.variables === m.user_id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <X className="w-4 h-4" />
-                      )}
-                    </Button>
+                    {/* Only cashiers can be removed — never the store's owner. */}
+                    {m.role?.slug === 'cashier' && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive"
+                        disabled={removeMutation.isPending}
+                        onClick={() => removeMutation.mutate(m.user_id)}
+                      >
+                        {removeMutation.isPending && removeMutation.variables === m.user_id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <X className="w-4 h-4" />
+                        )}
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}

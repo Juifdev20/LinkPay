@@ -17,17 +17,21 @@ interface TopupStatusCardProps {
   extraRows?: Row[];
   reference?: string;
   onBack: () => void;
+  /** What the card talks about — a wallet top-up (default) or a PSP-funded send. */
+  kind?: 'topup' | 'transfer';
 }
 
 /**
  * Shared success/pending/failed/timed-out card for a wallet top-up outcome —
  * used both by Topup.tsx (mock provider's synchronous result) and
  * TopupResult.tsx (the page a real CinetPay redirect lands on, driven by
- * status polling).
+ * status polling). `kind="transfer"` swaps the wording for a PSP-funded
+ * person-to-person send (Send.tsx / SendResult.tsx).
  */
-export function TopupStatusCard({ status, amountCents, currency, extraRows = [], reference, onBack }: TopupStatusCardProps) {
+export function TopupStatusCard({ status, amountCents, currency, extraRows = [], reference, onBack, kind = 'topup' }: TopupStatusCardProps) {
   const isFailed = status === 'FAILED';
   const isPending = status === 'PENDING' || status === 'TIMEDOUT';
+  const isTransfer = kind === 'transfer';
 
   const icon = isFailed
     ? <XCircle className="w-8 h-8 text-destructive" />
@@ -38,20 +42,20 @@ export function TopupStatusCard({ status, amountCents, currency, extraRows = [],
   const iconBg = isFailed ? 'bg-destructive/10' : isPending ? 'bg-warning/10' : 'bg-success/10';
 
   const title = isFailed
-    ? 'Recharge échouée'
+    ? (isTransfer ? 'Envoi échoué' : 'Recharge échouée')
     : status === 'TIMEDOUT'
     ? 'Toujours en cours de traitement'
     : status === 'PENDING'
     ? 'En attente de confirmation'
-    : 'Recharge réussie !';
+    : (isTransfer ? 'Envoi réussi !' : 'Recharge réussie !');
 
   const description = isFailed
-    ? "Cette recharge n'a pas abouti. Vous pouvez réessayer depuis votre tableau de bord."
+    ? (isTransfer ? "Cet envoi n'a pas abouti — aucun montant n'a été débité. Vous pouvez réessayer." : "Cette recharge n'a pas abouti. Vous pouvez réessayer depuis votre tableau de bord.")
     : status === 'TIMEDOUT'
-    ? 'Cette recharge met plus de temps que prévu à se confirmer. Elle pourra tout de même aboutir — votre solde sera mis à jour dès que ce sera fait.'
+    ? (isTransfer ? 'Cet envoi met plus de temps que prévu à se confirmer. Il pourra tout de même aboutir — le destinataire sera crédité dès que ce sera fait.' : 'Cette recharge met plus de temps que prévu à se confirmer. Elle pourra tout de même aboutir — votre solde sera mis à jour dès que ce sera fait.')
     : status === 'PENDING'
-    ? `Votre recharge de ${formatCurrency(amountCents, currency)} est en cours de traitement. Le solde sera mis à jour après confirmation.`
-    : `${formatCurrency(amountCents, currency)} ajouté(s) à votre compte ScanLinkPay`;
+    ? (isTransfer ? `Votre envoi de ${formatCurrency(amountCents, currency)} est en cours de traitement. Le destinataire sera crédité après confirmation.` : `Votre recharge de ${formatCurrency(amountCents, currency)} est en cours de traitement. Le solde sera mis à jour après confirmation.`)
+    : (isTransfer ? `${formatCurrency(amountCents, currency)} envoyé(s) — le destinataire a été crédité` : `${formatCurrency(amountCents, currency)} ajouté(s) à votre compte ScanLinkPay`);
 
   const statusLabel = isFailed ? 'Échouée' : isPending ? 'En attente' : 'Confirmé';
   const statusColor = isFailed ? 'text-destructive' : isPending ? 'text-warning' : 'text-success';

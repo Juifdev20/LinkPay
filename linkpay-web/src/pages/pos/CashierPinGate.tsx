@@ -89,16 +89,16 @@ export function CashierPinGate({ children }: { children: React.ReactNode }) {
       ) : hasPin ? (
         <>
           <p className="text-sm text-muted-foreground mb-6">Entrez votre code de caisse pour déverrouiller.</p>
-          <PinInput value={pin} onChange={setPin} autoFocus error={!!error} />
+          <PinInput value={pin} onChange={setPin} autoFocus error={!!error} title="Code de caisse" message={error || undefined} />
           {verifyMutation.isPending && <Loader2 className="w-5 h-5 animate-spin text-muted-foreground mt-4" />}
         </>
       ) : (
         <>
           <p className="text-sm text-muted-foreground mb-6">Première utilisation : définissez votre code de caisse (4 chiffres). Il servira à déverrouiller la caisse partagée.</p>
           <p className="text-xs font-semibold text-muted-foreground mb-2 self-start">Nouveau code</p>
-          <PinInput value={pin} onChange={setPin} autoFocus error={!!error} />
+          <PinInput value={pin} onChange={setPin} autoFocus error={!!error} title="Nouveau code de caisse" hint="4 chiffres" />
           <p className="text-xs font-semibold text-muted-foreground mb-2 mt-5 self-start">Confirmer le code</p>
-          <PinInput value={confirmPin} onChange={setConfirmPin} error={!!error} />
+          <PinInput value={confirmPin} onChange={setConfirmPin} error={!!error} title="Confirmer le code de caisse" />
           <Button
             className="w-full mt-6"
             disabled={!canConfirmSetup || setPinMutation.isPending}

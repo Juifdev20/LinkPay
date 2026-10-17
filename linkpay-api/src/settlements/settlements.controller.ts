@@ -1,26 +1,37 @@
-import { Controller, Get, Post, Put, Param, Body, Query, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Put, Param, Body, Query, UseGuards, ForbiddenException } from '@nestjs/common';
+import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SettlementsService } from './settlements.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { toPage, toLimit } from '../common/utils/pagination';
 
+class UpdateSettlementStatusDto {
+  @ApiProperty({ enum: ['PROCESSING', 'COMPLETED', 'FAILED'] })
+  @IsIn(['PROCESSING', 'COMPLETED', 'FAILED'])
+  status!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string;
+}
+
+/**
+ * Merchants are now paid straight into their ScanLinkPay wallet (see
+ * MerchantWalletCreditService), so there is no "request a settlement" and no
+ * settlement balance any more. What remains here is the history of the
+ * settlements created before that change, and the admin's tools to finish
+ * the ones still in flight.
+ */
 @ApiTags('Settlements')
 @ApiBearerAuth()
 @Controller('settlements')
 export class SettlementsController {
   constructor(private settlementsService: SettlementsService) {}
-
-  @Post()
-  @Roles('merchant', 'admin', 'super_admin')
-  @UseGuards(RolesGuard)
-  @ApiOperation({ summary: 'Create a settlement for current merchant' })
-  async createSettlement(
-    @CurrentUser('merchant_id') merchantId: string,
-    @Body() body: { period_start?: string; period_end?: string },
-  ) {
-    return this.settlementsService.createSettlement(merchantId, body);
-  }
 
   @Get()
   @ApiOperation({ summary: 'List settlements' })
@@ -33,8 +44,8 @@ export class SettlementsController {
   ) {
     const filters = {
       status,
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 20,
+      page: toPage(page),
+      limit: toLimit(limit),
     };
 
     if (role === 'admin' || role === 'super_admin') {
@@ -44,15 +55,6 @@ export class SettlementsController {
       return this.settlementsService.getMerchantSettlements(merchantId, filters);
     }
     return { data: [], total: 0, page: 1, limit: 20 };
-  }
-
-  @Get('balance')
-  @ApiOperation({ summary: 'Get current merchant settlement balance' })
-  async getBalance(@CurrentUser('merchant_id') merchantId: string | undefined) {
-    if (!merchantId) {
-      return { available: { CDF: 0, USD: 0 }, pending: { CDF: 0, USD: 0 } };
-    }
-    return this.settlementsService.getMerchantBalance(merchantId);
   }
 
   @Get(':id')
@@ -75,7 +77,7 @@ export class SettlementsController {
   @ApiOperation({ summary: 'Update settlement status (Admin)' })
   async updateStatus(
     @Param('id') id: string,
-    @Body() body: { status: string; notes?: string },
+    @Body() body: UpdateSettlementStatusDto,
   ) {
     return this.settlementsService.updateSettlementStatus(id, body.status, body.notes);
   }

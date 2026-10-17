@@ -7,14 +7,25 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { PinInput } from '@/components/PinInput';
-import { MobileMoneyOperatorPicker } from '@/components/MobileMoneyOperatorPicker';
-import { MOBILE_MONEY_OPERATORS } from '@/lib/constants';
+import { PaymentMethodPicker } from '@/components/payment/PaymentMethodPicker';
+import { MobileMoneyFields } from '@/components/payment/MobileMoneyFields';
+import { MobileMoneyWaiting } from '@/components/payment/MobileMoneyWaiting';
+import { PaymentStep } from '@/components/payment/PaymentStep';
+import { displayPhone, isNumberReady, operatorById, toApiPhone } from '@/lib/mobile-money';
 import { formatCurrency } from '@/lib/utils';
 import { FormSheet } from '@/components/FormSheet';
-import { Loader2, Check, Search, ArrowLeft, ScanLine, Store, Wallet as WalletIcon, Smartphone } from 'lucide-react';
+import { Loader2, Check, Search, ArrowLeft, ScanLine, Store } from 'lucide-react';
+import { followCheckout } from '@/lib/safe-url';
 
 type Step = 'reference' | 'confirm' | 'method' | 'pin' | 'processing' | 'success';
 type Source = 'wallet' | 'mobile_money';
+
+// A business's fixed ScanLinkPay number (SLP-000123 — organization or
+// standalone merchant, same namespace) vs an invoice reference
+// (SLP-20260904-A1B2C3 — date + random suffix, never all-digits) vs a
+// wallet number (SLP-CLI-/SLP-MER-…, never bare digits). Only the first
+// shape redirects to the pay-by-number page instead of the invoice lookup.
+const BUSINESS_NUMBER_RE = /^SLP-\d{4,10}$/i;
 
 export default function PayInvoicePage() {
   const navigate = useNavigate();
@@ -24,7 +35,8 @@ export default function PayInvoicePage() {
   const [reference, setReference] = useState(searchParams.get('ref') || '');
   const [invoice, setInvoice] = useState<any>(null);
   const [source, setSource] = useState<Source>('wallet');
-  const [operator, setOperator] = useState(MOBILE_MONEY_OPERATORS[0].value);
+  const [operator, setOperator] = useState('airtel');
+  // The 9 national digits of the Mobile Money number ("828497218"), see lib/mobile-money.
   const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -33,10 +45,15 @@ export default function PayInvoicePage() {
   const autoLookedUp = useRef(false);
 
   const lookup = async (ref: string) => {
+    const cleaned = ref.trim();
+    if (BUSINESS_NUMBER_RE.test(cleaned)) {
+      navigate(`/pay/${cleaned.toUpperCase()}`);
+      return;
+    }
     setError('');
     setLooking(true);
     try {
-      const { data } = await api.get(`/payment-requests/reference/${encodeURIComponent(ref.trim())}`);
+      const { data } = await api.get(`/payment-requests/reference/${encodeURIComponent(cleaned)}`);
       setInvoice(data);
       setStep('confirm');
     } catch (err: any) {
@@ -85,8 +102,8 @@ export default function PayInvoicePage() {
 
   const handleMobileMoneyPay = async () => {
     setError('');
-    if (!phone.trim()) {
-      setError('Numéro Mobile Money requis');
+    if (!isNumberReady(operator, phone)) {
+      setError('Numéro Mobile Money incomplet ou ne correspondant pas à l\'opérateur choisi.');
       return;
     }
     setStep('processing');
@@ -95,14 +112,14 @@ export default function PayInvoicePage() {
         '/payments',
         {
           link_token: invoice.link_token,
-          customer_phone: phone,
+          customer_phone: toApiPhone(phone),
           payment_method: 'mobile_money',
           mobile_money_operator: operator,
         },
         { headers: { 'Idempotency-Key': crypto.randomUUID() } },
       );
       if (data.checkout_url) {
-        window.location.href = data.checkout_url;
+        followCheckout(data.checkout_url, navigate);
         return;
       }
       setResult(data);
@@ -141,7 +158,7 @@ export default function PayInvoicePage() {
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Moyen de paiement</span>
                 <span className="text-foreground">
-                  {source === 'wallet' ? 'Solde ScanLinkPay' : `${MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label} — ${phone}`}
+                  {source === 'wallet' ? 'Solde ScanLinkPay' : `${operatorById(operator)?.label} — ${displayPhone(phone)}`}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
@@ -165,27 +182,7 @@ export default function PayInvoicePage() {
 
   if (step === 'processing') {
     if (source === 'mobile_money') {
-      const operatorLabel = MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label;
-      return (
-        <div className="p-6 max-w-md mx-auto">
-          <Card>
-            <CardContent className="pt-6 text-center py-10">
-              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                <Smartphone className="w-8 h-8 text-primary animate-pulse" />
-              </div>
-              <h2 className="text-lg font-bold text-foreground mb-2">Confirmez sur votre téléphone</h2>
-              <p className="text-muted-foreground text-sm mb-1">
-                Une demande {operatorLabel} a été envoyée au {phone}.
-              </p>
-              <p className="text-muted-foreground text-sm mb-6">
-                Ouvrez l'application et entrez votre code PIN Mobile Money pour confirmer le paiement de{' '}
-                {formatCurrency(invoice?.total_cents, invoice?.currency)}.
-              </p>
-              <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" />
-            </CardContent>
-          </Card>
-        </div>
-      );
+      return <MobileMoneyWaiting operator={operator} phone={phone} amountCents={invoice?.total_cents} currency={invoice?.currency} />;
     }
     return (
       <div className="p-6 max-w-md mx-auto">
@@ -216,7 +213,7 @@ export default function PayInvoicePage() {
             <p className="text-sm text-muted-foreground mb-6">
               Confirmez le paiement de {formatCurrency(invoice?.total_cents, invoice?.currency)}
             </p>
-            <PinInput value={pin} onChange={handlePinComplete} length={4} autoFocus />
+            <PinInput value={pin} onChange={handlePinComplete} length={4} autoFocus title="Confirmer le paiement" hint={`Paiement de ${formatCurrency(invoice?.total_cents, invoice?.currency)}`} message={error} />
           </CardContent>
         </Card>
       </div>
@@ -224,69 +221,29 @@ export default function PayInvoicePage() {
   }
 
   if (step === 'method') {
+    const ready = source === 'wallet' || isNumberReady(operator, phone);
     return (
-      <div className="p-6 max-w-md mx-auto">
-        <Card>
-          <CardContent className="pt-6">
-            <button onClick={() => setStep('confirm')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4">
-              <ArrowLeft className="w-4 h-4" /> Modifier
-            </button>
-            {error && (
-              <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium mb-4">
-                {error}
-              </div>
-            )}
-            <p className="text-sm text-muted-foreground mb-4">
-              Payer {formatCurrency(invoice?.total_cents, invoice?.currency)} à {invoice?.merchant?.name}
-            </p>
-            <div className="space-y-2 mb-4">
-              <Label className="font-semibold">Moyen de paiement</Label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setSource('wallet')}
-                  className={`flex flex-col items-center gap-1.5 rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-colors ${source === 'wallet' ? 'border-primary bg-primary/5 text-primary' : 'border-input text-muted-foreground hover:bg-accent'}`}
-                >
-                  <WalletIcon className="w-5 h-5" />
-                  Solde ScanLinkPay
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSource('mobile_money')}
-                  className={`flex flex-col items-center gap-1.5 rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-colors ${source === 'mobile_money' ? 'border-primary bg-primary/5 text-primary' : 'border-input text-muted-foreground hover:bg-accent'}`}
-                >
-                  <Smartphone className="w-5 h-5" />
-                  Mobile Money
-                </button>
-              </div>
-            </div>
-
-            {source === 'wallet' ? (
-              <Button className="w-full" size="lg" onClick={() => setStep('pin')}>
-                Continuer
-              </Button>
-            ) : (
-              <div className="space-y-4">
-                <MobileMoneyOperatorPicker value={operator} onChange={setOperator} />
-                <div className="space-y-2">
-                  <Label htmlFor="mm_phone" className="font-semibold">
-                    Numéro {MOBILE_MONEY_OPERATORS.find((o) => o.value === operator)?.label}
-                  </Label>
-                  <Input
-                    id="mm_phone"
-                    placeholder="+243 8XX XXX XXX"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                  />
-                </div>
-                <Button className="w-full" size="lg" disabled={!phone.trim()} onClick={handleMobileMoneyPay}>
-                  Payer {formatCurrency(invoice?.total_cents, invoice?.currency)}
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <PaymentStep
+        title="Moyen de paiement"
+        subtitle={`${formatCurrency(invoice?.total_cents, invoice?.currency)} à ${invoice?.merchant?.name}`}
+        onBack={() => { setError(''); setStep('confirm'); }}
+        error={error}
+        footer={
+          <Button
+            className="h-12 w-full rounded-xl text-base font-semibold"
+            size="lg"
+            disabled={!ready}
+            onClick={source === 'wallet' ? () => setStep('pin') : handleMobileMoneyPay}
+          >
+            {source === 'wallet' ? 'Continuer' : `Payer ${formatCurrency(invoice?.total_cents, invoice?.currency)}`}
+          </Button>
+        }
+      >
+        <PaymentMethodPicker value={source} onChange={(m) => setSource(m === 'mobile_money' ? 'mobile_money' : 'wallet')} methods={['wallet', 'mobile_money']} />
+        {source === 'mobile_money' && (
+          <MobileMoneyFields operator={operator} onOperatorChange={setOperator} phone={phone} onPhoneChange={setPhone} autoFocusPhone />
+        )}
+      </PaymentStep>
     );
   }
 
@@ -352,7 +309,7 @@ export default function PayInvoicePage() {
             <ScanLine className="w-7 h-7 text-primary" />
           </div>
           <h2 className="text-xl font-bold text-foreground mb-1 text-center">Payer une facture</h2>
-          <p className="text-sm text-muted-foreground mb-6 text-center">Scannez le QR du marchand ou entrez la référence</p>
+          <p className="text-sm text-muted-foreground mb-6 text-center">Scannez le QR du commerce ou entrez la référence de facture / le numéro ScanLinkPay</p>
           <Button
             type="button"
             variant="outline"
@@ -378,7 +335,7 @@ export default function PayInvoicePage() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="reference" className="font-semibold">Référence de la facture</Label>
+              <Label htmlFor="reference" className="font-semibold">Référence ou numéro ScanLinkPay</Label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input

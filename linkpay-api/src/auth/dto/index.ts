@@ -52,6 +52,12 @@ export class LoginDto {
   @MinLength(1)
   password!: string;
 
+  @ApiPropertyOptional({ description: "Authenticator-app code (or a recovery code) — required for administrator accounts" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  otp?: string;
+
   @ApiPropertyOptional({ description: 'Client-generated UUID identifying this browser/app install, persisted across restarts — lets this same device silently reclaim its session later instead of hitting the single-session conflict.' })
   @IsOptional()
   @IsString()

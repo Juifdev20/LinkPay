@@ -202,6 +202,8 @@ export default function TontineDetailPage() {
                   }}
                   length={4}
                   autoFocus
+                  title="Confirmer la cotisation"
+                  message={contributeError || undefined}
                 />
                 {contributeMutation.isPending && <Loader2 className="w-5 h-5 animate-spin text-primary mx-auto mt-3" />}
               </div>

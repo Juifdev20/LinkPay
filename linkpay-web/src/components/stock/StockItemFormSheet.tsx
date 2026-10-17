@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { FormSheet } from '@/components/FormSheet';
@@ -6,10 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
-import { CurrencySelector } from '@/components/CurrencySelector';
-import { cn } from '@/lib/utils';
-import { Loader2, ImagePlus, X } from 'lucide-react';
-import { STOCK_CATEGORIES } from '@/lib/stock-categories';
+import { Loader2, ScanBarcode, Printer, ChevronDown } from 'lucide-react';
+import { getSectorConfig } from '@/lib/stock-categories';
+import { BarcodeScannerView } from '@/components/BarcodeScannerView';
+import { beepOk, generateInStoreEan13, isInStoreEan13 } from '@/lib/barcode';
+import { ProductLabelSheet, clampLabels, MAX_LABELS } from './ProductLabelSheet';
 
 const CONDITIONS = [
   { value: 'neuf', label: 'Neuf' },
@@ -17,7 +18,8 @@ const CONDITIONS = [
   { value: 'reconditionne', label: 'Reconditionné' },
 ];
 
-const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+/** Category select value meaning "type my own". */
+const OTHER = '__autre__';
 
 export type StockItemFormValues = {
   merchant_id: string;
@@ -27,6 +29,7 @@ export type StockItemFormValues = {
   brand: string;
   model: string;
   serial_number: string;
+  barcode: string;
   condition: string;
   warranty_months: string;
   attributes: Record<string, string>;
@@ -35,7 +38,6 @@ export type StockItemFormValues = {
   unit_price: string;
   currency: 'CDF' | 'USD';
   low_stock_threshold: string;
-  image_url: string;
 };
 
 export const emptyStockItemForm: StockItemFormValues = {
@@ -46,6 +48,7 @@ export const emptyStockItemForm: StockItemFormValues = {
   brand: '',
   model: '',
   serial_number: '',
+  barcode: '',
   condition: '',
   warranty_months: '',
   attributes: {},
@@ -54,11 +57,19 @@ export const emptyStockItemForm: StockItemFormValues = {
   unit_price: '',
   currency: 'CDF',
   low_stock_threshold: '5',
-  image_url: '',
 };
 
+/**
+ * Product sheet — built to register a product in under a minute: the
+ * essentials first (name, barcode, category, price, quantity), everything
+ * optional folded under "Plus de détails". What it asks depends on the
+ * organization's sector (getSectorConfig): a supermarket never sees the
+ * electronics fields (brand, model, IMEI…). No product photo — it weighed
+ * on the form, the screens and the storage for no sales value.
+ */
 export function StockItemFormSheet({
   orgId,
+  sector,
   merchants,
   initial,
   itemId,
@@ -67,6 +78,8 @@ export function StockItemFormSheet({
   onSaved,
 }: {
   orgId: string;
+  /** organizations.sector — decides categories and fields. */
+  sector?: string | null;
   merchants: { id: string; name: string }[];
   /** Present → editing; absent → creating. */
   initial: StockItemFormValues;
@@ -77,15 +90,32 @@ export function StockItemFormSheet({
   onSaved: () => void;
 }) {
   const queryClient = useQueryClient();
+  const config = getSectorConfig(sector);
   const [form, setForm] = useState<StockItemFormValues>(initial);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string>(initial.image_url);
-  const [imageError, setImageError] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [scanning, setScanning] = useState(false);
+  // Label printed right after a successful save (see labelOnSave).
+  const [savedLabel, setSavedLabel] = useState<{ product: any; copies: number; stockQuantity: number } | null>(null);
+  // How many labels to print. Follows the quantity typed (120 bags → 120
+  // labels) until the user types their own number — they decide in the end.
+  const [labelCopies, setLabelCopies] = useState('1');
+  const [labelCopiesTouched, setLabelCopiesTouched] = useState(false);
 
   const isEditing = !!itemId;
   const effectiveMerchantId = form.merchant_id || (merchants.length === 1 ? merchants[0].id : '');
-  const category = STOCK_CATEGORIES.find((c) => c.value === form.category);
+  const category = config.categories.find((c) => c.value === form.category);
+
+  // Optional fields start folded — opened when editing a product that has any.
+  const hasDetails = !!(
+    initial.description || initial.brand || initial.model || initial.serial_number ||
+    initial.condition || initial.warranty_months || initial.item_type ||
+    Object.values(initial.attributes || {}).some(Boolean)
+  );
+  const [detailsOpen, setDetailsOpen] = useState(isEditing && hasDetails);
+
+  // A category not in the sector list (older product, typed by hand) stays
+  // selectable; "Autre…" switches to a free-text field.
+  const knownCategory = !form.category || config.categories.some((c) => c.value === form.category);
+  const [customCategory, setCustomCategory] = useState(!knownCategory);
 
   const set = <K extends keyof StockItemFormValues>(key: K, value: StockItemFormValues[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -93,54 +123,47 @@ export function StockItemFormSheet({
   const setAttribute = (key: string, value: string) =>
     setForm((f) => ({ ...f, attributes: { ...f.attributes, [key]: value } }));
 
-  const handlePickImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    setImageError('');
-    if (!file.type.startsWith('image/')) {
-      setImageError('Le fichier doit être une image.');
-      return;
-    }
-    if (file.size > MAX_IMAGE_BYTES) {
-      setImageError("L'image ne doit pas dépasser 2 Mo.");
-      return;
-    }
-    setImageFile(file);
-    setImagePreview(URL.createObjectURL(file));
+  // A label is printed only for a code generated here (in-store EAN —
+  // manufacturer codes are already on the packaging), and only once the
+  // product is complete: the save button then saves AND prints, so a label
+  // never comes out for a product without a price or not yet saved.
+  const priceCents = form.unit_price ? Math.round(parseFloat(form.unit_price) * 100) : 0;
+  const needsLabel = isInStoreEan13(form.barcode) && form.barcode !== initial.barcode;
+  const labelOnSave = needsLabel && !!form.name && priceCents > 0;
+  const qtyNumber = Math.max(0, Math.floor(Number(form.quantity) || 0));
+  const labelCount = labelCopiesTouched ? clampLabels(labelCopies) : clampLabels(qtyNumber || 1);
+  const labelInputValue = labelCopiesTouched ? labelCopies : String(labelCount);
+  const setLabelCount = (v: string) => {
+    setLabelCopiesTouched(true);
+    setLabelCopies(v);
   };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      let imageUrl = form.image_url;
-      if (imageFile) {
-        const fd = new FormData();
-        fd.append('file', imageFile);
-        const { data } = await api.post(`/merchants/${effectiveMerchantId}/stock-items/image`, fd, {
-          headers: { 'Content-Type': undefined },
-        });
-        imageUrl = data.url;
-      }
-
+      const technical = config.technicalFields;
       const payload = {
-        name: form.name,
-        category: form.category || undefined,
-        item_type: form.item_type || undefined,
-        attributes: form.attributes,
+        name: form.name.trim(),
+        category: form.category.trim() || undefined,
         description: form.description || undefined,
-        brand: form.brand || undefined,
-        model: form.model || undefined,
-        serial_number: form.serial_number || undefined,
-        condition: form.condition || undefined,
-        warranty_months: form.warranty_months ? Number(form.warranty_months) : undefined,
+        // Sent even when empty while editing: clearing the field removes the code.
+        barcode: isEditing ? form.barcode.trim() : form.barcode.trim() || undefined,
         // Editing: an empty field means "leave the stock as it is", never 0.
         quantity: isEditing
           ? (form.quantity === '' ? undefined : Number(form.quantity))
           : (form.quantity ? Number(form.quantity) : 0),
-        unit_price_cents: form.unit_price ? Math.round(parseFloat(form.unit_price) * 100) : 0,
+        unit_price_cents: priceCents,
         currency: form.currency,
         low_stock_threshold: form.low_stock_threshold ? Number(form.low_stock_threshold) : 5,
-        image_url: imageUrl || undefined,
+        // Electronics-only fields — never sent for other sectors.
+        ...(technical && {
+          item_type: form.item_type || undefined,
+          attributes: form.attributes,
+          brand: form.brand || undefined,
+          model: form.model || undefined,
+          serial_number: form.serial_number || undefined,
+          condition: form.condition || undefined,
+          warranty_months: form.warranty_months ? Number(form.warranty_months) : undefined,
+        }),
       };
 
       if (isEditing) {
@@ -148,54 +171,41 @@ export function StockItemFormSheet({
       }
       return (await api.post(`/merchants/${effectiveMerchantId}/stock-items`, payload)).data;
     },
-    onSuccess: () => {
+    onSuccess: (saved: any) => {
       queryClient.invalidateQueries({ queryKey: ['org-stock-items', orgId] });
       queryClient.invalidateQueries({ queryKey: ['org-stock-summary', orgId] });
+      // The till's catalog must show the new/changed product right away.
+      queryClient.invalidateQueries({ queryKey: ['pos-catalog'] });
+      if (labelOnSave) {
+        // Print from what the server actually saved — never from a draft.
+        setSavedLabel({
+          product: {
+            name: saved?.name ?? form.name,
+            barcode: saved?.barcode ?? form.barcode,
+            unit_price_cents: saved?.unit_price_cents ?? priceCents,
+            currency: saved?.currency ?? form.currency,
+          },
+          copies: labelCount,
+          stockQuantity: saved?.quantity ?? qtyNumber,
+        });
+        return;
+      }
       onSaved();
     },
   });
 
+  const canSave = !!form.name.trim() && !!effectiveMerchantId && priceCents > 0 && !saveMutation.isPending;
+
   return (
     <FormSheet onClose={onClose} title={isEditing ? "Modifier l'article" : 'Nouvel article'}>
-      <div className="p-6 space-y-5">
+      <div className="p-6 space-y-4">
         <h2 className="text-xl font-bold text-foreground">{isEditing ? "Modifier l'article" : 'Nouvel article'}</h2>
 
-        {/* Image */}
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="relative w-28 h-28 rounded-2xl border-2 border-dashed border-border hover:border-primary/50 bg-secondary/50 flex items-center justify-center overflow-hidden transition-colors"
-          >
-            {imagePreview ? (
-              <img src={imagePreview} alt="Aperçu" className="w-full h-full object-cover" />
-            ) : (
-              <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                <ImagePlus className="w-6 h-6" />
-                <span className="text-[11px] font-medium">Photo</span>
-              </div>
-            )}
-            {imagePreview && (
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={(e) => { e.stopPropagation(); setImageFile(null); setImagePreview(''); set('image_url', ''); }}
-                className="absolute top-1 right-1 w-6 h-6 rounded-full bg-background/90 flex items-center justify-center hover:bg-destructive/10"
-              >
-                <X className="w-3.5 h-3.5 text-destructive" />
-              </span>
-            )}
-          </button>
-          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePickImage} />
-        </div>
-        {imageError && <p className="text-xs text-destructive text-center -mt-3">{imageError}</p>}
-        <p className="text-xs text-muted-foreground text-center -mt-3">JPEG, PNG ou WebP — 2 Mo maximum</p>
-
         {merchants.length > 1 && (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label>Boutique</Label>
             <Select value={form.merchant_id} onChange={(e) => set('merchant_id', e.target.value)}>
-              <option value="">Sélectionner...</option>
+              <option value="">Sélectionner…</option>
               {merchants.map((m) => (
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
@@ -203,156 +213,249 @@ export function StockItemFormSheet({
           </div>
         )}
 
-        {/* Category picker */}
-        <div className="space-y-2">
-          <Label>Catégorie</Label>
-          <div className="grid grid-cols-3 gap-2">
-            {STOCK_CATEGORIES.map((c) => (
-              <button
-                key={c.value}
-                type="button"
-                onClick={() => set('category', c.value)}
-                className={cn(
-                  'flex flex-col items-center gap-1.5 rounded-xl border-2 px-2 py-3 text-[11px] font-semibold text-center leading-tight transition-colors',
-                  form.category === c.value
-                    ? 'border-primary bg-primary/5 text-primary'
-                    : 'border-input text-muted-foreground hover:bg-accent',
-                )}
-              >
-                <c.icon className="w-5 h-5" />
-                {c.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {category && (
-          <div className="space-y-2">
-            <Label htmlFor="item_type">Type d'article</Label>
-            <Input
-              id="item_type"
-              list="item-type-suggestions"
-              placeholder={category.itemTypes[0]}
-              value={form.item_type}
-              onChange={(e) => set('item_type', e.target.value)}
-            />
-            <datalist id="item-type-suggestions">
-              {category.itemTypes.map((t) => <option key={t} value={t} />)}
-            </datalist>
-          </div>
-        )}
-
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <Label htmlFor="stock_name">Nom de l'article</Label>
-          <Input id="stock_name" placeholder="Samsung Galaxy A54" value={form.name} onChange={(e) => set('name', e.target.value)} />
+          <Input id="stock_name" placeholder={config.namePlaceholder} value={form.name} onChange={(e) => set('name', e.target.value)} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label htmlFor="stock_brand">Marque</Label>
-            <Input id="stock_brand" placeholder="Samsung" value={form.brand} onChange={(e) => set('brand', e.target.value)} />
+        {/* Barcode — what the till scans. Manufacturer code when the
+            packaging has one, else an in-store code printed on a label. */}
+        <div className="space-y-1.5">
+          <Label htmlFor="stock_barcode">Code-barres</Label>
+          <div className="flex gap-2">
+            <Input
+              id="stock_barcode"
+              inputMode="numeric"
+              placeholder="Scannez ou saisissez"
+              value={form.barcode}
+              onChange={(e) => set('barcode', e.target.value.trim())}
+              // A hand-held scanner types the code then Enter — don't let
+              // that Enter do anything else in the form.
+              onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+              className="flex-1 min-w-0 font-mono"
+            />
+            <Button type="button" variant="outline" size="icon" className="h-12 w-12 flex-shrink-0" onClick={() => setScanning(true)} title="Scanner avec la caméra">
+              <ScanBarcode className="w-4 h-4" />
+            </Button>
+            <Button type="button" variant="outline" className="h-12 flex-shrink-0" onClick={() => set('barcode', generateInStoreEan13())} title="Générer un code pour ce produit">
+              Générer
+            </Button>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="stock_model">Modèle</Label>
-            <Input id="stock_model" placeholder="Galaxy A54" value={form.model} onChange={(e) => set('model', e.target.value)} />
-          </div>
+          <p className="text-xs text-muted-foreground">
+            {needsLabel
+              ? labelOnSave
+                ? "L'étiquette sera imprimée à l'enregistrement."
+                : "L'étiquette sera imprimée à l'enregistrement, une fois le nom et le prix renseignés."
+              : 'Produit emballé : scannez son code. Sans code : « Générer », une étiquette sera imprimée.'}
+          </p>
         </div>
 
-        {/* Category-specific dynamic fields */}
-        {category && category.fields.length > 0 && (
-          <div className="grid grid-cols-2 gap-3">
-            {category.fields.map((f) => (
-              <div key={f.key} className="space-y-2">
-                <Label htmlFor={`attr_${f.key}`}>{f.label}{f.unit ? ` (${f.unit})` : ''}</Label>
-                {f.type === 'select' ? (
-                  <Select id={`attr_${f.key}`} value={form.attributes[f.key] || ''} onChange={(e) => setAttribute(f.key, e.target.value)}>
-                    <option value="">Sélectionner...</option>
-                    {f.options?.map((o) => <option key={o} value={o}>{o}</option>)}
-                  </Select>
-                ) : (
-                  <Input
-                    id={`attr_${f.key}`}
-                    type={f.type === 'number' ? 'number' : 'text'}
-                    inputMode={f.type === 'number' ? 'decimal' : undefined}
-                    placeholder={f.placeholder}
-                    value={form.attributes[f.key] || ''}
-                    onChange={(e) => setAttribute(f.key, e.target.value)}
-                  />
-                )}
-              </div>
-            ))}
+        {needsLabel && (
+          <div className="space-y-1.5 rounded-xl border border-primary/20 bg-primary/5 p-3">
+            <Label htmlFor="label_copies">Nombre d'étiquettes à imprimer</Label>
+            <Input
+              id="label_copies"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={MAX_LABELS}
+              value={labelInputValue}
+              onChange={(e) => setLabelCount(e.target.value)}
+            />
+            <div className="flex flex-wrap gap-2">
+              {qtyNumber > 1 && (
+                <button type="button" onClick={() => { setLabelCopiesTouched(false); }} className="rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-foreground hover:bg-accent">
+                  = quantité ({Math.min(qtyNumber, MAX_LABELS)})
+                </button>
+              )}
+              <button type="button" onClick={() => setLabelCount('1')} className="rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-foreground hover:bg-accent">
+                1 seule
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {labelCopiesTouched ? 'Nombre choisi par vous.' : 'Suit la quantité saisie — modifiez-le si besoin.'}
+              {labelCount > 100 && " Vérifiez qu'il y a assez de papier dans l'imprimante."}
+              {qtyNumber > MAX_LABELS && ` Maximum ${MAX_LABELS} par impression — relancez depuis la fiche produit pour le reste.`}
+            </p>
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label htmlFor="stock_serial">N° de série / IMEI</Label>
-            <Input id="stock_serial" value={form.serial_number} onChange={(e) => set('serial_number', e.target.value)} />
+        {/* Category — one compact bar instead of a grid of cards */}
+        <div className="space-y-1.5">
+          <Label htmlFor="stock_category">Catégorie</Label>
+          <Select
+            id="stock_category"
+            value={customCategory ? OTHER : form.category}
+            onChange={(e) => {
+              if (e.target.value === OTHER) {
+                setCustomCategory(true);
+                set('category', '');
+              } else {
+                setCustomCategory(false);
+                set('category', e.target.value);
+              }
+            }}
+          >
+            <option value="">Choisir une catégorie…</option>
+            {config.categories.map((c) => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+            <option value={OTHER}>Nouvelle catégorie…</option>
+          </Select>
+          {customCategory && (
+            <Input
+              placeholder="Nom de la catégorie"
+              value={form.category}
+              onChange={(e) => set('category', e.target.value)}
+              autoFocus
+            />
+          )}
+        </div>
+
+        <div className="grid grid-cols-[1fr_110px] gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="stock_price">Prix de vente</Label>
+            <Input id="stock_price" type="number" inputMode="decimal" min={0} placeholder="0" value={form.unit_price} onChange={(e) => set('unit_price', e.target.value)} />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="stock_condition">État</Label>
-            <Select id="stock_condition" value={form.condition} onChange={(e) => set('condition', e.target.value)}>
-              <option value="">Sélectionner...</option>
-              {CONDITIONS.map((c) => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
+          <div className="space-y-1.5">
+            <Label htmlFor="stock_currency">Devise</Label>
+            <Select id="stock_currency" value={form.currency} onChange={(e) => set('currency', e.target.value as 'CDF' | 'USD')}>
+              <option value="CDF">CDF</option>
+              <option value="USD">USD</option>
             </Select>
           </div>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="stock_description">Description / plus d'informations</Label>
-          <Input id="stock_description" placeholder="Détails utiles pour la vente..." value={form.description} onChange={(e) => set('description', e.target.value)} />
-        </div>
-
         <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label htmlFor="stock_warranty">Garantie (mois)</Label>
-            <Input id="stock_warranty" type="number" inputMode="numeric" value={form.warranty_months} onChange={(e) => set('warranty_months', e.target.value)} />
+          <div className="space-y-1.5">
+            <Label htmlFor="stock_quantity">{isEditing ? 'Quantité' : 'Quantité initiale'}</Label>
+            <Input id="stock_quantity" type="number" inputMode="numeric" min={0} placeholder="0" value={form.quantity} onChange={(e) => set('quantity', e.target.value)} />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="stock_threshold">Seuil d'alerte</Label>
-            <Input id="stock_threshold" type="number" inputMode="numeric" value={form.low_stock_threshold} onChange={(e) => set('low_stock_threshold', e.target.value)} />
+          <div className="space-y-1.5">
+            <Label htmlFor="stock_threshold">Alerte stock bas</Label>
+            <Input id="stock_threshold" type="number" inputMode="numeric" min={0} value={form.low_stock_threshold} onChange={(e) => set('low_stock_threshold', e.target.value)} />
           </div>
         </div>
+        {isEditing && (
+          <p className="text-xs text-muted-foreground -mt-2">Changer la quantité ajuste le stock (enregistré dans l'historique des mouvements).</p>
+        )}
 
-        <div className="space-y-2">
-          <Label htmlFor="stock_quantity">{isEditing ? 'Quantité' : 'Quantité initiale'}</Label>
-          <Input
-            id="stock_quantity"
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={form.quantity}
-            onChange={(e) => set('quantity', e.target.value)}
-          />
-          {isEditing && <p className="text-xs text-muted-foreground">Modifier ce champ ajuste le stock (enregistré dans l'historique des mouvements).</p>}
-        </div>
+        {/* Optional — folded so the essential sheet stays short */}
+        <div className="rounded-xl border border-border">
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((o) => !o)}
+            className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-foreground"
+          >
+            Plus de détails{" "}<span className="text-muted-foreground font-normal">(facultatif)</span>
+            <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ml-auto ${detailsOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {detailsOpen && (
+            <div className="px-4 pb-4 space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="stock_description">Description</Label>
+                <Input id="stock_description" placeholder="Détails utiles pour la vente…" value={form.description} onChange={(e) => set('description', e.target.value)} />
+              </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="stock_price">Prix de vente unitaire</Label>
-          <Input id="stock_price" type="number" inputMode="decimal" value={form.unit_price} onChange={(e) => set('unit_price', e.target.value)} />
-        </div>
-        <div className="space-y-2">
-          <Label>Devise</Label>
-          <CurrencySelector value={form.currency} onChange={(c) => set('currency', c)} />
+              {config.technicalFields && (
+                <>
+                  {category && category.itemTypes.length > 0 && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="item_type">Type d'article</Label>
+                      <Input id="item_type" list="item-type-suggestions" placeholder={category.itemTypes[0]} value={form.item_type} onChange={(e) => set('item_type', e.target.value)} />
+                      <datalist id="item-type-suggestions">
+                        {category.itemTypes.map((t) => <option key={t} value={t} />)}
+                      </datalist>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="stock_brand">Marque</Label>
+                      <Input id="stock_brand" placeholder="Samsung" value={form.brand} onChange={(e) => set('brand', e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="stock_model">Modèle</Label>
+                      <Input id="stock_model" placeholder="Galaxy A54" value={form.model} onChange={(e) => set('model', e.target.value)} />
+                    </div>
+                  </div>
+                  {category && category.fields.length > 0 && (
+                    <div className="grid grid-cols-2 gap-3">
+                      {category.fields.map((f) => (
+                        <div key={f.key} className="space-y-1.5">
+                          <Label htmlFor={`attr_${f.key}`}>{f.label}{f.unit ? ` (${f.unit})` : ''}</Label>
+                          {f.type === 'select' ? (
+                            <Select id={`attr_${f.key}`} value={form.attributes[f.key] || ''} onChange={(e) => setAttribute(f.key, e.target.value)}>
+                              <option value="">Sélectionner…</option>
+                              {f.options?.map((o) => <option key={o} value={o}>{o}</option>)}
+                            </Select>
+                          ) : (
+                            <Input
+                              id={`attr_${f.key}`}
+                              type={f.type === 'number' ? 'number' : 'text'}
+                              inputMode={f.type === 'number' ? 'decimal' : undefined}
+                              placeholder={f.placeholder}
+                              value={form.attributes[f.key] || ''}
+                              onChange={(e) => setAttribute(f.key, e.target.value)}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="stock_serial">N° de série / IMEI</Label>
+                      <Input id="stock_serial" value={form.serial_number} onChange={(e) => set('serial_number', e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="stock_condition">État</Label>
+                      <Select id="stock_condition" value={form.condition} onChange={(e) => set('condition', e.target.value)}>
+                        <option value="">Sélectionner…</option>
+                        {CONDITIONS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="stock_warranty">Garantie (mois)</Label>
+                    <Input id="stock_warranty" type="number" inputMode="numeric" value={form.warranty_months} onChange={(e) => set('warranty_months', e.target.value)} />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {saveMutation.isError && (
           <p className="text-sm text-destructive text-center">
-            {(saveMutation.error as any)?.response?.data?.message || 'Échec de l\'enregistrement — réessaie.'}
+            {(saveMutation.error as any)?.response?.data?.message || "Échec de l'enregistrement — réessayez."}
           </p>
         )}
+        {!priceCents && form.name.trim() && (
+          <p className="text-xs text-muted-foreground text-center">Indiquez le prix de vente pour enregistrer.</p>
+        )}
 
-        <Button
-          className="w-full"
-          disabled={!form.name || !effectiveMerchantId || saveMutation.isPending}
-          onClick={() => saveMutation.mutate()}
-        >
-          {saveMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
-          {isEditing ? 'Enregistrer les modifications' : "Enregistrer l'article"}
+        <Button className="w-full" size="lg" disabled={!canSave} onClick={() => saveMutation.mutate()}>
+          {saveMutation.isPending
+            ? <Loader2 className="mr-2 w-4 h-4 animate-spin" />
+            : labelOnSave && <Printer className="mr-2 w-4 h-4" />}
+          {labelOnSave
+            ? `Enregistrer et imprimer ${labelCount > 1 ? `${labelCount} étiquettes` : "l'étiquette"}`
+            : isEditing ? 'Enregistrer les modifications' : "Enregistrer l'article"}
         </Button>
       </div>
+
+      {scanning && (
+        <BarcodeScannerView
+          title="Scanner le code du produit"
+          onDetected={(code) => { beepOk(); set('barcode', code); }}
+          onClose={() => setScanning(false)}
+        />
+      )}
+
+      {/* Saved — the label prints straight away; closing it ends the flow. */}
+      {savedLabel && (
+        <ProductLabelSheet product={savedLabel.product} autoPrintCopies={savedLabel.copies} stockQuantity={savedLabel.stockQuantity} onClose={onSaved} />
+      )}
     </FormSheet>
   );
 }

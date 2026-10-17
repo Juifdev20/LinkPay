@@ -5,6 +5,8 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { toPage, toLimit } from '../common/utils/pagination';
+import { RequireSubscription } from '../subscriptions/subscription.guard';
 
 /**
  * Organization-scoped audit trail (spec 3.2 "traçabilité") — the direction
@@ -16,6 +18,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 @ApiTags('Audit')
 @ApiBearerAuth()
 @Controller('organizations/:id/audit-log')
+@RequireSubscription('org')
 @Roles('enterprise', 'comptable', 'admin', 'super_admin')
 @UseGuards(RolesGuard)
 export class AuditController {
@@ -54,11 +57,16 @@ export class AuditController {
     // this org (anything else matches nobody).
     const effectiveIds = userId ? (userIds.includes(userId) ? [userId] : ['00000000-0000-0000-0000-000000000000']) : userIds;
 
-    return this.auditService.getAuditLogs({
+    const result = await this.auditService.getAuditLogs({
       user_ids: effectiveIds,
       action,
-      page: page ? parseInt(page, 10) : undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
+      page: toPage(page),
+      limit: toLimit(limit),
     });
+    // Network details of the staff are for the owner and the platform, not for the accountant.
+    if (!isAdmin && !isOwner) {
+      result.data = (result.data || []).map(({ ip_address, user_agent, ...rest }: any) => rest);
+    }
+    return result;
   }
 }

@@ -28,7 +28,9 @@ registerRoute(
 
 // ---- Supabase runtime caching (re-implemented from the old workbox.runtimeCaching rule) ----
 registerRoute(
-  ({ url }) => url.hostname.endsWith('.supabase.co'),
+  // Public storage files only (product images…). Never the auth/REST endpoints: those answer for ONE user, and the
+  // cache is keyed by URL alone, so it would serve one account's answer to the next person on the same browser.
+  ({ url, request }) => request.method === 'GET' && url.hostname.endsWith('.supabase.co') && url.pathname.startsWith('/storage/v1/object/public/'),
   new NetworkFirst({
     cacheName: 'supabase-api',
     plugins: [new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 300 })],

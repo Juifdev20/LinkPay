@@ -38,7 +38,9 @@ export default function AdminSettlementsPage() {
       queryClient.invalidateQueries({ queryKey: ['admin-settlements'] });
       setFailingId(null);
     },
+    onError: () => setFailingId(null),
   });
+  const statusError = (statusMutation.error as any)?.response?.data?.message;
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
@@ -49,6 +51,9 @@ export default function AdminSettlementsPage() {
           <CardTitle className="text-base font-bold">{data?.total || 0} règlement(s)</CardTitle>
         </CardHeader>
         <CardContent>
+          {statusMutation.isError && (
+            <p className="text-sm text-destructive mb-3">{statusError || 'Échec de la mise à jour'}</p>
+          )}
           {data?.data?.length ? (
             <div>
               {data.data.map((s: any) => {
@@ -60,6 +65,12 @@ export default function AdminSettlementsPage() {
                       <p className="font-semibold text-sm text-foreground truncate">{s.reference}</p>
                       <p className="text-xs text-muted-foreground truncate">
                         {s.merchant?.name || s.merchant_id} · {formatDate(s.created_at)}
+                      </p>
+                      {/* Where to send the money — snapshotted when the merchant requested it. */}
+                      <p className="text-xs text-foreground truncate">
+                        {s.payout_account?.number
+                          ? `${s.payout_account.method === 'bank' ? s.payout_account.bank_name || 'Banque' : s.payout_account.operator || 'Mobile Money'} · ${s.payout_account.number} · ${s.payout_account.holder_name}`
+                          : 'Compte de versement non renseigné'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">

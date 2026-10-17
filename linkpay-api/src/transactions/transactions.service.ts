@@ -99,8 +99,12 @@ export class TransactionsService {
       query = query.eq('status', filters.status);
     }
 
-    if (filters?.search) {
-      query = query.or(`reference.ilike.%${filters.search}%,psp_reference.ilike.%${filters.search}%`);
+    // The search text is interpolated into a PostgREST filter string, where
+    // `,` `(` `)` `.` and `*` are syntax — keep only what a reference can
+    // contain so the input can never reshape the filter.
+    const search = filters?.search?.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
+    if (search) {
+      query = query.or(`reference.ilike.%${search}%,psp_reference.ilike.%${search}%`);
     }
 
     const page = filters?.page || 1;

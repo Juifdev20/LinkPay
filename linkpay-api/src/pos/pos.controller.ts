@@ -5,11 +5,17 @@ import { PosService } from './pos.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { RequireSubscription } from '../subscriptions/subscription.guard';
 
 class CreateTicketDto {
   @ApiProperty({ enum: ['CDF', 'USD'] })
   @IsIn(['CDF', 'USD'])
   currency!: string;
+
+  @ApiPropertyOptional({ description: 'Premier produit à ajouter — crée le ticket et sa première ligne en un seul appel' })
+  @IsOptional()
+  @IsString()
+  first_stock_item_id?: string;
 }
 
 class AddTicketItemDto {
@@ -117,6 +123,7 @@ class UpdatePosSettingsDto {
 @ApiTags('POS')
 @ApiBearerAuth()
 @Controller('merchants/:id/pos')
+@RequireSubscription('merchant')
 @Roles('enterprise', 'caissier', 'magasinier', 'admin', 'super_admin')
 @UseGuards(RolesGuard)
 export class PosController {
@@ -154,7 +161,7 @@ export class PosController {
     @CurrentUser('role') callerRole: string,
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
-    return this.posService.createTicket(merchantId, callerId, callerRole, callerOrgId, dto.currency);
+    return this.posService.createTicket(merchantId, callerId, callerRole, callerOrgId, dto.currency, dto.first_stock_item_id);
   }
 
   @Get('tickets')

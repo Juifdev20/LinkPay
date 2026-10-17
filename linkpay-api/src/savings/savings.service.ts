@@ -5,6 +5,13 @@ import { WalletPinService } from '../wallets/wallet-pin.service';
 const CURRENCIES = ['CDF', 'USD'] as const;
 type Currency = (typeof CURRENCIES)[number];
 
+const RECENT_ENTRIES = 20;
+
+/** Largest round-up step, in cents of the pot's own currency. The same number
+ * in both currencies would have let a USD pot round every payment up to a
+ * multiple of $10,000 — a payment of $1 would move $9,999 into savings. */
+const MAX_ROUND_UP_INCREMENT_CENTS: Record<Currency, number> = { CDF: 1_000_000, USD: 10_000 };
+
 /**
  * Round-up savings ("épargne par arrondi") — opt-in, per user AND per
  * currency, for both client and merchant wallets alike (no role restriction
@@ -61,36 +68,31 @@ export class SavingsService {
 
   /** Both currencies at once — a currency the user never configured comes
    * back as a default/disabled placeholder, no row created just for reading.
-   * One round trip per currency (both run in parallel): the pot and ALL its
-   * entries come back together via PostgREST's embedded-resource select,
-   * instead of the pot, then the full entry list again for the balance, then
-   * the last 20 again for display — three reads of the same table down to
-   * one. The balance still needs every entry ever recorded (it's a running
-   * ledger total, not just the recent ones shown in the UI). */
+   * The balance is a SUM done by the database (savings_pot_balances, migration
+   * 047): there is one entry per round-up, so downloading them all to add them
+   * up here got slower with every payment the user ever made. Only the 20 most
+   * recent entries — the ones the screen shows — are fetched. */
   async getMyPot(userId: string) {
+    const { data: balances } = await this.db.rpc('savings_pot_balances', { p_user_id: userId });
+    const balanceByCurrency = new Map<string, number>(
+      ((balances as { currency: string; balance_cents: number | string }[]) || []).map((b) => [b.currency, Number(b.balance_cents)]),
+    );
+
     const pots = await Promise.all(
       CURRENCIES.map(async (currency) => {
-        const { data: pot } = await this.db
-          .from('savings_pots')
-          .select('*, savings_pot_entries(*)')
-          .eq('user_id', userId)
-          .eq('currency', currency)
-          .maybeSingle();
-
+        const pot = await this.getPot(userId, currency);
         if (!pot) {
           return { currency, pot: null, balance_cents: 0, entries: [] as any[] };
         }
 
-        const { savings_pot_entries: allEntries, ...potFields } = pot as any;
-        const entries = (allEntries || []).sort(
-          (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-        );
-        const balance_cents = entries.reduce(
-          (sum: number, e: any) => sum + (e.type === 'round_up' ? e.amount_cents : -e.amount_cents),
-          0,
-        );
+        const { data: entries } = await this.db
+          .from('savings_pot_entries')
+          .select('*')
+          .eq('pot_id', pot.id)
+          .order('created_at', { ascending: false })
+          .limit(RECENT_ENTRIES);
 
-        return { currency, pot: potFields, balance_cents, entries: entries.slice(0, 20) };
+        return { currency, pot, balance_cents: balanceByCurrency.get(currency) ?? 0, entries: entries || [] };
       }),
     );
 
@@ -103,6 +105,10 @@ export class SavingsService {
     dto: { round_up_enabled?: boolean; round_up_increment_cents?: number; goal_name?: string; goal_amount_cents?: number },
   ) {
     this.assertCurrency(currency);
+    if (dto.round_up_increment_cents !== undefined && dto.round_up_increment_cents > MAX_ROUND_UP_INCREMENT_CENTS[currency]) {
+      const max = MAX_ROUND_UP_INCREMENT_CENTS[currency] / 100;
+      throw new BadRequestException(`L'arrondi ne peut pas dépasser ${max.toLocaleString('fr-FR')} ${currency}`);
+    }
     const pot = await this.getOrCreatePot(userId, currency);
 
     const updates: Record<string, any> = { updated_at: new Date().toISOString() };

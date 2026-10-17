@@ -5,6 +5,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { IsString, IsOptional } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { RequireDeviceIntegrity } from '../integrity/device-integrity.guard';
 
 class CreatePaymentDto {
   @ApiProperty({ description: 'Payment request link token' })
@@ -80,6 +81,7 @@ export class PaymentsController {
   }
 
   @Post('wallet')
+  @RequireDeviceIntegrity()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Pay an existing payment request (invoice) from the ScanLinkPay wallet — authenticated users only' })
   async payWithWallet(

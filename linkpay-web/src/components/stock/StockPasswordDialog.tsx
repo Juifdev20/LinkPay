@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, Lock, Eye, EyeOff } from 'lucide-react';
 import { PasswordStrength } from '@/components/PasswordStrength';
+import { useAuthStore } from '@/lib/auth-store';
 
 /**
  * Gate shown before an edit/delete goes through — consulting the stock list
@@ -38,6 +39,10 @@ export function StockPasswordDialog({
     enabled: open && !!orgId,
   });
   const isSet = !!status?.is_set;
+  // Only the patron (or an administrator) defines the shared password; employees just use it.
+  const user = useAuthStore((s) => s.user);
+  const canDefine = ['enterprise', 'admin', 'super_admin'].includes(user?.role || '') || !!user?.acting_as_org_id;
+  const waitingForPatron = !!status && !isSet && !canDefine;
 
   const reset = () => {
     setPassword('');
@@ -95,10 +100,13 @@ export function StockPasswordDialog({
           <DialogDescription>
             {isSet
               ? 'Requis pour modifier ou supprimer un article.'
-              : "Première utilisation du module — choisis un mot de passe pour protéger les modifications et suppressions d'articles. Ton administrateur pourra le réinitialiser si besoin."}
+              : waitingForPatron
+              ? "Le patron n'a pas encore défini le mot de passe de gestion de stock. Demandez-lui de le faire pour pouvoir modifier ou supprimer des articles."
+              : "Première utilisation du module — choisissez un mot de passe pour protéger les modifications et suppressions d'articles. Vous pourrez le réinitialiser si besoin. Communiquez-le uniquement aux personnes qui gèrent le stock."}
           </DialogDescription>
         </DialogHeader>
 
+        {!waitingForPatron && (
         <div className="space-y-3">
           <div className="space-y-2">
             <Label htmlFor="stock_pwd">{isSet ? 'Mot de passe' : 'Nouveau mot de passe'}</Label>
@@ -139,12 +147,13 @@ export function StockPasswordDialog({
 
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => { reset(); onClose(); }}>
             Annuler
           </Button>
-          <Button disabled={!password || pending} onClick={handleSubmit}>
+          <Button disabled={!password || pending || waitingForPatron} onClick={handleSubmit}>
             {pending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
             {isSet ? 'Confirmer' : 'Définir'}
           </Button>

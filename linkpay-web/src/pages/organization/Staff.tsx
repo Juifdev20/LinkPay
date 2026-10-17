@@ -9,7 +9,7 @@ import { Select } from '@/components/ui/select';
 import { PageHeader } from '@/components/PageHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { downloadStaffCredentialPdf } from '@/lib/staff-credential-pdf';
-import { Loader2, Plus, X, Printer, KeyRound, Warehouse, ShoppingBag, Wallet, Calculator } from 'lucide-react';
+import { Loader2, Plus, X, Printer, KeyRound, Warehouse, ShoppingBag, Wallet, Calculator, UserX, UserCheck } from 'lucide-react';
 
 const ROLES = [
   { slug: 'magasinier', label: 'Magasinier', icon: Warehouse },
@@ -68,6 +68,35 @@ export default function StaffPage() {
   });
 
   const [resetTarget, setResetTarget] = useState<any>(null);
+  const [removeTarget, setRemoveTarget] = useState<any>(null);
+  const [roleChange, setRoleChange] = useState<{ member: any; role_slug: string } | null>(null);
+  const [actionError, setActionError] = useState('');
+
+  // These three change who may do what: the API asks the patron for their own
+  // access code first (dialog handled by the API client).
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['org-staff', org.id] });
+  const fail = (err: any) => setActionError(err?.response?.data?.message || 'Action impossible, réessayez.');
+
+  const changeRoleMutation = useMutation({
+    mutationFn: async ({ member, role_slug }: { member: any; role_slug: string }) =>
+      api.put(`/organizations/${org.id}/staff/${member.id}/role`, { role_slug }),
+    onSuccess: () => { setActionError(''); refresh(); },
+    onError: fail,
+    onSettled: () => setRoleChange(null),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: async (member: any) => api.post(`/organizations/${org.id}/staff/${member.id}/deactivate`),
+    onSuccess: () => { setActionError(''); refresh(); },
+    onError: fail,
+    onSettled: () => setRemoveTarget(null),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: async (member: any) => (await api.post(`/organizations/${org.id}/staff/${member.id}/reactivate`)).data,
+    onSuccess: async (data, member) => { setActionError(''); refresh(); await printCredential(data, member); },
+    onError: fail,
+  });
 
   const printCredential = async (data: any, member: any) => {
     const role = ROLES.find((r) => r.slug === member.role);
@@ -205,20 +234,51 @@ export default function StaffPage() {
 
           {visibleStaff.length ? (
             <div>
+              {actionError && <p className="text-sm text-destructive pb-2">{actionError}</p>}
               {visibleStaff.map((s: any) => (
-                <div key={s.id} className="flex items-center justify-between py-3 border-b border-border last:border-0">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-foreground truncate">{[s.prenom, s.postnom, s.nom].filter(Boolean).join(' ')}</p>
-                    <p className="text-sm text-muted-foreground truncate">{s.role_name || s.role} · {s.email}</p>
+                <div key={s.id} className={`py-3 border-b border-border last:border-0 ${s.active === false ? 'opacity-70' : ''}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-foreground truncate">
+                        {[s.prenom, s.postnom, s.nom].filter(Boolean).join(' ')}
+                        {s.active === false && <span className="ml-2 text-xs font-medium rounded-full bg-destructive/10 text-destructive px-2 py-0.5">Accès retiré</span>}
+                      </p>
+                      <p className="text-sm text-muted-foreground truncate">{s.role_name || s.role} · {s.email}</p>
+                    </div>
+                    <div className="flex items-center flex-shrink-0">
+                      {s.active === false ? (
+                        <Button variant="outline" size="sm" title="Rétablir l'accès (nouveau mot de passe temporaire)" disabled={restoreMutation.isPending && restoreMutation.variables?.id === s.id} onClick={() => restoreMutation.mutate(s)}>
+                          {restoreMutation.isPending && restoreMutation.variables?.id === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><UserCheck className="w-4 h-4 mr-1" />Rétablir</>}
+                        </Button>
+                      ) : (
+                        <>
+                          {s.has_temp_password ? (
+                            <Button variant="ghost" size="icon" title="Ré-imprimer le mot de passe temporaire" disabled={reprintingId === s.id} onClick={() => reprint(s)}>
+                              {reprintingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4 text-muted-foreground" />}
+                            </Button>
+                          ) : (
+                            <Button variant="ghost" size="icon" title="Réinitialiser le mot de passe (génère un nouveau mot de passe temporaire)" disabled={reprintingId === s.id} onClick={() => setResetTarget(s)}>
+                              {reprintingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4 text-muted-foreground" />}
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="icon" title="Retirer l'accès (l'employé part)" onClick={() => setRemoveTarget(s)}>
+                            <UserX className="w-4 h-4 text-destructive" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  {s.has_temp_password ? (
-                    <Button variant="ghost" size="icon" title="Ré-imprimer le mot de passe temporaire" disabled={reprintingId === s.id} onClick={() => reprint(s)}>
-                      {reprintingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4 text-muted-foreground" />}
-                    </Button>
-                  ) : (
-                    <Button variant="ghost" size="icon" title="Réinitialiser le mot de passe (génère un nouveau mot de passe temporaire)" disabled={reprintingId === s.id} onClick={() => setResetTarget(s)}>
-                      {reprintingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4 text-muted-foreground" />}
-                    </Button>
+                  {s.active !== false && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Rôle</span>
+                      <Select
+                        value={s.role || ''}
+                        onChange={(e) => e.target.value !== s.role && setRoleChange({ member: s, role_slug: e.target.value })}
+                        className="h-8 text-sm w-40"
+                      >
+                        {ROLES.map((r) => <option key={r.slug} value={r.slug}>{r.label}</option>)}
+                      </Select>
+                    </div>
                   )}
                 </div>
               ))}
@@ -228,6 +288,25 @@ export default function StaffPage() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={!!removeTarget}
+        onOpenChange={(open) => !open && setRemoveTarget(null)}
+        title="Retirer l'accès de cet employé ?"
+        description={`${[removeTarget?.prenom, removeTarget?.nom].filter(Boolean).join(' ')} ne pourra plus se connecter et sera déconnecté immédiatement. Ses ventes et son historique sont conservés. Vous pourrez rétablir son accès plus tard. Vous devrez confirmer avec votre code d'accès.`}
+        confirmLabel="Retirer l'accès"
+        variant="destructive"
+        onConfirm={() => removeTarget && removeMutation.mutate(removeTarget)}
+      />
+
+      <ConfirmDialog
+        open={!!roleChange}
+        onOpenChange={(open) => !open && setRoleChange(null)}
+        title="Changer le rôle ?"
+        description={`${[roleChange?.member?.prenom, roleChange?.member?.nom].filter(Boolean).join(' ')} deviendra ${ROLES.find((r) => r.slug === roleChange?.role_slug)?.label || ''}. Il sera déconnecté et verra les écrans de son nouveau rôle à sa prochaine connexion. Vous devrez confirmer avec votre code d'accès.`}
+        confirmLabel="Changer le rôle"
+        onConfirm={() => roleChange && changeRoleMutation.mutate(roleChange)}
+      />
 
       <ConfirmDialog
         open={!!resetTarget}

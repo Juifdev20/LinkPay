@@ -1,4 +1,7 @@
-import { Smartphone, Laptop, Cpu, Headphones, Cable, type LucideIcon } from 'lucide-react';
+import {
+  Smartphone, Laptop, Cpu, Headphones, Cable, ShoppingBasket, CupSoda, Croissant, Milk, Apple,
+  Beef, Sparkles, SprayCan, Baby, Package, type LucideIcon,
+} from 'lucide-react';
 
 export type AttributeField = {
   key: string;
@@ -84,10 +87,65 @@ export const STOCK_CATEGORIES: StockCategory[] = [
   },
 ];
 
+// ------------------------------------------------------------------
+// Supermarket / food aisles ("rayons"). The stored value IS the label
+// (free-text category column — see stock.controller.ts), which keeps the
+// products created before this list existed ("Boulangerie", "Alimentation")
+// matching it. No spec fields: a supermarket product is name, code, aisle,
+// price, quantity.
+// ------------------------------------------------------------------
+const aisle = (label: string, icon: LucideIcon): StockCategory => ({ value: label, label, icon, itemTypes: [], fields: [] });
+
+const SUPERMARKET_CATEGORIES: StockCategory[] = [
+  aisle('Alimentation', ShoppingBasket),
+  aisle('Boissons', CupSoda),
+  aisle('Boulangerie', Croissant),
+  aisle('Produits frais & laitiers', Milk),
+  aisle('Fruits & légumes', Apple),
+  aisle('Viande & poisson', Beef),
+  aisle('Hygiène & beauté', Sparkles),
+  aisle('Entretien ménager', SprayCan),
+  aisle('Bébé', Baby),
+  aisle('Autre', Package),
+];
+
+const FOOD_CATEGORIES: StockCategory[] = [
+  aisle('Alimentation', ShoppingBasket),
+  aisle('Boissons', CupSoda),
+  aisle('Boulangerie', Croissant),
+  aisle('Produits frais & laitiers', Milk),
+  aisle('Fruits & légumes', Apple),
+  aisle('Viande & poisson', Beef),
+  aisle('Autre', Package),
+];
+
+export type SectorConfig = {
+  categories: StockCategory[];
+  /** Electronics-only spec fields: brand, model, serial/IMEI, condition,
+   *  warranty, item type and per-category attributes. */
+  technicalFields: boolean;
+  namePlaceholder: string;
+};
+
+/** What the product sheet shows for an organization's sector
+ *  (organizations.sector — see SECTORS in OnboardingWizard.tsx). */
+export function getSectorConfig(sector?: string | null): SectorConfig {
+  if (sector === 'electronique') {
+    return { categories: STOCK_CATEGORIES, technicalFields: true, namePlaceholder: 'Samsung Galaxy A54' };
+  }
+  if (sector === 'alimentation') {
+    return { categories: FOOD_CATEGORIES, technicalFields: false, namePlaceholder: 'Farine de maïs 25 kg' };
+  }
+  // Supermarket — also the default: the simplest sheet.
+  return { categories: SUPERMARKET_CATEGORIES, technicalFields: false, namePlaceholder: 'Riz parfumé 5 kg' };
+}
+
+const ALL_CATEGORIES = [...STOCK_CATEGORIES, ...SUPERMARKET_CATEGORIES];
+
 export function getCategoryLabel(value?: string | null): string {
-  return STOCK_CATEGORIES.find((c) => c.value === value)?.label || value || '—';
+  return ALL_CATEGORIES.find((c) => c.value === value)?.label || value || '—';
 }
 
 export function getCategoryIcon(value?: string | null): LucideIcon {
-  return STOCK_CATEGORIES.find((c) => c.value === value)?.icon || Cable;
+  return ALL_CATEGORIES.find((c) => c.value === value)?.icon || Package;
 }

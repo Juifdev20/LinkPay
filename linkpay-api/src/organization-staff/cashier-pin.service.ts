@@ -1,6 +1,7 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Optional } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { SupabaseService } from '../supabase/supabase.service';
+import { LoginAttemptsService } from '../auth/login-attempts.service';
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
@@ -17,7 +18,7 @@ const PIN_REGEX = /^\d{4,6}$/;
  */
 @Injectable()
 export class CashierPinService {
-  constructor(private supabaseService: SupabaseService) {}
+  constructor(private supabaseService: SupabaseService, @Optional() private attempts?: LoginAttemptsService) {}
 
   private async getStaffRow(userId: string) {
     const { data } = await this.supabaseService.getClient()
@@ -111,19 +112,38 @@ export class CashierPinService {
       throw new BadRequestException('Le code PIN doit comporter entre 4 et 6 chiffres.');
     }
 
-    const { data: staffRows } = await this.supabaseService.getClient()
+    // The person at the till gets a limited number of tries (counted BEFORE the PIN is compared, atomically): without
+    // this a cashier could try every 4-digit PIN to authorize their own voids.
+    const attemptKey = `pos-supervisor:${excludeUserId}`;
+    await this.attempts?.reserve(attemptKey);
+
+    const client = this.supabaseService.getClient();
+    let staffRows: any[] | null;
+    let staffError: any;
+    ({ data: staffRows, error: staffError } = await client
       .from('organization_staff')
-      .select('user_id, pos_pin_hash, pos_pin_locked_until')
+      .select('user_id, pos_pin_hash, pos_pin_locked_until, deactivated_at')
       .eq('organization_id', organizationId)
       .neq('user_id', excludeUserId)
-      .not('pos_pin_hash', 'is', null);
+      .not('pos_pin_hash', 'is', null));
+    if (staffError) {
+      // migration 051 (deactivated_at) not applied yet
+      ({ data: staffRows } = await client
+        .from('organization_staff')
+        .select('user_id, pos_pin_hash, pos_pin_locked_until')
+        .eq('organization_id', organizationId)
+        .neq('user_id', excludeUserId)
+        .not('pos_pin_hash', 'is', null));
+    }
 
+    // Someone whose access was removed can no longer authorize anything.
     const candidates = (staffRows || []).filter(
-      (s) => !s.pos_pin_locked_until || new Date(s.pos_pin_locked_until) <= new Date(),
+      (s: any) => !s.deactivated_at && (!s.pos_pin_locked_until || new Date(s.pos_pin_locked_until) <= new Date()),
     );
 
     for (const staff of candidates) {
       if (await bcrypt.compare(pin, staff.pos_pin_hash)) {
+        await this.attempts?.recordSuccess(attemptKey);
         await this.supabaseService.getClient()
           .from('organization_staff')
           .update({ pos_pin_attempts: 0, pos_pin_locked_until: null })

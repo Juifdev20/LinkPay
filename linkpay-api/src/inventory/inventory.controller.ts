@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, Headers, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
 import { IsString, IsOptional, IsNumber, IsArray, Min, ValidateNested, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -6,6 +6,7 @@ import { InventoryService } from './inventory.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { RequireSubscription } from '../subscriptions/subscription.guard';
 
 class CreateCountDto {
   @ApiPropertyOptional({ description: 'Catégorie/rayon à inventorier — omis = inventaire total' })
@@ -44,6 +45,7 @@ class SaveLinesDto {
 @ApiTags('Inventory')
 @ApiBearerAuth()
 @Controller('merchants/:id/inventory-counts')
+@RequireSubscription('merchant')
 @Roles('enterprise', 'magasinier', 'admin', 'super_admin')
 @UseGuards(RolesGuard)
 export class InventoryController {
@@ -105,15 +107,16 @@ export class InventoryController {
   }
 
   @Post(':countId/complete')
-  @ApiOperation({ summary: 'Validate the count — applies stock adjustments for variances and produces the démarque report' })
+  @ApiOperation({ summary: 'Validate the count (needs the stock password, x-stock-password header) — applies stock adjustments for variances and produces the démarque report' })
   async complete(
     @Param('id') merchantId: string,
     @Param('countId') countId: string,
     @CurrentUser('id') callerId: string,
     @CurrentUser('role') callerRole: string,
+    @Headers('x-stock-password') stockPassword: string | undefined,
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
-    return this.inventoryService.complete(merchantId, countId, callerId, callerRole, callerOrgId);
+    return this.inventoryService.complete(merchantId, countId, callerId, callerRole, callerOrgId, stockPassword);
   }
 
   @Post(':countId/cancel')

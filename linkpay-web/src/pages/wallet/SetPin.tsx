@@ -129,7 +129,7 @@ export default function SetPinPage() {
             <>
               <h2 className="text-lg font-bold text-foreground mb-1">Code PIN actuel</h2>
               <p className="text-sm text-muted-foreground mb-6">Confirmez votre code PIN actuel pour le modifier</p>
-              <PinInput value={currentPin} onChange={handleCurrentComplete} length={PIN_LENGTH} autoFocus />
+              <PinInput value={currentPin} onChange={handleCurrentComplete} length={PIN_LENGTH} autoFocus title="Code PIN actuel" message={error || undefined} />
             </>
           )}
 
@@ -139,7 +139,7 @@ export default function SetPinPage() {
               <p className="text-sm text-muted-foreground mb-6">
                 Ce code à {PIN_LENGTH} chiffres protège vos envois, paiements et retraits
               </p>
-              <PinInput value={newPin} onChange={handleNewComplete} length={PIN_LENGTH} autoFocus />
+              <PinInput value={newPin} onChange={handleNewComplete} length={PIN_LENGTH} autoFocus title={hasPin ? 'Nouveau code PIN' : 'Créer votre code PIN'} message={error || undefined} />
             </>
           )}
 
@@ -147,7 +147,7 @@ export default function SetPinPage() {
             <>
               <h2 className="text-lg font-bold text-foreground mb-1">Confirmez le code PIN</h2>
               <p className="text-sm text-muted-foreground mb-6">Saisissez-le à nouveau pour confirmer</p>
-              <PinInput value={confirmPin} onChange={handleConfirmComplete} length={PIN_LENGTH} autoFocus />
+              <PinInput value={confirmPin} onChange={handleConfirmComplete} length={PIN_LENGTH} autoFocus title="Confirmez le code PIN" message={error || undefined} />
             </>
           )}
 

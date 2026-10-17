@@ -1,5 +1,6 @@
 import { Outlet, NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
+import { PageFallback } from '@/lib/lazy-page';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
@@ -9,6 +10,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { TopBar } from '@/components/TopBar';
 import { NotificationsBell } from '@/components/NotificationsBell';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
+import { CardChargePrompt } from '@/components/card/CardChargePrompt';
 import { useTheme } from '@/hooks/useTheme';
 import { usePaymentReceivedAlert } from '@/hooks/usePaymentReceivedAlert';
 import { LogOut, User, Building2, Sun, Moon, Menu, Search, X } from 'lucide-react';
@@ -37,6 +39,14 @@ export default function DashboardLayout() {
     queryKey: ['my-organization'],
     queryFn: async () => (await api.get('/organizations/me')).data,
     enabled: user?.role === 'enterprise' || !!user?.organization_id,
+  });
+  // Admins: how many withdrawals wait to be sent by hand (badge on "Retraits à traiter").
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const { data: openWithdrawals } = useQuery<{ open: number }>({
+    queryKey: ['admin-withdrawals-count'],
+    queryFn: async () => (await api.get('/admin/withdrawals/count')).data,
+    enabled: isAdmin,
+    refetchInterval: 60000,
   });
   const navLocked = user?.role === 'enterprise' && !!org && org.status !== 'active';
 
@@ -102,7 +112,7 @@ export default function DashboardLayout() {
                   end={item.to === '/dashboard'}
                   className={({ isActive }) =>
                     cn(
-                      'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
+                      'relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
                       isActive
                         ? 'bg-primary text-primary-foreground shadow-sm'
                         : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
@@ -112,6 +122,11 @@ export default function DashboardLayout() {
                 >
                   <item.icon className="w-5 h-5 flex-shrink-0" />
                   {!sidebarCollapsed && <span>{item.label}</span>}
+                  {item.to === '/dashboard/admin/withdrawals' && !!openWithdrawals?.open && (
+                    <span className={cn('ml-auto rounded-full bg-destructive px-2 py-0.5 text-[11px] font-bold text-destructive-foreground', sidebarCollapsed && 'absolute right-1 top-1 ml-0 px-1.5')}>
+                      {openWithdrawals.open}
+                    </span>
+                  )}
                 </NavLink>
               ))}
             </nav>
@@ -188,8 +203,9 @@ export default function DashboardLayout() {
             {user?.acting_as_org_id && location.pathname.startsWith('/dashboard/organization') && (
               <div className="px-6 pt-4 md:px-4 md:pt-4">
                 <button
-                  onClick={() => {
-                    exitStore();
+                  onClick={async () => {
+                    // Wait for the owner session to be back before leaving the store's screens.
+                    await exitStore().catch(() => undefined);
                     navigate('/dashboard');
                   }}
                   className="w-full flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10 transition-colors"
@@ -199,10 +215,16 @@ export default function DashboardLayout() {
                 </button>
               </div>
             )}
-            <Outlet />
+            {/* Only the page area waits for a split page — header and nav stay. */}
+            <Suspense fallback={<PageFallback />}>
+              <Outlet />
+            </Suspense>
           </div>
         </main>
       </div>
+
+      {/* A merchant scanned this person's card: the request to confirm with their PIN appears wherever they are. */}
+      <CardChargePrompt />
 
       {/* Mobile bottom nav — hidden entirely (not just dimmed) while an
           enterprise account hasn't finished onboarding, since none of

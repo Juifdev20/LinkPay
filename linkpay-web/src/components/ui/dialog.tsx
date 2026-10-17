@@ -23,11 +23,16 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+>(({ className, children, onInteractOutside, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
+      // The full-screen code screen (PinInput) lives outside the dialog: touching it must not close the dialog.
+      onInteractOutside={(e) => {
+        if ((e.target as HTMLElement | null)?.closest?.('[data-pin-screen]')) e.preventDefault();
+        onInteractOutside?.(e);
+      }}
       className={cn(
         'fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 shadow-lg',
         className,

@@ -2,6 +2,7 @@ import { Controller, Get, Put, Delete, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { toPage, toLimit } from '../common/utils/pagination';
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
@@ -19,8 +20,8 @@ export class NotificationsController {
   ) {
     return this.notificationsService.getUserNotifications(userId, {
       unread_only: unreadOnly === 'true',
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 20,
+      page: toPage(page),
+      limit: toLimit(limit),
     });
   }
 

@@ -35,7 +35,7 @@ export default function TopupResultPage() {
 
   const { data, isLoading, timedOut } = usePaymentStatusPoll<TopupStatusResponse>(
     ['topup-status', ref],
-    async () => (await api.get(`/wallet/topups/${ref}/status`)).data,
+    async () => (await api.get(`/wallet/topups/${encodeURIComponent(ref ?? "")}/status`)).data,
     (d) => d.topup.status,
     !!ref,
   );

@@ -3,6 +3,8 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional 
 import { IsNumber, Min, IsString, IsOptional, IsIn, IsObject, Length } from 'class-validator';
 import { WalletsService } from './wallets.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { toPage, toLimit } from '../common/utils/pagination';
+import { RequireDeviceIntegrity } from '../integrity/device-integrity.guard';
 
 class CreateTopupDto {
   @ApiProperty({ example: 50000, description: 'Amount in cents (e.g. 50000 = 500.00 CDF)' })
@@ -61,9 +63,25 @@ class TransferDto {
   @IsString()
   description?: string;
 
-  @ApiProperty({ description: 'Transaction PIN' })
+  @ApiPropertyOptional({ enum: ['mobile_money', 'card'], description: 'How the transfer is funded. Empty/absent = wallet balance.' })
+  @IsOptional()
+  @IsIn(['mobile_money', 'card'])
+  payment_method?: string;
+
+  @ApiPropertyOptional({ example: 'airtel' })
+  @IsOptional()
   @IsString()
-  pin!: string;
+  mobile_money_operator?: string;
+
+  @ApiPropertyOptional({ example: '+243900000000', description: 'Mobile Money number the charge request is pushed to — required when payment_method is mobile_money' })
+  @IsOptional()
+  @IsString()
+  mobile_money_phone?: string;
+
+  @ApiPropertyOptional({ description: 'Transaction PIN — required for a wallet-funded transfer, not for a PSP-funded one' })
+  @IsOptional()
+  @IsString()
+  pin?: string;
 }
 
 class WithdrawalDto {
@@ -109,8 +127,8 @@ export class WalletsController {
     @Query('limit') limit?: string,
   ) {
     return this.walletsService.getMyLedger(userId, {
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 20,
+      page: toPage(page),
+      limit: toLimit(limit),
     });
   }
 
@@ -133,6 +151,12 @@ export class WalletsController {
       dto.mobile_money_operator,
       dto.mobile_money_phone,
     );
+  }
+
+  @Get('payment-methods')
+  @ApiOperation({ summary: 'Ways of paying a top-up that are open (Mobile Money, bank card)' })
+  paymentMethods() {
+    return this.walletsService.paymentMethods();
   }
 
   @Get('topups/:reference/status')
@@ -180,7 +204,8 @@ export class WalletsController {
   }
 
   @Post('transfers')
-  @ApiOperation({ summary: 'Send money to another ScanLinkPay user by wallet number' })
+  @RequireDeviceIntegrity()
+  @ApiOperation({ summary: 'Send money to another ScanLinkPay user — funded by the wallet balance, or by Mobile Money/card when payment_method is set' })
   async createTransfer(
     @CurrentUser('id') userId: string,
     @Body() dto: TransferDto,
@@ -189,7 +214,22 @@ export class WalletsController {
     if (!idempotencyKey) {
       throw new BadRequestException('Idempotency-Key header is required');
     }
-    return this.walletsService.transfer(userId, dto, idempotencyKey);
+    if (dto.payment_method === 'mobile_money' || dto.payment_method === 'card') {
+      return this.walletsService.transferViaPsp(userId, { ...dto, payment_method: dto.payment_method }, idempotencyKey);
+    }
+    if (!dto.pin) {
+      throw new BadRequestException('Code PIN requis pour un transfert depuis le solde');
+    }
+    return this.walletsService.transfer(userId, dto as any, idempotencyKey);
+  }
+
+  @Get('transfers/:reference/status')
+  @ApiOperation({ summary: "Check a PSP-funded transfer's status by its reference. Re-verifies with the provider if still pending." })
+  async getTransferStatus(
+    @CurrentUser('id') userId: string,
+    @Param('reference') reference: string,
+  ) {
+    return this.walletsService.getTransferStatus(userId, reference);
   }
 
   @Get('transfers')
@@ -200,12 +240,13 @@ export class WalletsController {
     @Query('limit') limit?: string,
   ) {
     return this.walletsService.getMyTransfers(userId, {
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 20,
+      page: toPage(page),
+      limit: toLimit(limit),
     });
   }
 
   @Post('withdrawals')
+  @RequireDeviceIntegrity()
   @ApiOperation({ summary: 'Request a withdrawal to Mobile Money or bank' })
   async createWithdrawal(
     @CurrentUser('id') userId: string,
@@ -226,8 +267,8 @@ export class WalletsController {
     @Query('limit') limit?: string,
   ) {
     return this.walletsService.getMyWithdrawals(userId, {
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 20,
+      page: toPage(page),
+      limit: toLimit(limit),
     });
   }
 }

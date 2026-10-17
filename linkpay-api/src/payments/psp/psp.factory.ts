@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PspAdapter } from './psp.adapter';
 import { MockPspAdapter } from './providers/mock.adapter';
 import { CinetPayAdapter } from './providers/cinetpay.adapter';
+import { FlexPaieAdapter } from './providers/flexpaie.adapter';
 
 @Injectable()
 export class PspFactory {
@@ -13,9 +14,11 @@ export class PspFactory {
     private configService: ConfigService,
     private mockAdapter: MockPspAdapter,
     private cinetPayAdapter: CinetPayAdapter,
+    private flexPaieAdapter: FlexPaieAdapter,
   ) {
     this.register('mock', mockAdapter);
     this.register('cinetpay', cinetPayAdapter);
+    this.register('flexpaie', flexPaieAdapter);
   }
 
   register(provider: string, adapter: PspAdapter): void {

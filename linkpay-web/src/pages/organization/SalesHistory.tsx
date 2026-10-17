@@ -16,6 +16,7 @@ import { PRESETS, presetRange, type Preset } from '@/pages/organization/Transact
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { formatCurrency, cn } from '@/lib/utils';
 import { Archive, FileSpreadsheet, Loader2, Printer, Receipt, FileText } from 'lucide-react';
+import { useAuthStore } from '@/lib/auth-store';
 
 // "Toutes les ventes": every sale not archived, in a table that can be
 // filtered by period, printed, saved as PDF or opened in Excel. Archiving
@@ -188,6 +189,8 @@ export default function SalesHistoryPage() {
   const [customDate, setCustomDate] = useState('');
   const [openSaleId, setOpenSaleId] = useState<string | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<Row | null>(null);
+  const sessionUser = useAuthStore((s) => s.user);
+  const canArchive = sessionUser?.role === 'enterprise' || sessionUser?.role === 'comptable' || !!sessionUser?.acting_as_org_id;
   const [exporting, setExporting] = useState(false);
   const range = useMemo(() => presetRange(preset, customDate), [preset, customDate]);
 
@@ -333,17 +336,20 @@ export default function SalesHistoryPage() {
                         </td>
                         <td className="px-4 py-3 text-right font-bold whitespace-nowrap">{formatCurrency(r.total_cents, r.currency)}</td>
                         <td className="no-print px-2 py-3">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            aria-label="Archiver de la liste"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setArchiveTarget(r);
-                            }}
-                          >
-                            <Archive className="w-4 h-4" />
-                          </Button>
+                          {/* Only the owner and the accountant may hide a sale (the API enforces it too). */}
+                          {canArchive && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              aria-label="Archiver de la liste"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setArchiveTarget(r);
+                              }}
+                            >
+                              <Archive className="w-4 h-4" />
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}

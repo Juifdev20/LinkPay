@@ -4,6 +4,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { CommissionsService } from '../commissions/commissions.service';
 import { v4 as uuidv4 } from 'uuid';
 import * as QRCode from 'qrcode';
+import { assertMerchantCanReceive } from '../common/merchant-status';
 
 @Injectable()
 export class PaymentRequestsService {
@@ -22,7 +23,8 @@ export class PaymentRequestsService {
     customer_info?: { name?: string; phone?: string };
     commission_model?: string;
     expires_in_minutes?: number;
-  }) {
+  }, options?: { withQrCode?: boolean }) {
+    await assertMerchantCanReceive(this.supabaseService.getClient(), merchantId);
     const reference = this.generateReference();
     const linkToken = uuidv4().replace(/-/g, '');
     const currency = data.currency || (await this.getMerchantDefaultCurrency(merchantId));
@@ -56,50 +58,82 @@ export class PaymentRequestsService {
     const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:5173');
     const paymentLink = `${frontendUrl}/p/${linkToken}`;
 
-    const qrBuffer = await QRCode.toBuffer(paymentLink, {
-      width: 400,
-      margin: 2,
-      color: { dark: '#0F172A', light: '#FFFFFF' },
-    });
-
-    const { data: uploadData, error: uploadError } = await this.supabaseService.getClient()
-      .storage
-      .from('qr-codes')
-      .upload(`${linkToken}.png`, qrBuffer, {
-        contentType: 'image/png',
-        upsert: true,
+    // Quick-pay requests go straight to the payment page — the payer never
+    // sees a QR code, so don't generate and store one for each of them.
+    let qrCodeUrl: string | undefined;
+    if (options?.withQrCode !== false) {
+      const qrBuffer = await QRCode.toBuffer(paymentLink, {
+        width: 400,
+        margin: 2,
+        color: { dark: '#0F172A', light: '#FFFFFF' },
       });
 
-    let qrCodeUrl: string | undefined;
-    if (!uploadError && uploadData) {
-      const { data: urlData } = this.supabaseService.getClient()
+      const { data: uploadData, error: uploadError } = await this.supabaseService.getClient()
         .storage
         .from('qr-codes')
-        .getPublicUrl(`${linkToken}.png`);
-      qrCodeUrl = urlData.publicUrl;
-    } else if (uploadError) {
-      this.logger.error(`Failed to upload QR code for ${request.id}: ${uploadError.message}`);
-    }
+        .upload(`${linkToken}.png`, qrBuffer, {
+          contentType: 'image/png',
+          upsert: true,
+        });
 
-    if (qrCodeUrl) {
-      const { error: updateError } = await this.supabaseService.getClient()
-        .from('payment_requests')
-        .update({ qr_code_url: qrCodeUrl })
-        .eq('id', request.id);
+      if (!uploadError && uploadData) {
+        const { data: urlData } = this.supabaseService.getClient()
+          .storage
+          .from('qr-codes')
+          .getPublicUrl(`${linkToken}.png`);
+        qrCodeUrl = urlData.publicUrl;
+      } else if (uploadError) {
+        this.logger.error(`Failed to upload QR code for ${request.id}: ${uploadError.message}`);
+      }
 
-      if (updateError) {
-        this.logger.warn(`Failed to persist qr_code_url for ${request.id}: ${updateError.message}`);
+      if (qrCodeUrl) {
+        const { error: updateError } = await this.supabaseService.getClient()
+          .from('payment_requests')
+          .update({ qr_code_url: qrCodeUrl })
+          .eq('id', request.id);
+
+        if (updateError) {
+          this.logger.warn(`Failed to persist qr_code_url for ${request.id}: ${updateError.message}`);
+        }
       }
     }
 
     // Build the response from the row we already have instead of a second
     // round-trip — a failed/undefined result there previously caused the
     // whole response to silently collapse to just `{payment_link}`.
+    // What the payer will be charged and what the business receives, for the commission model of this request.
+    const fees = await this.commissionsService
+      .calculateFeesPreview(request.amount_cents, request.currency, merchantId, commissionModel)
+      .catch(() => null);
+
     return {
       ...request,
       qr_code_url: qrCodeUrl,
       payment_link: paymentLink,
+      fees: fees ? this.toFeesView(fees, commissionModel) : undefined,
     };
+  }
+
+  private toFeesView(fees: { gross_cents: number; psp_fee_cents: number; platform_fee_cents: number; total_fees_cents: number; total_cents: number; net_cents: number }, commissionModel: string) {
+    return {
+      commission_model: commissionModel,
+      amount_cents: fees.gross_cents,
+      /** ScanLinkPay's own commission (rules set by the ScanLinkPay administrator, per currency). */
+      platform_fee_cents: fees.platform_fee_cents,
+      /** The payment provider's cost (estimated). */
+      psp_fee_cents: fees.psp_fee_cents,
+      /** What the payer is charged in total (amount, plus the commission when the payer bears it). */
+      total_cents: fees.total_cents,
+      /** What the business receives once fees are deducted. */
+      net_cents: fees.net_cents,
+    };
+  }
+
+  /** The fees a payment of this amount would carry — nothing is created. */
+  async previewFees(merchantId: string, amountCents: number, currency: string, commissionModel: string, extra: Record<string, unknown> = {}) {
+    await assertMerchantCanReceive(this.supabaseService.getClient(), merchantId);
+    const fees = await this.commissionsService.calculateFeesPreview(amountCents, currency, merchantId, commissionModel);
+    return { ...extra, currency, ...this.toFeesView(fees, commissionModel) };
   }
 
   async getByLinkToken(linkToken: string) {
@@ -115,6 +149,7 @@ export class PaymentRequestsService {
     if (error || !request) {
       throw new NotFoundException('Payment request not found');
     }
+    await assertMerchantCanReceive(this.supabaseService.getClient(), request.merchant_id);
 
     if (request.status === 'EXPIRED' || (request.expires_at && new Date(request.expires_at) < new Date())) {
       await this.markExpired(request.id);

@@ -22,6 +22,21 @@ function extractPaymentToken(scanned: string): string | null {
  * encodes the number as-is with no URL wrapper) — both the current SLP-
  * prefix and the legacy LP- one still carried by wallets created before
  * the rebrand. */
+/** A ScanLinkPay CARD: its QR code holds a link ending in /c/<12 characters>. */
+function extractCardToken(scanned: string): string | null {
+  const match = scanned.match(/\/c\/([0-9A-Za-z]{12})(?:[/?#].*)?$/);
+  return match ? match[1].toUpperCase() : null;
+}
+
+/** A business's fixed payment QR (organizations' and merchants'
+ * scanlinkpay_qr_url) encodes `{FRONTEND_URL}/pay/{SLP-…}` — the public
+ * pay-by-number page where the payer picks the amount. Same host-agnostic
+ * reasoning as extractPaymentToken above. */
+function extractPayNumber(scanned: string): string | null {
+  const match = scanned.match(/\/pay\/([0-9A-Za-z-]+)/);
+  return match ? match[1] : null;
+}
+
 function extractWalletNumber(scanned: string): string | null {
   const trimmed = scanned.trim();
   return /^S?LP-[A-Z0-9-]+$/.test(trimmed) ? trimmed : null;
@@ -50,6 +65,19 @@ export default function ScanQrPage() {
         if (token) {
           scanner.stop();
           navigate(`/p/${token}`);
+          return;
+        }
+        const cardToken = extractCardToken(result.data);
+        if (cardToken) {
+          scanner.stop();
+          // The landing page sends a seller to the till and anybody else to "send money to this card's holder".
+          navigate(`/c/${cardToken}`);
+          return;
+        }
+        const payNumber = extractPayNumber(result.data);
+        if (payNumber) {
+          scanner.stop();
+          navigate(`/pay/${payNumber}`);
           return;
         }
         const walletNumber = extractWalletNumber(result.data);

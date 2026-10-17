@@ -1,13 +1,18 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import { AuthService } from '../auth/auth.service';
 import { sumByCurrency } from '../common/utils/currency';
+import * as QRCode from 'qrcode';
 
 @Injectable()
 export class MerchantsService {
+  private readonly logger = new Logger(MerchantsService.name);
+
   constructor(
     private supabaseService: SupabaseService,
     private authService: AuthService,
+    private configService: ConfigService,
   ) {}
 
   async createMerchant(
@@ -98,7 +103,7 @@ export class MerchantsService {
       throw new NotFoundException('Merchant not found');
     }
 
-    return data;
+    return this.ensureScanLinkPayQr(data);
   }
 
   async getMerchantByOwner(ownerId: string) {
@@ -112,13 +117,79 @@ export class MerchantsService {
       throw new NotFoundException('No merchant account found');
     }
 
-    return data;
+    return this.ensureScanLinkPayQr(data);
+  }
+
+  /** Public lookup for the "pay by ScanLinkPay number" flow — the merchant
+   * counterpart of OrganizationsService.getOrganizationByScanLinkPayNumber().
+   * Returns the same shape ({..., merchants: [self]}) so the payer's screen
+   * and the quick-pay endpoint treat a standalone store exactly like an
+   * organization with a single store. */
+  async getMerchantByScanLinkPayNumber(scanlinkpayNumber: string) {
+    const { data, error } = await this.supabaseService.getClient()
+      .from('merchants')
+      .select('id, name, legal_name, logo_url, scanlinkpay_number')
+      .eq('scanlinkpay_number', scanlinkpayNumber)
+      .maybeSingle();
+
+    if (error || !data) {
+      throw new NotFoundException('Numéro ScanLinkPay introuvable');
+    }
+
+    return {
+      ...data,
+      merchants: [{ id: data.id, name: data.name, logo_url: data.logo_url }],
+    };
+  }
+
+  /** Lazily generates and persists the merchant's fixed payment QR (encodes
+   * the public /pay/{scanlinkpay_number} page) the first time the merchant
+   * record is read — same recipe as the organization version in
+   * organizations.service.ts. Tolerates a missing column by leaving the row
+   * untouched, so nothing breaks while migration 061 is still pending. */
+  private async ensureScanLinkPayQr(merchant: any) {
+    if (!('scanlinkpay_number' in merchant)) return merchant;
+    if (merchant.scanlinkpay_qr_url || !merchant.scanlinkpay_number) return merchant;
+
+    try {
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:5173');
+      const payUrl = `${frontendUrl}/pay/${merchant.scanlinkpay_number}`;
+      const qrBuffer = await QRCode.toBuffer(payUrl, {
+        width: 400,
+        margin: 2,
+        color: { dark: '#0F172A', light: '#FFFFFF' },
+      });
+
+      const fileName = `merchant-${merchant.id}.png`;
+      const { error: uploadError } = await this.supabaseService.getClient()
+        .storage
+        .from('qr-codes')
+        .upload(fileName, qrBuffer, { contentType: 'image/png', upsert: true });
+
+      if (uploadError) {
+        this.logger.warn(`Failed to upload ScanLinkPay QR for merchant ${merchant.id}: ${uploadError.message}`);
+        return merchant;
+      }
+
+      const { data: urlData } = this.supabaseService.getClient().storage.from('qr-codes').getPublicUrl(fileName);
+      const { data: updated } = await this.supabaseService.getClient()
+        .from('merchants')
+        .update({ scanlinkpay_qr_url: urlData.publicUrl })
+        .eq('id', merchant.id)
+        .select()
+        .single();
+
+      return updated || { ...merchant, scanlinkpay_qr_url: urlData.publicUrl };
+    } catch (err: any) {
+      this.logger.warn(`ScanLinkPay QR generation failed for merchant ${merchant.id}: ${err.message}`);
+      return merchant;
+    }
   }
 
   async updateMerchant(id: string, updates: Record<string, any>) {
     const allowedFields = [
       'name', 'legal_name', 'phone', 'email', 'address', 'city',
-      'settlement_account', 'limits', 'status', 'commission_rule_id', 'default_currency',
+      'settlement_account', 'status', 'commission_rule_id', 'default_currency',
     ];
     const filtered: Record<string, any> = {};
 
@@ -175,7 +246,14 @@ export class MerchantsService {
     }));
   }
 
-  async addMerchantUser(merchantId: string, data: { email: string }) {
+  /**
+   * Invites an existing user as cashier. Only a plain client account can be
+   * invited: adding a cashier replaces the person's global role, so inviting
+   * an admin, another store's owner or another store's cashier used to strip
+   * them of their own access (any merchant could demote a super_admin just by
+   * knowing their email).
+   */
+  async addMerchantUser(merchantId: string, ownerId: string, data: { email: string }) {
     const { data: targetUser } = await this.supabaseService.getClient()
       .from('profiles')
       .select('id')
@@ -184,6 +262,30 @@ export class MerchantsService {
 
     if (!targetUser) {
       throw new NotFoundException("Aucun compte ScanLinkPay avec cet email — la personne doit d'abord créer un compte.");
+    }
+
+    if (targetUser.id === ownerId) {
+      throw new BadRequestException('Vous ne pouvez pas vous inviter vous-même.');
+    }
+
+    const { data: currentRoles } = await this.supabaseService.getClient()
+      .from('user_roles')
+      .select('role:roles(slug)')
+      .eq('user_id', targetUser.id);
+    const slugs = (currentRoles || []).map((r: any) => r.role?.slug).filter(Boolean);
+    if (slugs.some((slug: string) => slug !== 'client')) {
+      throw new BadRequestException(
+        "Cette personne a déjà un rôle sur ScanLinkPay (marchand, caissier, entreprise ou administrateur) — seul un compte client peut être invité comme caissier.",
+      );
+    }
+
+    const { data: existingMembership } = await this.supabaseService.getClient()
+      .from('merchant_users')
+      .select('id')
+      .eq('user_id', targetUser.id)
+      .limit(1);
+    if (existingMembership && existingMembership.length > 0) {
+      throw new BadRequestException("Cette personne fait déjà partie de l'équipe d'une boutique.");
     }
 
     const { data: role } = await this.supabaseService.getClient()
@@ -224,15 +326,41 @@ export class MerchantsService {
     return merchantUser;
   }
 
-  async removeMerchantUser(merchantId: string, userId: string) {
-    const { error } = await this.supabaseService.getClient()
+  /**
+   * Removes one of THIS store's cashiers and returns them to a client
+   * account. The role reset used to run whether or not the person was in
+   * the team, so any merchant could demote any user — admins included — to
+   * client by passing their id.
+   */
+  async removeMerchantUser(merchantId: string, ownerId: string, userId: string) {
+    if (userId === ownerId) {
+      throw new BadRequestException("Le propriétaire ne peut pas se retirer de sa propre boutique.");
+    }
+
+    const { data: cashierRole } = await this.supabaseService.getClient()
+      .from('roles')
+      .select('id')
+      .eq('slug', 'cashier')
+      .single();
+
+    if (!cashierRole) {
+      throw new NotFoundException('Role "cashier" not found');
+    }
+
+    const { data: removed, error } = await this.supabaseService.getClient()
       .from('merchant_users')
       .delete()
       .eq('merchant_id', merchantId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .eq('role_id', cashierRole.id)
+      .select('id');
 
     if (error) {
       throw new Error(`Failed to remove merchant user: ${error.message}`);
+    }
+
+    if (!removed || removed.length === 0) {
+      throw new NotFoundException("Ce caissier ne fait pas partie de l'équipe de cette boutique.");
     }
 
     const { data: clientRole } = await this.supabaseService.getClient()
@@ -242,11 +370,21 @@ export class MerchantsService {
       .single();
 
     if (clientRole) {
-      await this.supabaseService.getClient().from('user_roles').delete().eq('user_id', userId);
-      await this.supabaseService.getClient().from('user_roles').insert({
-        user_id: userId,
-        role_id: clientRole.id,
-      });
+      // Only touch the global role if it is still "cashier of this store".
+      const { data: demoted } = await this.supabaseService.getClient()
+        .from('user_roles')
+        .delete()
+        .eq('user_id', userId)
+        .eq('role_id', cashierRole.id)
+        .eq('merchant_id', merchantId)
+        .select('id');
+
+      if (demoted && demoted.length > 0) {
+        await this.supabaseService.getClient().from('user_roles').insert({
+          user_id: userId,
+          role_id: clientRole.id,
+        });
+      }
     }
 
     return { success: true };

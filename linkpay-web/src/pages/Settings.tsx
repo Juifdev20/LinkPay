@@ -15,6 +15,7 @@ import { Building2, HelpCircle, FileText, ChevronRight, Store, Loader2, Bell, Mo
 import { cn } from '@/lib/utils';
 import { getCurrentPushPermission, hasActiveSubscription, subscribeToPush, unsubscribeFromPush, type PushPermissionStatus } from '@/lib/app-push';
 import { useTheme } from '@/hooks/useTheme';
+import { AccessCodeSettings } from '@/components/AccessCodeSettings';
 import { isAppLockSupported, isAppLockEnabled, enableAppLock, disableAppLock } from '@/lib/app-lock';
 
 export default function SettingsPage() {
@@ -267,14 +268,15 @@ export default function SettingsPage() {
             </div>
             <Switch checked={effectiveTheme === 'dark'} onCheckedChange={toggleTheme} />
           </div>
+          <AccessCodeSettings />
           <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
             <Fingerprint className="w-5 h-5 text-muted-foreground flex-shrink-0" />
             <div className="flex-1">
-              <p className="font-medium text-sm text-foreground">Verrouillage biométrique</p>
+              <p className="font-medium text-sm text-foreground">Déverrouillage biométrique</p>
               <p className="text-xs text-muted-foreground">
                 {!appLockSupported
                   ? 'Non disponible sur cet appareil/navigateur.'
-                  : "Empreinte, visage ou code de l'appareil pour ouvrir l'app."}
+                  : "Raccourci : empreinte ou visage à la place du code d'accès."}
               </p>
               {appLockError && (
                 <p className="text-xs text-destructive mt-1">{appLockError}</p>

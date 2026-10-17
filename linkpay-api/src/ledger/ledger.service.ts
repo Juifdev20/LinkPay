@@ -73,26 +73,6 @@ export class LedgerService {
     }
   }
 
-  async writeSettlementEntry(settlement: any): Promise<void> {
-    const { error } = await this.supabaseService.getClient()
-      .from('ledger_entries')
-      .insert({
-        settlement_id: settlement.id,
-        entry_type: 'SETTLEMENT',
-        direction: 'debit',
-        amount_cents: settlement.net_cents,
-        currency: 'CDF',
-        reference: settlement.reference,
-        source: 'system',
-        metadata: { merchant_id: settlement.merchant_id },
-      });
-
-    if (error) {
-      this.logger.error(`Failed to write settlement ledger entry: ${error.message}`);
-      throw new Error(`Ledger settlement write failed: ${error.message}`);
-    }
-  }
-
   async writeAdjustmentEntry(transactionId: string, amountCents: number, currency: string, reason: string): Promise<void> {
     const direction = amountCents >= 0 ? 'credit' : 'debit';
     const { error } = await this.supabaseService.getClient()

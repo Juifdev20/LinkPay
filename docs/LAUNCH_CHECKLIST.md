@@ -1,0 +1,89 @@
+# Check-list avant de manipuler de l'argent réel
+
+Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente n'est pas verte.
+
+## 1. Base de données (Supabase → SQL Editor)
+
+- [ ] Exécuter dans l'ordre les migrations `040` → `060` (dossier `linkpay-api/supabase/migrations`). **La 043 d'abord si vous ne pouvez pas tout faire** : sans elle n'importe qui peut créditer un portefeuille.
+- [ ] Exécuter `linkpay-api/supabase/verify_security.sql`. **Les 6 premières lignes doivent toutes afficher `OK`.** Une ligne `FAIL` dit ce qu'il reste à corriger.
+- [ ] Lire les 4 tableaux « à regarder à la main » en bas du résultat :
+  - **A** : chaque administrateur est une personne que vous connaissez ;
+  - **B et C** : chaque crédit `ADJUSTMENT` / `TOPUP` s'explique ;
+  - **D** : les alertes de risque non traitées.
+- [ ] Supabase → *Advisors* → *Security Advisor* : corriger chaque alerte rouge.
+- [ ] Supabase → *Authentication* → *Providers/Sign In* : désactiver l'inscription publique directe (« Allow new users to sign up ») si l'application passe uniquement par `/auth/register`.
+- [ ] Supabase → *Database → Backups* : sauvegardes quotidiennes actives, et **faire une restauration de test** sur un projet vide.
+
+## 2. Secrets (Render → Environment, jamais dans Git ni dans une discussion)
+
+- [ ] Nouvelle clé `service_role` Supabase (Settings → API → *Roll*), puis `SUPABASE_SERVICE_ROLE_KEY` mis à jour.
+- [ ] Nouveau `JWT_SECRET` (48 caractères aléatoires minimum). Tous les utilisateurs devront se reconnecter.
+- [ ] Nouveau mot de passe / clés CinetPay, nouvelle clé FCM, nouveau token FlexPaie si le précédent a été partagé.
+- [ ] `APP_CODE_PEPPER` : 32+ caractères aléatoires, à définir **avant** que les utilisateurs choisissent leur code d'accès, puis ne plus jamais le changer (sinon tous devront en choisir un nouveau).
+- [ ] `TWO_FACTOR_ENCRYPTION_KEY` : 32+ caractères aléatoires, à définir **avant** que les administrateurs activent la 2FA, puis ne plus jamais la changer.
+- [ ] `NODE_ENV=production`, `ENABLE_SWAGGER=false`, `PSP_PROVIDER` = le vrai fournisseur (jamais `mock`).
+- [ ] **Alertes par email** : créer un compte gratuit sur resend.com, vérifier votre domaine d'envoi, puis définir `RESEND_API_KEY` et `ALERT_EMAIL_FROM` (et `ALERT_EMAILS` pour des destinataires en plus). Tester : déclencher une alerte critique (ex. un mauvais code 2FA sur un compte admin) et vérifier la réception.
+- [ ] Optionnel mais recommandé : `ADMIN_ALLOWED_IPS` si les administrateurs ont une IP fixe (bureau/VPN).
+
+## 2 quater. FlexPaie (paiements)
+
+- [ ] Migration `060` appliquée (table `flexpaie_orders`).
+- [ ] Render → `linkpay-api` → Environment : `FLEXPAIE_MOMO_URL`, `FLEXPAIE_CARD_URL`, `FLEXPAIE_CHECK_URL` (ou `FLEXPAIE_BASE_URL` seul), `FLEXPAIE_MERCHANT`, `FLEXPAIE_TOKEN`, puis **en dernier** `PSP_PROVIDER=flexpaie` (voir `docs/FLEXPAIE.md`, et les questions à poser à FlexPaie : https, IP source, format du rappel, frais, API d'envoi d'argent).
+- [ ] Si FlexPaie filtre l'IP : `PROXY_URL` (IP fixe) — l'adresse FlexPaie y passe automatiquement.
+- [ ] Essai sur le **mode test** de FlexPaie, petits montants : recharge Mobile Money (valider le message sur le téléphone), recharge par carte, paiement d'une facture, paiement refusé / abandonné. Vérifier que le solde n'est crédité **qu'une fois**, même si on laisse la page ouverte et que le rappel arrive.
+- [ ] **Les retraits ne marchent pas encore** (l'API d'envoi d'argent n'est pas dans la documentation reçue) : prévenir les utilisateurs, ou garder les retraits désactivés jusqu'à l'avoir.
+
+## 2 ter. Carte ScanLinkPay
+
+- [ ] Migration `059` appliquée (tables `cards`, `card_charges`, `card_settings`, fonction `issue_card`) ; relancer `verify_security.sql`.
+- [ ] Super admin → **Cartes → Réglages de la carte** : renseigner le **téléphone du service client**, le **téléphone « carte perdue ou volée »** (les deux lignes du verso), le **nom de domaine** (c'est lui qui est encodé dans le QR code : `https://<domaine>/c/<jeton>` — à fixer AVANT d'imprimer, un QR déjà imprimé garde l'ancien domaine), la **validité** (3 ans par défaut) et les **logos des partenaires** (Orange Money, Airtel Money, M-Pesa : les fichiers sont dans `docs/carte/logos/`, à ajouter dans cet ordre ou à réordonner avec les flèches). Un champ vide n'est pas imprimé.
+- [ ] Imprimer une carte d'essai (Cartes → Préparer → Imprimer → « Enregistrer au format PDF »), la montrer à l'imprimerie ou au fabricant de cartes : format 85,60 × 53,98 mm, option « fond perdu 1,5 mm » si elle le demande. Tester le QR avec un téléphone avant d'en imprimer beaucoup.
+- [ ] Essai de bout en bout avec deux comptes : activer la carte (16 chiffres + PIN), la bloquer, puis un commerçant encaisse la carte, le titulaire confirme avec son PIN.
+- [ ] Le prix de la carte (si vous la facturez) n'est pas géré par l'application : à encaisser au guichet.
+
+## 2 bis. Abonnement mensuel (revenus de la plateforme)
+
+- [ ] Migration `052` appliquée (elle supprime au passage l'ancien brouillon « licences par fonctionnalité » s'il avait été créé).
+- [ ] Super admin → **Abonnements** : fixer le **prix d'un mois** (CDF et/ou USD), la durée de l'essai gratuit, ce qui se passe à la fin de l'essai et à l'expiration (lecture simple ou bloqué) et les jours de rappel. Sans prix dans une devise, l'abonnement n'est pas vendable dans cette devise.
+- [ ] Les entreprises déjà inscrites reçoivent un essai complet **à partir du jour où la migration 052 est appliquée** (réglage `billing_starts_at`), pas depuis leur date d'inscription : personne n'est coupé le jour du lancement.
+- [ ] Faire un paiement de test avec un compte patron : le portefeuille est débité, l'abonnement apparaît, un deuxième paiement ajoute des mois à la suite ; un abonnement expiré reprend dès le paiement.
+- [ ] Les paiements des clients, le portefeuille et les retraits ne sont jamais bloqués par l'abonnement (c'est là que la commission est gagnée).
+
+## 2 ter. Alertes SMS, plusieurs instances, cookies, Android
+
+- [ ] **SMS** : `SMS_PROVIDER` + clés (Africa's Talking : `AT_USERNAME`, `AT_API_KEY`, `AT_SENDER_ID` ; ou Twilio). Chaque super admin a un numéro **international** (+243…) dans son profil, ou `ALERT_SMS_TO`. Tester en préproduction : déclencher une alerte critique (par exemple un solde négatif sur un portefeuille de test) : le SMS doit arriver.
+- [ ] **Plusieurs instances** : migration `053` appliquée ; service Redis (Key Value) créé et `REDIS_URL` défini (le `render.yaml` le fait). Avec 2 instances, vérifier qu'un rappel ou une alerte n'arrive qu'une fois.
+- [ ] **Cookies HttpOnly** (facultatif mais recommandé) : suivre `docs/COOKIES_HTTPONLY.md`, y compris la vérification de l'IP vue par l'API.
+- [ ] **Application Android** : suivre `docs/ANDROID_INTEGRITY.md` (migration `054`, compte de service Google, empreinte du certificat), laisser `warn` une à deux semaines, tester sur de vrais téléphones, puis `enforce`.
+
+## 3. Comptes administrateurs
+
+- [ ] Se connecter avec chaque compte admin : l'écran « Sécurisez votre compte administrateur » apparaît. Scanner le QR code avec Google/Microsoft Authenticator.
+- [ ] **Enregistrer les codes de secours** hors de l'ordinateur (coffre de mots de passe, papier dans un lieu sûr).
+- [ ] Au moins **deux** super administrateurs, chacun avec sa 2FA (si l'un perd son téléphone, l'autre peut le réinitialiser dans *Utilisateurs*).
+- [ ] Mot de passe long et unique pour chaque admin, jamais réutilisé ailleurs.
+- [ ] Vérifier que la cloche reçoit bien une alerte « Connexion administrateur » à chaque connexion admin.
+
+Si un super administrateur unique perd son téléphone **et** ses codes de secours, la récupération se fait en SQL (à faire avec une extrême prudence) :
+`update profiles set two_factor_enabled = false, two_factor_secret = null, two_factor_recovery_hashes = '{}' where email = 'adresse@exemple.com';`
+
+## 4. Paiements (avant le premier vrai franc)
+
+- [ ] Tester chaque flux en **sandbox** du fournisseur (CinetPay / FlexPaie) avec de petits montants : recharge, paiement marchand, remboursement, retrait réussi, retrait échoué.
+- [ ] Vérifier qu'un faux webhook (mauvaise signature) est rejeté **et** génère une alerte critique.
+- [ ] Fixer des plafonds bas dans *Frais et limites* : par exemple 20 $ par opération et 50 $ par jour, et monter petit à petit.
+- [ ] Prévoir un **compte de réserve** couvrant une perte possible les premières semaines.
+- [ ] Vérifier avec un juriste les obligations en RDC pour un service de portefeuille (agrément, KYC, lutte anti-blanchiment).
+
+## 5. Surveillance une fois en ligne
+
+- [ ] Chaque jour : page *Alertes de sécurité* (tout est « traité »), et la cloche des administrateurs.
+- [ ] Chaque semaine : relancer `verify_security.sql` ; vérifier le rapport GitHub *Security checks* et les propositions Dependabot.
+- [ ] Après chaque nouvelle migration : relancer `verify_security.sql`.
+- [ ] Une alerte « Portefeuille en négatif détecté » est une **urgence** : suspendre les retraits et examiner `ledger_entries`.
+
+## 6. Avant d'ouvrir au public
+
+- [ ] Test d'intrusion par un tiers, correction de tout ce qui est « critique » ou « haut ».
+- [ ] Mise à jour majeure de NestJS (failles « high » restantes, voir `SECURITY.md`).
+- [ ] Ouvrir à un petit groupe d'utilisateurs de confiance pendant 2 à 4 semaines.

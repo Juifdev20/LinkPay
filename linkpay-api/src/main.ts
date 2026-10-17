@@ -6,12 +6,27 @@ import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import * as express from 'express';
 import { AppModule } from './app.module';
+import { createCsrfMiddleware } from './auth/csrf.middleware';
+import { configureTrustProxy, resolveTrustProxyHops } from './common/utils/trust-proxy';
 
 // CinetPay's SDK talks to exactly these hosts (sandbox + production) — see
 // cinetpay.adapter.ts. Only requests to these get routed through the proxy;
 // everything else (Supabase Auth/REST, etc.) must keep using the platform's
 // normal outbound path.
 const CINETPAY_HOSTS = ['api.cinetpay.net', 'api.cinetpay.co'];
+
+/** FlexPaie is reached at the addresses its own contract gives (Mobile Money, card and status check can be three different hosts); it too is usually reachable only from a whitelisted IP. */
+function flexPaieHosts(): string[] {
+  const hosts = new Set<string>();
+  for (const key of ['FLEXPAIE_BASE_URL', 'FLEXPAIE_MOMO_URL', 'FLEXPAIE_CARD_URL', 'FLEXPAIE_CHECK_URL']) {
+    try {
+      if (process.env[key]) hosts.add(new URL(String(process.env[key]).trim()).hostname);
+    } catch {
+      /* a malformed address is reported by the adapter when it is used */
+    }
+  }
+  return [...hosts];
+}
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -28,17 +43,18 @@ async function bootstrap() {
   if (process.env.PROXY_URL) {
     const proxyAgent = new ProxyAgent(process.env.PROXY_URL);
     const originalFetch = globalThis.fetch;
+    const proxiedHosts = [...CINETPAY_HOSTS, ...flexPaieHosts()];
     globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' || input instanceof URL ? input : input.url;
       const hostname = new URL(url).hostname;
-      if (CINETPAY_HOSTS.includes(hostname)) {
+      if (proxiedHosts.includes(hostname)) {
         return originalFetch(input, { ...init, dispatcher: proxyAgent } as RequestInit);
       }
       return originalFetch(input, init);
     }) as typeof fetch;
-    logger.log(`CinetPay requests (${CINETPAY_HOSTS.join(', ')}) routed via proxy: ${process.env.PROXY_URL.replace(/\/\/.*@/, '//***@')}`);
+    logger.log(`Payment provider requests (${[...CINETPAY_HOSTS, ...flexPaieHosts()].join(', ')}) routed via proxy: ${process.env.PROXY_URL.replace(/\/\/.*@/, '//***@')}`);
   } else {
-    logger.warn('PROXY_URL not set — outbound requests use the raw platform IP (CinetPay IP whitelisting will fail on Render\'s shared IPs)');
+    logger.log('PROXY_URL not set — outbound requests use the platform IP (CinetPay may require a fixed IP; FlexPaie does not, per FlexPaie)');
   }
 
   const app = await NestFactory.create(AppModule, {
@@ -57,7 +73,23 @@ async function bootstrap() {
       },
     }),
   );
-  app.use(express.urlencoded({ extended: true }));
+  app.use(
+    express.urlencoded({
+      extended: true,
+      // A provider may post its callback as a form: the adapter reads it from the raw body like the JSON ones.
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
+
+  // The rate limiter keys on the client IP: behind Render's proxy it needs the
+  // real one (see common/utils/trust-proxy.ts).
+  const trustProxyHops = resolveTrustProxyHops({
+    NODE_ENV: configService.get<string>('NODE_ENV'),
+    TRUST_PROXY_HOPS: configService.get<string>('TRUST_PROXY_HOPS'),
+  });
+  configureTrustProxy(app.getHttpAdapter().getInstance(), trustProxyHops);
 
   app.use(helmet());
   const frontendUrl = configService.get<string>('FRONTEND_URL');
@@ -76,6 +108,8 @@ async function bootstrap() {
     origin: allowedOrigins,
     credentials: true,
   });
+  // Cookie sessions (COOKIE_AUTH=true): refuse forged cross-site requests. Bearer-token clients pass straight through.
+  app.use(createCsrfMiddleware(allowedOrigins));
 
   app.setGlobalPrefix('api/v1', { exclude: ['health'] });
 
@@ -87,19 +121,25 @@ async function bootstrap() {
     }),
   );
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('ScanLinkPay API')
-    .setDescription('ScanLinkPay Payment Platform REST API')
-    .setVersion('0.1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/v1/docs', app, document);
+  // The interactive API docs list every route and DTO: handy in development,
+  // a free map of the attack surface in production. Opt in with ENABLE_SWAGGER=true.
+  const swaggerEnabled =
+    configService.get<string>('NODE_ENV') !== 'production' || configService.get<string>('ENABLE_SWAGGER') === 'true';
+  if (swaggerEnabled) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('ScanLinkPay API')
+      .setDescription('ScanLinkPay Payment Platform REST API')
+      .setVersion('0.1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/v1/docs', app, document);
+  }
 
   const port = configService.get<number>('PORT', 3000);
   await app.listen(port);
   logger.log(`ScanLinkPay API running on port ${port}`);
-  logger.log(`Swagger docs at http://localhost:${port}/api/v1/docs`);
+  if (swaggerEnabled) logger.log(`Swagger docs at http://localhost:${port}/api/v1/docs`);
 }
 
 bootstrap();

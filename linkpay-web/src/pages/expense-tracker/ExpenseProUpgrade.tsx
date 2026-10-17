@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -6,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { PinInput } from '@/components/PinInput';
 import { formatCurrency } from '@/lib/utils';
 import { Loader2, Crown, Wallet, CreditCard } from 'lucide-react';
+import { followCheckout } from '@/lib/safe-url';
 
 interface ExpenseProUpgradeProps {
   status: { monthly_price_cents: number; monthly_price_currency: 'CDF' | 'USD' };
@@ -22,6 +24,7 @@ interface ExpenseProUpgradeProps {
  */
 export function ExpenseProUpgrade({ status, context = 'paywall' }: ExpenseProUpgradeProps) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [showPin, setShowPin] = useState(false);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -50,7 +53,7 @@ export function ExpenseProUpgrade({ status, context = 'paywall' }: ExpenseProUpg
     mutationFn: async () => (await api.post('/expense-tracker/pro/activate/cinetpay')).data,
     onSuccess: (data) => {
       if (data.checkout_url) {
-        window.location.href = data.checkout_url;
+        followCheckout(data.checkout_url, navigate);
         return;
       }
       // Mock provider settles synchronously.
@@ -106,6 +109,9 @@ export function ExpenseProUpgrade({ status, context = 'paywall' }: ExpenseProUpg
               length={4}
               autoFocus
               error={!!error}
+              title="Confirmer le paiement"
+              hint={`Abonnement de ${formatCurrency(status.monthly_price_cents, status.monthly_price_currency)}`}
+              message={error ? String(error) : undefined}
             />
             {walletMutation.isPending && <Loader2 className="w-5 h-5 animate-spin text-primary mx-auto mt-3" />}
             <button

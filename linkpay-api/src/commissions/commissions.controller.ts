@@ -53,11 +53,14 @@ class CreateRuleDto {
   currency?: string;
 }
 
+import { OtpStepUpGuard, RequireOtp } from '../security/otp-step-up.guard';
+import { SecurityAlertsService } from '../security/security-alerts.service';
+
 @ApiTags('Commissions')
 @ApiBearerAuth()
 @Controller('commissions')
 export class CommissionsController {
-  constructor(private commissionsService: CommissionsService) {}
+  constructor(private commissionsService: CommissionsService, private alerts: SecurityAlertsService) {}
 
   @Get('rules')
   @ApiOperation({ summary: 'List commission rules' })
@@ -73,20 +76,26 @@ export class CommissionsController {
 
   @Post('rules')
   @Roles('super_admin')
-  @UseGuards(RolesGuard)
+  @UseGuards(RolesGuard, OtpStepUpGuard)
+  @RequireOtp()
   @ApiOperation({ summary: 'Create a commission rule (Super Admin only)' })
   async createRule(
     @CurrentUser('id') userId: string,
     @Body() dto: CreateRuleDto,
   ) {
-    return this.commissionsService.createRule(dto, userId);
+    const rule = await this.commissionsService.createRule(dto, userId);
+    await this.alerts.alert({ severity: 'warning', title: 'Commission modifiée', body: `Une nouvelle règle de commission a été créée par ${userId}.`, data: { rule } });
+    return rule;
   }
 
   @Put('rules/:id/deactivate')
   @Roles('super_admin')
-  @UseGuards(RolesGuard)
+  @UseGuards(RolesGuard, OtpStepUpGuard)
+  @RequireOtp()
   @ApiOperation({ summary: 'Deactivate a commission rule' })
-  async deactivateRule(@Param('id') id: string) {
-    return this.commissionsService.deactivateRule(id);
+  async deactivateRule(@Param('id') id: string, @CurrentUser('id') userId: string) {
+    const rule = await this.commissionsService.deactivateRule(id);
+    await this.alerts.alert({ severity: 'warning', title: 'Commission désactivée', body: `La règle ${id} a été désactivée par ${userId}.` });
+    return rule;
   }
 }

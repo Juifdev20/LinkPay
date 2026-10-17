@@ -7,7 +7,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { formatDate } from '@/lib/utils';
-import { Loader2, KeyRound, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, KeyRound, ShieldOff, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const ROLES = ['client', 'cashier', 'merchant', 'enterprise', 'admin', 'super_admin'];
 const PAGE_SIZE = 20;
@@ -17,6 +17,7 @@ export default function AdminUsersPage() {
   const [selectedRole, setSelectedRole] = useState<Record<string, string>>({});
   const [page, setPage] = useState(1);
   const [resetTarget, setResetTarget] = useState<any>(null);
+  const [reset2faTarget, setReset2faTarget] = useState<any>(null);
 
   const { data } = useQuery({
     queryKey: ['admin-users', page],
@@ -38,6 +39,12 @@ export default function AdminUsersPage() {
   const resetSessionMutation = useMutation({
     mutationFn: async (userId: string) => {
       await api.post(`/admin/users/${userId}/reset-session`);
+    },
+  });
+
+  const reset2faMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      await api.post(`/admin/users/${userId}/reset-2fa`);
     },
   });
 
@@ -93,6 +100,17 @@ export default function AdminUsersPage() {
                           <KeyRound className="w-4 h-4" />
                         )}
                       </Button>
+                      {['admin', 'super_admin'].includes(u.role) && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          title="Réinitialiser la double authentification (téléphone perdu)"
+                          disabled={reset2faMutation.isPending && reset2faMutation.variables === u.id}
+                          onClick={() => setReset2faTarget(u)}
+                        >
+                          <ShieldOff className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 );
@@ -119,6 +137,16 @@ export default function AdminUsersPage() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={!!reset2faTarget}
+        onOpenChange={(open) => !open && setReset2faTarget(null)}
+        title="Réinitialiser la double authentification ?"
+        description={`${reset2faTarget?.full_name || reset2faTarget?.email || ''} devra configurer à nouveau son application d'authentification à sa prochaine connexion. Les autres administrateurs seront alertés.`}
+        confirmLabel="Réinitialiser"
+        variant="destructive"
+        onConfirm={() => reset2faMutation.mutate(reset2faTarget.id)}
+      />
 
       <ConfirmDialog
         open={!!resetTarget}

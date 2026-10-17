@@ -1,4 +1,6 @@
-import { LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, type LucideIcon } from 'lucide-react';
+
+import { FEATURES } from '@/lib/features';
 
 export const ALL_ROLES = ['merchant', 'cashier', 'enterprise', 'client', 'admin', 'super_admin'];
 
@@ -17,6 +19,13 @@ export interface NavItem {
   roles: string[];
 }
 
+// What each job sees (kept deliberately short, so nobody is lost in options
+// that aren't theirs):
+//   vendeur    — Ventes, Historique, Tableau de bord ventes (light)
+//   caissier   — Caisse (till), Ventes, Historique, Transactions, Recevoir
+//   magasinier — Stock & Approvisionnement, Inventaire
+//   comptable  — Historique, Transactions, Statistiques, Journal, Tableau de bord
+//   patron     — everything
 // Single source of truth for "where can this role go" — consumed by both
 // the desktop sidebar (DashboardLayout.tsx) and its mobile equivalent
 // (pages/More.tsx, the "Plus" tab), so the two never drift out of sync. Settings.tsx
@@ -24,7 +33,7 @@ export interface NavItem {
 // configuration (e.g. "Profil entreprise") — only full modules belong
 // here.
 //
-// Merchant-scoped pages (payment-requests, transactions, settlements) need
+// Merchant-scoped pages (payment-requests, transactions) need
 // the JWT's merchant_id claim — an enterprise account only gets one while
 // "acting as" a specific store (role becomes 'merchant' then; see
 // auth-store.ts enterStore()), never at the plain org level, so 'enterprise'
@@ -33,52 +42,66 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   { to: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: [...ALL_ROLES, ...STAFF_ROLES] },
   { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: QrCode, roles: ['merchant', 'cashier'] },
+  // The merchant's fixed payment QR + ScanLinkPay number — on mobile it is
+  // the bottom bar's central tab (so More.tsx's already-visible filter keeps
+  // it out of Plus); on desktop this sidebar entry is the only way to reach it.
+  { to: '/dashboard/wallet/receive', label: 'Encaisser', icon: QrCode, roles: ['merchant', 'cashier'] },
   { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, roles: ['merchant', 'cashier'] },
-  { to: '/dashboard/settlements', label: 'Règlements', icon: Wallet, roles: ['merchant'] },
   { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'] },
   // Deliberately excludes 'enterprise' — wallet/tontine/savings features are
   // personal-account concepts; an organization has its own separate stock,
   // expenses, etc. modules instead (see OrganizationProfile.tsx).
   { to: '/dashboard/client/transactions', label: 'Mes paiements', icon: Receipt, roles: ALL_ROLES.filter((r) => r !== 'enterprise') },
-  { to: '/dashboard/tontines', label: 'Tontines', icon: RefreshCcw, roles: ALL_ROLES.filter((r) => r !== 'enterprise') },
-  { to: '/dashboard/savings', label: 'Épargne', icon: PiggyBank, roles: ALL_ROLES.filter((r) => r !== 'enterprise') },
+  ...(FEATURES.tontines ? [{ to: '/dashboard/tontines', label: 'Tontines', icon: RefreshCcw, roles: ALL_ROLES.filter((r) => r !== 'enterprise') }] : []),
+  ...(FEATURES.savings ? [{ to: '/dashboard/savings', label: 'Épargne', icon: PiggyBank, roles: ALL_ROLES.filter((r) => r !== 'enterprise') }] : []),
   // Deliberately excludes 'enterprise' — organizations have their own,
   // separate expense feature (see OrganizationProfile.tsx's expense tile),
   // unlike tontines/savings above which enterprise can currently also see.
   { to: '/dashboard/expenses', label: 'Mes dépenses', icon: Receipt, roles: ['client', 'merchant', 'cashier', 'admin', 'super_admin'] },
+  // The ScanLinkPay card: everybody who has a wallet has one, and the sellers can charge it at the till.
+  { to: '/dashboard/card', label: 'Ma carte', icon: CreditCard, roles: [...ALL_ROLES, ...STAFF_ROLES] },
+  { to: '/dashboard/card/charge', label: 'Encaisser par carte', icon: ScanLine, roles: ['merchant', 'cashier', 'enterprise', 'caissier', 'vendeur'] },
   { to: '/dashboard/admin', label: 'Administration', icon: ShieldCheck, roles: ['admin', 'super_admin'] },
+  { to: '/dashboard/admin/cards', label: 'Cartes', icon: CreditCard, roles: ['admin', 'super_admin'] },
+  { to: '/dashboard/admin/withdrawals', label: 'Retraits à traiter', icon: ArrowUpFromLine, roles: ['admin', 'super_admin'] },
   { to: '/dashboard/admin/merchants', label: 'Commerçants', icon: Users, roles: ['admin', 'super_admin'] },
   { to: '/dashboard/admin/organizations', label: 'Entreprises', icon: Building2, roles: ['admin', 'super_admin'] },
   { to: '/dashboard/admin/settlements', label: 'Règlements (admin)', icon: Wallet, roles: ['admin', 'super_admin'] },
+  { to: '/dashboard/admin/security-alerts', label: 'Alertes de sécurité', icon: ShieldAlert, roles: ['admin', 'super_admin'] },
   { to: '/dashboard/admin/users', label: 'Utilisateurs', icon: UserCog, roles: ['super_admin'] },
   { to: '/dashboard/admin/commissions', label: 'Commissions', icon: Percent, roles: ['super_admin'] },
+  { to: '/dashboard/admin/wallet-limits', label: 'Frais et limites', icon: SlidersHorizontal, roles: ['super_admin'] },
   { to: '/dashboard/admin/expense-tracker-settings', label: 'Dépenses — Config.', icon: Receipt, roles: ['super_admin'] },
-  // Org-level modules. Profil entreprise / Transactions / Utilisateurs
-  // internes used to live in Settings.tsx's secondaryLinks — moved back
-  // here (and to the "Plus" page on mobile) so every business module is
-  // reachable from one place.
+  { to: '/dashboard/admin/subscriptions', label: 'Abonnements', icon: Sparkles, roles: ['super_admin'] },
+  { to: '/dashboard/admin/app-security', label: "Sécurité de l'application", icon: ShieldCheck, roles: ['super_admin'] },
+  // The one enterprise module kept at this top level — Transactions and
+  // Utilisateurs internes moved to Settings.tsx's secondaryLinks instead
+  // per product decision (only Stock & Approvisionnement stays a
+  // first-level module in the sidebar/drawer).
   { to: '/dashboard/organization/sales', label: 'Ventes', icon: ShoppingCart, roles: ['enterprise', 'vendeur', 'caissier'] },
   { to: '/dashboard/organization/sales/history', label: 'Historique', icon: History, roles: ['enterprise', 'vendeur', 'caissier', 'comptable'] },
-  { to: '/dashboard/organization/stock', label: 'Stock & Approvisionnement', icon: Boxes, roles: ['enterprise', 'magasinier', 'vendeur'] },
+  { to: '/dashboard/organization/stock', label: 'Stock & Approvisionnement', icon: Boxes, roles: ['enterprise', 'magasinier'] },
   // Supermarket module — the till is the staff's day-to-day screen.
   // Plain 'merchant' isn't in the POS controller's @Roles list (backend
   // resolves the store via merchant.owner_id for org owners), so it's not
   // listed here either.
-  { to: '/dashboard/pos', label: 'Caisse', icon: Store, roles: ['enterprise', 'caissier', 'magasinier'] },
+  { to: '/dashboard/pos', label: 'Caisse', icon: Store, roles: ['enterprise', 'caissier'] },
   { to: '/dashboard/organization/inventory', label: 'Inventaire', icon: ClipboardList, roles: ['enterprise', 'magasinier'] },
   { to: '/dashboard/organization/stats', label: 'Statistiques', icon: BarChart3, roles: ['enterprise', 'comptable'] },
   { to: '/dashboard/organization/audit', label: 'Journal', icon: ScrollText, roles: ['enterprise', 'comptable'] },
-  // The seller also runs the cash desk for the Ventes/electronics flow:
-  // transactions and receive are part of the vendeur interface too. No
-  // separate "Tableau de bord ventes" entry — staff reach it from "Tableau
-  // de bord" (the home screen), same as everyone else.
-  { to: '/dashboard/organization/transactions', label: 'Transactions', icon: Receipt, roles: ['enterprise', 'vendeur', 'caissier', 'comptable'] },
-  { to: '/dashboard/organization/receive', label: 'Recevoir', icon: QrCode, roles: ['vendeur', 'caissier'] },
+  // Staff-only finance entries (the enterprise owner reaches the same screens
+  // from its own Settings → Gestion, so they aren't duplicated for enterprise).
+  { to: '/dashboard/organization/sales/dashboard', label: 'Tableau de bord ventes', icon: BarChart3, roles: ['vendeur', 'comptable'] },
+  { to: '/dashboard/organization/transactions', label: 'Transactions', icon: Receipt, roles: ['enterprise', 'caissier', 'comptable'] },
+  { to: '/dashboard/organization/receive', label: 'Recevoir', icon: QrCode, roles: ['caissier'] },
   // Org management — business modules, not account config, so they live
   // in the nav (sidebar/desktop, Plus/mobile) rather than Settings.
   { to: '/dashboard/organization/profile', label: 'Profil entreprise', icon: Building2, roles: ['enterprise'] },
   { to: '/dashboard/organization/stores', label: 'Boutiques', icon: Store, roles: ['enterprise'] },
   { to: '/dashboard/organization/staff', label: 'Utilisateurs internes', icon: Users, roles: ['enterprise'] },
+  { to: '/dashboard/organization/subscription', label: 'Abonnement', icon: Sparkles, roles: ['enterprise'] },
+  // Employees' own wallet: where the patron sends their salary and from where they withdraw it.
+  { to: '/dashboard/wallet', label: 'Mon portefeuille', icon: Wallet, roles: STAFF_ROLES },
   { to: '/dashboard/notifications', label: 'Notifications', icon: Bell, roles: [...ALL_ROLES, ...STAFF_ROLES] },
   { to: '/dashboard/settings', label: 'Paramètres', icon: Settings, roles: [...ALL_ROLES, ...STAFF_ROLES] },
 ];

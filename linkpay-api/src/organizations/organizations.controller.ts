@@ -1,11 +1,13 @@
-import { Controller, Get, Post, Put, Body, Param, Query, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OrganizationsService } from './organizations.service';
+import { MerchantsService } from '../merchants/merchants.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { IsString, IsOptional, MaxLength, IsObject, IsNumber, IsIn, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CreateMerchantDto } from '../merchants/merchants.controller';
+import { RequireSubscription } from '../subscriptions/subscription.guard';
 
 class CreateOrganizationDto {
   @ApiProperty({ example: 'Tech Solutions SARL' })
@@ -54,7 +56,10 @@ class CreateExpenseDto {
 @ApiBearerAuth()
 @Controller('organizations')
 export class OrganizationsController {
-  constructor(private orgsService: OrganizationsService) {}
+  constructor(
+    private orgsService: OrganizationsService,
+    private merchantsService: MerchantsService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create an organization account' })
@@ -82,11 +87,21 @@ export class OrganizationsController {
     }
   }
 
+  // ScanLinkPay numbers are one shared namespace (same SLP-… sequence for
+  // organizations and standalone merchants, migration 061), so the payer's
+  // lookup tries organizations first, then standalone merchants — both
+  // return the same {name, scanlinkpay_number, merchants[]} shape and the
+  // pay screen treats a store as a one-store business.
   @Public()
   @Get('pay/:number')
   @ApiOperation({ summary: 'Look up a business by its ScanLinkPay number (public — no auth)' })
   async getOrgByScanLinkPayNumber(@Param('number') number: string) {
-    return this.orgsService.getOrganizationByScanLinkPayNumber(number);
+    try {
+      return await this.orgsService.getOrganizationByScanLinkPayNumber(number);
+    } catch (err) {
+      if (!(err instanceof NotFoundException)) throw err;
+      return this.merchantsService.getMerchantByScanLinkPayNumber(number);
+    }
   }
 
   // Privileged fields on an organization record — never settable by the
@@ -165,6 +180,7 @@ export class OrganizationsController {
   }
 
   @Post(':id/merchants')
+  @RequireSubscription('org')
   @ApiOperation({ summary: 'Create a new store under this organization (owner only)' })
   async createOrgMerchant(
     @Param('id') id: string,
@@ -236,6 +252,7 @@ export class OrganizationsController {
   }
 
   @Post(':id/expenses')
+  @RequireSubscription('org')
   @ApiOperation({ summary: 'Record a manual expense (owner only)' })
   async createOrgExpense(
     @Param('id') id: string,

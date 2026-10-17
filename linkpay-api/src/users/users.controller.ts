@@ -1,3 +1,4 @@
+import { AllowWithoutMfa } from '../common/decorators/allow-without-mfa.decorator';
 import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { UsersService } from './users.service';
@@ -30,6 +31,7 @@ class UpdateProfileDto {
 export class UsersController {
   constructor(private usersService: UsersService) {}
 
+  @AllowWithoutMfa()
   @Get('me')
   @ApiOperation({ summary: 'Get current user profile' })
   async getMyProfile(
@@ -38,8 +40,11 @@ export class UsersController {
     @CurrentUser('merchant_id') merchantId?: string,
     @CurrentUser('acting_as_org_id') actingAsOrgId?: string,
     @CurrentUser('organization_id') organizationId?: string,
+    @CurrentUser('mfa') mfa?: boolean,
   ) {
-    return this.usersService.getProfile(userId, role, merchantId, actingAsOrgId, organizationId);
+    const profile = await this.usersService.getProfile(userId, role, merchantId, actingAsOrgId, organizationId);
+    // Lets the app send an admin who hasn't set up 2FA yet to the setup screen.
+    return { ...profile, mfa_verified: !!mfa };
   }
 
   @Put('me')

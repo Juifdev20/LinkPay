@@ -8,3 +8,10 @@
  * contact for a reset if they got locked out by their own second device.
  */
 export const SESSION_TRACKING_EXEMPT_ROLES = ['admin', 'super_admin'];
+
+/**
+ * Roles that can move the platform's money rules and see everyone's data.
+ * They must log in with a second factor (authenticator app); a session
+ * without it can do nothing but set it up.
+ */
+export const MFA_REQUIRED_ROLES = ['admin', 'super_admin'];
