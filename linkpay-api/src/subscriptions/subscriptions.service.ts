@@ -225,9 +225,19 @@ export class SubscriptionsService {
     return { months, currency, price_month_cents: price, amount_cents: price * months };
   }
 
-  async subscribe(userId: string, orgId: string, input: { months: number; currency: string; pin: string }, idempotencyKey: string) {
+  async subscribe(
+    userId: string,
+    orgId: string,
+    input: { months: number; currency: string; pin: string },
+    idempotencyKey: string,
+    caller: { role?: string; organizationId?: string } = {},
+  ) {
     const org = await this.loadOrg(orgId);
-    if (org.owner_id !== userId) throw new ForbiddenException("Seul le patron de l'entreprise peut souscrire l'abonnement.");
+    // The owner, or a station manager of this business (also re-checked in purchase_subscription).
+    const isManager = caller.role === 'gerant' && caller.organizationId === orgId;
+    if (org.owner_id !== userId && !isManager) {
+      throw new ForbiddenException("Seul le patron de l'entreprise ou un gérant peut souscrire l'abonnement.");
+    }
     if (!idempotencyKey) throw new BadRequestException('Idempotency-Key header is required');
 
     // The amount is always computed here from the admin's price, never taken from the request.

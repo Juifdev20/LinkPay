@@ -1,10 +1,30 @@
-import { Injectable, NotFoundException, ConflictException, GoneException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, GoneException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { randomInt } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
 
-export const STAFF_ROLE_SLUGS = ['magasinier', 'vendeur', 'caissier', 'comptable'];
+export const STAFF_ROLE_SLUGS = ['gerant', 'magasinier', 'vendeur', 'caissier', 'comptable'];
+
+/**
+ * Roles that don't exist in a sector. A supermarket has no sales staff: the
+ * customer serves themselves and the cashier scans, takes the money and
+ * prints the ticket. The "vendeur" (advises and sells) belongs to shops.
+ */
+const ROLES_NOT_IN_SECTOR: Record<string, string[]> = {
+  supermarche: ['vendeur'],
+};
+
+export function assertRoleFitsSector(sector: string | null | undefined, roleSlug: string) {
+  if (sector && ROLES_NOT_IN_SECTOR[sector]?.includes(roleSlug)) {
+    throw new BadRequestException("Un supermarché n'a pas de vendeurs : le caissier vend et encaisse.");
+  }
+}
+
+/** Who is managing staff: the owner (every station, station = null) or a station manager (their station only). */
+export interface StaffManagerScope {
+  station: string | null;
+}
 /** Effectively permanent: Supabase Auth refuses this account until the patron restores it. */
 const BAN_FOREVER = '876000h';
 
@@ -44,7 +64,9 @@ export class OrganizationStaffService {
     telephone?: string;
     email: string;
     role_slug: string;
+    merchant_id: string;
   }) {
+    await this.assertStationOfOrg(orgId, data.merchant_id);
     const { data: role } = await this.supabaseService.getClient()
       .from('roles')
       .select('id')
@@ -132,6 +154,7 @@ export class OrganizationStaffService {
         email: data.email,
         temp_password: tempPassword,
         created_by: creatorId,
+        merchant_id: data.merchant_id,
       })
       .select()
       .single();
@@ -149,12 +172,13 @@ export class OrganizationStaffService {
    * user_roles.user_id both reference auth.users but not each other, so
    * PostgREST can't embed roles directly — join manually, same pattern as
    * MerchantsService.getMerchantUsers(). */
-  async listStaff(orgId: string) {
-    const { data: staff, error } = await this.supabaseService.getClient()
+  async listStaff(orgId: string, station: string | null = null) {
+    let query = this.supabaseService.getClient()
       .from('organization_staff')
       .select('*')
-      .eq('organization_id', orgId)
-      .order('created_at', { ascending: false });
+      .eq('organization_id', orgId);
+    if (station) query = query.eq('merchant_id', station);
+    const { data: staff, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
       throw new Error(`Failed to fetch organization staff: ${error.message}`);
@@ -171,13 +195,82 @@ export class OrganizationStaffService {
     const roleByUser: Record<string, any> = {};
     (userRoles || []).forEach((ur: any) => { roleByUser[ur.user_id] = ur.role; });
 
+    const stationIds = [...new Set(staff.map((s) => s.merchant_id).filter(Boolean))];
+    const { data: stations } = stationIds.length
+      ? await this.supabaseService.getClient().from('merchants').select('id, name').in('id', stationIds)
+      : { data: [] as { id: string; name: string }[] };
+    const stationName: Record<string, string> = {};
+    (stations || []).forEach((m) => { stationName[m.id] = m.name; });
+
     return staff.map(({ temp_password, pos_pin_hash: _h, pos_pin_attempts: _a, pos_pin_locked_until: _l, ...s }: any) => ({
       ...s,
       has_temp_password: !!temp_password && !s.deactivated_at,
       active: !s.deactivated_at,
       role: roleByUser[s.user_id]?.slug || null,
       role_name: roleByUser[s.user_id]?.name || null,
+      station_name: s.merchant_id ? stationName[s.merchant_id] || null : null,
     }));
+  }
+
+  /** The station must be one of this organization's stores. */
+  private async assertStationOfOrg(orgId: string, merchantId: string) {
+    const { data } = await this.supabaseService.getClient()
+      .from('merchants')
+      .select('id')
+      .eq('id', merchantId)
+      .eq('organization_id', orgId)
+      .maybeSingle();
+    if (!data) throw new BadRequestException("Cette station n'appartient pas à votre entreprise");
+  }
+
+  /**
+   * A station manager acts only on the staff of their own station, and never
+   * on another manager — those are the owner's. The owner acts on everyone.
+   */
+  async assertCanManage(orgId: string, staffId: string, scope: StaffManagerScope) {
+    if (!scope.station) return;
+    const staff = await this.getStaffRow(orgId, staffId);
+    if (staff.merchant_id !== scope.station) throw new ForbiddenException("Cet employé ne travaille pas dans votre station");
+    const { data: current } = await this.supabaseService.getClient()
+      .from('user_roles')
+      .select('role:roles(slug)')
+      .eq('user_id', staff.user_id)
+      .eq('organization_id', orgId)
+      .maybeSingle();
+    if ((current as any)?.role?.slug === 'gerant') {
+      throw new ForbiddenException("Seul le responsable de l'entreprise gère les gérants");
+    }
+  }
+
+  /**
+   * Moves an employee to another station. Like a role change, their sessions
+   * are cut so the next login carries the new station.
+   */
+  async changeStaffStation(orgId: string, staffId: string, ownerId: string, merchantId: string) {
+    await this.assertStationOfOrg(orgId, merchantId);
+    const staff = await this.getStaffRow(orgId, staffId);
+    if (staff.merchant_id === merchantId) throw new BadRequestException('Cet utilisateur travaille déjà dans cette station');
+
+    const client = this.supabaseService.getClient();
+    const { error } = await client.from('organization_staff').update({ merchant_id: merchantId }).eq('id', staffId);
+    if (error) throw new Error(`Failed to change station: ${error.message}`);
+    await this.cutSessions(staff.user_id);
+
+    const { data: station } = await client.from('merchants').select('name').eq('id', merchantId).single();
+    await this.auditService.log({
+      user_id: ownerId,
+      action: 'staff_station_changed',
+      entity_type: 'organization_staff',
+      entity_id: staffId,
+      changes: { employee: [staff.prenom, staff.nom].filter(Boolean).join(' '), from: staff.merchant_id || null, to: merchantId },
+    });
+    await this.notificationsService.create({
+      user_id: staff.user_id,
+      type: 'security',
+      title: 'Vous changez de station',
+      body: `Vous travaillez maintenant à la station « ${station?.name || ''} ». Reconnectez-vous pour continuer.`,
+    });
+    return { success: true, merchant_id: merchantId };
   }
 
   /** Re-print — only works while the original temp password has never been

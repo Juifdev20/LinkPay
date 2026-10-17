@@ -65,6 +65,11 @@
     @apply border-border;
   }
 
+  /* No bounce or scroll chaining at the ends of a page (an app, not a web page). */
+  html, body {
+    overscroll-behavior: none;
+  }
+
   body {
     @apply bg-background text-foreground;
     font-family: 'Poppins', system-ui, -apple-system, sans-serif;

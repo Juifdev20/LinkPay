@@ -12,7 +12,8 @@ export function SubscriptionPromptDialog() {
   const navigate = useNavigate();
   const locked = useAppLock((s) => s.locked);
   const user = useAuthStore((s) => s.user);
-  const isOwner = user?.role === 'enterprise' || !!user?.acting_as_org_id;
+  // Who may pay: the owner, or a station manager.
+  const isOwner = user?.role === 'enterprise' || user?.role === 'gerant' || !!user?.acting_as_org_id;
 
   // Not while the access-code screen is up: the dialog would steal its focus. It shows right after unlocking.
   return (

@@ -32,6 +32,10 @@ export interface JwtPayload {
   // org, and role/merchant_id above are a temporary "acting as that store's
   // merchant" lens — not a permanent role change. See refresh() below.
   acting_as_org_id?: string;
+  // Set for enterprise staff: the one station (store of the organization)
+  // they work in — organization_staff.merchant_id. Deliberately not
+  // merchant_id, which would make them pass merchant-owner checks.
+  station_id?: string;
   // Set only when an authenticator-app code was checked for this session
   // (mfa_at = when, in epoch seconds): required of admin roles, see JwtAuthGuard.
   mfa?: boolean;
@@ -65,8 +69,13 @@ export class AuthService {
     });
 
     if (error) {
+      // Supabase refuses a duplicate phone number with an "already registered" message too:
+      // say which of the two is taken, or the person keeps changing an email that was never the problem.
+      if (/phone/i.test(error.message) && /already|exists|registered/i.test(error.message)) {
+        throw new ConflictException('Ce numéro de téléphone est déjà utilisé par un autre compte');
+      }
       if (error.message.includes('already')) {
-        throw new ConflictException('Email already registered');
+        throw new ConflictException('Un compte existe déjà avec cet email');
       }
       throw new UnauthorizedException(error.message);
     }
@@ -271,7 +280,8 @@ export class AuthService {
 
     const sessionId = await this.claimSession(userId, role, device_id);
     await this.recordClientPlatform(userId, ctx.platform);
-    const token = await this.generateToken(userId, email, role, merchantId, sessionId, undefined, organizationId, mfaAt);
+    const stationId = await this.stationOf(userId, organizationId);
+    const token = await this.generateToken(userId, email, role, merchantId, sessionId, undefined, organizationId, mfaAt, stationId);
     const refreshToken = await this.generateRefreshToken(userId, email, sessionId, undefined, undefined, mfaAt, role);
 
     return {
@@ -283,6 +293,7 @@ export class AuthService {
         role,
         merchant_id: merchantId,
         organization_id: organizationId,
+        station_id: stationId,
         must_change_password: !!profile?.must_change_password,
         two_factor_setup_required: twoFactorSetupRequired,
       },
@@ -396,7 +407,7 @@ export class AuthService {
     // password-only admin session into a verified one.
     const mfaAt = payload.mfa === true && MFA_REQUIRED_ROLES.includes(role) ? payload.mfa_at : undefined;
     return {
-      access_token: await this.generateToken(payload.sub, payload.email, role, merchantId, payload.session_id, undefined, organizationId, mfaAt),
+      access_token: await this.generateToken(payload.sub, payload.email, role, merchantId, payload.session_id, undefined, organizationId, mfaAt, await this.stationOf(payload.sub, organizationId)),
       refresh_token: await this.generateRefreshToken(payload.sub, payload.email, payload.session_id, undefined, undefined, mfaAt, role, payload.auth_at ?? payload.iat),
     };
   }
@@ -602,6 +613,7 @@ export class AuthService {
     actingAsOrgId?: string,
     organizationId?: string,
     mfaAt?: number,
+    stationId?: string,
   ): Promise<string> {
     const payload: JwtPayload = {
       sub: userId,
@@ -611,6 +623,7 @@ export class AuthService {
       ...(sessionId ? { session_id: sessionId } : {}),
       ...(actingAsOrgId ? { acting_as_org_id: actingAsOrgId } : {}),
       ...(organizationId ? { organization_id: organizationId } : {}),
+      ...(stationId ? { station_id: stationId } : {}),
       ...(mfaAt ? { mfa: true, mfa_at: mfaAt } : {}),
     };
     return this.jwtService.sign(payload);
@@ -656,6 +669,18 @@ export class AuthService {
           : this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '365d'),
       },
     );
+  }
+
+  /** The station an enterprise staff member works in (organization_staff.merchant_id), if any. */
+  private async stationOf(userId: string, organizationId?: string): Promise<string | undefined> {
+    if (!organizationId) return undefined;
+    const { data } = await this.supabaseService.getClient()
+      .from('organization_staff')
+      .select('merchant_id')
+      .eq('user_id', userId)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+    return data?.merchant_id || undefined;
   }
 
   private async getRoleId(slug: string): Promise<string> {

@@ -203,7 +203,7 @@ export function StockItemFormSheet({
 
         {merchants.length > 1 && (
           <div className="space-y-1.5">
-            <Label>Boutique</Label>
+            <Label>Station</Label>
             <Select value={form.merchant_id} onChange={(e) => set('merchant_id', e.target.value)}>
               <option value="">Sélectionner…</option>
               {merchants.map((m) => (

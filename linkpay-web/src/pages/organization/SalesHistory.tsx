@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { StockPasswordDialog } from '@/components/stock/StockPasswordDialog';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { SaleInvoice } from '@/components/sales/SaleInvoice';
 import { PRESETS, presetRange, type Preset } from '@/pages/organization/Transactions';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
@@ -361,7 +362,8 @@ export default function SalesHistoryPage() {
         )}
       </div>
 
-      {archiveTarget && org && (
+      {/* The management password only when the owner switched it on; otherwise a plain confirmation. */}
+      {archiveTarget && org && org.stock_password_required && (
         <StockPasswordDialog
           orgId={org.id}
           open
@@ -369,6 +371,14 @@ export default function SalesHistoryPage() {
           onUnlocked={(password) => archiveMutation.mutate({ sale: archiveTarget, password })}
         />
       )}
+      <ConfirmDialog
+        open={!!archiveTarget && !!org && !org.stock_password_required}
+        onOpenChange={(open) => !open && setArchiveTarget(null)}
+        title="Archiver cette vente ?"
+        description="Elle disparaît de cette liste mais n'est pas supprimée : les totaux et le Journal la gardent."
+        confirmLabel="Archiver"
+        onConfirm={() => archiveTarget && archiveMutation.mutate({ sale: archiveTarget, password: '' })}
+      />
 
       <style>{`
         @media print {

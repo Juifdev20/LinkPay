@@ -164,7 +164,7 @@ export class CardsController {
 @ApiTags('Cards')
 @ApiBearerAuth()
 @Controller('cards/merchant-charges')
-@Roles('merchant', 'enterprise', 'cashier', 'caissier', 'vendeur')
+@Roles('merchant', 'enterprise', 'cashier', 'gerant', 'caissier', 'vendeur')
 @UseGuards(RolesGuard)
 export class CardChargesController {
   constructor(private cards: CardsService) {}

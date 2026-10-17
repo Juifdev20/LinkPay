@@ -39,16 +39,19 @@ export class SubscriptionsController {
 
   /** Reachable by the owner and by their staff (the screens need to know what is usable), not by plain clients. */
   @Get('organizations/:id')
-  @Roles('enterprise', 'comptable', 'caissier', 'magasinier', 'vendeur', 'admin', 'super_admin')
+  @Roles('enterprise', 'gerant', 'comptable', 'caissier', 'magasinier', 'vendeur', 'admin', 'super_admin')
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'Subscription status of this business (trial, active, expired) and the monthly price' })
   async state(@Param('id') id: string, @CurrentUser('id') userId: string, @CurrentUser('organization_id') callerOrgId: string | undefined, @CurrentUser('role') role: string) {
     await this.subscriptions.assertMember(id, userId, callerOrgId, role);
-    return this.subscriptions.getState(id);
+    const state = await this.subscriptions.getState(id);
+    // Till and stock staff only need to know whether the tools are usable — not what the business pays.
+    if (['caissier', 'magasinier', 'vendeur', 'comptable'].includes(role)) return { ...state, prices: {} };
+    return state;
   }
 
   @Post('organizations/:id/quote')
-  @Roles('enterprise', 'admin', 'super_admin')
+  @Roles('enterprise', 'gerant', 'admin', 'super_admin')
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'Price of N months before paying' })
   async quote(@Param('id') id: string, @Body() dto: QuoteDto, @CurrentUser('id') userId: string, @CurrentUser('organization_id') callerOrgId: string | undefined, @CurrentUser('role') role: string) {
@@ -58,7 +61,7 @@ export class SubscriptionsController {
 
   @Post('organizations/:id/subscribe')
   @RequireDeviceIntegrity()
-  @Roles('enterprise')
+  @Roles('enterprise', 'gerant')
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: "Pay N months of subscription from the owner's wallet. Header Idempotency-Key required." })
   async subscribe(
@@ -66,9 +69,11 @@ export class SubscriptionsController {
     @Body() dto: SubscribeDto,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
     @CurrentUser('id') userId: string,
+    @CurrentUser('role') role: string,
+    @CurrentUser('organization_id') callerOrgId: string | undefined,
   ) {
     if (!idempotencyKey) throw new BadRequestException('Idempotency-Key header is required');
-    return this.subscriptions.subscribe(userId, id, dto, idempotencyKey);
+    return this.subscriptions.subscribe(userId, id, dto, idempotencyKey, { role, organizationId: callerOrgId });
   }
 }
 

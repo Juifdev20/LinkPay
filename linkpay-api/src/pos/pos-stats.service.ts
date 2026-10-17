@@ -5,7 +5,7 @@ import { StockService } from '../stock/stock.service';
 // Who can see sales stats — the direction roles (owner/enterprise and
 // platform admin pass resolveMerchantAccess regardless), plus 'comptable'
 // whose whole job is following the numbers.
-const STATS_ROLES = ['comptable'];
+const STATS_ROLES = ['comptable', 'gerant'];
 
 // Hard cap on rows pulled into memory for the JS-side aggregation —
 // supabase-js can't GROUP BY, and a supermarket's ticket volume over a

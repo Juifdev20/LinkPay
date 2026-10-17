@@ -88,7 +88,9 @@ export default function StockPage() {
     const merchantId = merchants.some((m: any) => m.id === boutique)
       ? boutique
       : merchants.length === 1 ? merchants[0].id : '';
-    setFormState({ initial: { ...emptyStockItemForm, merchant_id: merchantId, barcode } });
+    // ?devise=USD — the till's currency when the product is added from there.
+    const currency = searchParams.get('devise') === 'USD' ? 'USD' : emptyStockItemForm.currency;
+    setFormState({ initial: { ...emptyStockItemForm, merchant_id: merchantId, barcode, currency } });
     setSearchParams({}, { replace: true });
   }, [searchParams, merchants]);
 
@@ -118,16 +120,26 @@ export default function StockPage() {
     });
   };
 
+  const runAction = (action: { type: 'edit' | 'delete'; item: any }, password: string) => {
+    if (action.type === 'edit') {
+      openEditForm(action.item, password);
+    } else {
+      deleteMutation.mutate({ item: action.item, stockPassword: password });
+    }
+  };
+
+  // The stock password is only asked when the owner switched it on (off by default).
+  const requestAction = (action: { type: 'edit' | 'delete'; item: any }) => {
+    if (org?.stock_password_required) setPendingAction(action);
+    else runAction(action, '');
+  };
+
   const handlePasswordUnlocked = (password: string) => {
     rememberStockPassword(password); // adding stock right after doesn't ask again for a few minutes
     if (!pendingAction) return;
-    const { type, item } = pendingAction;
+    const action = pendingAction;
     setPendingAction(null);
-    if (type === 'edit') {
-      openEditForm(item, password);
-    } else {
-      deleteMutation.mutate({ item, stockPassword: password });
-    }
+    runAction(action, password);
   };
 
   return (
@@ -185,7 +197,7 @@ export default function StockPage() {
               onClick={() => setStoreFilter(null)}
               className={cn('flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-medium border', !storeFilter ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground')}
             >
-              Toutes les boutiques
+              Toutes les stations
             </button>
             {merchants.map((m: any) => (
               <button
@@ -227,7 +239,7 @@ export default function StockPage() {
             <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
           </div>
         ) : !merchants?.length ? (
-          <p className="text-muted-foreground text-center py-12">Crée d'abord une boutique pour pouvoir y ajouter du stock.</p>
+          <p className="text-muted-foreground text-center py-12">Créez d'abord une station pour pouvoir y ajouter du stock.</p>
         ) : !visibleItems.length ? (
           <p className="text-muted-foreground text-center py-12">
             {lowStockOnly ? 'Aucun article en stock bas dans cette sélection.' : 'Aucun article pour le moment.'}
@@ -249,8 +261,8 @@ export default function StockPage() {
           orgId={org.id}
           sector={org.sector}
           onClose={() => setDetailItem(null)}
-          onEdit={(item) => setPendingAction({ type: 'edit', item })}
-          onDelete={(item) => setPendingAction({ type: 'delete', item })}
+          onEdit={(item) => requestAction({ type: 'edit', item })}
+          onDelete={(item) => requestAction({ type: 'delete', item })}
         />
       )}
 

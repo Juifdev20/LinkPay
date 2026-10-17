@@ -17,6 +17,7 @@ import { LogOut, User, Building2, Sun, Moon, Menu, Search, X } from 'lucide-reac
 import { cn } from '@/lib/utils';
 import { SECTORS } from '@/pages/organization/OnboardingWizard';
 import { navItemsFor } from '@/lib/nav-items';
+import { ROLE_LABELS } from '@/lib/permissions';
 
 export default function DashboardLayout() {
   const user = useAuthStore((s) => s.user);
@@ -68,8 +69,9 @@ export default function DashboardLayout() {
   const visibleItems = user && navRole ? navItemsFor(navRole, org?.sector) : [];
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="flex h-screen">
+    <div className="h-[100dvh] bg-background">
+      {/* The visible height (dvh), not 100vh: on Android 100vh can exceed the screen and let the page itself scroll. */}
+      <div className="flex h-[100dvh]">
         {/* Desktop sidebar — hidden entirely (not just dimmed) while an
             enterprise account hasn't finished onboarding/validation, same
             reasoning as the mobile BottomNav below: none of these
@@ -95,9 +97,10 @@ export default function DashboardLayout() {
                     <Building2 className="w-4 h-4 text-primary" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground line-clamp-2 break-words">{org.name}</p>
-                    <p className="text-xs text-muted-foreground line-clamp-2 break-words" title={SECTORS.find((s) => s.value === org.sector)?.label || org.sector}>
-                      {SECTORS.find((s) => s.value === org.sector)?.label || org.sector}
+                    <p className="text-sm font-semibold text-foreground truncate">{org.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {/* Staff see the one station they work in; the owner the sector. */}
+                      {user?.station_name || SECTORS.find((s) => s.value === org.sector)?.label || org.sector}
                     </p>
                   </div>
                 </div>
@@ -142,7 +145,7 @@ export default function DashboardLayout() {
                     {/* role 'merchant' here would be misleading — an org
                         owner inside a store still IS the enterprise owner. */}
                     <p className="text-xs text-muted-foreground capitalize">
-                      {user?.acting_as_org_id ? 'Entreprise · en boutique' : user?.role}
+                      {user?.acting_as_org_id ? 'Responsable · en station' : (user?.role && ROLE_LABELS[user.role]) || user?.role}
                     </p>
                   </div>
                 </div>
@@ -156,7 +159,7 @@ export default function DashboardLayout() {
         )}
 
         {/* Main content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto overscroll-contain">
           {/* Desktop header — search (not yet wired to real search),
               theme toggle, notifications, profile avatar. Mirrors what
               TopBar gives mobile users below. NotificationsBell lives here

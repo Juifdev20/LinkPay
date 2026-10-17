@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
-import { STAFF_ROLES } from './PosPage';
+import { STAFF_ROLES } from '@/lib/permissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,9 +14,10 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PosReceipt } from './PosReceipt';
 import { posErrorMessage } from './PosPage';
 import { formatCurrency, formatDate, formatShortDate } from '@/lib/utils';
+import { buildShiftReportPdf, deliverPdf } from '@/lib/report-pdf';
 import {
   PauseCircle, Play, Loader2, Banknote, QrCode, Receipt,
-  DoorClosed, Vault, ChevronRight, History, Percent,
+  DoorClosed, Vault, ChevronRight, History, Percent, FileText,
 } from 'lucide-react';
 
 const METHOD_LABELS: Record<string, string> = {
@@ -229,7 +230,7 @@ export function PosSalesHistory({ merchantId }: { merchantId: string }) {
 // Caisse — current session detail (live expected), movements, close,
 // and past sessions with their rapprochement (spec 1.3).
 // ---------------------------------------------------------------------
-export function PosSessionPanel({ merchantId, session }: { merchantId: string; session: any }) {
+export function PosSessionPanel({ merchantId, session, onClosed }: { merchantId: string; session: any; onClosed?: (sessionId: string) => void }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -304,6 +305,8 @@ export function PosSessionPanel({ merchantId, session }: { merchantId: string; s
         closing_counted_cents: Math.round(parseFloat(closingCount || '0') * 100),
       });
       setClosingCount('');
+      // The page shows the end-of-shift report (this panel goes away with the session).
+      onClosed?.(session.id);
       queryClient.invalidateQueries({ queryKey: ['cash-session', merchantId] });
       queryClient.invalidateQueries({ queryKey: ['cash-sessions', merchantId] });
       queryClient.invalidateQueries({ queryKey: ['cash-session-detail', session.id] });
@@ -505,21 +508,35 @@ export function PosSessionPanel({ merchantId, session }: { merchantId: string; s
   );
 }
 
-/** Read-only recap of a past session: amounts, discrepancy, tickets. */
-function SessionDetailSheet({ merchantId, sessionId, onClose }: { merchantId: string; sessionId: string; onClose: () => void }) {
+/** Recap of a session — amounts, discrepancy, tickets — printable as the end-of-shift report. */
+export function SessionDetailSheet({ merchantId, sessionId, onClose, title = 'Détail de session' }: { merchantId: string; sessionId: string; onClose: () => void; title?: string }) {
+  const user = useAuthStore((st) => st.user);
   const { data: s, isLoading } = useQuery({
     queryKey: ['cash-session-detail', sessionId],
     queryFn: async () => (await api.get(`/merchants/${merchantId}/cash-register/sessions/${sessionId}`)).data,
   });
+  const [sharing, setSharing] = useState(false);
+  const sharePdf = async () => {
+    setSharing(true);
+    try {
+      const cashier = s.cashier_user_id === user?.id ? user?.full_name : undefined;
+      const doc = buildShiftReportPdf(s, { stationName: user?.station_name, cashierName: cashier });
+      await deliverPdf(doc, `fin-de-service-${(s.closed_at || s.opened_at || '').slice(0, 10)}-${s.currency}.pdf`, 'Partager le rapport de fin de service');
+    } catch {
+      // Share sheet dismissed — nothing else depends on it.
+    } finally {
+      setSharing(false);
+    }
+  };
 
   return (
-    <FormSheet onClose={onClose} title="Détail de session">
+    <FormSheet onClose={onClose} title={title}>
       <div className="p-6 max-w-lg mx-auto space-y-4">
         {isLoading && <div className="flex justify-center py-6"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>}
         {s && (
           <>
             <div className="text-center">
-              <p className="font-semibold text-foreground">Session {s.currency}</p>
+              <p className="font-semibold text-foreground">{title === 'Détail de session' ? `Session ${s.currency}` : `${title} · ${s.currency}`}</p>
               <p className="text-sm text-muted-foreground">
                 {formatDate(s.opened_at)}{s.closed_at ? ` → ${formatDate(s.closed_at)}` : ' · en cours'}
               </p>
@@ -570,6 +587,14 @@ function SessionDetailSheet({ merchantId, sessionId, onClose }: { merchantId: st
               ))}
               {!(s.tickets || []).length && <p className="text-sm text-muted-foreground">Aucun ticket.</p>}
             </div>
+
+            <Button className="w-full" variant="outline" onClick={sharePdf} disabled={sharing}>
+              {sharing ? <Loader2 className="mr-2 w-4 h-4 animate-spin" /> : <FileText className="mr-2 w-4 h-4" />}
+              Imprimer / partager (PDF)
+            </Button>
+            {s.status === 'closed' && (
+              <p className="text-xs text-center text-muted-foreground">Le gérant et le responsable ont été prévenus de cette clôture.</p>
+            )}
           </>
         )}
       </div>

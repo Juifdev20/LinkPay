@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/PageHeader';
 import { Loader2 } from 'lucide-react';
 import { SECTORS } from './OnboardingWizard';
+import { StockSecurityCard } from '@/components/stock/StockSecurityCard';
 
 /**
  * Read-only view of everything the owner entered during onboarding (see
@@ -83,6 +84,8 @@ export default function CompanyProfilePage() {
           {field('Message de bas de reçu', org?.receipt_footer_message)}
         </CardContent>
       </Card>
+
+      {org?.id && <StockSecurityCard orgId={org.id} />}
     </div>
   );
 }

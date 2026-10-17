@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty } from '@nestjs/swagger';
-import { IsString, Length } from 'class-validator';
+import { IsOptional, IsString, Length } from 'class-validator';
 import { CashierPinService } from './cashier-pin.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
@@ -10,7 +10,9 @@ class SetCashierPinDto {
   @Length(4, 6)
   pin!: string;
 
+  // Only when changing an existing PIN — the first one is set without it.
   @ApiProperty({ required: false })
+  @IsOptional()
   @IsString()
   current_pin?: string;
 }

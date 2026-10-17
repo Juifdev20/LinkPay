@@ -18,6 +18,8 @@ import OnboardingWizard from '@/pages/organization/OnboardingWizard';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { Building2, Loader2, QrCode, X, Copy, Check, Trophy, MinusCircle, Clock, AlertTriangle, ShoppingCart, PackagePlus, PauseCircle } from 'lucide-react';
 import { shareOrCopy, publicOrigin } from '@/lib/share';
+import { StationSwitcher } from '@/components/StationSwitcher';
+import { useStationScope, resolveStation } from '@/lib/station-scope';
 
 /** Shown once the KYB onboarding is submitted, while status is still
  * 'pending' — distinct from the wizard itself (onboarding_completed_at is
@@ -65,10 +67,17 @@ function RejectedScreen({ orgId, orgName, org, reason }: { orgId: string; orgNam
   );
 }
 
+/**
+ * The business home dashboard. The owner sees every station, or one picked
+ * in the station strip; a station manager (gerant) lands here too and sees
+ * their station only — the API narrows every figure to it.
+ */
 export default function OrganizationProfilePage() {
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
   const [showQrPresent, setShowQrPresent] = useState(false);
+  const user = useAuthStore((st) => st.user);
+  const isOwner = user?.role === 'enterprise' || !!user?.acting_as_org_id;
 
   const { data: org, isLoading } = useQuery({
     queryKey: ['my-organization'],
@@ -78,22 +87,27 @@ export default function OrganizationProfilePage() {
     },
   });
 
-  const { data: stats } = useQuery({
-    queryKey: ['org-stats', org?.id],
-    queryFn: async () => (await api.get(`/organizations/${org.id}/stats`)).data,
-    enabled: !!org?.id,
-  });
-
   const { data: merchants } = useQuery({
     queryKey: ['org-merchants', org?.id],
     queryFn: async () => (await api.get(`/organizations/${org.id}/merchants`)).data,
     enabled: !!org?.id,
   });
 
+  // The owner's station choice (null = every station); a manager has only theirs.
+  const scope = useStationScope();
+  const stationId = isOwner ? resolveStation(scope.stationId, merchants) : null;
+  const scopedMerchants = stationId ? (merchants || []).filter((m: any) => m.id === stationId) : merchants;
+
+  const { data: stats } = useQuery({
+    queryKey: ['org-stats', org?.id, stationId],
+    queryFn: async () => (await api.get(`/organizations/${org.id}/stats`, { params: stationId ? { merchant_id: stationId } : {} })).data,
+    enabled: !!org?.id,
+  });
+
   const { data: storesBreakdown } = useQuery({
     queryKey: ['org-stores-breakdown', org?.id],
     queryFn: async () => (await api.get(`/organizations/${org.id}/stores-breakdown`)).data,
-    enabled: !!org?.id && (merchants?.length || 0) > 1,
+    enabled: !!org?.id && isOwner && (merchants?.length || 0) > 1,
   });
 
   const [showAddExpense, setShowAddExpense] = useState(false);
@@ -124,7 +138,6 @@ export default function OrganizationProfilePage() {
   // Home dashboard data — the till (supermarket) or Ventes module sales,
   // stock alerts and held tickets (see components/home/useHomeData).
   // ------------------------------------------------------------------
-  const user = useAuthStore((st) => st.user);
   const navigate = useNavigate();
   const [currency, setCurrencyState] = useState<Currency>(() => {
     try { return localStorage.getItem('pos-currency') === 'USD' ? 'USD' : 'CDF'; } catch { return 'CDF'; }
@@ -133,7 +146,7 @@ export default function OrganizationProfilePage() {
     setCurrencyState(c);
     try { localStorage.setItem('pos-currency', c); } catch { /* not persisted */ }
   };
-  const home = useHomeData(org, merchants, currency);
+  const home = useHomeData(org, scopedMerchants, currency);
   const usesPos = org?.sector === 'supermarche';
 
   // Same query as the Stock page — usually already in the cache.
@@ -142,21 +155,35 @@ export default function OrganizationProfilePage() {
     queryFn: async () => (await api.get(`/organizations/${org.id}/stock-items`)).data,
     enabled: !!org?.id,
   });
-  const lowStock = ((stockItems as any[]) || []).filter((i) => i.quantity <= (i.low_stock_threshold ?? 5)).length;
+  const lowStock = ((stockItems as any[]) || [])
+    .filter((i) => !stationId || i.merchant_id === stationId)
+    .filter((i) => i.quantity <= (i.low_stock_threshold ?? 5)).length;
 
   const alerts: HomeAlert[] = [];
-  if (lowStock) alerts.push({ icon: AlertTriangle, tone: 'warning', to: '/dashboard/organization/stock', label: `${lowStock} produit${lowStock > 1 ? 's' : ''} en stock bas — à réapprovisionner` });
+  // The owner goes to the stock; a station manager sends a restock request to the owner.
+  if (lowStock) {
+    alerts.push(isOwner
+      ? { icon: AlertTriangle, tone: 'warning', to: '/dashboard/organization/stock', label: `${lowStock} produit${lowStock > 1 ? 's' : ''} en stock bas — à réapprovisionner` }
+      : { icon: AlertTriangle, tone: 'warning', to: '/dashboard/organization/restock?nouvelle=1', label: `${lowStock} produit${lowStock > 1 ? 's' : ''} en stock bas — demander un réapprovisionnement` });
+  }
   if (home.held) alerts.push({ icon: PauseCircle, tone: 'info', to: '/dashboard/pos', label: `${home.held} ticket${home.held > 1 ? 's' : ''} en attente à la caisse` });
 
   const sellPath = usesPos ? '/dashboard/pos' : '/dashboard/organization/sales';
   const actions: QuickAction[] = [
     { label: 'Vendre', icon: ShoppingCart, onClick: () => navigate(sellPath), tone: 'bg-primary text-primary-foreground shadow-primary/30' },
-    { label: 'Produit', icon: PackagePlus, onClick: () => navigate('/dashboard/organization/stock?ajouter=1'), tone: 'bg-emerald-500/15 text-emerald-600' },
+    // Adding stock and recording expenses are the owner's (the stock keeper adds products from their own screen).
+    ...(isOwner ? [{ label: 'Produit', icon: PackagePlus, onClick: () => navigate('/dashboard/organization/stock?ajouter=1'), tone: 'bg-emerald-500/15 text-emerald-600' }] : []),
     ...(org?.scanlinkpay_number
       ? [{ label: 'Recevoir', icon: QrCode, onClick: () => setShowQrPresent(true), tone: 'bg-sky-500/15 text-sky-600' }]
       : []),
-    { label: 'Dépense', icon: MinusCircle, onClick: () => setShowAddExpense(true), tone: 'bg-rose-500/15 text-rose-600' },
+    ...(isOwner ? [{ label: 'Dépense', icon: MinusCircle, onClick: () => setShowAddExpense(true), tone: 'bg-rose-500/15 text-rose-600' }] : []),
   ];
+
+  const stationName = isOwner
+    ? (stationId ? merchants?.find((m: any) => m.id === stationId)?.name : undefined)
+    : user?.station_name;
+  const heroName = stationName ? `${org?.name} · ${stationName}` : org?.name;
+  const stationChips = ((storesBreakdown as any[]) || []).map((st) => ({ id: st.merchant_id, name: st.merchant_name, today: st.today_pos_sales }));
 
   if (isLoading) {
     return (
@@ -164,6 +191,11 @@ export default function OrganizationProfilePage() {
         <Loader2 className="w-6 h-6 animate-spin text-primary" />
       </div>
     );
+  }
+
+  // Onboarding and validation are the owner's business: staff of a business not yet open just wait.
+  if (org && !isOwner && (!org.onboarding_completed_at || org.status !== 'active')) {
+    return <PendingValidationScreen orgName={org.name} />;
   }
 
   if (org && !org.onboarding_completed_at) {
@@ -180,9 +212,13 @@ export default function OrganizationProfilePage() {
 
   return (
     <div className="px-4 pt-4 pb-28 md:pb-6 lg:p-6 space-y-5 max-w-6xl mx-auto">
+      {isOwner && (
+        <StationSwitcher stations={stationChips} value={stationId} onChange={scope.setStation} currency={currency} />
+      )}
+
       <HomeHero
         firstName={user?.full_name?.split(' ')[0]}
-        orgName={org?.name}
+        orgName={heroName}
         currency={currency}
         onCurrency={setCurrency}
         today={home.today}
@@ -207,16 +243,17 @@ export default function OrganizationProfilePage() {
             loading={home.loading}
             moreTo={usesPos ? '/dashboard/pos' : '/dashboard/organization/sales/history'}
           />
-          {storesBreakdown && storesBreakdown.length > 1 && (
+          {!stationId && storesBreakdown && storesBreakdown.length > 1 && (
             <div className="rounded-2xl border border-border bg-card p-4">
-              <p className="mb-2 text-sm font-semibold text-foreground">Meilleures boutiques</p>
+              <p className="mb-2 text-sm font-semibold text-foreground">Meilleures stations · 7 jours</p>
               {storesBreakdown.map((st: any, i: number) => (
                 <div key={st.merchant_id} className="flex items-center gap-3 border-b border-border py-2.5 last:border-0">
                   <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
                     {i === 0 ? <Trophy className="h-4 w-4" /> : i + 1}
                   </div>
                   <p className="min-w-0 flex-1 truncate font-medium text-foreground">{st.merchant_name}</p>
-                  <DualCurrencyStat amounts={st.volume} />
+                  {/* Till sales (cash and ScanLinkPay tickets), not only online payments. */}
+                  <DualCurrencyStat amounts={st.week_pos_sales ?? st.volume} />
                 </div>
               ))}
             </div>

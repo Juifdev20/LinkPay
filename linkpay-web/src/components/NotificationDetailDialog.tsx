@@ -3,7 +3,9 @@ import api from '@/lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { OrganizationReviewPanel } from '@/components/OrganizationReviewPanel';
 import { formatDate } from '@/lib/utils';
-import { Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Loader2, ChevronRight } from 'lucide-react';
 
 interface NotificationItem {
   id: string;
@@ -11,7 +13,8 @@ interface NotificationItem {
   title: string;
   body: string;
   created_at: string;
-  data?: { organization_id?: string };
+  /** url: an in-app page this notification opens (daily report, restock request…). */
+  data?: { organization_id?: string; url?: string };
 }
 
 /**
@@ -29,6 +32,9 @@ interface NotificationItem {
  */
 export function NotificationDetailDialog({ notification, onClose }: { notification: NotificationItem | null; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  // Only in-app pages: a notification never sends anyone off the app.
+  const link = notification?.data?.url?.startsWith('/dashboard') ? notification.data.url : null;
   const orgId = notification?.type === 'org_submitted' ? notification.data?.organization_id : undefined;
 
   const { data: org, isLoading } = useQuery({
@@ -67,6 +73,12 @@ export function NotificationDetailDialog({ notification, onClose }: { notificati
             )
           ) : (
             <p className="text-sm text-foreground whitespace-pre-wrap">{notification.body}</p>
+          )}
+
+          {link && (
+            <Button className="mt-4 w-full" onClick={() => { onClose(); navigate(link); }}>
+              Voir <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
           )}
 
           <p className="text-xs text-muted-foreground mt-4">{formatDate(notification.created_at)}</p>

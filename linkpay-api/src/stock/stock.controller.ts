@@ -1,13 +1,14 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, Headers, UseInterceptors, UploadedFile, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Headers, UseInterceptors, UploadedFile, UseGuards, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiConsumes, ApiBody } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, IsIn, IsObject, MaxLength, Min, MinLength } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsIn, IsObject, IsBoolean, MaxLength, Min, MinLength } from 'class-validator';
 import { StockService } from './stock.service';
 import { StockPasswordService } from './stock-password.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequireSubscription } from '../subscriptions/subscription.guard';
+import { AppCodeConfirmGuard, RequireAppCode } from '../common/guards/app-code-confirm.guard';
 
 const CONDITIONS = ['neuf', 'occasion', 'reconditionne'];
 const MOVEMENT_TYPES = ['in', 'out', 'adjustment'];
@@ -114,18 +115,20 @@ class CreateStockItemDto {
 }
 
 // Editing is gated behind the module's shared stock password — see
-// StockPasswordService. Required here (not just checked client-side) so a
-// direct API call can't bypass the UI gate.
+// StockPasswordService, when the owner switched it on (checked server-side,
+// so a direct API call can't bypass the UI gate).
 class UpdateStockItemDto extends CreateStockItemDto {
-  @ApiProperty({ description: 'Mot de passe de gestion de stock de cette entreprise' })
+  @ApiPropertyOptional({ description: "Mot de passe de gestion de stock — seulement si le patron l'a activé" })
+  @IsOptional()
   @IsString()
-  stock_password!: string;
+  stock_password?: string;
 }
 
 class DeleteStockItemDto {
-  @ApiProperty({ description: 'Mot de passe de gestion de stock de cette entreprise' })
+  @ApiPropertyOptional({ description: "Mot de passe de gestion de stock — seulement si le patron l'a activé" })
+  @IsOptional()
   @IsString()
-  stock_password!: string;
+  stock_password?: string;
 }
 
 class CreateMovementDto {
@@ -161,6 +164,12 @@ class ResetStockPasswordDto {
   @IsString()
   @MinLength(4)
   new_password!: string;
+}
+
+class StockPasswordRequiredDto {
+  @ApiProperty()
+  @IsBoolean()
+  required!: boolean;
 }
 
 class VerifyStockPasswordDto {
@@ -367,7 +376,29 @@ export class OrganizationStockController {
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
     assertStockPasswordAccess(await this.organizationsService.getOrganizationById(orgId), { id: callerId, role: callerRole, organizationId: callerOrgId }, 'member');
-    return { is_set: await this.stockPasswordService.hasPasswordSet(orgId) };
+    const [isSet, required] = await Promise.all([
+      this.stockPasswordService.hasPasswordSet(orgId),
+      this.stockPasswordService.isRequired(orgId),
+    ]);
+    return { is_set: isSet, required };
+  }
+
+  // Switching the protection off removes a control: the owner confirms with their access code.
+  @UseGuards(AppCodeConfirmGuard)
+  @RequireAppCode()
+  @Put(':id/stock-password/required')
+  @ApiOperation({ summary: 'Switch the stock password on or off (owner only) — off by default' })
+  async setStockPasswordRequired(
+    @Param('id') orgId: string,
+    @Body() dto: StockPasswordRequiredDto,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    const org = await this.organizationsService.getOrganizationById(orgId);
+    assertStockPasswordAccess(org, { id: callerId, role: callerRole, organizationId: callerOrgId }, 'owner');
+    await this.stockPasswordService.setRequired(orgId, dto.required);
+    return { required: dto.required };
   }
 
   @Post(':id/stock-password/verify')

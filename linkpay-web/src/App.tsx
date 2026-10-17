@@ -63,6 +63,10 @@ const AdminUsersPage = lazyPage(() => import('@/pages/admin/Users'));
 const AdminSettlementsPage = lazyPage(() => import('@/pages/admin/Settlements'));
 const AdminCommissionsPage = lazyPage(() => import('@/pages/admin/Commissions'));
 const StaffWalletPage = lazyPage(() => import('@/pages/staff/StaffWallet'));
+const BusinessWalletPage = lazyPage(() => import('@/pages/organization/BusinessWallet'));
+const ReportsPage = lazyPage(() => import('@/pages/organization/Reports'));
+const MySalesPage = lazyPage(() => import('@/pages/staff/MySales'));
+const RestockPage = lazyPage(() => import('@/pages/organization/Restock'));
 const AdminRiskLogsPage = lazyPage(() => import('@/pages/admin/RiskLogs'));
 const AdminTwoFactorSetupPage = lazyPage(() => import('@/pages/auth/AdminTwoFactorSetup'));
 const AdminWalletLimitsPage = lazyPage(() => import('@/pages/admin/WalletLimits'));
@@ -91,10 +95,10 @@ const NotificationsPage = lazyPage(() => import('@/pages/Notifications'));
 const MorePage = lazyPage(() => import('@/pages/More'));
 const ProfilePage = lazyPage(() => import('@/pages/Profile'));
 import InstallPrompt from '@/components/InstallPrompt';
+import { STAFF_ROLES, rolesFor } from '@/lib/permissions';
 import { AppLockGate } from '@/components/AppLockGate';
 import { ForcePasswordChangeGate } from '@/components/ForcePasswordChangeGate';
 
-const STAFF_ROLES = ['magasinier', 'vendeur', 'caissier', 'comptable'];
 
 // No marketing landing page in this app (feature grid, nav bar, etc. — that's
 // for the website, not a professional app). An authenticated visitor always
@@ -240,7 +244,7 @@ export default function App() {
           }
         />
         <Route path="client" element={<ClientDashboard />} />
-        <Route path="client/transactions" element={<ClientTransactionsPage />} />
+        <Route path="client/transactions" element={<ProtectedRoute roles={rolesFor('/dashboard/client/transactions')}><ClientTransactionsPage /></ProtectedRoute>} />
         <Route path="wallet" element={<StaffWalletPage />} />
         <Route path="wallet/topup" element={<TopupPage />} />
         <Route path="wallet/topup/result" element={<TopupResultPage />} />
@@ -270,11 +274,11 @@ export default function App() {
         <Route path="wallet/withdraw" element={<WithdrawPage />} />
         <Route path="wallet/pin" element={<SetPinPage />} />
         <Route path="wallet/transactions" element={<WalletTransactionsPage />} />
-        <Route path="card" element={<MyCardPage />} />
+        <Route path="card" element={<ProtectedRoute roles={rolesFor('/dashboard/card')}><MyCardPage /></ProtectedRoute>} />
         <Route
           path="card/charge"
           element={
-            <ProtectedRoute roles={['merchant', 'cashier', 'enterprise', 'caissier', 'vendeur']}>
+            <ProtectedRoute roles={rolesFor('/dashboard/card/charge')}>
               <ChargeCardPage />
             </ProtectedRoute>
           }
@@ -374,7 +378,7 @@ export default function App() {
         <Route
           path="organization"
           element={
-            <ProtectedRoute roles={['enterprise']}>
+            <ProtectedRoute roles={rolesFor('/dashboard/organization')}>
               <OrganizationProfilePage />
             </ProtectedRoute>
           }
@@ -382,7 +386,7 @@ export default function App() {
         <Route
           path="organization/stores"
           element={
-            <ProtectedRoute roles={['enterprise']}>
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/stores')}>
               <StoresPage />
             </ProtectedRoute>
           }
@@ -390,7 +394,7 @@ export default function App() {
         <Route
           path="organization/staff"
           element={
-            <ProtectedRoute roles={['enterprise']}>
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/staff')}>
               <StaffPage />
             </ProtectedRoute>
           }
@@ -398,7 +402,7 @@ export default function App() {
         <Route
           path="organization/sales"
           element={
-            <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier']}>
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/sales')}>
               <SubscriptionGate><SalesPage /></SubscriptionGate>
             </ProtectedRoute>
           }
@@ -406,7 +410,7 @@ export default function App() {
         <Route
           path="organization/sales/history"
           element={
-            <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier', 'comptable']}>
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/sales/history')}>
               <SubscriptionGate><SalesHistoryPage /></SubscriptionGate>
             </ProtectedRoute>
           }
@@ -414,7 +418,7 @@ export default function App() {
         <Route
           path="organization/sales/dashboard"
           element={
-            <ProtectedRoute roles={['enterprise', 'vendeur', 'comptable']}>
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/sales/dashboard')}>
               <SubscriptionGate><SalesDashboardPage /></SubscriptionGate>
             </ProtectedRoute>
           }
@@ -422,7 +426,7 @@ export default function App() {
         <Route
           path="organization/stock"
           element={
-            <ProtectedRoute roles={['enterprise', 'magasinier']}>
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/stock')}>
               <SubscriptionGate><StockPage /></SubscriptionGate>
             </ProtectedRoute>
           }
@@ -430,7 +434,7 @@ export default function App() {
         <Route
           path="organization/inventory"
           element={
-            <ProtectedRoute roles={['enterprise', 'magasinier']}>
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/inventory')}>
               <SubscriptionGate><InventoryPage /></SubscriptionGate>
             </ProtectedRoute>
           }
@@ -438,7 +442,7 @@ export default function App() {
         <Route
           path="organization/profile"
           element={
-            <ProtectedRoute roles={['enterprise']}>
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/profile')}>
               <CompanyProfilePage />
             </ProtectedRoute>
           }
@@ -446,7 +450,7 @@ export default function App() {
         <Route
           path="organization/stats"
           element={
-            <ProtectedRoute roles={['enterprise', 'comptable']}>
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/stats')}>
               <SubscriptionGate><SalesStatsPage /></SubscriptionGate>
             </ProtectedRoute>
           }
@@ -454,7 +458,7 @@ export default function App() {
         <Route
           path="organization/transactions"
           element={
-            <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier', 'comptable']}>
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/transactions')}>
               <OrganizationTransactionsPage />
             </ProtectedRoute>
           }
@@ -462,7 +466,7 @@ export default function App() {
         <Route
           path="organization/audit"
           element={
-            <ProtectedRoute roles={['enterprise', 'comptable']}>
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/audit')}>
               <SubscriptionGate><AuditLogPage /></SubscriptionGate>
             </ProtectedRoute>
           }
@@ -470,7 +474,7 @@ export default function App() {
         <Route
           path="organization/receive"
           element={
-            <ProtectedRoute roles={['enterprise', 'vendeur', 'caissier']}>
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/receive')}>
               <OrganizationReceivePage />
             </ProtectedRoute>
           }
@@ -478,15 +482,47 @@ export default function App() {
         <Route
           path="pos"
           element={
-            <ProtectedRoute roles={['enterprise', 'caissier']}>
+            <ProtectedRoute roles={rolesFor('/dashboard/pos')}>
               <SubscriptionGate><PosPage /></SubscriptionGate>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/restock"
+          element={
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/restock')}>
+              <RestockPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/my-sales"
+          element={
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/my-sales')}>
+              <MySalesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/reports"
+          element={
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/reports')}>
+              <ReportsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/wallet"
+          element={
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/wallet')}>
+              <BusinessWalletPage />
             </ProtectedRoute>
           }
         />
         <Route
           path="organization/subscription"
           element={
-            <ProtectedRoute roles={['enterprise']}>
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/subscription')}>
               <SubscriptionPage />
             </ProtectedRoute>
           }

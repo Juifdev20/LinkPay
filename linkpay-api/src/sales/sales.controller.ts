@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty } from '@nestjs/swagger';
-import { IsArray, ArrayMinSize, ValidateNested, IsInt, IsString, Min, IsUUID } from 'class-validator';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsArray, ArrayMinSize, ValidateNested, IsInt, IsOptional, IsString, Min, IsUUID } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SalesService } from './sales.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -27,9 +27,10 @@ class CreateSaleDto {
 }
 
 class ArchiveSaleDto {
-  @ApiProperty({ description: 'Mot de passe de gestion de cette entreprise' })
+  @ApiPropertyOptional({ description: "Mot de passe de gestion — seulement si le patron l'a activé" })
+  @IsOptional()
   @IsString()
-  stock_password!: string;
+  stock_password?: string;
 }
 
 @ApiTags('Sales')

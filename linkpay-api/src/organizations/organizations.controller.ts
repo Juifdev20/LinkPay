@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Put, Body, Param, Query, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Body, Param, Query, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { OrganizationsService } from './organizations.service';
+import { OrganizationsService, toStaffOrganization } from './organizations.service';
 import { MerchantsService } from '../merchants/merchants.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
@@ -52,6 +52,13 @@ class CreateExpenseDto {
   description?: string;
 }
 
+class RenameStationDto {
+  @ApiProperty({ example: 'Station Gombe' })
+  @IsString()
+  @MaxLength(255)
+  name!: string;
+}
+
 @ApiTags('Organizations')
 @ApiBearerAuth()
 @Controller('organizations')
@@ -82,7 +89,7 @@ export class OrganizationsController {
       // organization_id, not an owned org row). Re-throw the original
       // NotFoundException for a caller with neither (e.g. a client/merchant
       // hitting this by mistake).
-      if (callerOrgId) return this.orgsService.getOrganizationById(callerOrgId);
+      if (callerOrgId) return toStaffOrganization(await this.orgsService.getOrganizationById(callerOrgId));
       throw err;
     }
   }
@@ -120,10 +127,9 @@ export class OrganizationsController {
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
     const org = await this.orgsService.getOrganizationById(id);
-    if (!this.isAdmin(callerRole)) {
-      this.assertOwnOrgOrStaff(org, callerId, callerOrgId);
-    }
-    return org;
+    if (this.isAdmin(callerRole) || org.owner_id === callerId) return org;
+    this.assertOwnOrgOrStaff(org, callerId, callerOrgId);
+    return toStaffOrganization(org);
   }
 
   @Put(':id')
@@ -193,6 +199,19 @@ export class OrganizationsController {
     return this.orgsService.createOrganizationMerchant(id, callerId, email, dto);
   }
 
+  @Patch(':id/merchants/:merchantId')
+  @ApiOperation({ summary: "Rename one of this organization's stations (owner only)" })
+  async renameOrgMerchant(
+    @Param('id') id: string,
+    @Param('merchantId') merchantId: string,
+    @Body() dto: RenameStationDto,
+    @CurrentUser('id') callerId: string,
+  ) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.orgsService.renameOrganizationMerchant(id, merchantId, dto.name);
+  }
+
   @Get(':id/merchants')
   @ApiOperation({ summary: "List this organization's stores (owner or its staff)" })
   async listOrgMerchants(
@@ -202,31 +221,47 @@ export class OrganizationsController {
   ) {
     const org = await this.orgsService.getOrganizationById(id);
     this.assertOwnOrgOrStaff(org, callerId, callerOrgId);
-    return this.orgsService.getOrganizationMerchants(id);
+    // Staff see their own station only; the owner every station.
+    if (org.owner_id === callerId) return this.orgsService.getOrganizationMerchants(id);
+    return this.orgsService.getOrganizationMerchants(id, await this.station(callerId, id));
   }
 
   @Get(':id/stats')
-  @ApiOperation({ summary: 'Get aggregated stats across every store in this organization (owner only)' })
-  async getOrgStats(@Param('id') id: string, @CurrentUser('id') callerId: string) {
-    const org = await this.orgsService.getOrganizationById(id);
-    this.assertOwnOrg(org.owner_id, callerId);
-    return this.orgsService.getOrganizationStats(id);
+  @ApiOperation({ summary: 'Aggregated stats across every station, or one (?merchant_id=) — owner; a station manager gets their station' })
+  async getOrgStats(
+    @Param('id') id: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('organization_id') callerOrgId: string | undefined,
+    @CurrentUser('role') callerRole: string | undefined,
+    @Query('merchant_id') merchantId?: string,
+  ) {
+    const stationId = await this.stationScope(id, callerId, callerOrgId, callerRole, ['gerant'], merchantId);
+    return this.orgsService.getOrganizationStats(id, stationId);
   }
 
   @Get(':id/stores-breakdown')
-  @ApiOperation({ summary: 'Get per-store stats, sorted by volume (owner only)' })
-  async getOrgStoresBreakdown(@Param('id') id: string, @CurrentUser('id') callerId: string) {
-    const org = await this.orgsService.getOrganizationById(id);
-    this.assertOwnOrg(org.owner_id, callerId);
-    return this.orgsService.getOrganizationStoresBreakdown(id);
+  @ApiOperation({ summary: "Per-station stats and today's takings, sorted by volume — owner; a station manager gets their station" })
+  async getOrgStoresBreakdown(
+    @Param('id') id: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('organization_id') callerOrgId: string | undefined,
+    @CurrentUser('role') callerRole: string | undefined,
+  ) {
+    const stationId = await this.stationScope(id, callerId, callerOrgId, callerRole, ['gerant']);
+    return this.orgsService.getOrganizationStoresBreakdown(id, stationId);
   }
 
   @Get(':id/recent-transactions')
-  @ApiOperation({ summary: 'Get the latest transactions across every store in this organization (owner only)' })
-  async getOrgRecentTransactions(@Param('id') id: string, @CurrentUser('id') callerId: string) {
-    const org = await this.orgsService.getOrganizationById(id);
-    this.assertOwnOrg(org.owner_id, callerId);
-    return this.orgsService.getOrganizationRecentTransactions(id);
+  @ApiOperation({ summary: 'Latest transactions across every station, or one (?merchant_id=) — owner; a station manager gets their station' })
+  async getOrgRecentTransactions(
+    @Param('id') id: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('organization_id') callerOrgId: string | undefined,
+    @CurrentUser('role') callerRole: string | undefined,
+    @Query('merchant_id') merchantId?: string,
+  ) {
+    const stationId = await this.stationScope(id, callerId, callerOrgId, callerRole, ['gerant'], merchantId);
+    return this.orgsService.getOrganizationRecentTransactions(id, 10, stationId);
   }
 
   @Get(':id/transactions')
@@ -240,10 +275,17 @@ export class OrganizationsController {
     @Query('to') to?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('merchant_id') merchantId?: string,
   ) {
-    const org = await this.orgsService.getOrganizationById(id);
-    this.assertOwnerOrStaffRole(org, callerId, callerOrgId, callerRole, ['vendeur', 'caissier', 'comptable']);
+    const stationId = await this.stationScope(id, callerId, callerOrgId, callerRole, ['gerant', 'caissier', 'comptable'], merchantId);
+    // A cashier checks today's payments at their till — not the station's history.
+    if (callerRole === 'caissier') {
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      if (!from || new Date(from) < startOfDay) from = startOfDay.toISOString();
+    }
     return this.orgsService.getOrganizationTransactions(id, {
+      stationId,
       from,
       to,
       page: page ? Number(page) : undefined,
@@ -292,6 +334,37 @@ export class OrganizationsController {
     const org = await this.orgsService.getOrganizationById(id);
     this.assertOwnOrg(org.owner_id, callerId);
     return this.orgsService.enterOrganizationMerchant(id, callerId, email, merchantId, sessionId);
+  }
+
+  /** A staff member's station in this organization (refused when they have none). */
+  private station(callerId: string, orgId: string): Promise<string> {
+    return this.orgsService.staffStation(callerId, orgId);
+  }
+
+  /**
+   * Which station(s) a station-aware read covers. The owner: every station,
+   * or the one asked for (?merchant_id=, which must be theirs). A staff
+   * member whose role is in `staffRoles`: their own station, whatever was
+   * asked. Anyone else is refused.
+   */
+  private async stationScope(
+    orgId: string,
+    callerId: string,
+    callerOrgId: string | undefined,
+    callerRole: string | undefined,
+    staffRoles: string[],
+    requested?: string,
+  ): Promise<string | undefined> {
+    const org = await this.orgsService.getOrganizationById(orgId);
+    if (org.owner_id === callerId) {
+      if (requested) {
+        const stations = await this.orgsService.getOrganizationMerchants(orgId, requested);
+        if (!stations.length) throw new ForbiddenException("Cette station n'appartient pas à votre entreprise");
+      }
+      return requested || undefined;
+    }
+    this.assertOwnerOrStaffRole(org, callerId, callerOrgId, callerRole, staffRoles);
+    return this.station(callerId, orgId);
   }
 
   private isAdmin(role: string | undefined): boolean {
