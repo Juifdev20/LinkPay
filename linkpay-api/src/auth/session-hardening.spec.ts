@@ -40,7 +40,13 @@ function makeAuth(opts: {
   };
   const alerts = { alert: jest.fn(async () => undefined) };
   const twoFactor = { isEnabled: jest.fn(async () => !!opts.twoFactorEnabled), verify: jest.fn(async () => true) };
-  const service = new AuthService(supabase, jwt, config as any, { create: jest.fn() } as any, attempts as any, twoFactor as any, alerts as any);
+  const phoneAccounts = {
+    userIdsByPhone: jest.fn(async () => []),
+    userIdByPhone: jest.fn(async () => null),
+    authEmailOf: jest.fn(async () => 'a@x.com'),
+    issueRecoveryCode: jest.fn(async () => 'AAAA-BBBB-CCCC'),
+  };
+  const service = new AuthService(supabase, jwt, config as any, { create: jest.fn() } as any, attempts as any, twoFactor as any, alerts as any, phoneAccounts as any);
   return { service, attempts, alerts, twoFactor, updates, signIn };
 }
 

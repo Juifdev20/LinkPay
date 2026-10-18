@@ -63,7 +63,7 @@ export default function RestockPage() {
 
   return (
     <div className="p-4 md:p-6 pb-28 md:pb-6 space-y-5 max-w-3xl mx-auto">
-      <PageHeader title="Réapprovisionnement" />
+      <PageHeader title="Demandes d'achat" />
 
       <div className="flex flex-wrap items-center gap-2">
         {[['', 'Toutes'], ['pending', 'En attente'], ['approved', 'Validées'], ['received', 'Reçues'], ['rejected', 'Refusées']].map(([k, label]) => (

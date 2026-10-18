@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { getCurrentPushPermission, hasActiveSubscription, subscribeToPush, unsubscribeFromPush, type PushPermissionStatus } from '@/lib/app-push';
 import { useTheme } from '@/hooks/useTheme';
 import { AccessCodeSettings } from '@/components/AccessCodeSettings';
+import { RecoveryCodeSettings } from '@/components/RecoveryCodeSettings';
 import { isAppLockSupported, isAppLockEnabled, enableAppLock, disableAppLock } from '@/lib/app-lock';
 
 export default function SettingsPage() {
@@ -269,6 +270,7 @@ export default function SettingsPage() {
             <Switch checked={effectiveTheme === 'dark'} onCheckedChange={toggleTheme} />
           </div>
           <AccessCodeSettings />
+          <RecoveryCodeSettings />
           <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
             <Fingerprint className="w-5 h-5 text-muted-foreground flex-shrink-0" />
             <div className="flex-1">

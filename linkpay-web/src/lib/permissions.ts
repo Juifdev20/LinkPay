@@ -51,7 +51,8 @@ export const ROUTE_ROLES = {
   '/dashboard/organization/inventory': ['enterprise', 'magasinier'],
   // Restock requests: the station asks, the owner decides.
   '/dashboard/organization/restock': ['enterprise', 'gerant', 'magasinier'],
-  '/dashboard/organization/stats': ['enterprise', 'gerant', 'comptable'],
+  // The manager has « Rapports » (same figures and more): no duplicate screen for them.
+  '/dashboard/organization/stats': ['enterprise', 'comptable'],
   '/dashboard/organization/reports': ['enterprise', 'gerant', 'comptable'],
   // A cashier's (or seller's) own sales of the month.
   '/dashboard/organization/my-sales': ['caissier', 'vendeur'],

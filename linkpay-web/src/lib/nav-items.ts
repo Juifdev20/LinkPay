@@ -10,6 +10,8 @@ export interface NavItem {
   label: string;
   icon: LucideIcon;
   roles: string[];
+  /** The same screen named for a given role (e.g. the manager's « Mes employés »). */
+  labelFor?: Record<string, string>;
 }
 
 // What each job sees (kept deliberately short, so nobody is lost in options
@@ -74,13 +76,13 @@ export const navItems: NavItem[] = [
   // first-level module in the sidebar/drawer).
   { to: '/dashboard/organization/sales', label: 'Ventes', icon: ShoppingCart, roles: rolesFor('/dashboard/organization/sales') },
   { to: '/dashboard/organization/sales/history', label: 'Historique', icon: History, roles: rolesFor('/dashboard/organization/sales/history') },
-  { to: '/dashboard/organization/stock', label: 'Stock & Approvisionnement', icon: Boxes, roles: rolesFor('/dashboard/organization/stock') },
+  { to: '/dashboard/organization/stock', label: 'Stock', icon: Boxes, roles: rolesFor('/dashboard/organization/stock') },
   // Supermarket module — the till is the staff's day-to-day screen.
   // Plain 'merchant' isn't in the POS controller's @Roles list (backend
   // resolves the store via merchant.owner_id for org owners), so it's not
   // listed here either.
   { to: '/dashboard/pos', label: 'Caisse', icon: Store, roles: rolesFor('/dashboard/pos') },
-  { to: '/dashboard/organization/restock', label: 'Réapprovisionnement', icon: Truck, roles: rolesFor('/dashboard/organization/restock') },
+  { to: '/dashboard/organization/restock', label: "Demandes d'achat", icon: Truck, roles: rolesFor('/dashboard/organization/restock') },
   { to: '/dashboard/organization/inventory', label: 'Inventaire', icon: ClipboardList, roles: rolesFor('/dashboard/organization/inventory') },
   { to: '/dashboard/organization/my-sales', label: 'Mes ventes', icon: History, roles: rolesFor('/dashboard/organization/my-sales') },
   { to: '/dashboard/organization/reports', label: 'Rapports', icon: FileBarChart, roles: rolesFor('/dashboard/organization/reports') },
@@ -95,11 +97,12 @@ export const navItems: NavItem[] = [
   // in the nav (sidebar/desktop, Plus/mobile) rather than Settings.
   { to: '/dashboard/organization/profile', label: 'Profil entreprise', icon: Building2, roles: rolesFor('/dashboard/organization/profile') },
   { to: '/dashboard/organization/stores', label: 'Stations', icon: Store, roles: rolesFor('/dashboard/organization/stores') },
-  { to: '/dashboard/organization/staff', label: 'Utilisateurs internes', icon: Users, roles: rolesFor('/dashboard/organization/staff') },
+  { to: '/dashboard/organization/staff', label: 'Utilisateurs internes', icon: Users, roles: rolesFor('/dashboard/organization/staff'), labelFor: { gerant: 'Mes employés' } },
   { to: '/dashboard/organization/subscription', label: 'Abonnement', icon: Sparkles, roles: rolesFor('/dashboard/organization/subscription') },
   { to: '/dashboard/organization/wallet', label: "Portefeuille de l'entreprise", icon: Wallet, roles: rolesFor('/dashboard/organization/wallet') },
   // Employees' own wallet: where the patron sends their salary and from where they withdraw it.
-  { to: '/dashboard/wallet', label: 'Mon portefeuille', icon: Wallet, roles: rolesFor('/dashboard/wallet') },
+  // Their own money (salary), never the station's: the label says so.
+  { to: '/dashboard/wallet', label: 'Mon portefeuille (personnel)', icon: Wallet, roles: rolesFor('/dashboard/wallet') },
   { to: '/dashboard/notifications', label: 'Notifications', icon: Bell, roles: [...ALL_ROLES, ...STAFF_ROLES] },
   { to: '/dashboard/settings', label: 'Paramètres', icon: Settings, roles: [...ALL_ROLES, ...STAFF_ROLES] },
 ];
@@ -117,5 +120,7 @@ const SECTOR_HIDDEN: Record<string, string[]> = {
 
 export function navItemsFor(role: string, sector?: string): NavItem[] {
   const hidden = new Set(sector ? SECTOR_HIDDEN[sector] ?? [] : []);
-  return navItems.filter((i) => i.roles.includes(role) && !hidden.has(i.to));
+  return navItems
+    .filter((i) => i.roles.includes(role) && !hidden.has(i.to))
+    .map((i) => (i.labelFor?.[role] ? { ...i, label: i.labelFor[role] } : i));
 }

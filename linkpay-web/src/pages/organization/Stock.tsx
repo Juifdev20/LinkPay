@@ -150,7 +150,7 @@ export default function StockPage() {
           OnboardingWizard.tsx). */}
       <div className="sticky top-20 md:top-0 z-10 bg-background px-6 pt-6 pb-4 space-y-4">
         <PageHeader
-          title="Stock & Approvisionnement"
+          title="Stock"
           action={canManage ? { label: 'Ajouter', icon: Plus, onClick: openCreateForm } : undefined}
         />
 

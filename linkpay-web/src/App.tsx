@@ -16,6 +16,8 @@ import { initNativePushNavigation } from '@/lib/native-push';
 
 import LoginPage from '@/pages/auth/LoginPage';
 const RegisterPage = lazyPage(() => import('@/pages/auth/RegisterPage'));
+const ForgotPasswordPage = lazyPage(() => import('@/pages/auth/ForgotPasswordPage'));
+const ResetPasswordPage = lazyPage(() => import('@/pages/auth/ResetPasswordPage'));
 import WelcomePage from '@/pages/WelcomePage';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 
@@ -207,6 +209,9 @@ export default function App() {
 
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      {/* Forgotten password (no SMS): recovery code, or the email's reset link. */}
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
 
       <Route path="/p/:token" element={<PaymentLinkPage />} />
       <Route path="/pay/:number" element={<PayByNumber />} />

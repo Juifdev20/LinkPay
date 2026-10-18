@@ -6,7 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AuthBrandingPanel } from '@/components/auth/AuthBrandingPanel';
-import { Loader2, User, Mail, Phone, Lock, Store, Building2, Eye, EyeOff } from 'lucide-react';
+import { PhoneInput, isCompletePhone } from '@/components/PhoneInput';
+import { RecoveryCodePanel } from '@/components/auth/RecoveryCodePanel';
+import { toApiPhone, displayPhone } from '@/lib/mobile-money';
+import { Loader2, User, Mail, Lock, Store, Building2, Eye, EyeOff } from 'lucide-react';
 import { cn, safeRedirect } from '@/lib/utils';
 
 export default function RegisterPage() {
@@ -25,6 +28,8 @@ export default function RegisterPage() {
   const [phoneError, setPhoneError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [confirmPasswordError, setConfirmPasswordError] = useState('');
+  // Shown once, right after sign-up, before going on.
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -40,14 +45,10 @@ export default function RegisterPage() {
     return true;
   };
 
-  const validatePhone = (phone: string) => {
-    if (!phone) {
-      setPhoneError('');
-      return true;
-    }
-    const phoneRegex = /^\+243\s?\d{3}\s?\d{3}\s?\d{3}$/;
-    if (!phoneRegex.test(phone)) {
-      setPhoneError('Format: +243 XXX XXX XXX');
+  // The phone number is the account's identifier: required, 9 digits after +243.
+  const validatePhone = (digits: string) => {
+    if (!isCompletePhone(digits)) {
+      setPhoneError('Saisissez 9 chiffres après +243 (ex. 812 345 678)');
       return false;
     }
     setPhoneError('');
@@ -110,19 +111,36 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      const { confirmPassword: _confirmPassword, ...registerData } = form;
-      await register({
-        ...registerData,
+      const { recovery_code } = await register({
+        phone: toApiPhone(form.phone),
+        ...(form.email.trim() ? { email: form.email.trim() } : {}),
+        password: form.password,
+        full_name: form.full_name,
         account_type: accountType,
         ...(accountType === 'merchant' || accountType === 'enterprise' ? { business_name: businessName } : {}),
       });
-      navigate(safeRedirect(searchParams.get('redirect')));
+      if (recovery_code) setRecoveryCode(recovery_code);
+      else navigate(safeRedirect(searchParams.get('redirect')));
     } catch (err: any) {
       setError(err.response?.data?.message || "Échec de l'inscription");
     } finally {
       setLoading(false);
     }
   };
+
+  if (recoveryCode) {
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center bg-background p-4">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl md:p-8">
+          <RecoveryCodePanel
+            code={recoveryCode}
+            phone={displayPhone(form.phone)}
+            onDone={() => navigate(safeRedirect(searchParams.get('redirect')))}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
@@ -250,7 +268,25 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email" className="font-semibold text-foreground">Email</Label>
+                <Label htmlFor="phone" className="font-semibold text-foreground">Numéro de téléphone</Label>
+                <PhoneInput
+                  id="phone"
+                  value={form.phone}
+                  onChange={(digits) => {
+                    setForm({ ...form, phone: digits });
+                    if (phoneError) validatePhone(digits);
+                  }}
+                  invalid={!!phoneError}
+                />
+                {phoneError ? (
+                  <p className="text-xs text-destructive mt-1">{phoneError}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Vous vous connecterez avec ce numéro.</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email" className="font-semibold text-foreground">Email <span className="font-normal text-muted-foreground">(facultatif)</span></Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
@@ -262,32 +298,13 @@ export default function RegisterPage() {
                       setForm({ ...form, email: e.target.value });
                       validateEmail(e.target.value);
                     }}
-                    required
                     className={`pl-10 bg-background border-input text-foreground placeholder:text-muted-foreground focus:bg-accent ${emailError ? 'border-destructive' : ''}`}
                   />
                 </div>
-                {emailError && (
+                {emailError ? (
                   <p className="text-xs text-destructive mt-1">{emailError}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="phone" className="font-semibold text-foreground">Téléphone</Label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="phone"
-                    placeholder="+243 8XX XXX XXX"
-                    value={form.phone}
-                    onChange={(e) => {
-                      setForm({ ...form, phone: e.target.value });
-                      validatePhone(e.target.value);
-                    }}
-                    className={`pl-10 bg-background border-input text-foreground placeholder:text-muted-foreground focus:bg-accent ${phoneError ? 'border-destructive' : ''}`}
-                  />
-                </div>
-                {phoneError && (
-                  <p className="text-xs text-destructive mt-1">{phoneError}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Pour récupérer votre compte par email et recevoir vos reçus.</p>
                 )}
               </div>
 

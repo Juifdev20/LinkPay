@@ -7,12 +7,27 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AuthBrandingPanel } from '@/components/auth/AuthBrandingPanel';
+import { PhoneInput, isCompletePhone } from '@/components/PhoneInput';
+import { toApiPhone } from '@/lib/mobile-money';
 import { Loader2, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+
+// Phone number by default; older accounts (and administrators) may log in with their email. Remembered per device.
+const MODE_KEY = 'linkpay_login_mode';
+const readMode = (): 'phone' | 'email' => {
+  try { return localStorage.getItem(MODE_KEY) === 'email' ? 'email' : 'phone'; } catch { return 'phone'; }
+};
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const login = useAuthStore((s) => s.login);
+  const [mode, setModeState] = useState<'phone' | 'email'>(readMode);
+  const setMode = (m: 'phone' | 'email') => {
+    setModeState(m);
+    setError('');
+    try { localStorage.setItem(MODE_KEY, m); } catch { /* not remembered */ }
+  };
+  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -47,9 +62,13 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (mode === 'phone' && !isCompletePhone(phone)) {
+      setError('Saisissez votre numéro : 9 chiffres après +243 (ex. 812 345 678).');
+      return;
+    }
     setLoading(true);
     try {
-      await login(email, password, rememberMe, needOtp ? otp.trim() : undefined);
+      await login(mode === 'phone' ? { phone: toApiPhone(phone) } : { email }, password, rememberMe, needOtp ? otp.trim() : undefined);
       navigate(safeRedirect(searchParams.get('redirect')));
     } catch (err: any) {
       if (err.response?.data?.code === 'OTP_REQUIRED') {
@@ -90,25 +109,32 @@ export default function LoginPage() {
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="email" className="font-semibold text-foreground">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="vous@gmail.com"
-                  value={email}
-                  onChange={handleEmailChange}
-                  required
-                  autoFocus
-                  className={`pl-10 bg-background border-input text-foreground placeholder:text-muted-foreground focus:bg-accent ${emailError ? 'border-destructive' : ''}`}
-                />
+            {mode === 'phone' ? (
+              <div className="space-y-2">
+                <Label htmlFor="phone" className="font-semibold text-foreground">Numéro de téléphone</Label>
+                <PhoneInput id="phone" value={phone} onChange={setPhone} autoFocus />
               </div>
-              {emailError && (
-                <p className="text-xs text-destructive mt-1">{emailError}</p>
-              )}
-            </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="email" className="font-semibold text-foreground">Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="vous@gmail.com"
+                    value={email}
+                    onChange={handleEmailChange}
+                    required
+                    autoFocus
+                    className={`pl-10 bg-background border-input text-foreground placeholder:text-muted-foreground focus:bg-accent ${emailError ? 'border-destructive' : ''}`}
+                  />
+                </div>
+                {emailError && (
+                  <p className="text-xs text-destructive mt-1">{emailError}</p>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="password" className="font-semibold text-foreground">Mot de passe</Label>
@@ -182,6 +208,16 @@ export default function LoginPage() {
               {loading && <Loader2 className="mr-2 w-5 h-5 animate-spin" />}
               Se connecter
             </Button>
+
+            <button
+              type="button"
+              onClick={() => setMode(mode === 'phone' ? 'email' : 'phone')}
+              className="w-full text-center text-sm text-muted-foreground hover:text-foreground"
+            >
+              {mode === 'phone'
+                ? <>Ancien utilisateur ? <span className="font-semibold text-primary">Se connecter avec l'email</span></>
+                : <>Nouveau compte ? <span className="font-semibold text-primary">Se connecter avec le numéro de téléphone</span></>}
+            </button>
           </form>
 
           <p className="text-sm text-muted-foreground text-center mt-6">

@@ -96,7 +96,8 @@ export function AppLockGate() {
     unlock();
   }, [unlock]);
 
-  if (!applies || onSalesScreen) return null;
+  // The sign-up and password-recovery pages show the recovery code first; the access code comes right after.
+  if (!applies || onSalesScreen || ['/register', '/forgot-password'].includes(pathname)) return null;
   if (hasCode === false) return <CreateCode onDone={async () => { await fetchProfile(); onUnlocked(); }} />;
   if (!locked) return null;
   if (hasCode === undefined) {
