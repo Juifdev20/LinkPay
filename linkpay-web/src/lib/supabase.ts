@@ -10,6 +10,8 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 // via supabase.auth.setSession() (done in auth-store.ts on login/register).
 export const supabase = url && anonKey
   ? createClient(url, anonKey, {
-      auth: { persistSession: false, autoRefreshToken: true },
+      // detectSessionInUrl off: the password-reset link carries its token in the URL for OUR
+      // /reset-password page (which sends it to the API) — the client must not consume it first.
+      auth: { persistSession: false, autoRefreshToken: true, detectSessionInUrl: false },
     })
   : null;

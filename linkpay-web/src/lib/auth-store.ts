@@ -25,7 +25,8 @@ import { runDeviceCheck } from './device-integrity';
 
 interface User {
   id: string;
-  email: string;
+  /** Empty for an account created with its phone number only. */
+  email?: string | null;
   full_name?: string;
   phone?: string;
   role: string;
@@ -61,15 +62,17 @@ interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string, rememberMe?: boolean, otp?: string) => Promise<void>;
+  /** By phone number (the default, "+243…") or by email (older accounts, administrators). */
+  login: (identifier: { phone?: string; email?: string }, password: string, rememberMe?: boolean, otp?: string) => Promise<void>;
+  /** Resolves with the recovery code issued at sign-up (shown once). */
   register: (data: {
-    email: string;
+    phone: string;
+    email?: string;
     password: string;
     full_name: string;
-    phone?: string;
     account_type?: 'client' | 'merchant' | 'enterprise';
     business_name?: string;
-  }, rememberMe?: boolean) => Promise<void>;
+  }, rememberMe?: boolean) => Promise<{ recovery_code: string | null }>;
   logout: () => Promise<void>;
   fetchProfile: () => Promise<void>;
   // Token arguments are undefined in cookie mode (the session is in HttpOnly cookies, not in the response).
@@ -106,10 +109,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: hasSession,
   isLoading: false,
 
-  login: async (email: string, password: string, rememberMe = true, otp?: string) => {
+  login: async (identifier, password: string, rememberMe = true, otp?: string) => {
     // Cookie mode: the API sets session cookies (or persistent ones) according to this choice, so it must be known first.
     if (COOKIE_AUTH) setRememberMe(rememberMe);
-    const { data } = await api.post('/auth/login', { email, password, device_id: getDeviceId(), ...(otp ? { otp } : {}) });
+    const { data } = await api.post('/auth/login', { ...identifier, password, device_id: getDeviceId(), ...(otp ? { otp } : {}) });
     queryClient.clear(); // never show another account's cached data
     forgetSessionSecrets(); // …nor inherit the previous person's stock password / confirmation
     setRememberMe(rememberMe);
@@ -131,6 +134,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     useAppLock.getState().unlock();
     set({ user: res.data.user, isAuthenticated: true });
     void runDeviceCheck();
+    return { recovery_code: res.data.recovery_code ?? null };
   },
 
   applyMerchantUpgrade: (merchant, accessToken) => {

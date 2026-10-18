@@ -8,6 +8,7 @@ import { SupabaseModule } from '../supabase/supabase.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { JwtStrategy } from './jwt.strategy';
 import { AuthCookiesService } from './auth-cookies';
+import { PhoneAccountService } from './phone-account.service';
 import { getRequiredJwtSecret } from './jwt-secret.util';
 
 @Module({
@@ -27,7 +28,7 @@ import { getRequiredJwtSecret } from './jwt-secret.util';
     NotificationsModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, AuthCookiesService],
-  exports: [AuthService, AuthCookiesService],
+  providers: [AuthService, JwtStrategy, AuthCookiesService, PhoneAccountService],
+  exports: [AuthService, AuthCookiesService, PhoneAccountService],
 })
 export class AuthModule {}

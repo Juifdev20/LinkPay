@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { normalizeDrcPhone, phoneLikePattern, samePhone } from '../auth/phone';
 import { SupabaseService } from '../supabase/supabase.service';
 import { sumByCurrency } from '../common/utils/currency';
 
@@ -13,6 +14,7 @@ const PROFILE_PRIVATE_FIELDS = [
   'two_factor_secret', 'active_session_id', 'active_device_id',
   'two_factor_last_step', 'two_factor_recovery_hashes',
   'app_code_hash', 'app_code_attempts', 'app_code_lockouts', 'app_code_locked_until',
+  'recovery_code_hash',
 ] as const;
 
 export function toPublicProfile<T extends Record<string, any>>(row: T) {
@@ -80,6 +82,18 @@ export class UsersService {
       if (updates[key] !== undefined) {
         filtered[key] = updates[key];
       }
+    }
+
+    // The phone number is how people log in: always stored the same way, and never one another account uses.
+    if ('phone' in filtered) {
+      const phone = normalizeDrcPhone(filtered.phone);
+      if (!phone) throw new BadRequestException('Numéro de téléphone invalide : +243 suivi de 9 chiffres.');
+      const { data: owners } = await this.supabaseService.getClient()
+        .from('profiles').select('id, phone').like('phone', phoneLikePattern(phone)).limit(10);
+      if ((owners || []).some((o) => o.id !== userId && samePhone(o.phone, phone))) {
+        throw new ConflictException('Ce numéro de téléphone est déjà utilisé par un autre compte');
+      }
+      filtered.phone = phone;
     }
 
     const { data, error } = await this.supabaseService.getClient()

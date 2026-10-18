@@ -7,7 +7,7 @@ import { TwoFactorService } from '../security/two-factor.service';
 import { SecurityAlertsService } from '../security/security-alerts.service';
 import { AllowWithoutMfa } from '../common/decorators/allow-without-mfa.decorator';
 import { MFA_REQUIRED_ROLES } from './constants';
-import { RegisterDto, LoginDto } from './dto';
+import { RegisterDto, LoginDto, RecoverWithCodeDto, ForgotPasswordDto, ResetPasswordDto, RecoveryCodeDto } from './dto';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthCookiesService } from './auth-cookies';
@@ -70,7 +70,7 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login with email and password' })
+  @ApiOperation({ summary: 'Login with the phone number (or the email, older accounts) and the password' })
   @ApiResponse({ status: 200, description: 'Login successful' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   @ApiResponse({ status: 503, description: 'Supabase Auth unreachable' })
@@ -116,6 +116,51 @@ export class AuthController {
   async exitStore(@CurrentUser() user: any) {
     if (!user?.acting_as_org_id) throw new BadRequestException('Vous n\'êtes dans aucune boutique.');
     return this.authService.exitActingAs(user.id, user.email, user.session_id);
+  }
+
+  // ---- Forgotten password (no SMS): the recovery code, or the email link ----
+
+  @Throttle({ default: { limit: 5, ttl: 10 * 60_000 } })
+  @Public()
+  @Post('recover')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Forgotten password: phone + recovery code + new password. Returns the NEW recovery code (the old one is used up).' })
+  async recover(@Body() dto: RecoverWithCodeDto) {
+    return this.authService.recoverWithCode(dto);
+  }
+
+  @Throttle({ default: { limit: 3, ttl: 10 * 60_000 } })
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Forgotten password: sends a reset link to the email (same answer whether it has an account or not)' })
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto.email);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 10 * 60_000 } })
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "New password with the token of the email's reset link" })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto.access_token, dto.new_password);
+  }
+
+  @Get('recovery-code')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Does this account have a recovery code yet?' })
+  async recoveryCodeStatus(@CurrentUser('id') userId: string) {
+    return this.authService.recoveryCodeStatus(userId);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 10 * 60_000 } })
+  @Post('recovery-code')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Create or replace the recovery code (current password required); returns it once' })
+  async issueRecoveryCode(@CurrentUser('id') userId: string, @Body() dto: RecoveryCodeDto) {
+    return this.authService.issueRecoveryCode(userId, dto.current_password);
   }
 
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
