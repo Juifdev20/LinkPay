@@ -1,5 +1,5 @@
 import { useAuthStore } from '@/lib/auth-store';
-import StockPage from '@/pages/organization/Stock';
+import MagasinierDashboard from '@/pages/organization/MagasinierDashboard';
 import CashierHome from '@/pages/staff/CashierHome';
 import SalesDashboardPage from '@/pages/organization/SalesDashboard';
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
@@ -7,7 +7,7 @@ import OrganizationProfilePage from '@/pages/OrganizationProfile';
 /**
  * Landing screen for enterprise-internal staff (organization-staff module).
  * Each role gets the screen built for its job:
- *  - magasinier → Stock & Approvisionnement (full stock management)
+ *  - magasinier → Stock & Approvisionnement (their station only)
  *  - vendeur    → sales dashboard in its light variant (volume and revenue,
  *                 no margins — the API strips those for this role)
  *  - caissier   → their own dashboard: today's and this week's sales, their
@@ -23,7 +23,7 @@ export default function StaffHome() {
     return <OrganizationProfilePage />;
   }
   if (user?.role === 'magasinier') {
-    return <StockPage />;
+    return <MagasinierDashboard />;
   }
   if (user?.role === 'caissier') {
     return <CashierHome />;

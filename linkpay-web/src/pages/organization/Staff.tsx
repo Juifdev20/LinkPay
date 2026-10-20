@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { PageHeader } from '@/components/PageHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { PhoneInput } from '@/components/PhoneInput';
+import { toApiPhone } from '@/lib/mobile-money';
 import { downloadStaffCredentialPdf } from '@/lib/staff-credential-pdf';
 import { Loader2, Plus, X, Printer, KeyRound, Warehouse, ShoppingBag, Wallet, Calculator, UserX, UserCheck, BadgeCheck } from 'lucide-react';
 
@@ -75,6 +77,7 @@ export default function StaffPage() {
   const createMutation = useMutation({
     mutationFn: async () => (await api.post(`/organizations/${org.id}/staff`, {
       ...form,
+      telephone: form.telephone ? toApiPhone(form.telephone) : undefined,
       // A manager's new staff always join the manager's station (the API sets it).
       merchant_id: isOwner ? formStation : undefined,
     })).data,
@@ -84,12 +87,6 @@ export default function StaffPage() {
       queryClient.invalidateQueries({ queryKey: ['org-staff', org.id] });
       queryClient.invalidateQueries({ queryKey: ['org-stores-breakdown', org.id] });
 
-      // The user is created either way — the PDF/share is a courtesy on
-      // top, not a condition for it. Share.share() rejects with "Share
-      // canceled" whenever the admin dismisses the native chooser instead
-      // of picking an app, which must never block the state updates above
-      // (it used to run first and `await`ed, so a cancel there left the
-      // dialog open and the new user invisible until a manual refresh).
       const role = ROLES.find((r) => r.slug === form.role_slug);
       try {
         await downloadStaffCredentialPdf({
@@ -114,8 +111,6 @@ export default function StaffPage() {
   const [stationChange, setStationChange] = useState<{ member: any; merchant_id: string } | null>(null);
   const [actionError, setActionError] = useState('');
 
-  // These change who may do what (and where): the API asks for the access
-  // code first (dialog handled by the API client).
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['org-staff', org.id] });
   const fail = (err: any) => setActionError(err?.response?.data?.message || 'Action impossible, réessayez.');
 
@@ -179,8 +174,6 @@ export default function StaffPage() {
     }
   };
 
-  // Forgotten-password path — the temp password was already used (so
-  // reprint is gone), this mints a fresh one and re-arms the forced change.
   const resetPassword = async (member: any) => {
     setReprintingId(member.id);
     try {
@@ -200,8 +193,102 @@ export default function StaffPage() {
   }, {});
   const visibleStaff = roleFilter ? inStation.filter((s: any) => s.role === roleFilter) : inStation;
   const unassigned = (staff || []).filter((s: any) => !s.merchant_id && s.active !== false).length;
-  // A manager acts on the staff of their station, never on another manager.
   const canActOn = (member: any) => isOwner || member.role !== 'gerant';
+
+  // Group by station when owner sees all stations (no filter active, multiple stations)
+  const grouped: { stationId: string | null; stationName: string; members: any[] }[] =
+    isOwner && !stationFilter && stations && stations.length > 1
+      ? (() => {
+          const map = new Map<string, any[]>();
+          for (const s of visibleStaff) {
+            const key = s.merchant_id || '__none__';
+            if (!map.has(key)) map.set(key, []);
+            map.get(key)!.push(s);
+          }
+          const result: { stationId: string | null; stationName: string; members: any[] }[] = stations
+            .map((st) => ({ stationId: st.id as string | null, stationName: st.name, members: map.get(st.id) || [] }))
+            .filter((g) => g.members.length > 0);
+          const none = map.get('__none__') || [];
+          if (none.length) result.push({ stationId: null, stationName: 'Sans station', members: none });
+          return result;
+        })()
+      : [];
+
+  const renderMember = (s: any) => (
+    <div key={s.id} className={`py-3 border-b border-border last:border-0 ${s.active === false ? 'opacity-60' : ''}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <span className="text-xs font-bold text-primary uppercase">
+              {(s.prenom?.[0] || '') + (s.nom?.[0] || '')}
+            </span>
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-semibold text-foreground truncate text-sm">
+                {[s.prenom, s.postnom, s.nom].filter(Boolean).join(' ')}
+              </p>
+              {s.active === false && (
+                <span className="text-[11px] font-medium rounded-full bg-destructive/10 text-destructive px-2 py-0.5 flex-shrink-0">Accès retiré</span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground truncate">
+              {[s.role_name || s.role, (!isOwner || stationFilter) ? null : s.station_name, s.email].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+        </div>
+        {canActOn(s) && (
+          <div className="flex items-center flex-shrink-0 gap-0.5">
+            {s.active === false ? (
+              <Button variant="outline" size="sm" disabled={restoreMutation.isPending && restoreMutation.variables?.id === s.id} onClick={() => restoreMutation.mutate(s)}>
+                {restoreMutation.isPending && restoreMutation.variables?.id === s.id
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <><UserCheck className="w-3.5 h-3.5 mr-1" />Rétablir</>}
+              </Button>
+            ) : (
+              <>
+                {s.has_temp_password ? (
+                  <Button variant="ghost" size="icon" title="Ré-imprimer le mot de passe temporaire" disabled={reprintingId === s.id} onClick={() => reprint(s)}>
+                    {reprintingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4 text-muted-foreground" />}
+                  </Button>
+                ) : (
+                  <Button variant="ghost" size="icon" title="Réinitialiser le mot de passe" disabled={reprintingId === s.id} onClick={() => setResetTarget(s)}>
+                    {reprintingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4 text-muted-foreground" />}
+                  </Button>
+                )}
+                <Button variant="ghost" size="icon" title="Retirer l'accès" onClick={() => setRemoveTarget(s)}>
+                  <UserX className="w-4 h-4 text-destructive" />
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+      {s.active !== false && canActOn(s) && (
+        <div className="mt-2 ml-12 flex items-center gap-2 flex-wrap">
+          <Select
+            value={s.role || ''}
+            onChange={(e) => e.target.value !== s.role && setRoleChange({ member: s, role_slug: e.target.value })}
+            className="h-8 text-xs w-36"
+          >
+            {ROLES.filter((r) => assignableRoles.includes(r) || r.slug === s.role).map((r) => (
+              <option key={r.slug} value={r.slug} disabled={!assignableRoles.includes(r)}>{r.label}</option>
+            ))}
+          </Select>
+          {isOwner && stations && (
+            <Select
+              value={s.merchant_id || ''}
+              onChange={(e) => e.target.value && e.target.value !== s.merchant_id && setStationChange({ member: s, merchant_id: e.target.value })}
+              className="h-8 text-xs w-40"
+            >
+              {!s.merchant_id && <option value="">Sans station</option>}
+              {stations.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+            </Select>
+          )}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
@@ -223,7 +310,6 @@ export default function StaffPage() {
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {/* Role cards: the roles one can give, plus any role someone already holds (a former vendeur, the station's manager). */}
         {ROLES.filter((r) => assignableRoles.includes(r) || counts[r.slug]).map((r) => (
           <button
             key={r.slug}
@@ -252,59 +338,80 @@ export default function StaffPage() {
         </CardHeader>
         <CardContent>
           {showAdd && (
-            <div className="rounded-xl border border-border p-4 mb-4 space-y-3">
+            <div className="rounded-2xl border border-border bg-card/50 p-4 mb-5 space-y-4">
               <div className="flex items-center justify-between">
-                <p className="font-semibold text-foreground text-sm">Nouvel utilisateur</p>
-                <button onClick={() => setShowAdd(false)} className="text-muted-foreground hover:text-foreground">
+                <p className="font-semibold text-foreground">Nouvel utilisateur</p>
+                <button onClick={() => setShowAdd(false)} className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="staff_prenom">Prénom</Label>
-                  <Input id="staff_prenom" value={form.prenom} onChange={(e) => setForm({ ...form, prenom: e.target.value })} />
+
+              {/* Identité */}
+              <div className="space-y-3">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Identité</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="staff_prenom">Prénom</Label>
+                    <Input id="staff_prenom" value={form.prenom} onChange={(e) => setForm({ ...form, prenom: e.target.value })} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="staff_nom">Nom</Label>
+                    <Input id="staff_nom" value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="staff_nom">Nom</Label>
-                  <Input id="staff_nom" value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} />
+                <div className="space-y-1.5">
+                  <Label htmlFor="staff_postnom">Postnom</Label>
+                  <Input id="staff_postnom" value={form.postnom} onChange={(e) => setForm({ ...form, postnom: e.target.value })} />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="staff_postnom">Postnom</Label>
-                <Input id="staff_postnom" value={form.postnom} onChange={(e) => setForm({ ...form, postnom: e.target.value })} />
+
+              {/* Contact */}
+              <div className="space-y-3">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Contact</p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="staff_telephone">
+                    Téléphone <span className="text-muted-foreground font-normal">(optionnel)</span>
+                  </Label>
+                  <PhoneInput id="staff_telephone" value={form.telephone} onChange={(digits) => setForm({ ...form, telephone: digits })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="staff_email">Email</Label>
+                  <Input id="staff_email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="staff_telephone">Téléphone</Label>
-                <Input id="staff_telephone" placeholder="+243 8XX XXX XXX" value={form.telephone} onChange={(e) => setForm({ ...form, telephone: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="staff_email">Email</Label>
-                <Input id="staff_email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="staff_role">Rôle</Label>
-                <Select id="staff_role" value={form.role_slug} onChange={(e) => setForm({ ...form, role_slug: e.target.value })}>
-                  {assignableRoles.map((r) => (
-                    <option key={r.slug} value={r.slug}>{r.label}</option>
-                  ))}
-                </Select>
-              </div>
-              {isOwner ? (
-                <div className="space-y-2">
-                  <Label htmlFor="staff_station">Station</Label>
-                  <Select id="staff_station" value={formStation} onChange={(e) => setForm({ ...form, merchant_id: e.target.value })}>
-                    <option value="" disabled>Choisir la station…</option>
-                    {(stations || []).map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
-                  </Select>
-                  {stations && !stations.length && (
-                    <p className="text-xs text-muted-foreground">Créez d'abord une station (menu Stations).</p>
+
+              {/* Accès */}
+              <div className="space-y-3">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Accès</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="staff_role">Rôle</Label>
+                    <Select id="staff_role" value={form.role_slug} onChange={(e) => setForm({ ...form, role_slug: e.target.value })}>
+                      {assignableRoles.map((r) => (
+                        <option key={r.slug} value={r.slug}>{r.label}</option>
+                      ))}
+                    </Select>
+                  </div>
+                  {isOwner ? (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="staff_station">Station</Label>
+                      <Select id="staff_station" value={formStation} onChange={(e) => setForm({ ...form, merchant_id: e.target.value })}>
+                        <option value="" disabled>Choisir…</option>
+                        {(stations || []).map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+                      </Select>
+                      {stations && !stations.length && (
+                        <p className="text-xs text-muted-foreground">Créez d'abord une station (menu Stations).</p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <Label>Station</Label>
+                      <p className="h-10 flex items-center text-sm font-medium text-foreground">{user?.station_name}</p>
+                    </div>
                   )}
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Station : <span className="font-medium text-foreground">{user?.station_name}</span>
-                </p>
-              )}
+              </div>
+
               {createMutation.isError && (
                 <p className="text-sm text-destructive font-medium rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3">
                   {(createMutation.error as any)?.response?.data?.message || "Échec de la création — réessayez."}
@@ -323,75 +430,25 @@ export default function StaffPage() {
 
           {visibleStaff.length ? (
             <div>
-              {actionError && <p className="text-sm text-destructive pb-2">{actionError}</p>}
-              {visibleStaff.map((s: any) => (
-                <div key={s.id} className={`py-3 border-b border-border last:border-0 ${s.active === false ? 'opacity-70' : ''}`}>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-foreground truncate">
-                        {[s.prenom, s.postnom, s.nom].filter(Boolean).join(' ')}
-                        {s.active === false && <span className="ml-2 text-xs font-medium rounded-full bg-destructive/10 text-destructive px-2 py-0.5">Accès retiré</span>}
-                      </p>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {[s.role_name || s.role, isOwner ? s.station_name || 'Sans station' : null, s.email].filter(Boolean).join(' · ')}
-                      </p>
-                    </div>
-                    {canActOn(s) && (
-                      <div className="flex items-center flex-shrink-0">
-                        {s.active === false ? (
-                          <Button variant="outline" size="sm" title="Rétablir l'accès (nouveau mot de passe temporaire)" disabled={restoreMutation.isPending && restoreMutation.variables?.id === s.id} onClick={() => restoreMutation.mutate(s)}>
-                            {restoreMutation.isPending && restoreMutation.variables?.id === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><UserCheck className="w-4 h-4 mr-1" />Rétablir</>}
-                          </Button>
-                        ) : (
-                          <>
-                            {s.has_temp_password ? (
-                              <Button variant="ghost" size="icon" title="Ré-imprimer le mot de passe temporaire" disabled={reprintingId === s.id} onClick={() => reprint(s)}>
-                                {reprintingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4 text-muted-foreground" />}
-                              </Button>
-                            ) : (
-                              <Button variant="ghost" size="icon" title="Réinitialiser le mot de passe (génère un nouveau mot de passe temporaire)" disabled={reprintingId === s.id} onClick={() => setResetTarget(s)}>
-                                {reprintingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4 text-muted-foreground" />}
-                              </Button>
-                            )}
-                            <Button variant="ghost" size="icon" title="Retirer l'accès (l'employé part)" onClick={() => setRemoveTarget(s)}>
-                              <UserX className="w-4 h-4 text-destructive" />
-                            </Button>
-                          </>
-                        )}
+              {actionError && <p className="text-sm text-destructive pb-3">{actionError}</p>}
+              {grouped.length > 0
+                ? grouped.map((group) => (
+                    <div key={group.stationId || '__none__'} className="mb-5 last:mb-0">
+                      <div className="flex items-center gap-2 mb-2 px-1">
+                        <Warehouse className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate">{group.stationName}</p>
+                        <span className="text-xs text-muted-foreground flex-shrink-0">({group.members.length})</span>
                       </div>
-                    )}
-                  </div>
-                  {s.active !== false && canActOn(s) && (
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-muted-foreground">Rôle</span>
-                      <Select
-                        value={s.role || ''}
-                        onChange={(e) => e.target.value !== s.role && setRoleChange({ member: s, role_slug: e.target.value })}
-                        className="h-8 text-sm w-40"
-                      >
-                        {/* Their current role stays shown even when it can't be given any more (a supermarket's former vendeur). */}
-                        {ROLES.filter((r) => assignableRoles.includes(r) || r.slug === s.role).map((r) => <option key={r.slug} value={r.slug} disabled={!assignableRoles.includes(r)}>{r.label}</option>)}
-                      </Select>
-                      {isOwner && stations && (
-                        <>
-                          <span className="text-xs text-muted-foreground">Station</span>
-                          <Select
-                            value={s.merchant_id || ''}
-                            onChange={(e) => e.target.value && e.target.value !== s.merchant_id && setStationChange({ member: s, merchant_id: e.target.value })}
-                            className="h-8 text-sm w-44"
-                          >
-                            {!s.merchant_id && <option value="">Sans station</option>}
-                            {stations.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
-                          </Select>
-                        </>
-                      )}
+                      <div className="rounded-xl border border-border/60 bg-background px-3">
+                        {group.members.map(renderMember)}
+                      </div>
                     </div>
-                  )}
-                </div>
-              ))}
+                  ))
+                : <div className="divide-y divide-border">{visibleStaff.map(renderMember)}</div>
+              }
             </div>
           ) : (
-            !showAdd && <p className="text-muted-foreground text-center py-6">Aucun utilisateur pour le moment</p>
+            !showAdd && <p className="text-muted-foreground text-center py-6 text-sm">Aucun utilisateur pour le moment</p>
           )}
         </CardContent>
       </Card>

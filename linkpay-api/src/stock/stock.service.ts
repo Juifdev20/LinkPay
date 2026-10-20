@@ -601,4 +601,124 @@ export class StockService {
       stock_value: sumByCurrency(valueRows, 'amount_cents'),
     };
   }
+
+  /** Movement chart + recent activity feed for the magasinier dashboard.
+   *  Accepts optional `from` / `to` ISO date strings (YYYY-MM-DD).
+   *  Defaults to the last 7 days when omitted.
+   *  Scoped to the caller's station when they are staff (not owner).
+   *
+   *  "Réceptions" in the chart include both 'in' stock movements AND stock
+   *  items created directly (createItem writes quantity without a movement). */
+  async getOrgRecentActivity(
+    orgId: string,
+    callerId: string,
+    callerRole: string,
+    callerOrgId: string | undefined,
+    from?: string,
+    to?: string,
+  ) {
+    const org = await this.organizationsService.getOrganizationById(orgId);
+    this.assertOrgAccess(org, callerId, callerRole, callerOrgId, true);
+
+    let merchants = await this.organizationsService.getOrganizationMerchants(orgId);
+    if (callerId !== org.owner_id && !this.isAdmin(callerRole)) {
+      const station = await requireStaffStation(this.supabaseService.getClient(), callerId, callerOrgId);
+      merchants = merchants.filter((m: any) => m.id === station);
+    }
+
+    if (!merchants.length) return { daily: [], recent: [] };
+
+    const merchantIds = merchants.map((m: any) => m.id as string);
+    const merchantNameById: Record<string, string> = {};
+    merchants.forEach((m: any) => { merchantNameById[m.id] = m.name; });
+
+    // Resolve date range (inclusive). Default: last 7 days.
+    const toDate = to ? new Date(to + 'T23:59:59.999Z') : new Date();
+    const fromDate = (() => {
+      if (from) return new Date(from + 'T00:00:00.000Z');
+      const d = new Date(toDate);
+      d.setDate(d.getDate() - 6);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    })();
+
+    // Fetch stock movements in the range joined with item name/category.
+    const { data: movements, error } = await this.supabaseService.getClient()
+      .from('stock_movements')
+      .select('id, merchant_id, type, quantity_delta, created_at, stock_items(name, category)')
+      .in('merchant_id', merchantIds)
+      .gte('created_at', fromDate.toISOString())
+      .lte('created_at', toDate.toISOString())
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(`Failed to fetch stock movements: ${error.message}`);
+
+    // Also fetch stock items created in the range (createItem sets quantity
+    // directly without writing a movement — we treat each as a "reception").
+    const { data: createdItems, error: ciError } = await this.supabaseService.getClient()
+      .from('stock_items')
+      .select('id, name, category, quantity, merchant_id, created_at')
+      .in('merchant_id', merchantIds)
+      .gte('created_at', fromDate.toISOString())
+      .lte('created_at', toDate.toISOString())
+      .order('created_at', { ascending: false });
+
+    if (ciError) throw new Error(`Failed to fetch created items: ${ciError.message}`);
+
+    const allMovements: any[] = movements || [];
+    const allCreated: any[] = createdItems || [];
+
+    // Build one entry per calendar day in [fromDate, toDate].
+    const daily: { date: string; receptions: number; sorties: number }[] = [];
+    const cursor = new Date(fromDate);
+    cursor.setUTCHours(0, 0, 0, 0);
+    const endDate = new Date(toDate);
+    endDate.setUTCHours(23, 59, 59, 999);
+
+    while (cursor <= endDate) {
+      const dateStr = cursor.toISOString().slice(0, 10);
+      const dayMvts = allMovements.filter((m) => (m.created_at as string).slice(0, 10) === dateStr);
+      const dayNew  = allCreated.filter((i) => (i.created_at as string).slice(0, 10) === dateStr);
+      daily.push({
+        date: dateStr,
+        // Movements of type 'in' + initial quantity of new items.
+        receptions:
+          dayMvts.filter((m) => m.type === 'in').reduce((s: number, m) => s + Math.abs(m.quantity_delta), 0)
+          + dayNew.reduce((s: number, i) => s + (i.quantity as number || 0), 0),
+        // Movements of type 'out' or 'sale' (sales = stock exits from POS).
+        sorties: dayMvts
+          .filter((m) => m.type === 'out' || m.type === 'sale')
+          .reduce((s: number, m) => s + Math.abs(m.quantity_delta), 0),
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    // Build the activity feed: merge movements + newly created items,
+    // sort chronologically and keep the 15 most recent entries.
+    const recentMovements = allMovements.map((m) => ({
+      id: m.id as string,
+      type: m.type as string,
+      quantity_delta: m.quantity_delta as number,
+      item_name: (m.stock_items as any)?.name ?? '—',
+      category: (m.stock_items as any)?.category ?? null,
+      merchant_name: merchantNameById[m.merchant_id] ?? null,
+      created_at: m.created_at as string,
+    }));
+
+    const recentCreations = allCreated.map((i) => ({
+      id: i.id as string,
+      type: 'new_item',
+      quantity_delta: i.quantity as number,
+      item_name: i.name as string,
+      category: i.category ?? null,
+      merchant_name: merchantNameById[i.merchant_id] ?? null,
+      created_at: i.created_at as string,
+    }));
+
+    const recent = [...recentMovements, ...recentCreations]
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .slice(0, 15);
+
+    return { daily, recent };
+  }
 }

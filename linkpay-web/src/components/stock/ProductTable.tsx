@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { useRef, useEffect, useMemo, useState } from 'react';
+import JsBarcode from 'jsbarcode';
+import { ArrowDown, ArrowUp, ArrowUpDown, Eye } from 'lucide-react';
 import { Select } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { formatCurrency } from '@/lib/utils';
 import { getCategoryLabel } from '@/lib/stock-categories';
 
@@ -18,11 +20,46 @@ function loadSort(key: string): Sort {
   return { key: 'name', dir: 'asc' };
 }
 
+/** Renders the barcode as an SVG using jsbarcode (CODE128, dark-mode aware). */
+function BarcodeCell({ barcode }: { barcode?: string | null }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    if (!svgRef.current || !barcode) return;
+    try {
+      JsBarcode(svgRef.current, barcode, {
+        format: 'CODE128',
+        width: 1.2,
+        height: 32,
+        displayValue: true,
+        fontSize: 9,
+        margin: 2,
+        lineColor: 'currentColor',
+        background: 'transparent',
+      });
+    } catch {
+      // Invalid barcode value — leave SVG empty
+    }
+  }, [barcode]);
+
+  if (!barcode) {
+    return <span className="text-muted-foreground text-xs select-none">—</span>;
+  }
+  return <svg ref={svgRef} className="max-w-[100px] h-auto" />;
+}
+
+function StatusBadge({ quantity, threshold }: { quantity: number; threshold: number }) {
+  if (quantity === 0) return <Badge variant="destructive" className="text-[11px] font-medium whitespace-nowrap">Rupture</Badge>;
+  if (quantity <= threshold) return <Badge className="text-[11px] font-medium whitespace-nowrap bg-warning/15 text-warning border-warning/30 hover:bg-warning/15">Stock faible</Badge>;
+  return <Badge className="text-[11px] font-medium whitespace-nowrap bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20 hover:bg-green-500/10">Disponible</Badge>;
+}
+
 /**
- * Product list as a compact table — Produit / Prix / Stock — shared by the
- * till and the Stock page. Search filters instantly on the catalog already
- * in memory (name, barcode, aisle); tapping a column header sorts (again =
- * reverse), remembered per screen; an aisle bar narrows the list.
+ * Product list table — shared by the till and the Stock page.
+ *
+ * Default mode (POS): compact 3-column view (Produit / Prix / Stock).
+ * Stock manager mode (`stockManagerMode`): full 8-column view with barcode
+ * visual, category badge, status badge, seuil and explicit actions.
  */
 export function ProductTable({
   items,
@@ -35,6 +72,7 @@ export function ProductTable({
   emptyText = 'Aucun produit.',
   className = '',
   scrollClassName = '',
+  stockManagerMode = false,
 }: {
   items: any[];
   query: string;
@@ -50,6 +88,13 @@ export function ProductTable({
   className?: string;
   /** e.g. a max height on the PC till, so the list scrolls under a sticky header. */
   scrollClassName?: string;
+  /**
+   * When true, renders the full 8-column stock management table:
+   * Code-barres | Désignation | Catégorie | Stock dispo | Seuil mini | Statut | Prix | Actions.
+   * Category filtering is expected to be handled by the parent; internal
+   * category select is hidden.
+   */
+  stockManagerMode?: boolean;
 }) {
   const [category, setCategory] = useState('');
   const [sort, setSortState] = useState<Sort>(() => loadSort(sortStorageKey));
@@ -68,7 +113,8 @@ export function ProductTable({
   const rows = useMemo(() => {
     const q = fold(query.trim());
     const filtered = items.filter((i) => {
-      if (category && i.category !== category) return false;
+      // Internal category filter only active in compact (POS) mode
+      if (!stockManagerMode && category && i.category !== category) return false;
       if (!q) return true;
       return fold(i.name || '').includes(q) || (i.barcode || '').includes(q) || fold(getCategoryLabel(i.category)).includes(q);
     });
@@ -78,10 +124,10 @@ export function ProductTable({
       if (sort.key === 'stock') return sign * ((a.quantity ?? 0) - (b.quantity ?? 0));
       return sign * (a.name || '').localeCompare(b.name || '');
     });
-  }, [items, query, category, sort]);
+  }, [items, query, category, sort, stockManagerMode]);
 
-  const Header = ({ k, label, align }: { k: SortKey; label: string; align: 'left' | 'right' }) => (
-    <th className={`px-3 py-2 font-medium ${align === 'right' ? 'text-right' : 'text-left'}`}>
+  const SortHeader = ({ k, label, align }: { k: SortKey; label: string; align: 'left' | 'right' }) => (
+    <th className={`px-3 py-2.5 font-medium ${align === 'right' ? 'text-right' : 'text-left'}`}>
       <button
         onClick={() => toggleSort(k)}
         className={`inline-flex items-center gap-1 hover:text-foreground ${sort.key === k ? 'text-foreground' : ''}`}
@@ -98,6 +144,88 @@ export function ProductTable({
     </th>
   );
 
+  // ── Stock manager mode — full 8-column table ───────────────────────────────
+  if (stockManagerMode) {
+    return (
+      // overflow-x-auto only: horizontal scroll for wide columns on mobile,
+      // but vertical scroll stays at the page level (no nested scroll bleed).
+      <div className={`rounded-xl border border-border bg-card overflow-auto overscroll-contain ${className}`}>
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 z-10 bg-secondary text-xs text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2.5 font-medium text-left whitespace-nowrap">Code-barres</th>
+              <SortHeader k="name" label="Désignation" align="left" />
+              <th className="px-3 py-2.5 font-medium text-left">Catégorie</th>
+              <SortHeader k="stock" label="Stock dispo" align="right" />
+              <th className="px-3 py-2.5 font-medium text-right whitespace-nowrap">Seuil mini</th>
+              <th className="px-3 py-2.5 font-medium text-left">Statut</th>
+              <SortHeader k="price" label="Prix unitaire" align="right" />
+              <th className="px-3 py-2.5 font-medium text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {rows.map((item) => (
+              <tr
+                key={item.id}
+                onClick={() => onSelect(item)}
+                className="cursor-pointer transition-colors hover:bg-accent/50 active:bg-primary/10"
+              >
+                <td className="px-3 py-2 align-middle">
+                  <BarcodeCell barcode={item.barcode} />
+                </td>
+                <td className="px-3 py-2 align-middle min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {item.image_url && (
+                      <img src={item.image_url} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0 border border-border" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-medium text-foreground truncate max-w-[180px]">{item.name}</p>
+                      {showStore && item.merchant_name && (
+                        <p className="text-xs text-muted-foreground truncate">{item.merchant_name}</p>
+                      )}
+                    </div>
+                  </div>
+                </td>
+                <td className="px-3 py-2 align-middle whitespace-nowrap">
+                  <Badge variant="outline" className="text-[11px] font-normal">
+                    {getCategoryLabel(item.category)}
+                  </Badge>
+                </td>
+                <td className="px-3 py-2 align-middle text-right font-semibold text-foreground">
+                  {item.quantity ?? 0}
+                </td>
+                <td className="px-3 py-2 align-middle text-right text-muted-foreground">
+                  {item.low_stock_threshold ?? 5}
+                </td>
+                <td className="px-3 py-2 align-middle">
+                  <StatusBadge quantity={item.quantity ?? 0} threshold={item.low_stock_threshold ?? 5} />
+                </td>
+                <td className="px-3 py-2 align-middle text-right font-semibold text-foreground whitespace-nowrap">
+                  {formatCurrency(item.unit_price_cents, item.currency)}
+                </td>
+                <td className="px-3 py-2 align-middle text-center">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onSelect(item); }}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                    title="Voir le détail"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!rows.length && (
+          <p className="px-3 py-6 text-sm text-muted-foreground text-center">
+            {query.trim() ? `Aucun produit « ${query.trim()} »` : emptyText}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // ── Compact mode (POS / default) — 3-column table ─────────────────────────
   return (
     <div className={`space-y-3 ${className}`}>
       {categories.length > 1 && (
@@ -113,9 +241,9 @@ export function ProductTable({
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10 bg-secondary text-xs text-muted-foreground">
             <tr>
-              <Header k="name" label="Produit" align="left" />
-              <Header k="price" label="Prix" align="right" />
-              <Header k="stock" label="Stock" align="right" />
+              <SortHeader k="name" label="Produit" align="left" />
+              <SortHeader k="price" label="Prix" align="right" />
+              <SortHeader k="stock" label="Stock" align="right" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border">

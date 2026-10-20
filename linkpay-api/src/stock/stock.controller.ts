@@ -367,6 +367,19 @@ export class OrganizationStockController {
     return this.stockService.getOrgStockSummary(orgId, callerId, callerRole, callerOrgId);
   }
 
+  @Get(':id/stock-recent-activity')
+  @ApiOperation({ summary: 'Movement chart + recent activity feed for the magasinier dashboard. Optional ?from=YYYY-MM-DD&to=YYYY-MM-DD (defaults to last 7 days).' })
+  async getOrgRecentActivity(
+    @Param('id') orgId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @CurrentUser('id') callerId?: string,
+    @CurrentUser('role') callerRole?: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    return this.stockService.getOrgRecentActivity(orgId, callerId!, callerRole!, callerOrgId, from, to);
+  }
+
   @Get(':id/stock-password/status')
   @ApiOperation({ summary: 'Whether this organization has a stock management password set yet' })
   async getStockPasswordStatus(

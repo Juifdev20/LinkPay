@@ -139,13 +139,26 @@ export function QuickActions({ actions }: { actions: QuickAction[] }) {
 }
 
 // ------------------------------------------------------------------
-// 7-day bars — plain CSS, today highlighted, tap a bar for its amount.
+// Sales chart — plain CSS bars, today highlighted, tap a bar for its amount.
+// Supports variable number of days (7, 14, 30): labels adapt automatically.
 // ------------------------------------------------------------------
-export function SalesChart({ days, currency, loading }: { days: HomeDay[]; currency: Currency; loading: boolean }) {
+export function SalesChart({
+  days,
+  currency,
+  loading,
+  periodLabel,
+}: {
+  days: HomeDay[];
+  currency: Currency;
+  loading: boolean;
+  periodLabel?: string;
+}) {
   const [picked, setPicked] = useState<number>(days.length - 1);
+  const safePicked = Math.min(picked, days.length - 1);
   const max = Math.max(1, ...days.map((d) => d.revenue));
   const total = days.reduce((s, d) => s + d.revenue, 0);
-  const sel = days[picked] || days[days.length - 1];
+  const sel = days[safePicked] || days[days.length - 1];
+  const manyBars = days.length > 14;
   const label = (date: string) =>
     new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '');
 
@@ -153,7 +166,7 @@ export function SalesChart({ days, currency, loading }: { days: HomeDay[]; curre
     <div className="rounded-2xl border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-foreground">7 derniers jours</p>
+          <p className="text-sm font-semibold text-foreground">{periodLabel ?? '7 derniers jours'}</p>
           <p className="text-xs text-muted-foreground">Total {money(total, currency)}</p>
         </div>
         {!loading && sel && (
@@ -165,17 +178,19 @@ export function SalesChart({ days, currency, loading }: { days: HomeDay[]; curre
           </div>
         )}
       </div>
-      <div className="mt-4 flex h-32 items-end gap-2">
+      <div className="mt-4 flex h-32 items-end gap-1">
         {days.map((d, i) => {
           const isToday = i === days.length - 1;
           const h = loading ? 20 + ((i * 37) % 60) : Math.max(4, Math.round((d.revenue / max) * 100));
+          // For many bars: only show label for today and every 7th bar
+          const showLabel = !manyBars || isToday || i % 7 === 0;
           return (
-            <button key={d.date} onClick={() => setPicked(i)} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5">
+            <button key={d.date} onClick={() => setPicked(i)} className="flex h-full flex-1 flex-col items-center justify-end gap-1">
               <div
                 style={{ height: `${h}%` }}
-                className={`w-full rounded-lg transition-all ${loading ? 'animate-pulse bg-muted' : isToday ? 'bg-gradient-to-t from-primary to-violet-500' : i === picked ? 'bg-primary/40' : 'bg-primary/15'}`}
+                className={`w-full rounded-md transition-all ${loading ? 'animate-pulse bg-muted' : isToday ? 'bg-gradient-to-t from-primary to-violet-500' : i === safePicked ? 'bg-primary/40' : 'bg-primary/15'}`}
               />
-              <span className={`text-[11px] capitalize ${isToday ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
+              <span className={`text-[10px] capitalize leading-none ${isToday ? 'font-semibold text-foreground' : 'text-muted-foreground'} ${!showLabel ? 'invisible' : ''}`}>
                 {isToday ? 'Auj.' : label(d.date)}
               </span>
             </button>
@@ -255,30 +270,49 @@ export function TopProducts({ top, currency, loading }: { top: HomeTop[]; curren
   );
 }
 
-export function RecentSales({ sales, currency, loading, moreTo }: { sales: HomeSale[]; currency: Currency; loading: boolean; moreTo?: string }) {
+export function RecentSales({
+  sales,
+  currency,
+  loading,
+  moreTo,
+}: {
+  sales: HomeSale[];
+  currency: Currency;
+  loading: boolean;
+  moreTo?: string;
+}) {
   return (
     <ListCard title="Dernières ventes" action={moreTo ? { label: 'Tout voir', to: moreTo } : undefined}>
       {loading ? (
         <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10" />)}</div>
       ) : !sales.length ? (
-        <p className="py-4 text-center text-sm text-muted-foreground">Aucune vente ces 7 derniers jours.</p>
+        <p className="py-4 text-center text-sm text-muted-foreground">Aucune vente sur cette période.</p>
       ) : (
         <div className="divide-y divide-border">
-          {sales.map((s) => (
-            <div key={s.id} className="flex items-center gap-3 py-2.5">
-              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-success/10 text-success">
-                <ShoppingCart className="h-4 w-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">{s.label}</p>
-                <p className="text-xs text-muted-foreground">
-                  {s.at ? new Date(s.at).toLocaleString('fr-FR', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
-                  {s.method ? ` · ${METHOD_LABELS[s.method] || s.method}` : ''}
-                </p>
+          {sales.map((s) => {
+            // Use the sale's own currency if available, otherwise fall back to the global toggle
+            const saleCurrency = (s.currency as Currency) || currency;
+            return (
+              <div key={s.id} className="flex items-center gap-3 py-2.5">
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-success/10 text-success">
+                  <ShoppingCart className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{s.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {s.at ? new Date(s.at).toLocaleString('fr-FR', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+                    {s.method ? ` · ${METHOD_LABELS[s.method] || s.method}` : ''}
+                  </p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-sm font-semibold text-foreground">{money(s.amount, saleCurrency)}</p>
+                  {s.currency && s.currency !== currency && (
+                    <p className="text-[10px] text-muted-foreground">{s.currency}</p>
+                  )}
+                </div>
               </div>
-              <span className="text-sm font-semibold text-foreground">{money(s.amount, currency)}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </ListCard>
