@@ -4,10 +4,12 @@
 abonnement ou retrait passe par un vrai prestataire (FlexPaie) avec de l'argent réel. Sans `PSP_PROVIDER` réglé sur un
 vrai prestataire, l'API **refuse** les paiements (elle ne les fait plus « réussir » toute seule).
 
-Pour tester, un développeur écrit de l'argent de test **directement dans la base**, depuis l'éditeur SQL de Supabase.
+Pour tester, un développeur écrit de l'argent de test **directement dans la base de test « LinkPay Test »**, depuis
+l'éditeur SQL de Supabase (`docs/BASE_TEST.md`). **Dans la base de production, c'est impossible** : `credit_test_money` y
+est refusé (migration `071`).
 
 ## Recharger un compte de test
-Supabase → **SQL Editor** → New query :
+Projet **LinkPay Test** → **SQL Editor** → New query :
 
 ```sql
 SELECT credit_test_money('+243 81 234 56 78', 10000, 'CDF');   -- 10 000 CDF
@@ -55,8 +57,8 @@ Seul l'éditeur SQL de Supabase (propriétaire de la base). Ni l'API, ni un util
 l'application ne peuvent appeler ces fonctions. Chaque écriture porte la mention `"source": "test-money"` dans ses
 métadonnées (`ledger_entries.metadata`) et la référence `TEST-…`.
 
-Migration : `linkpay-api/supabase/migrations/069_test_money.sql` (à exécuter avant de déployer l'API qui lit
-`wallets.is_test`).
+Migrations : `069_test_money.sql` (portefeuilles de test, clôture) et `071_platform_environment.sql` (argent de test
+réservé à la base de test).
 
 ## Argent fictif déjà dans la base (à vérifier AVANT d'activer les retraits automatiques)
 Avant cette version, le prestataire simulé `mock` créditait de **vrais** portefeuilles sans argent réel. Avec les

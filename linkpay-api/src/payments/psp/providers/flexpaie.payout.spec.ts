@@ -396,3 +396,17 @@ describe('security review', () => {
     expect(rows.get(REF)).toMatchObject({ amount_cents: 500000, currency: 'CDF' });
   });
 });
+
+describe('deployed before migration 067', () => {
+  it('no journal table: nothing is in flight, so the manual withdrawals stay on the admin page', async () => {
+    const svc = { getClient: () => ({ from: () => { const b: any = { select: () => b, in: () => b, then: (r: any) => Promise.resolve({ data: null, error: { message: 'relation "public.flexpaie_payouts" does not exist' } }).then(r) }; return b; } }) } as any;
+    const adapter = new FlexPaieAdapter({ get: (k: string, d?: any) => CFG[k] ?? d } as any, svc);
+    expect(await adapter.payoutsInFlight(['a', 'b'])).toEqual(new Set());
+  });
+
+  it('any other read error: everything is taken as in flight (never paid twice)', async () => {
+    const svc = { getClient: () => ({ from: () => { const b: any = { select: () => b, in: () => b, then: (r: any) => Promise.resolve({ data: null, error: { message: 'timeout' } }).then(r) }; return b; } }) } as any;
+    const adapter = new FlexPaieAdapter({ get: (k: string, d?: any) => CFG[k] ?? d } as any, svc);
+    expect(await adapter.payoutsInFlight(['a'])).toEqual(new Set(['a']));
+  });
+});

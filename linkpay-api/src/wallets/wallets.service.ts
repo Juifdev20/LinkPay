@@ -118,7 +118,12 @@ export class WalletsService {
    * on Render, after a real test), so a half-tested channel is never open to everybody.
    */
   paymentMethods(): { mobile_money: boolean; card: boolean } {
-    const provider = this.pspFactory.get().provider;
+    let provider: string;
+    try {
+      provider = this.pspFactory.get().provider;
+    } catch {
+      return { mobile_money: false, card: false }; // no real payment possible (test database, provider not set)
+    }
     const switchedOn = String(this.configService.get<string>('CARD_PAYMENTS_ENABLED', '') ?? '').trim().toLowerCase() === 'true';
     return { mobile_money: true, card: provider === 'flexpaie' && switchedOn };
   }
