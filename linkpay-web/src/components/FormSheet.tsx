@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { X } from 'lucide-react';
+import { ArrowLeft, X } from 'lucide-react';
 import { useSheetStore } from '@/lib/sheet-store';
 import { useVisualViewportInset } from '@/hooks/useVisualViewportInset';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -13,6 +13,11 @@ interface FormSheetProps {
   /** Accessible name for the sheet (Radix requires a Dialog.Title descendant).
    * Visually hidden — every form already has its own in-content heading per step. */
   title?: string;
+  /**
+   * On a phone, a full screen with a back arrow and the title (the money screens of the design: Envoyer,
+   * Recharger, Retirer, Encaisser, Payer) instead of a bottom sheet. Desktop is unchanged.
+   */
+  fullPage?: boolean;
 }
 
 /**
@@ -28,13 +33,14 @@ interface FormSheetProps {
  * step logic itself needs to change. New forms opt into the same behavior
  * for free by doing the same.
  */
-export function FormSheet({ children, onClose, title = 'Formulaire' }: FormSheetProps) {
+export function FormSheet({ children, onClose, title = 'Formulaire', fullPage = false }: FormSheetProps) {
   const keyboardInset = useVisualViewportInset();
   // Desktop already has its own sidebar navigation (no BottomNav to cover,
   // no on-screen keyboard to dodge) — the native-app bottom-sheet treatment
   // is a mobile-only concern. On desktop this renders as the same kind of
   // centered card these forms used before FormSheet existed.
   const isDesktop = useMediaQuery('(min-width: 768px)');
+  const page = fullPage && !isDesktop;
 
   // BottomNav hides itself for as long as any FormSheet is mounted (see
   // sheet-store.ts) — registered here so it works regardless of which page
@@ -55,7 +61,9 @@ export function FormSheet({ children, onClose, title = 'Formulaire' }: FormSheet
           }}
           className={cn(
             'fixed z-[60] flex flex-col bg-card shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out',
-            isDesktop
+            page
+              ? 'inset-x-0 top-0 bg-background safe-area-top safe-area-bottom data-[state=open]:slide-in-from-right-8 data-[state=open]:fade-in'
+              : isDesktop
               ? 'left-1/2 top-1/2 w-full max-w-md max-h-[85vh] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-border data-[state=open]:fade-in data-[state=open]:zoom-in-95 data-[state=closed]:fade-out data-[state=closed]:zoom-out-95'
               : 'inset-x-0 rounded-t-3xl safe-area-bottom data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom',
           )}
@@ -71,23 +79,34 @@ export function FormSheet({ children, onClose, title = 'Formulaire' }: FormSheet
                   // useVisualViewportInset() instead. Not needed on
                   // desktop, which has no on-screen keyboard to dodge.
                   bottom: keyboardInset,
-                  maxHeight: `calc(92dvh - ${keyboardInset}px)`,
+                  maxHeight: page ? undefined : `calc(92dvh - ${keyboardInset}px)`,
                 }
           }
           onEscapeKeyDown={onClose}
         >
-          <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
-          {/* Drag-handle affordance — implies "swipe to dismiss", a mobile
-              sheet convention with no meaning on a centered desktop card. */}
-          <div className="flex justify-center pt-3 pb-1 flex-shrink-0 md:hidden">
-            <div className="h-1.5 w-10 rounded-full bg-border" />
-          </div>
-          <DialogPrimitive.Close
-            className="absolute right-4 top-4 rounded-full p-1.5 text-muted-foreground hover:bg-accent transition-colors"
-            aria-label="Fermer"
-          >
-            <X className="w-4 h-4" />
-          </DialogPrimitive.Close>
+          {page ? (
+            <div className="flex flex-shrink-0 items-center gap-2 px-3 pt-3 pb-1">
+              <button type="button" onClick={onClose} aria-label="Retour" className="flex h-10 w-10 items-center justify-center rounded-full text-foreground hover:bg-accent">
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <DialogPrimitive.Title className="truncate text-lg font-bold text-foreground">{title}</DialogPrimitive.Title>
+            </div>
+          ) : (
+            <>
+              <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
+              {/* Drag-handle affordance — implies "swipe to dismiss", a mobile
+                  sheet convention with no meaning on a centered desktop card. */}
+              <div className="flex justify-center pt-3 pb-1 flex-shrink-0 md:hidden">
+                <div className="h-1.5 w-10 rounded-full bg-border" />
+              </div>
+              <DialogPrimitive.Close
+                className="absolute right-4 top-4 rounded-full p-1.5 text-muted-foreground hover:bg-accent transition-colors"
+                aria-label="Fermer"
+              >
+                <X className="w-4 h-4" />
+              </DialogPrimitive.Close>
+            </>
+          )}
           <div className="flex-1 overflow-y-auto overscroll-contain rounded-b-[inherit]">{children}</div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>

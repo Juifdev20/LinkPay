@@ -34,8 +34,8 @@ export function Logo({ size = 'md', showText = true, className, imgClassName }: 
         className={cn('rounded-xl object-cover shadow-sm', s.box, imgClassName)}
       />
       {showText && (
-        <span className={cn('font-bold tracking-tight text-foreground', s.title)}>
-          ScanLinkPay
+        <span className={cn('font-extrabold tracking-tight text-foreground', s.title)}>
+          ScanLink<span className="text-primary">Pay</span>
         </span>
       )}
     </div>

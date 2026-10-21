@@ -7,6 +7,7 @@ suppression de l'argent fictif et de CinetPay, base de test). Ordre : migrations
 dans `main` (voir `DECISIONS.md`, « Déploiement »).
 
 ## En place
+- Nouvelle interface (maquette 2026, clair et sombre) pour client et marchand — `DECISIONS.md` (21/10 soir). Migration `072` (taux indicatif) à exécuter.
 - Carte ScanLinkPay (impression, activation, paiement par scan avec PIN) — `docs/carte/`.
 - FlexPaie : encaissement Mobile Money et carte bancaire, vérification et rattrapage automatiques — `docs/FLEXPAIE.md`.
 - FlexPaie PayoutService : retraits Mobile Money automatiques (migration `067`, `FLEXPAIE_PAYOUTS_ENABLED`) ; retraits bancaires manuels — `docs/FLEXPAIE.md`, « Retraits automatiques ».
@@ -19,7 +20,7 @@ dans `main` (voir `DECISIONS.md`, « Déploiement »).
 
 ## À faire côté Render / Supabase
 - `PSP_PROVIDER=flexpaie` (obligatoire : sans lui, tout paiement est refusé) et les variables FlexPaie — `docs/RENDER_ENV.md`.
-- Migrations 059 (cartes) et 060 (`flexpaie_orders`) si pas encore faites, puis 067 → 071 (avant la fusion de la branche).
+- Migrations 059 (cartes) et 060 (`flexpaie_orders`) si pas encore faites, puis 067 → 072 (avant le déploiement).
 - Créer le projet Supabase « LinkPay Test » et y coller `linkpay-api/supabase/base_test.sql` — `docs/BASE_TEST.md`.
 - Retraits automatiques : variables `FLEXPAIE_PAYOUT_*` (identifiants du PayoutService, mot de passe par défaut à changer), page « Retraits à traiter » vidée, argent fictif ancien traité (`docs/RECHARGE_TEST.md`), puis `FLEXPAIE_PAYOUTS_ENABLED=true` et un retrait réel de 100 CDF par réseau.
 - `CARD_PAYMENTS_ENABLED=true` pour ouvrir la carte bancaire après un test réel (3 essais : payé, annulé, page fermée).
@@ -33,6 +34,7 @@ dans `main` (voir `DECISIONS.md`, « Déploiement »).
 - Traiter l'argent fictif des anciennes recharges `mock` avant d'activer les retraits automatiques (requête dans `docs/RECHARGE_TEST.md` ; écriture inverse, jamais de modification directe d'un solde).
 
 ## Idées pour la suite
+- Peaufiner avec la même charte les écrans entreprise, caisse, vendeur et administration.
 - Supervision des paiements en attente (page de rapprochement avec les relevés FlexPaie).
 
 ## Intégrations (HotelSaver) — ajouts compatibles (15/10/2026)

@@ -19,14 +19,14 @@ interface CurrencySelectorProps {
 export function CurrencySelector({ value, onChange, className, variant = 'default' }: CurrencySelectorProps) {
   if (variant === 'pill') {
     return (
-      <div className={cn('inline-flex rounded-full bg-white/15 p-0.5', className)}>
+      <div className={cn('inline-flex rounded-full bg-white/20 p-0.5 backdrop-blur-sm', className)}>
         {CURRENCIES.map((c) => (
           <button
             key={c.value}
             type="button"
             onClick={() => onChange(c.value)}
             className={cn(
-              'px-3 py-1 rounded-full text-xs font-bold transition-colors',
+              'px-3 py-1 rounded-full text-[11px] font-bold transition-colors',
               value === c.value ? 'bg-white text-primary' : 'text-primary-foreground/80 hover:text-primary-foreground',
             )}
           >

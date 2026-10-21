@@ -22,6 +22,7 @@ export default function MerchantTransactionsPage() {
   const [refundReason, setRefundReason] = useState('');
   const queryClient = useQueryClient();
   const merchantId = useAuthStore((s) => s.user?.merchant_id);
+  const isMerchant = useAuthStore((s) => s.user?.role === 'merchant');
 
   const { data } = useQuery({
     queryKey: ['transactions', page, search, status],
@@ -64,7 +65,7 @@ export default function MerchantTransactionsPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
-      <PageHeader title="Transactions" />
+      <PageHeader title={isMerchant ? 'Paiements reçus' : 'Transactions'} />
 
       <div className="flex gap-3 flex-col sm:flex-row">
         <div className="relative flex-1">

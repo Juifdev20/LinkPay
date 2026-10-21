@@ -76,7 +76,7 @@ export function PinInput({ value, onChange, length = 4, autoFocus, error, title,
           error={message}
           note={identityNote(user)}
           footer={
-            <button type="button" className="text-[16px] text-slate-700 py-1" onClick={() => { onChange(''); setOpen(false); }}>
+            <button type="button" className="text-[16px] text-foreground py-1" onClick={() => { onChange(''); setOpen(false); }}>
               Annuler
             </button>
           }

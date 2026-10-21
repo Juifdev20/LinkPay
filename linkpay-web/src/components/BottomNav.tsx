@@ -95,8 +95,11 @@ export function computeVisibleTabs(
     : hasMerchantId
     ? { to: '/dashboard/wallet/receive', label: 'Encaisser', icon: QrCode, end: false, central: true }
     : { to: '/dashboard/wallet/receive', label: 'Recevoir', icon: QrCode, end: false, central: true };
+  // Clients and merchants: the wallet's own history (top-ups, transfers, payments, withdrawals), as in the design.
   const transactionsTab = isEnterprise
     ? { ...tabs[1], to: '/dashboard/organization/transactions' }
+    : role === 'client' || role === 'merchant'
+    ? { ...tabs[1], to: '/dashboard/wallet/transactions' }
     : tabs[1];
   const allTabs = staffTabsFor(role || '', orgSector) ?? [tabs[0], transactionsTab, qrTab, tabs[2]];
 
@@ -104,7 +107,8 @@ export function computeVisibleTabs(
   const businessItemCount = navRole
     ? navItemsFor(navRole, orgSector).filter((i) => !NAV_CHROME_PATHS.includes(i.to)).length
     : 0;
-  const usePlusTab = businessItemCount > 3;
+  // Clients and merchants always get the four tabs of the design: Accueil, Transactions, Encaisser/Recevoir, Plus.
+  const usePlusTab = businessItemCount > 3 || navRole === 'client' || navRole === 'merchant';
   const displayTabs = usePlusTab
     ? [...allTabs.filter((t) => t.to !== '/dashboard/settings'), plusTab]
     : allTabs;
@@ -147,11 +151,11 @@ export function BottomNav() {
   return (
     <nav
       className={cn(
-        'md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border shadow-nav safe-area-bottom transition-transform duration-200',
+        'md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-t border-border shadow-nav safe-area-bottom transition-transform duration-200',
         hidden && 'translate-y-full',
       )}
     >
-      <div className="flex items-center justify-around h-16 px-2">
+      <div className="flex items-center justify-around h-[68px] px-2">
         {displayTabs.map((tab) => {
           // Accueil is also the staff's sales dashboard, so it lights up there.
           const forceActive =
@@ -165,41 +169,26 @@ export function BottomNav() {
               className={({ isActive: navActive }) => {
                 const isActive = navActive || forceActive;
                 return cn(
-                  'flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg transition-colors min-w-[60px]',
-                  tab.central && 'relative -mt-6',
-                  !tab.central && (isActive ? 'text-primary' : 'text-muted-foreground'),
+                  'flex flex-col items-center justify-center gap-1 px-2 py-1 rounded-lg transition-colors min-w-[64px]',
+                  isActive ? 'text-primary' : 'text-muted-foreground',
                 );
               }}
             >
               {({ isActive: navActive }) => {
                 const isActive = navActive || forceActive;
-                return tab.central ? (
+                // Same look for every tab (the design has no raised central button): the active one gets its
+                // icon on the brand gradient and a violet label.
+                return (
                   <>
-                    {/* Central tab is coloured only while it is the current screen. */}
                     <div
                       className={cn(
-                        'w-12 h-12 rounded-2xl flex items-center justify-center transition-colors',
-                        isActive ? 'bg-primary shadow-lg shadow-primary/30' : 'bg-card border border-border',
+                        'w-11 h-8 rounded-xl flex items-center justify-center transition-all',
+                        isActive && 'bg-brand-gradient shadow-brand',
                       )}
                     >
-                      <tab.icon className={cn('w-6 h-6', isActive ? 'text-primary-foreground' : 'text-muted-foreground')} />
+                      <tab.icon className={cn('w-[21px] h-[21px]', isActive && 'text-primary-foreground')} strokeWidth={isActive ? 2.2 : 1.8} />
                     </div>
-                    <span className="text-[10px] font-medium mt-0.5">{tab.label}</span>
-                  </>
-                ) : (
-                  <>
-                    {/* Active tab: colored pill behind the icon, icon stays
-                        light — same treatment as the central QR button above,
-                        generalized to every tab instead of just that one. */}
-                    <div
-                      className={cn(
-                        'w-9 h-9 rounded-full flex items-center justify-center transition-colors',
-                        isActive && 'bg-primary',
-                      )}
-                    >
-                      <tab.icon className={cn('w-5 h-5', isActive && 'text-primary-foreground')} />
-                    </div>
-                    <span className="text-[10px] font-medium">{tab.label}</span>
+                    <span className={cn('text-[11px] leading-none', isActive ? 'font-semibold' : 'font-medium')}>{tab.label}</span>
                   </>
                 );
               }}

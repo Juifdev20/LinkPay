@@ -5,6 +5,39 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 21/10/2026 (soir) — Nouvelle interface (maquette ScanLinkPay 2026, clair et sombre)
+
+Le propriétaire a fourni une maquette à suivre « textuellement » (écrans client et marchand, mode clair et sombre).
+Choix faits avec lui : **client et marchand d'abord** (la charte s'applique partout, les écrans entreprise / caisse /
+admin seront peaufinés ensuite) ; **« Mes dépenses » = camembert automatique + carnet manuel en dessous** ; **taux
+CDF/USD indicatif réglé par le super admin** ; **avatar = silhouette** (pas de photo de profil pour l'instant).
+
+- **Charte** (`linkpay-web/src/index.css`, `tailwind.config.js`) : violet `#6C3CFF`, bleu `#0EA5FF`, fond `#F5F7FF`,
+  nuit `#111827` ; dégradé `bg-brand-gradient` (carte de solde, boutons principaux, onglet actif) ; police **Inter** ;
+  montants écrits « 2 950,00 CDF » / « 5,12 $US » (`formatCurrency`).
+- **Thème** appliqué dès la première image, même avant la connexion : `public/theme-init.js` (fichier séparé : la CSP
+  Android interdit les scripts en ligne).
+- **Barres** : barre du haut (logo, cloche, avatar silhouette `UserAvatar`) ; barre du bas à plat, quatre onglets pour
+  client et marchand : Accueil, Transactions, Encaisser / Recevoir, Plus (Paramètres passe dans Plus).
+- **Onglet Transactions** (client, marchand) = historique du portefeuille (`/dashboard/wallet/transactions`) : recherche,
+  Toutes / Entrées / Sorties, icônes colorées par type (`LedgerItem`). L'API ajoute `counterparty` à chaque ligne (nom de
+  l'autre personne, du marchand, du réseau de retrait — affichage seulement, `withCounterparties`). L'ancienne page
+  « Transactions » du marchand (paiements de ses clients, avec remboursements) s'appelle maintenant **« Paiements reçus »**.
+- **Écrans d'argent** (Envoyer, Recharger, Retirer, Encaisser, Payer, PIN, nouvelle demande) : en **pleine page** sur
+  téléphone (`FormSheet fullPage` : flèche retour + titre) au lieu du panneau qui monte du bas. Envoyer : bénéficiaire,
+  montant, « ≈ x $US », montants rapides, motif. Retrait : on choisit d'abord le **point de retrait** (réseau ou banque).
+- **Mes dépenses** : `GET /wallet/spending?period=1m|3m|6m&currency=` (débits du portefeuille par catégorie ; un retrait
+  échoué et rendu ne compte pas) → camembert `SpendingOverview` ; le carnet manuel reste en dessous.
+- **Taux indicatif** : colonne `platform_settings.cdf_per_usd` (migration **072**), lue publiquement
+  (`GET /platform/settings`), réglée dans Administration → Frais et limites. **N'effectue jamais de conversion.**
+- **Écran du code d'accès** aux couleurs de la charte (dégradé, carte et clavier qui suivent le thème).
+- Vérification : banc de captures Playwright (API simulée) clair/sombre, `npm run build`, 722 tests API.
+
+À faire : migration 072 (Test puis production) ; puis peaufiner les écrans entreprise, caisse, vendeur et admin avec
+la même charte.
+
+---
+
 ## 21/10/2026 — Retraits automatiques FlexPaie, plus d'argent fictif, base de test séparée
 
 Branche `claude/gifted-brahmagupta-o286hw` (10 commits, de `b73ff34` à la dernière). **À fusionner dans `main` seulement

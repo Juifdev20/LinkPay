@@ -132,6 +132,17 @@ export class WalletsController {
     });
   }
 
+  @Get('spending')
+  @ApiOperation({ summary: "What left the wallet, by category, over this month / 3 months / 6 months (\"Mes dépenses\")" })
+  async getSpending(
+    @CurrentUser('id') userId: string,
+    @Query('period') period?: string,
+    @Query('currency') currency?: string,
+  ) {
+    const months = period === '6m' ? 6 : period === '3m' ? 3 : 1;
+    return this.walletsService.getSpending(userId, months, currency === 'USD' ? 'USD' : 'CDF');
+  }
+
   @Post('topups')
   @ApiOperation({ summary: 'Initiate a wallet top-up (recharge)' })
   async createTopup(

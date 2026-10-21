@@ -10,10 +10,11 @@ import { BottomNav } from '@/components/BottomNav';
 import { TopBar } from '@/components/TopBar';
 import { NotificationsBell } from '@/components/NotificationsBell';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
+import { UserAvatar } from '@/components/UserAvatar';
 import { CardChargePrompt } from '@/components/card/CardChargePrompt';
 import { useTheme } from '@/hooks/useTheme';
 import { usePaymentReceivedAlert } from '@/hooks/usePaymentReceivedAlert';
-import { LogOut, User, Building2, Sun, Moon, Menu, Search, X } from 'lucide-react';
+import { LogOut, Building2, Sun, Moon, Menu, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SECTORS } from '@/pages/organization/OnboardingWizard';
 import { navItemsFor } from '@/lib/nav-items';
@@ -137,9 +138,7 @@ export default function DashboardLayout() {
             <div className="p-4 border-t border-border">
               {!sidebarCollapsed && (
                 <div className="flex items-center gap-3 mb-3 px-3">
-                  <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center">
-                    <User className="w-4 h-4 text-muted-foreground" />
-                  </div>
+                  <UserAvatar className="w-9 h-9" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold truncate text-foreground">{user?.full_name || user?.email}</p>
                     {/* role 'merchant' here would be misleading — an org
@@ -182,12 +181,8 @@ export default function DashboardLayout() {
                 {effectiveTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </Button>
               <NotificationsBell />
-              <Link
-                to="/dashboard/profile"
-                className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center hover:bg-accent transition-colors"
-                aria-label="Profil"
-              >
-                <User className="w-4 h-4 text-muted-foreground" />
+              <Link to="/dashboard/profile" className="rounded-full" aria-label="Profil">
+                <UserAvatar className="w-9 h-9" />
               </Link>
             </div>
           </div>
@@ -196,7 +191,7 @@ export default function DashboardLayout() {
           {/* pt-20 clears the fixed TopBar (mobile only, hence md:pt-0 — the
               desktop header above already accounts for its own space in
               the normal flow) */}
-          <div className="pt-20 pb-20 md:pt-0 md:pb-0">
+          <div className="pt-[68px] pb-20 md:pt-0 md:pb-0">
             {/* Only shown while "acting as" a store entered from the org
                 dashboard (acting_as_org_id) — not role-based, since role is
                 'merchant' in that state, indistinguishable from a real

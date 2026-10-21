@@ -109,7 +109,109 @@ export class WalletsService {
       throw new Error(`Failed to fetch wallet ledger: ${error.message}`);
     }
 
-    return { data, total: count || 0, page, limit };
+    return { data: await this.withCounterparties(data || []), total: count || 0, page, limit };
+  }
+
+  /**
+   * "Mes dépenses": what LEFT the wallet in one currency, by category, since the start of the month (1) or of the
+   * month 2 or 5 months ago (3, 6). Read from the ledger only; a withdrawal given back (failed) does not count.
+   */
+  async getSpending(userId: string, months: 1 | 3 | 6 | number, currency: 'CDF' | 'USD') {
+    const wallet = await this.getWalletByUserId(userId);
+    const since = new Date();
+    since.setDate(1);
+    since.setHours(0, 0, 0, 0);
+    since.setMonth(since.getMonth() - (months - 1));
+
+    const { data, error } = await this.supabaseService.getClient()
+      .from('ledger_entries')
+      .select('entry_type, direction, amount_cents, reference')
+      .eq('wallet_id', wallet.id)
+      .eq('currency', currency)
+      .gte('created_at', since.toISOString())
+      .limit(10000);
+    if (error) throw new Error(`Failed to read spending: ${error.message}`);
+
+    const CATEGORY: Record<string, string> = { TRANSFER_OUT: 'transfer', PAYMENT: 'merchant_payment', WITHDRAWAL: 'withdrawal', SUBSCRIPTION: 'subscription' };
+    const totals: Record<string, number> = { transfer: 0, merchant_payment: 0, withdrawal: 0, subscription: 0, other: 0 };
+    for (const e of data || []) {
+      const amount = Number(e.amount_cents) || 0;
+      if (e.direction === 'debit') totals[CATEGORY[e.entry_type] ?? 'other'] += amount;
+      // A failed withdrawal comes back as a credit: it was never spent.
+      else if (String(e.reference || '').startsWith('WITHDRAWAL-REVERSAL-')) totals.withdrawal -= amount;
+    }
+    const LABELS: Record<string, string> = { transfer: 'Transferts', merchant_payment: 'Paiements marchands', withdrawal: 'Retraits', subscription: 'Abonnements', other: 'Autres' };
+    const categories = Object.entries(totals)
+      .map(([key, cents]) => ({ key, label: LABELS[key], amount_cents: Math.max(0, cents) }))
+      .filter((c) => c.amount_cents > 0)
+      .sort((a, b) => b.amount_cents - a.amount_cents);
+    const total = categories.reduce((s, c) => s + c.amount_cents, 0);
+    return {
+      currency,
+      since: since.toISOString(),
+      total_cents: total,
+      categories: categories.map((c) => ({ ...c, percent: total ? Math.round((c.amount_cents / total) * 1000) / 10 : 0 })),
+    };
+  }
+
+  /**
+   * Adds `counterparty` to each ledger line — who the money went to or came from, as the history screen shows it
+   * ("Jean Dupont", "Supermarché Kivu", "Orange Money") — read from what the entry already points to. Display only:
+   * a name that cannot be found is simply left out, never an error.
+   */
+  private async withCounterparties(entries: any[]): Promise<any[]> {
+    if (!entries.length) return entries;
+    const db = this.supabaseService.getClient();
+    const ids = (key: string) => [...new Set(entries.map((e) => e.metadata?.[key]).filter(Boolean))] as string[];
+    const names = new Map<string, string>();
+
+    try {
+      // Transfers: the other wallet's owner.
+      const walletIds = ids('counterparty_wallet_id');
+      if (walletIds.length) {
+        const { data: wallets } = await db.from('wallets').select('id, user_id').in('id', walletIds);
+        const userIds = [...new Set((wallets || []).map((w: any) => w.user_id))];
+        const { data: people } = userIds.length ? await db.from('profiles').select('id, full_name').in('id', userIds) : { data: [] as any[] };
+        const byUser = new Map((people || []).map((p: any) => [p.id, p.full_name]));
+        for (const w of wallets || []) if (byUser.get(w.user_id)) names.set(`w:${w.id}`, byUser.get(w.user_id));
+      }
+      // Wallet payment of an invoice: the merchant.
+      const requestIds = ids('payment_request_id');
+      const merchantIds = new Set<string>(ids('merchant_id'));
+      const requestMerchant = new Map<string, string>();
+      if (requestIds.length) {
+        const { data: requests } = await db.from('payment_requests').select('id, merchant_id').in('id', requestIds);
+        for (const r of requests || []) { requestMerchant.set(r.id, r.merchant_id); merchantIds.add(r.merchant_id); }
+      }
+      if (merchantIds.size) {
+        const { data: merchants } = await db.from('merchants').select('id, name').in('id', [...merchantIds]);
+        for (const m of merchants || []) names.set(`m:${m.id}`, m.name);
+      }
+      for (const [requestId, merchantId] of requestMerchant) if (names.get(`m:${merchantId}`)) names.set(`r:${requestId}`, names.get(`m:${merchantId}`)!);
+      // Withdrawals: the destination network or bank.
+      const withdrawalIds = ids('withdrawal_id');
+      if (withdrawalIds.length) {
+        const { data: withdrawals } = await db.from('withdrawals').select('id, channel, destination').in('id', withdrawalIds);
+        const operators: Record<string, string> = { mpesa: 'M-Pesa', vodacom: 'M-Pesa', orange: 'Orange Money', airtel: 'Airtel Money', africell: 'Afrimoney' };
+        for (const w of withdrawals || []) {
+          const label = w.channel === 'bank' ? (w.destination?.bank || 'Banque') : (operators[String(w.destination?.operator || '').toLowerCase()] || 'Mobile Money');
+          names.set(`x:${w.id}`, label);
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`Ledger names not loaded: ${err?.message}`);
+    }
+
+    return entries.map((e) => {
+      const m = e.metadata || {};
+      const counterparty =
+        (m.counterparty_wallet_id && names.get(`w:${m.counterparty_wallet_id}`)) ||
+        (m.payment_request_id && names.get(`r:${m.payment_request_id}`)) ||
+        (m.merchant_id && names.get(`m:${m.merchant_id}`)) ||
+        (m.withdrawal_id && names.get(`x:${m.withdrawal_id}`)) ||
+        (e.entry_type === 'TOPUP' ? 'Mobile Money' : null);
+      return { ...e, counterparty: counterparty || null };
+    });
   }
 
   /**

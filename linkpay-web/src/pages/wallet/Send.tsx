@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { PinInput } from '@/components/PinInput';
-import { CurrencySelector } from '@/components/CurrencySelector';
 import { formatCurrency } from '@/lib/utils';
 import { FormSheet } from '@/components/FormSheet';
 import { PaymentMethodPicker, PaymentMethodId } from '@/components/payment/PaymentMethodPicker';
@@ -18,7 +17,9 @@ import { TopupStatusCard } from '@/components/TopupStatusCard';
 import { usePaymentStatusPoll } from '@/hooks/usePaymentStatusPoll';
 import { displayPhone, isNumberReady, operatorById, toApiPhone } from '@/lib/mobile-money';
 import { followCheckout } from '@/lib/safe-url';
-import { Loader2, Check, Search, ArrowLeft, Send as SendIcon, User, Store } from 'lucide-react';
+import { Loader2, Check, Search, ArrowLeft, User, Store, UserRound, QrCode, ChevronRight } from 'lucide-react';
+import { UserAvatar } from '@/components/UserAvatar';
+import { indicativeOther, useIndicativeRate } from '@/lib/indicative-rate';
 
 type Step = 'number' | 'amount' | 'method' | 'confirm' | 'pin' | 'processing' | 'waiting' | 'success' | 'failed' | 'pending';
 
@@ -65,6 +66,7 @@ export default function SendPage() {
   const cardOpen = !!methods?.card;
 
   const amountCents = Math.round((parseFloat(amount) || 0) * 100);
+  const rate = useIndicativeRate();
 
   // While the Mobile Money confirmation is pending, poll the transfer's
   // status — the same fallback the top-up flow uses for a missing webhook.
@@ -434,95 +436,129 @@ export default function SendPage() {
   }
 
   if (step === 'amount') {
+    const presets = currency === 'CDF' ? [5000, 10000, 20000, 50000] : [5, 10, 20, 50];
+    const approx = indicativeOther(amountCents, currency, rate);
     return (
-      <div className="p-6 max-w-md mx-auto">
-        <Card>
-          <CardContent className="pt-6">
-            <button onClick={() => setStep('number')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4">
-              <ArrowLeft className="w-4 h-4" /> Modifier le destinataire
-            </button>
-            <div className="flex items-center gap-3 rounded-xl bg-secondary p-3 mb-6">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                {recipient?.is_merchant ? <Store className="w-5 h-5 text-primary" /> : <User className="w-5 h-5 text-primary" />}
-              </div>
-              <div className="min-w-0">
-                <p className="font-semibold text-foreground truncate">{recipient?.display_name}</p>
-                <p className="text-xs text-muted-foreground font-mono">{recipient?.wallet_number}</p>
-              </div>
-            </div>
-            <form onSubmit={handleAmountContinue} className="space-y-4">
-              {error && (
-                <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
-                  {error}
-                </div>
-              )}
-              <div className="space-y-2">
-                <Label className="font-semibold">Devise</Label>
-                <CurrencySelector value={currency} onChange={setCurrency} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="amount" className="font-semibold">Montant ({currency})</Label>
-                <Input id="amount" type="number" step="0.01" placeholder="10000" value={amount} onChange={(e) => setAmount(e.target.value)} required autoFocus />
-                {wallet && <p className="text-xs text-muted-foreground">Solde disponible : {formatCurrency(wallet.balances?.[currency] || 0, currency)}</p>}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="description" className="font-semibold">Note (optionnel)</Label>
-                <Input id="description" placeholder="Pour le loyer..." value={description} onChange={(e) => setDescription(e.target.value)} />
-              </div>
-              <Button type="submit" className="w-full" size="lg" disabled={amountLoading}>
-                {amountLoading && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
-                Continuer
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-6 max-w-md mx-auto">
-      <Card>
-        <CardContent className="pt-6">
-          <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-            <SendIcon className="w-7 h-7 text-primary" />
+      <form onSubmit={handleAmountContinue} className="px-5 pt-2 pb-6 max-w-md mx-auto space-y-5">
+        {error && (
+          <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
+            {error}
           </div>
-          <h2 className="text-xl font-bold text-foreground mb-1 text-center">Envoyer de l'argent</h2>
-          <p className="text-sm text-muted-foreground mb-6 text-center">Entrez le numéro ScanLinkPay du destinataire</p>
-          <form onSubmit={handleLookup} className="space-y-4">
-            {error && (
-              <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
-                {error}
-              </div>
+        )}
+        <div className="space-y-2">
+          <Label className="font-semibold">Bénéficiaire</Label>
+          <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3 shadow-soft">
+            {recipient?.is_merchant ? (
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary"><Store className="h-5 w-5" /></span>
+            ) : (
+              <UserAvatar className="h-10 w-10" />
             )}
-            <div className="space-y-2">
-              <Label htmlFor="number" className="font-semibold">Numéro ScanLinkPay</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="number"
-                  placeholder="SLP-00001234"
-                  value={recipientNumber}
-                  onChange={(e) => setRecipientNumber(e.target.value)}
-                  required
-                  autoFocus
-                  className="pl-10 font-mono"
-                />
-              </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-semibold text-foreground">{recipient?.display_name}</p>
+              <p className="text-xs text-muted-foreground font-mono">{recipient?.wallet_number}</p>
             </div>
-            <Button type="submit" className="w-full" size="lg" disabled={looking || !recipientNumber}>
-              {looking && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
-              Rechercher
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+            <button type="button" onClick={() => setStep('number')} aria-label="Changer de bénéficiaire" className="flex h-9 w-9 items-center justify-center rounded-full text-primary hover:bg-primary/10">
+              <UserRound className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="amount" className="font-semibold">Montant</Label>
+          <div className="flex h-14 items-center rounded-2xl border border-border bg-card px-4 shadow-soft focus-within:ring-2 focus-within:ring-ring">
+            <input
+              id="amount"
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              placeholder="0"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              required
+              autoFocus
+              className="min-w-0 flex-1 bg-transparent text-2xl font-bold text-foreground outline-none placeholder:text-muted-foreground/50"
+            />
+            <button
+              type="button"
+              onClick={() => setCurrency(currency === 'CDF' ? 'USD' : 'CDF')}
+              className="rounded-lg px-2 py-1 text-sm font-semibold text-muted-foreground hover:bg-accent"
+              aria-label="Changer de devise"
+            >
+              {currency}
+            </button>
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>{approx || ' '}</span>
+            {wallet && <span>Solde : {formatCurrency(wallet.balances?.[currency] || 0, currency)}</span>}
+          </div>
+          <div className="grid grid-cols-4 gap-2 pt-1">
+            {presets.map((p) => {
+              const active = amountCents === p * 100;
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setAmount(String(p))}
+                  className={`rounded-full border py-2 text-xs font-semibold transition-colors ${active ? 'border-transparent bg-brand-gradient text-white shadow-brand' : 'border-border bg-card text-foreground hover:bg-accent'}`}
+                >
+                  {new Intl.NumberFormat('fr-FR').format(p)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="description" className="font-semibold">Motif (optionnel)</Label>
+          <Input id="description" placeholder="Ex. : Aide, Frais, etc." value={description} onChange={(e) => setDescription(e.target.value)} className="rounded-2xl bg-card" />
+        </div>
+
+        <Button type="submit" className="w-full h-12 rounded-2xl text-base" disabled={amountLoading}>
+          {amountLoading && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
+          Continuer
+          <ChevronRight className="ml-1 h-4 w-4" />
+        </Button>
+      </form>
     );
   }
 
   return (
-    <FormSheet onClose={() => navigate(-1)} title="Envoyer de l'argent">
+    <form onSubmit={handleLookup} className="px-5 pt-2 pb-6 max-w-md mx-auto space-y-5">
+      {error && (
+        <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
+          {error}
+        </div>
+      )}
+      <div className="space-y-2">
+        <Label htmlFor="number" className="font-semibold">Bénéficiaire</Label>
+        <div className="flex h-14 items-center gap-2 rounded-2xl border border-border bg-card px-4 shadow-soft focus-within:ring-2 focus-within:ring-ring">
+          <Search className="h-4 w-4 text-muted-foreground" />
+          <input
+            id="number"
+            placeholder="Numéro ScanLinkPay (SLP-…)"
+            value={recipientNumber}
+            onChange={(e) => setRecipientNumber(e.target.value)}
+            required
+            autoFocus
+            className="min-w-0 flex-1 bg-transparent font-mono text-sm text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground"
+          />
+          <button type="button" onClick={() => navigate('/dashboard/wallet/scan')} aria-label="Scanner un QR" className="flex h-9 w-9 items-center justify-center rounded-full text-primary hover:bg-primary/10">
+            <QrCode className="h-5 w-5" />
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground">Saisissez le numéro ScanLinkPay du bénéficiaire, ou scannez son QR.</p>
+      </div>
+      <Button type="submit" className="w-full h-12 rounded-2xl text-base" disabled={looking || !recipientNumber}>
+        {looking && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
+        Continuer
+        <ChevronRight className="ml-1 h-4 w-4" />
+      </Button>
+    </form>
+    );
+  }
+
+  return (
+    <FormSheet fullPage onClose={() => navigate(-1)} title="Envoyer de l'argent">
       {renderStep()}
     </FormSheet>
   );

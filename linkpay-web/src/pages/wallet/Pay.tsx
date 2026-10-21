@@ -361,7 +361,7 @@ export default function PayInvoicePage() {
   }
 
   return (
-    <FormSheet onClose={() => navigate(-1)} title="Payer une facture">
+    <FormSheet fullPage onClose={() => navigate(-1)} title="Payer une facture">
       {renderStep()}
     </FormSheet>
   );

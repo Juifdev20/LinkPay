@@ -22,10 +22,10 @@ export function WalletActions({ currency }: WalletActionsProps) {
         <Link
           key={a.to}
           to={a.to}
-          className="flex flex-col items-center gap-1.5 rounded-xl bg-white/20 hover:bg-white/30 py-3 transition-colors"
+          className="flex flex-col items-center gap-1.5 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/10 py-3 backdrop-blur-sm transition-colors active:scale-95"
         >
-          <a.icon className="w-5 h-5" />
-          <span className="text-xs font-semibold">{a.label}</span>
+          <a.icon className="w-5 h-5" strokeWidth={2} />
+          <span className="text-[11px] font-semibold">{a.label}</span>
         </Link>
       ))}
     </div>

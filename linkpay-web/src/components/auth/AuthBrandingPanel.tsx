@@ -18,7 +18,7 @@ interface AuthBrandingPanelProps {
  */
 export function AuthBrandingPanel({ headline, tagline, className }: AuthBrandingPanelProps) {
   return (
-    <div className={cn('relative overflow-hidden bg-gradient-to-br from-primary to-primary/80 flex-shrink-0', className)}>
+    <div className={cn('relative overflow-hidden bg-brand-gradient flex-shrink-0', className)}>
       <div className="absolute -top-1/3 -left-1/4 w-[80%] h-[80%] bg-secondary/10 rounded-full blur-3xl" />
 
       <div className="relative z-10 flex flex-col items-center justify-center h-full px-6 py-6 text-center gap-3 md:gap-5">

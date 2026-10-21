@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
-import { User, Phone, KeyRound, ArrowLeftRight, ChevronRight, LogOut, Boxes, type LucideIcon } from 'lucide-react';
+import { UserAvatar } from '@/components/UserAvatar';
+import { Phone, KeyRound, ArrowLeftRight, ChevronRight, LogOut, Boxes, type LucideIcon } from 'lucide-react';
 
 export default function ProfilePage() {
   const user = useAuthStore((s) => s.user);
@@ -47,9 +48,7 @@ export default function ProfilePage() {
       <Card>
         <CardContent className="pt-6">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-secondary flex items-center justify-center">
-              <User className="w-8 h-8 text-muted-foreground" />
-            </div>
+            <UserAvatar className="w-16 h-16" />
             <div className="flex-1 min-w-0">
               <p className="font-bold text-lg text-foreground truncate">{user?.full_name || 'Utilisateur'}</p>
               <p className="text-sm text-muted-foreground truncate">{user?.email}</p>

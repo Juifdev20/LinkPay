@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -8,13 +7,14 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { PageHeader } from '@/components/PageHeader';
+import { SpendingOverview } from '@/components/SpendingOverview';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { DualCurrencyStat } from '@/components/DualCurrencyStat';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { downloadExpenseDayPdf } from '@/lib/expense-pdf';
 import { ExpenseProUpgrade } from './ExpenseProUpgrade';
 import { ExpensePlanSelection } from './ExpensePlanSelection';
-import { Loader2, ArrowLeft, Plus, Lock, Download, Receipt, AlertTriangle } from 'lucide-react';
+import { Loader2, Plus, Lock, Download, Receipt, AlertTriangle } from 'lucide-react';
 
 interface ExpenseEntry {
   id: string;
@@ -45,7 +45,6 @@ interface ExpenseStatus {
 }
 
 export default function ExpenseTrackerPage() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [currency, setCurrency] = useState<'CDF' | 'USD'>('CDF');
@@ -136,12 +135,17 @@ export default function ExpenseTrackerPage() {
   }
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-2xl mx-auto">
-      <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="w-4 h-4" /> Retour
-      </button>
-
+    <div className="px-4 pt-2 pb-28 md:p-6 space-y-5 max-w-2xl mx-auto">
       <PageHeader title="Mes dépenses" />
+
+      {/* Automatic: what left the wallet, by category (as in the design). */}
+      <SpendingOverview />
+
+      {/* The personal notebook (expenses written by hand, Pro plan), below. */}
+      <div className="pt-2">
+        <p className="text-[15px] font-bold text-foreground">Mon carnet de dépenses</p>
+        <p className="text-xs text-muted-foreground">Notez vos dépenses du quotidien, même celles payées en espèces.</p>
+      </div>
 
       {status.needs_plan_selection ? (
         <ExpensePlanSelection status={status} />

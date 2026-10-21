@@ -98,9 +98,9 @@ export function NotificationsBell() {
         onClick={() => setOpen(!open)}
         className="relative w-10 h-10 rounded-xl hover:bg-accent flex items-center justify-center transition-colors"
       >
-        <Bell className="w-5 h-5 text-muted-foreground" />
+        <Bell className="w-[22px] h-[22px] text-foreground" />
         {unreadCount > 0 && (
-          <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-destructive" />
+          <span className="absolute top-2 right-2.5 w-2.5 h-2.5 rounded-full bg-destructive ring-2 ring-background" />
         )}
       </button>
 

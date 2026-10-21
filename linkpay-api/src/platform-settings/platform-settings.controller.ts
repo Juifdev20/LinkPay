@@ -1,6 +1,6 @@
 import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty } from '@nestjs/swagger';
-import { IsBoolean } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, Max, Min, ValidateIf } from 'class-validator';
 import { PlatformSettingsService } from './platform-settings.service';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -9,9 +9,18 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { OtpStepUpGuard, RequireOtp } from '../security/otp-step-up.guard';
 
 class UpdatePlatformSettingsDto {
-  @ApiProperty({ description: "Bloquer les captures et enregistrements d'écran dans l'application Android" })
+  @ApiProperty({ required: false, description: "Bloquer les captures et enregistrements d'écran dans l'application Android" })
+  @IsOptional()
   @IsBoolean()
-  screenshot_protection!: boolean;
+  screenshot_protection?: boolean;
+
+  @ApiProperty({ required: false, nullable: true, description: 'Taux indicatif : combien de CDF pour 1 USD (affichage seulement ; null = aucun)' })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(999999)
+  cdf_per_usd?: number | null;
 }
 
 @ApiTags('Platform settings')
@@ -22,7 +31,7 @@ export class PlatformSettingsController {
   // Public: read before login too — the login and PIN screens are protected.
   @Public()
   @Get('platform/settings')
-  @ApiOperation({ summary: "Réglages globaux lus par l'application au lancement (protection des captures d'écran)" })
+  @ApiOperation({ summary: "Réglages globaux lus par l'application au lancement (protection des captures d'écran, taux indicatif)" })
   getPublic() {
     return this.platformSettingsService.getPublicSettings();
   }

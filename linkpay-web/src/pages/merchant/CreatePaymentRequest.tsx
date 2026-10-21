@@ -187,7 +187,7 @@ export default function CreatePaymentRequestPage() {
   }
 
   return (
-    <FormSheet onClose={() => navigate(-1)} title="Nouvelle demande de paiement">
+    <FormSheet fullPage onClose={() => navigate(-1)} title="Nouvelle demande de paiement">
       {renderStep()}
     </FormSheet>
   );

@@ -3,11 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/PageHeader';
 import { BalanceCard } from '@/components/BalanceCard';
 import { WalletActions } from '@/components/WalletActions';
-import { TransactionItem } from '@/components/TransactionItem';
+import { RecentLedger } from '@/components/RecentLedger';
 import { StatTile } from '@/components/StatTile';
 import { ShortcutButton } from '@/components/ShortcutButton';
 import { Plus, TrendingUp, Receipt, Wallet, QrCode, RefreshCcw, PiggyBank, Wallet2 } from 'lucide-react';
@@ -35,18 +34,10 @@ export default function MerchantDashboard() {
     },
   });
 
-  const { data: recentTx } = useQuery({
-    queryKey: ['recent-transactions'],
-    queryFn: async () => {
-      const { data } = await api.get('/transactions?limit=5');
-      return data;
-    },
-  });
-
   useRealtimeInvalidate(
     'transactions',
     merchantId ? `merchant_id=eq.${merchantId}` : undefined,
-    [['merchant-stats'], ['recent-transactions']],
+    [['merchant-stats'], ['wallet-transactions']],
     !!merchantId,
   );
 
@@ -65,7 +56,7 @@ export default function MerchantDashboard() {
 
   // Extra bottom padding on mobile clears PageHeader's floating action button
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-4xl mx-auto">
+    <div className="px-4 pt-2 pb-28 md:p-6 space-y-5 max-w-4xl mx-auto">
       <PageHeader
         title="Tableau de bord"
         hideBack
@@ -93,30 +84,7 @@ export default function MerchantDashboard() {
         ))}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base font-bold">Transactions récentes</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {recentTx?.data?.length ? (
-            <div>
-              {recentTx.data.map((tx: any) => (
-                <TransactionItem
-                  key={tx.id}
-                  name={tx.reference}
-                  amountCents={tx.amount_cents}
-                  currency={tx.currency}
-                  status={tx.status}
-                  date={tx.created_at}
-                  type="in"
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-center py-6">Aucune transaction pour le moment</p>
-          )}
-        </CardContent>
-      </Card>
+      <RecentLedger />
     </div>
   );
 }

@@ -169,14 +169,14 @@ function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => vo
     return (
       <BlueCardScreen>
         <p className="text-[19px]">Code oublié ?</p>
-        <p className="text-[13px] leading-snug text-slate-500">Confirmez avec le mot de passe de votre compte, puis choisissez un nouveau code.</p>
+        <p className="text-[13px] leading-snug text-muted-foreground">Confirmez avec le mot de passe de votre compte, puis choisissez un nouveau code.</p>
         <form onSubmit={reset} className="space-y-3">
           {error && <p className="text-sm text-red-600 font-medium" role="alert">{error}</p>}
           <Input type="password" autoFocus placeholder="Mot de passe du compte" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
           <Button type="submit" className="w-full" disabled={busy || !password}>
             {busy && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}Continuer
           </Button>
-          <button type="button" className="text-xs text-slate-500 underline w-full" onClick={() => { setForgot(false); setError(''); }}>Retour</button>
+          <button type="button" className="text-xs text-muted-foreground underline w-full" onClick={() => { setForgot(false); setError(''); }}>Retour</button>
         </form>
       </BlueCardScreen>
     );
@@ -196,14 +196,14 @@ function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => vo
       }}
       onEnter={() => void submit(code)}
       extra={biometric ? (
-        <button type="button" className="flex items-center gap-2 text-sm text-slate-600 underline" onClick={tryBiometric} disabled={busy}>
+        <button type="button" className="flex items-center gap-2 text-sm text-muted-foreground underline" onClick={tryBiometric} disabled={busy}>
           <Fingerprint className="w-4 h-4" />Utiliser l'empreinte / le visage
         </button>
       ) : undefined}
       footer={(
         <>
           <button type="button" className="text-[19px]" onClick={() => { setForgot(true); setError(''); }}>Code PIN oublié?</button>
-          <button type="button" className="text-xs text-slate-500 underline" onClick={async () => { await onLogout(); window.location.href = '/login'; }}>Se déconnecter</button>
+          <button type="button" className="text-xs text-muted-foreground underline" onClick={async () => { await onLogout(); window.location.href = '/login'; }}>Se déconnecter</button>
         </>
       )}
     />

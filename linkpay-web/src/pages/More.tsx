@@ -8,6 +8,7 @@ import { navItemsFor } from '@/lib/nav-items';
 import { computeVisibleTabs } from '@/components/BottomNav';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
 import { SECTORS } from '@/pages/organization/OnboardingWizard';
+import { UserAvatar } from '@/components/UserAvatar';
 
 /**
  * The "Plus" tab's destination — a plain page (not a modal or drawer) that
@@ -110,9 +111,13 @@ export default function MorePage() {
       {/* Profile card — same leading slot as the reference "More" screens:
           org identity for business accounts, user identity otherwise. */}
       <div className="rounded-2xl border border-border bg-card p-5 flex items-center gap-4">
-        <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-          <span className="text-xl font-bold text-primary">{initial}</span>
-        </div>
+        {org ? (
+          <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <span className="text-xl font-bold text-primary">{initial}</span>
+          </div>
+        ) : (
+          <UserAvatar className="w-14 h-14" />
+        )}
         <div className="min-w-0">
           <p className="font-bold text-foreground truncate">{displayName}</p>
           <p className="text-sm text-muted-foreground capitalize truncate">{displaySub}</p>

@@ -1,4 +1,4 @@
-import { LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, FileBarChart, Truck, type LucideIcon } from 'lucide-react';
+import { ArrowLeftRight, LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, FileBarChart, Truck, type LucideIcon } from 'lucide-react';
 
 import { FEATURES } from '@/lib/features';
 import { ALL_ROLES, STAFF_ROLES, PERSONAL_ROLES, rolesFor } from '@/lib/permissions';
@@ -37,12 +37,15 @@ export interface NavItem {
 // its own entries further down.
 export const navItems: NavItem[] = [
   { to: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: [...ALL_ROLES, ...STAFF_ROLES] },
+  // The wallet's history (the "Transactions" tab of the phone's bottom bar); on a computer, this sidebar entry.
+  { to: '/dashboard/wallet/transactions', label: 'Transactions', icon: ArrowLeftRight, roles: ['client', 'merchant'] },
   { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: QrCode, roles: ['merchant', 'cashier'] },
   // The merchant's fixed payment QR + ScanLinkPay number — on mobile it is
   // the bottom bar's central tab (so More.tsx's already-visible filter keeps
   // it out of Plus); on desktop this sidebar entry is the only way to reach it.
   { to: '/dashboard/wallet/receive', label: 'Encaisser', icon: QrCode, roles: ['merchant', 'cashier'] },
-  { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, roles: ['merchant', 'cashier'] },
+  // For a merchant, "Transactions" (bottom bar) is the wallet's history; this list is the customers' payments (with refunds).
+  { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, roles: ['merchant', 'cashier'], labelFor: { merchant: 'Paiements reçus' } },
   { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'] },
   // Deliberately excludes 'enterprise' — wallet/tontine/savings features are
   // personal-account concepts; an organization has its own separate stock,
