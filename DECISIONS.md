@@ -31,6 +31,11 @@ CDF/USD indicatif réglé par le super admin** ; **avatar = silhouette** (pas de
 - **Taux indicatif** : colonne `platform_settings.cdf_per_usd` (migration **072**), lue publiquement
   (`GET /platform/settings`), réglée dans Administration → Frais et limites. **N'effectue jamais de conversion.**
 - **Écran du code d'accès** aux couleurs de la charte (dégradé, carte et clavier qui suivent le thème).
+- **Connexion / Inscription** (`components/auth/AuthShell.tsx`, `AuthField.tsx`) : même carte sur téléphone et ordinateur.
+  Téléphone : en-tête dégradé + vague, carte en haut (pas recentrée à l'ouverture du clavier). Ordinateur : panneau
+  « Bienvenue sur / Rejoignez ScanLinkPay » + trois atouts + illustration, lien de bascule en haut à droite. **Rien ne
+  bouge pendant la saisie** : ligne de message réservée sous chaque champ, jauge du mot de passe toujours présente,
+  champs en 16 px (pas de zoom), erreurs e-mail / mot de passe à la sortie du champ (vérifié : 0 px de décalage).
 - Vérification : banc de captures Playwright (API simulée) clair/sombre, `npm run build`, 722 tests API.
 
 À faire : migration 072 (Test puis production) ; puis peaufiner les écrans entreprise, caisse, vendeur et admin avec

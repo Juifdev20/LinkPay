@@ -2,14 +2,13 @@ import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/lib/auth-store';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { AuthBrandingPanel } from '@/components/auth/AuthBrandingPanel';
+import { AuthShell } from '@/components/auth/AuthShell';
+import { AuthField } from '@/components/auth/AuthField';
 import { PhoneInput, isCompletePhone } from '@/components/PhoneInput';
 import { RecoveryCodePanel } from '@/components/auth/RecoveryCodePanel';
 import { toApiPhone, displayPhone } from '@/lib/mobile-money';
-import { Loader2, User, Mail, Lock, Store, Building2, Eye, EyeOff } from 'lucide-react';
+import { Loader2, User, Mail, Lock, Store, Building2, CheckCircle2, ArrowRight } from 'lucide-react';
 import { cn, safeRedirect } from '@/lib/utils';
 
 export default function RegisterPage() {
@@ -21,8 +20,6 @@ export default function RegisterPage() {
   const [form, setForm] = useState({ email: '', password: '', full_name: '', phone: '', confirmPassword: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [phoneError, setPhoneError] = useState('');
@@ -142,299 +139,193 @@ export default function RegisterPage() {
     );
   }
 
+  const strength = calculatePasswordStrength(form.password);
+  const strengthLabel = ['Faible', 'Moyen', 'Fort', 'Très fort'][strength];
+  const strengthColor = ['bg-destructive', 'bg-warning', 'bg-orange-500', 'bg-success'][strength];
+  const loginLink = searchParams.get('redirect') ? `/login?redirect=${encodeURIComponent(searchParams.get('redirect')!)}` : '/login';
+  const business = accountType === 'merchant' || accountType === 'enterprise';
+
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-background">
-      <AuthBrandingPanel
-        headline="Créer un compte"
-        tagline="Rejoignez ScanLinkPay en quelques secondes et recevez vos paiements instantanément."
-        className="h-48 md:h-auto md:w-1/2"
-      />
-
-      {/* Form section */}
-      <div className="flex-1 flex items-center justify-center p-4 md:p-12 lg:p-16">
-        {/* max-h + flex-col + only the form scrolling internally keeps the
-            card from ever overflowing the viewport, on mobile or desktop —
-            this form in particular has grown long (confirm password,
-            strength meter, terms checkbox), so this matters more here than
-            on LoginPage. On mobile the branding panel above now takes a
-            fixed h-48 (12rem) of viewport height too, so the cap is sized
-            against the remaining space (`dvh`, for mobile browser chrome
-            correctness) rather than a flat percentage. Same "fixed chrome,
-            scrolling middle" pattern as FormSheet.tsx. */}
-        <div className="w-full max-w-md bg-card backdrop-blur-lg rounded-2xl border border-border shadow-2xl max-h-[calc(100dvh-12rem)] md:max-h-[85vh] flex flex-col overflow-hidden">
-          <div className="px-6 md:px-8 pt-6 md:pt-8 pb-2 flex-shrink-0">
-            <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Inscription</h2>
-            <p className="text-muted-foreground text-sm">
-              Rejoignez ScanLinkPay en quelques secondes
-            </p>
+    <AuthShell
+      title="Créer un compte"
+      subtitle="Rejoignez ScanLinkPay et profitez des services sécurisés."
+      headline="Rejoignez"
+      switchPrompt="Déjà un compte ?"
+      switchLabel="Se connecter"
+      switchTo={loginLink}
+    >
+      <form onSubmit={handleSubmit}>
+        {error && (
+          <div role="alert" className="mb-4 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+            {error}
           </div>
+        )}
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-6 md:px-8 py-4">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
-                  {error}
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label className="font-semibold text-foreground">Type de compte</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAccountType('client')}
-                    className={cn(
-                      'flex flex-col items-center gap-2 rounded-xl border-2 px-2 py-4 text-sm font-semibold transition-colors',
-                      accountType === 'client'
-                        ? 'border-primary bg-primary/5 text-primary'
-                        : 'border-input text-muted-foreground hover:bg-accent',
-                    )}
-                  >
-                    <User className="w-6 h-6" />
-                    Client
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAccountType('merchant')}
-                    className={cn(
-                      'flex flex-col items-center gap-2 rounded-xl border-2 px-2 py-4 text-sm font-semibold transition-colors',
-                      accountType === 'merchant'
-                        ? 'border-primary bg-primary/5 text-primary'
-                        : 'border-input text-muted-foreground hover:bg-accent',
-                    )}
-                  >
-                    <Store className="w-6 h-6" />
-                    Marchand
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAccountType('enterprise')}
-                    className={cn(
-                      'flex flex-col items-center gap-2 rounded-xl border-2 px-2 py-4 text-sm font-semibold transition-colors',
-                      accountType === 'enterprise'
-                        ? 'border-primary bg-primary/5 text-primary'
-                        : 'border-input text-muted-foreground hover:bg-accent',
-                    )}
-                  >
-                    <Building2 className="w-6 h-6" />
-                    Entreprise
-                  </button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {accountType === 'client' && 'Pour payer des commerçants ScanLinkPay.'}
-                  {accountType === 'merchant' && 'Pour recevoir des paiements via lien et QR code.'}
-                  {accountType === 'enterprise' && 'Pour gérer plusieurs boutiques sous une même entreprise.'}
-                </p>
-              </div>
-
-              {(accountType === 'merchant' || accountType === 'enterprise') && (
-                <div className="space-y-2">
-                  <Label htmlFor="business_name" className="font-semibold text-foreground">
-                    {accountType === 'merchant' ? 'Nom de la boutique' : "Nom de l'entreprise"}
-                  </Label>
-                  <div className="relative">
-                    {accountType === 'merchant' ? (
-                      <Store className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    ) : (
-                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    )}
-                    <Input
-                      id="business_name"
-                      placeholder={accountType === 'merchant' ? 'Boutique Mukendi' : 'Doli Hotels'}
-                      value={businessName}
-                      onChange={(e) => setBusinessName(e.target.value)}
-                      required
-                      className="pl-10 bg-background border-input text-foreground placeholder:text-muted-foreground focus:bg-accent"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="full_name" className="font-semibold text-foreground">
-                  {accountType === 'enterprise' ? 'Nom complet du responsable' : 'Nom complet'}
-                </Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="full_name"
-                    placeholder="Dieudonne Merci Jean"
-                    value={form.full_name}
-                    onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                    required
-                    className="pl-10 bg-background border-input text-foreground placeholder:text-muted-foreground focus:bg-accent"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="phone" className="font-semibold text-foreground">Numéro de téléphone</Label>
-                <PhoneInput
-                  id="phone"
-                  value={form.phone}
-                  onChange={(digits) => {
-                    setForm({ ...form, phone: digits });
-                    if (phoneError) validatePhone(digits);
-                  }}
-                  invalid={!!phoneError}
-                />
-                {phoneError ? (
-                  <p className="text-xs text-destructive mt-1">{phoneError}</p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Vous vous connecterez avec ce numéro.</p>
+        <p className="mb-2 text-sm font-semibold text-foreground">Type de compte</p>
+        <div className="grid grid-cols-3 gap-2.5" role="radiogroup" aria-label="Type de compte">
+          {ACCOUNT_TYPES.map(({ value, label, icon: Icon }) => {
+            const selected = accountType === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => setAccountType(value)}
+                className={cn(
+                  'relative flex flex-col items-center gap-2 rounded-2xl border-2 px-1 py-3.5 text-sm font-semibold transition-colors',
+                  selected
+                    ? 'border-primary bg-primary/[0.06] text-primary'
+                    : 'border-input text-muted-foreground hover:border-primary/40 hover:bg-accent',
                 )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="email" className="font-semibold text-foreground">Email <span className="font-normal text-muted-foreground">(facultatif)</span></Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="vous@exemple.com"
-                    value={form.email}
-                    onChange={(e) => {
-                      setForm({ ...form, email: e.target.value });
-                      validateEmail(e.target.value);
-                    }}
-                    className={`pl-10 bg-background border-input text-foreground placeholder:text-muted-foreground focus:bg-accent ${emailError ? 'border-destructive' : ''}`}
-                  />
-                </div>
-                {emailError ? (
-                  <p className="text-xs text-destructive mt-1">{emailError}</p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Pour récupérer votre compte par email et recevoir vos reçus.</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password" className="font-semibold text-foreground">Mot de passe</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    value={form.password}
-                    onChange={(e) => {
-                      setForm({ ...form, password: e.target.value });
-                      validatePassword(e.target.value);
-                    }}
-                    required
-                    minLength={8}
-                    className={`pl-10 pr-10 bg-background border-input text-foreground placeholder:text-muted-foreground focus:bg-accent ${passwordError ? 'border-destructive' : ''}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {passwordError && (
-                  <p className="text-xs text-destructive mt-1">{passwordError}</p>
-                )}
-                {/* Password Strength Indicator */}
-                {form.password && (
-                  <div className="mt-2">
-                    <div className="flex gap-1">
-                      {[0, 1, 2].map((index) => (
-                        <div
-                          key={index}
-                          className={`h-1 flex-1 rounded-full transition-colors ${
-                            index < calculatePasswordStrength(form.password)
-                              ? calculatePasswordStrength(form.password) === 1
-                                ? 'bg-warning'
-                                : calculatePasswordStrength(form.password) === 2
-                                ? 'bg-orange-500'
-                                : 'bg-success'
-                              : 'bg-border'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {calculatePasswordStrength(form.password) === 0 && 'Faible'}
-                      {calculatePasswordStrength(form.password) === 1 && 'Moyen'}
-                      {calculatePasswordStrength(form.password) === 2 && 'Fort'}
-                      {calculatePasswordStrength(form.password) === 3 && 'Très fort'}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword" className="font-semibold text-foreground">Confirmer le mot de passe</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="confirmPassword"
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    value={form.confirmPassword}
-                    onChange={(e) => {
-                      setForm({ ...form, confirmPassword: e.target.value });
-                      validateConfirmPassword(e.target.value);
-                    }}
-                    required
-                    className={`pl-10 pr-10 bg-background border-input text-foreground placeholder:text-muted-foreground focus:bg-accent ${confirmPasswordError ? 'border-destructive' : ''}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {confirmPasswordError && (
-                  <p className="text-xs text-destructive mt-1">{confirmPasswordError}</p>
-                )}
-              </div>
-
-              <div className="flex items-start space-x-2">
-                <Checkbox
-                  id="terms"
-                  checked={acceptTerms}
-                  onCheckedChange={(checked) => setAcceptTerms(checked as boolean)}
-                />
-                <Label
-                  htmlFor="terms"
-                  className="text-sm font-normal text-muted-foreground cursor-pointer leading-tight"
-                >
-                  J'accepte les{' '}
-                  <Link to="/terms" className="text-primary hover:text-primary/80 hover:underline">
-                    CGU
-                  </Link>{' '}
-                  et la{' '}
-                  <Link to="/privacy" className="text-primary hover:text-primary/80 hover:underline">
-                    politique de confidentialité
-                  </Link>
-                </Label>
-              </div>
-
-              <Button type="submit" className="w-full py-6 text-base font-semibold rounded-xl" disabled={loading || !acceptTerms}>
-                {loading && <Loader2 className="mr-2 w-5 h-5 animate-spin" />}
-                Créer mon compte
-              </Button>
-            </form>
-          </div>
-
-          <div className="px-6 md:px-8 pb-6 md:pb-8 pt-4 flex-shrink-0">
-            <p className="text-sm text-muted-foreground text-center">
-              Déjà un compte ?{' '}
-              <Link
-                to={searchParams.get('redirect') ? `/login?redirect=${encodeURIComponent(searchParams.get('redirect')!)}` : '/login'}
-                className="text-primary font-semibold hover:text-primary/80 hover:underline"
               >
-                Se connecter
-              </Link>
-            </p>
-          </div>
+                {selected && <CheckCircle2 className="absolute right-1.5 top-1.5 h-[18px] w-[18px] fill-primary text-primary-foreground" />}
+                <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', selected ? 'bg-brand-gradient text-white' : 'bg-muted text-muted-foreground')}>
+                  <Icon className="h-5 w-5" />
+                </span>
+                {label}
+              </button>
+            );
+          })}
         </div>
-      </div>
-    </div>
+        <p className="mb-3 mt-2 min-h-[2rem] text-xs leading-4 text-muted-foreground">
+          {ACCOUNT_TYPES.find((t) => t.value === accountType)!.hint}
+        </p>
+
+        {business && (
+          <AuthField
+            id="business_name"
+            label={accountType === 'merchant' ? 'Nom de la boutique' : "Nom de l'entreprise"}
+            icon={accountType === 'merchant' ? Store : Building2}
+            autoComplete="organization"
+            placeholder={accountType === 'merchant' ? 'Boutique Mukendi' : 'Doli Hotels'}
+            value={businessName}
+            onChange={(e) => setBusinessName(e.target.value)}
+            required
+          />
+        )}
+
+        <AuthField
+          id="full_name"
+          label={accountType === 'enterprise' ? 'Nom complet du responsable' : 'Nom complet'}
+          icon={User}
+          autoComplete="name"
+          placeholder="Ex. Dieudonné Merci Jean"
+          value={form.full_name}
+          onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+          required
+        />
+
+        <AuthField
+          id="email"
+          label={<>Email <span className="font-normal text-muted-foreground">(facultatif)</span></>}
+          icon={Mail}
+          type="email"
+          autoComplete="email"
+          placeholder="vous@exemple.com"
+          value={form.email}
+          onChange={(e) => {
+            setForm({ ...form, email: e.target.value });
+            if (emailError) validateEmail(e.target.value);
+          }}
+          onBlur={(e) => validateEmail(e.target.value)}
+          error={emailError}
+          hint="Pour récupérer votre compte et recevoir vos reçus."
+        />
+
+        <AuthField id="phone" label="Téléphone" error={phoneError} hint="Vous vous connecterez avec ce numéro.">
+          <PhoneInput
+            id="phone"
+            value={form.phone}
+            onChange={(digits) => {
+              setForm({ ...form, phone: digits });
+              if (phoneError) validatePhone(digits);
+            }}
+            invalid={!!phoneError}
+            className="h-12"
+          />
+        </AuthField>
+
+        {/* The strength line is always there (empty bars before typing): nothing moves under it. */}
+        <AuthField
+          id="password"
+          label="Mot de passe"
+          icon={Lock}
+          password
+          autoComplete="new-password"
+          placeholder="8 caractères minimum"
+          value={form.password}
+          onChange={(e) => {
+            setForm({ ...form, password: e.target.value });
+            if (passwordError) validatePassword(e.target.value);
+          }}
+          onBlur={(e) => validatePassword(e.target.value)}
+          required
+          minLength={8}
+          error={passwordError}
+          hint={
+            <span className="flex items-center gap-2">
+              <span className="flex flex-1 gap-1">
+                {[0, 1, 2].map((i) => (
+                  <span key={i} className={cn('h-1 flex-1 rounded-full transition-colors', form.password && i < Math.max(strength, 1) ? strengthColor : 'bg-border')} />
+                ))}
+              </span>
+              <span className="w-14 text-right">{form.password ? strengthLabel : ''}</span>
+            </span>
+          }
+        />
+
+        <AuthField
+          id="confirmPassword"
+          label="Confirmer le mot de passe"
+          icon={Lock}
+          password
+          autoComplete="new-password"
+          placeholder="Retapez le mot de passe"
+          value={form.confirmPassword}
+          onChange={(e) => {
+            setForm({ ...form, confirmPassword: e.target.value });
+            if (confirmPasswordError || e.target.value.length >= form.password.length) validateConfirmPassword(e.target.value);
+          }}
+          onBlur={(e) => validateConfirmPassword(e.target.value)}
+          required
+          error={confirmPasswordError}
+        />
+
+        <label htmlFor="terms" className="flex cursor-pointer items-start gap-2.5 text-sm leading-snug text-muted-foreground">
+          <Checkbox
+            id="terms"
+            checked={acceptTerms}
+            onCheckedChange={(checked) => setAcceptTerms(checked as boolean)}
+            className="mt-px"
+          />
+          <span>
+            J'accepte les{' '}
+            <Link to="/terms" className="font-semibold text-primary hover:underline">CGU</Link>
+            {' '}et la{' '}
+            <Link to="/privacy" className="font-semibold text-primary hover:underline">politique de confidentialité</Link>
+          </span>
+        </label>
+
+        <Button type="submit" className="mt-6 h-[52px] w-full rounded-xl text-base font-semibold" disabled={loading || !acceptTerms}>
+          {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
+          Créer mon compte
+          {!loading && <ArrowRight className="ml-2 h-5 w-5" />}
+        </Button>
+      </form>
+
+      <p className="mt-5 text-center text-sm text-muted-foreground">
+        Déjà un compte ?{' '}
+        <Link to={loginLink} className="font-semibold text-primary hover:underline">
+          Se connecter
+        </Link>
+      </p>
+    </AuthShell>
   );
 }
+
+const ACCOUNT_TYPES = [
+  { value: 'client', label: 'Client', icon: User, hint: 'Pour payer, envoyer et recevoir de l\'argent.' },
+  { value: 'merchant', label: 'Marchand', icon: Store, hint: 'Pour recevoir des paiements par lien et QR code.' },
+  { value: 'enterprise', label: 'Entreprise', icon: Building2, hint: 'Pour gérer plusieurs boutiques sous une même entreprise.' },
+] as const;
