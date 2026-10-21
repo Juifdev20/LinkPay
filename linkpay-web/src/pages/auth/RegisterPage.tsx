@@ -127,15 +127,14 @@ export default function RegisterPage() {
 
   if (recoveryCode) {
     return (
-      <div className="min-h-[100dvh] flex items-center justify-center bg-background p-4">
-        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl md:p-8">
-          <RecoveryCodePanel
-            code={recoveryCode}
-            phone={displayPhone(form.phone)}
-            onDone={() => navigate(safeRedirect(searchParams.get('redirect')))}
-          />
-        </div>
-      </div>
+      <AuthShell headline="Rejoignez">
+        <p className="mb-5 rounded-xl bg-success/10 px-4 py-3 text-center text-sm font-semibold text-success">Votre compte est créé</p>
+        <RecoveryCodePanel
+          code={recoveryCode}
+          phone={displayPhone(form.phone)}
+          onDone={() => navigate(safeRedirect(searchParams.get('redirect')))}
+        />
+      </AuthShell>
     );
   }
 

@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Loader2, CheckCircle2 } from 'lucide-react';
+import { AuthShell } from '@/components/auth/AuthShell';
+import { AuthField } from '@/components/auth/AuthField';
+import { ResultView } from '@/components/ResultView';
+import { Loader2, Lock, Link2Off } from 'lucide-react';
 
 /** The recovery token Supabase puts in the email's link (#access_token=…, or ?access_token=…). */
 function tokenFromUrl(): string {
@@ -40,38 +41,38 @@ export default function ResetPasswordPage() {
     }
   };
 
+  const shell = { headline: 'Bienvenue sur', switchPrompt: 'Vous vous en souvenez ?', switchLabel: 'Se connecter', switchTo: '/login' };
+
+  if (!token) {
+    return (
+      <AuthShell {...shell}>
+        <ResultView tone="error" icon={Link2Off} title="Lien expiré" message="Ce lien est incomplet ou n'est plus valable. Demandez-en un nouveau, il arrive en quelques secondes.">
+          <Button asChild className="h-[52px] w-full rounded-xl text-base font-semibold"><Link to="/forgot-password">Demander un nouveau lien</Link></Button>
+        </ResultView>
+      </AuthShell>
+    );
+  }
+
+  if (done) {
+    return (
+      <AuthShell {...shell}>
+        <ResultView tone="success" title="Mot de passe changé" message="Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.">
+          <Button className="h-[52px] w-full rounded-xl text-base font-semibold" onClick={() => navigate('/login')}>Se connecter</Button>
+        </ResultView>
+      </AuthShell>
+    );
+  }
+
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl md:p-8">
-        <h1 className="mb-1 text-2xl font-bold text-foreground">Nouveau mot de passe</h1>
-        {!token ? (
-          <p className="mt-4 text-sm text-muted-foreground">
-            Ce lien est incomplet ou a expiré. <Link to="/forgot-password" className="font-semibold text-primary">Demander un nouveau lien</Link>.
-          </p>
-        ) : done ? (
-          <div className="mt-4 space-y-4">
-            <p className="flex items-center gap-2 rounded-xl bg-success/10 px-4 py-3 text-sm font-medium text-success">
-              <CheckCircle2 className="h-4 w-4" /> Votre mot de passe a été changé.
-            </p>
-            <Button className="w-full" onClick={() => navigate('/login')}>Se connecter</Button>
-          </div>
-        ) : (
-          <form onSubmit={submit} className="mt-4 space-y-4">
-            {error && <p className="rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">{error}</p>}
-            <div className="space-y-2">
-              <Label htmlFor="password" className="font-semibold">Nouveau mot de passe</Label>
-              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required autoFocus />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirm" className="font-semibold">Confirmer</Label>
-              <Input id="confirm" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} minLength={8} required />
-            </div>
-            <Button type="submit" className="w-full py-6 text-base font-semibold" disabled={busy}>
-              {busy && <Loader2 className="mr-2 h-5 w-5 animate-spin" />} Enregistrer
-            </Button>
-          </form>
-        )}
-      </div>
-    </div>
+    <AuthShell {...shell} title="Nouveau mot de passe" subtitle="Choisissez un mot de passe d'au moins 8 caractères, que vous n'utilisez nulle part ailleurs.">
+      <form onSubmit={submit}>
+        {error && <p role="alert" className="mb-4 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">{error}</p>}
+        <AuthField id="password" label="Nouveau mot de passe" icon={Lock} password autoComplete="new-password" placeholder="8 caractères minimum" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
+        <AuthField id="confirm" label="Confirmer le mot de passe" icon={Lock} password autoComplete="new-password" placeholder="Retapez le mot de passe" value={confirm} onChange={(e) => setConfirm(e.target.value)} minLength={8} required />
+        <Button type="submit" className="mt-3 h-[52px] w-full rounded-xl text-base font-semibold" disabled={busy}>
+          {busy ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null} Enregistrer
+        </Button>
+      </form>
+    </AuthShell>
   );
 }

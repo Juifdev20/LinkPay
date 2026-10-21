@@ -2,18 +2,20 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldCheck, Zap, MonitorSmartphone, Wifi } from 'lucide-react';
 import { Logo } from '@/components/Logo';
+import { cn } from '@/lib/utils';
 import logoSrc from '@/assets/logo.png';
 
 interface AuthShellProps {
   /** Card title and subtitle — the same card on phone and computer. */
-  title: string;
-  subtitle: string;
+  /** Without a title the card has no header (e.g. a result inside). */
+  title?: string;
+  subtitle?: string;
   /** Computer, left panel: "Bienvenue sur" / "Rejoignez". */
   headline: string;
   /** Computer, top right: "Déjà un compte ?" + link. */
-  switchPrompt: string;
-  switchLabel: string;
-  switchTo: string;
+  switchPrompt?: string;
+  switchLabel?: string;
+  switchTo?: string;
   children: ReactNode;
 }
 
@@ -83,17 +85,23 @@ export function AuthShell({ title, subtitle, headline, switchPrompt, switchLabel
       {/* ── Form (both) ── */}
       {/* Computer: the column never scrolls; the card fits the screen, its title stays put and only the fields scroll inside it. */}
       <main className="relative z-10 flex flex-col px-4 pb-10 md:h-full md:min-h-0 md:px-10 md:py-8">
-        <p className="hidden shrink-0 justify-end text-sm text-muted-foreground md:flex">
-          {switchPrompt}&nbsp;
-          <Link to={switchTo} className="font-semibold text-primary hover:underline">{switchLabel}</Link>
+        <p className="hidden min-h-5 shrink-0 justify-end text-sm text-muted-foreground md:flex">
+          {switchTo && (
+            <>
+              {switchPrompt}&nbsp;
+              <Link to={switchTo} className="font-semibold text-primary hover:underline">{switchLabel}</Link>
+            </>
+          )}
         </p>
         <div className="-mt-12 w-full md:mt-0 md:flex md:min-h-0 md:flex-1 md:items-center md:pt-6">
           <div className="mx-auto flex w-full max-w-md flex-col rounded-3xl border border-border bg-card shadow-soft md:max-h-full md:shadow-xl">
-            <div className="shrink-0 px-5 pt-5 sm:px-7 sm:pt-7 md:border-b md:border-border/60 md:px-8 md:pb-5 md:pt-8">
-              <h2 className="text-2xl font-bold tracking-tight text-foreground md:text-[1.75rem]">{title}</h2>
-              <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{subtitle}</p>
-            </div>
-            <div className="mt-6 px-5 pb-5 sm:px-7 sm:pb-7 md:mt-0 md:min-h-0 md:overflow-y-auto md:px-8 md:pb-8 md:pt-5 [scrollbar-gutter:stable]">{children}</div>
+            {title && (
+              <div className="shrink-0 px-5 pt-5 sm:px-7 sm:pt-7 md:border-b md:border-border/60 md:px-8 md:pb-5 md:pt-8">
+                <h2 className="text-2xl font-bold tracking-tight text-foreground md:text-[1.75rem]">{title}</h2>
+                {subtitle && <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{subtitle}</p>}
+              </div>
+            )}
+            <div className={cn('px-5 pb-5 sm:px-7 sm:pb-7 md:min-h-0 md:overflow-y-auto md:px-8 md:pb-8 [scrollbar-gutter:stable]', title ? 'mt-6 md:mt-0 md:pt-5' : 'pt-7 md:pt-8')}>{children}</div>
           </div>
         </div>
       </main>

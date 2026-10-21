@@ -4,8 +4,9 @@ import api from '@/lib/api';
 import { setTokens } from '@/lib/token-storage';
 import { useAuthStore } from '@/lib/auth-store';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Loader2, ShieldCheck, Copy, Download } from 'lucide-react';
+import { AuthShell } from '@/components/auth/AuthShell';
+import { AuthField } from '@/components/auth/AuthField';
+import { Loader2, Copy, Download, Check, KeyRound, LogOut } from 'lucide-react';
 
 type Setup = { secret: string; qr_data_url: string };
 
@@ -23,6 +24,7 @@ export default function AdminTwoFactorSetupPage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [recovery, setRecovery] = useState<string[] | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -71,70 +73,82 @@ export default function AdminTwoFactorSetupPage() {
     URL.revokeObjectURL(a.href);
   };
 
+  const signOut = async () => { await logout(); navigate('/login', { replace: true }); };
+  const steps = [
+    <>Installez <strong className="text-foreground">Google Authenticator</strong> (ou Microsoft Authenticator, Authy…) sur votre téléphone.</>,
+    <>Dans l'application, ajoutez un compte en <strong className="text-foreground">scannant ce QR code</strong>.</>,
+    <>Saisissez le <strong className="text-foreground">code à 6 chiffres</strong> qu'elle affiche.</>,
+  ];
+
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center p-4 bg-background">
-      <div className="w-full max-w-md bg-card rounded-2xl p-6 border border-border shadow-2xl space-y-5">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="w-6 h-6 text-primary" />
-          <h1 className="text-xl font-bold text-foreground">Sécurisez votre compte administrateur</h1>
-        </div>
+    <AuthShell
+      headline="Administration"
+      title={recovery ? 'Vos codes de secours' : 'Sécurisez votre compte'}
+      subtitle={recovery
+        ? 'Ils permettent de se connecter si vous perdez votre téléphone. Chaque code ne sert qu\'une fois et ne sera plus affiché.'
+        : 'Un compte administrateur se protège par un mot de passe et un code de votre téléphone (double authentification).'}
+    >
+      {error && <p role="alert" className="mb-4 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">{error}</p>}
 
-        {error && <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">{error}</div>}
-
-        {recovery ? (
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Double authentification activée. Voici vos <strong>codes de secours</strong> : ils permettent de se connecter si vous perdez votre téléphone.
-              Chaque code ne marche qu'une fois. <strong>Ils ne seront plus affichés.</strong>
-            </p>
-            <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted p-3 font-mono text-sm text-foreground">
-              {recovery.map((c) => <span key={c}>{c}</span>)}
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => navigator.clipboard?.writeText(recovery.join('\n'))}><Copy className="w-4 h-4 mr-2" />Copier</Button>
-              <Button variant="outline" className="flex-1" onClick={download}><Download className="w-4 h-4 mr-2" />Télécharger</Button>
-            </div>
-            <Button className="w-full" onClick={finish}>J'ai sauvegardé mes codes — continuer</Button>
+      {recovery ? (
+        <div>
+          <div className="grid grid-cols-2 gap-2 rounded-2xl border-2 border-dashed border-primary/40 bg-primary/[0.06] p-4 font-mono text-sm font-semibold text-foreground">
+            {recovery.map((c) => <span key={c} className="text-center">{c}</span>)}
           </div>
-        ) : status?.enabled ? (
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              La double authentification est déjà activée sur ce compte, mais cette session ne l'a pas utilisée. Reconnectez-vous en saisissant le code de votre application.
-            </p>
-            <Button className="w-full" onClick={async () => { await logout(); navigate('/login', { replace: true }); }}>Me reconnecter</Button>
-          </div>
-        ) : setup ? (
-          <form onSubmit={enable} className="space-y-4">
-            <ol className="text-sm text-muted-foreground list-decimal pl-5 space-y-1">
-              <li>Installez <strong>Google Authenticator</strong> (ou Microsoft Authenticator, Authy…) sur votre téléphone.</li>
-              <li>Scannez ce QR code.</li>
-              <li>Saisissez le code à 6 chiffres affiché.</li>
-            </ol>
-            <img src={setup.qr_data_url} alt="QR code à scanner" className="mx-auto rounded-xl border border-border bg-white p-2" width={200} height={200} />
-            <p className="text-xs text-center text-muted-foreground break-all">Ou saisissez la clé : <span className="font-mono">{setup.secret}</span></p>
-            <Input
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              placeholder="123456"
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-              className="text-center text-xl tracking-widest"
-            />
-            <Button type="submit" className="w-full" disabled={busy || code.length !== 6}>
-              {busy && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}Activer
+          <div className="mt-3 grid grid-cols-2 gap-2.5">
+            <Button variant="outline" className="h-12 rounded-xl" onClick={() => { navigator.clipboard?.writeText(recovery.join('\n')); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
+              {copied ? <Check className="mr-2 h-4 w-4 text-success" /> : <Copy className="mr-2 h-4 w-4" />}{copied ? 'Copiés' : 'Copier'}
             </Button>
-          </form>
-        ) : !error ? (
-          <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
-        ) : null}
+            <Button variant="outline" className="h-12 rounded-xl" onClick={download}><Download className="mr-2 h-4 w-4" />Télécharger</Button>
+          </div>
+          <Button className="mt-5 h-[52px] w-full rounded-xl text-base font-semibold" onClick={finish}>J'ai sauvegardé mes codes</Button>
+        </div>
+      ) : status?.enabled ? (
+        <div>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            La double authentification est déjà activée sur ce compte, mais cette session ne l'a pas utilisée. Reconnectez-vous en saisissant le code de votre application.
+          </p>
+          <Button className="mt-5 h-[52px] w-full rounded-xl text-base font-semibold" onClick={signOut}>Me reconnecter</Button>
+        </div>
+      ) : setup ? (
+        <form onSubmit={enable}>
+          <ol className="space-y-3">
+            {steps.map((t, i) => (
+              <li key={i} className="flex items-start gap-3 text-sm leading-snug text-muted-foreground">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-xs font-bold text-white">{i + 1}</span>
+                <span className="pt-0.5">{t}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-5 flex flex-col items-center">
+            <img src={setup.qr_data_url} alt="QR code à scanner" className="rounded-2xl border border-border bg-white p-2.5 shadow-soft" width={184} height={184} />
+            <p className="mt-2.5 max-w-full break-all text-center text-xs text-muted-foreground">Ou saisissez la clé : <span className="font-mono font-semibold text-foreground">{setup.secret}</span></p>
+          </div>
+          <AuthField
+            id="otp"
+            label="Code de l'application"
+            icon={KeyRound}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            placeholder="123456"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+            className="mt-5"
+          />
+          <Button type="submit" className="mt-2 h-[52px] w-full rounded-xl text-base font-semibold" disabled={busy || code.length !== 6}>
+            {busy ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}Activer
+          </Button>
+        </form>
+      ) : !error ? (
+        <div className="flex justify-center py-10"><Loader2 className="h-7 w-7 animate-spin text-primary" /></div>
+      ) : null}
 
-        {!recovery && (
-          <button className="text-xs text-muted-foreground underline w-full" onClick={async () => { await logout(); navigate('/login', { replace: true }); }}>
-            Se déconnecter
-          </button>
-        )}
-      </div>
-    </div>
+      {!recovery && (
+        <button className="mt-5 flex w-full items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground" onClick={signOut}>
+          <LogOut className="h-4 w-4" /> Se déconnecter
+        </button>
+      )}
+    </AuthShell>
   );
 }

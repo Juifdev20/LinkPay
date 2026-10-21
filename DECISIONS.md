@@ -43,6 +43,15 @@ CDF/USD indicatif réglé par le super admin** ; **avatar = silhouette** (pas de
   (logo, « Sécurisé »), fond à courbes, tout dans une carte centrée. Pas de champ texte : rien ne bouge pendant la
   saisie (ligne d'erreur réservée). « Code oublié ? » s'ouvre dans une petite fenêtre (`PinDialog`) au-dessus de
   l'écran du code, flouté et assombri (Échap ou un appui à côté pour fermer).
+- **Pages publiques** (lien de paiement, payer par numéro, résultat, retour de la banque, carte scannée) : cadre commun
+  `components/public/PublicShell.tsx` (bande dégradée, logo, « Paiement sécurisé »). Le lien de paiement se lit comme un
+  reçu (commerçant, gros montant, référence) puis « Payer avec mon solde » ou Mobile Money sans compte (le choix
+  « Carte bientôt » est retiré de cette page). Payer par numéro : montant entier (les prestataires ne prennent pas de
+  centimes), comme la recharge.
+- **Écrans de résultat** (`components/ResultView.tsx`) : même écran partout (paiement, recharge, envoi, Pro, liens
+  expirés) : grande icône, montant en gros, détails façon reçu avec référence copiable, actions.
+- **Mot de passe oublié, nouveau mot de passe, code de secours, double authentification admin** : même cadre que la
+  connexion (`AuthShell`, titre facultatif).
 - Vérification : banc de captures Playwright (API simulée) clair/sombre, `npm run build`, 722 tests API.
 
 À faire : migration 072 (Test puis production) ; puis peaufiner les écrans entreprise, caisse, vendeur et admin avec

@@ -22,13 +22,15 @@ interface AmountEntryProps {
   balanceCents?: number;
   error?: string;
   autoFocus?: boolean;
+  /** Small title over the amount. */
+  label?: string;
 }
 
 /**
  * The amount screen of a payment: currency switch, the amount in large type, quick amounts, and what the balance will
  * be afterwards. Whole units only: the payment providers do not take cents.
  */
-export function AmountEntry({ value, onChange, currency, onCurrencyChange, balanceCents, error, autoFocus }: AmountEntryProps) {
+export function AmountEntry({ value, onChange, currency, onCurrencyChange, balanceCents, error, autoFocus, label = 'Montant à recharger' }: AmountEntryProps) {
   const shown = group(value);
   const units = Number(value || 0);
 
@@ -54,7 +56,7 @@ export function AmountEntry({ value, onChange, currency, onCurrencyChange, balan
       </div>
 
       <label htmlFor="amount-entry" className="block cursor-text rounded-3xl bg-secondary/60 px-4 py-7 text-center ring-primary/30 transition-shadow focus-within:ring-4">
-        <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Montant à recharger</span>
+        <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
         <span className="flex items-baseline justify-center gap-1">
           <input
             id="amount-entry"
