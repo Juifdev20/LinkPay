@@ -425,7 +425,7 @@ export class FlexPaieAdapter implements PspAdapter {
     return this.payoutTokenRequest;
   }
 
-  private async payoutRow(reference: string): Promise<{ reference: string; sent_reference: string | null; order_number: string | null; state: string; attempts: number; created_at: string; updated_at: string } | null> {
+  private async payoutRow(reference: string): Promise<{ reference: string; sent_reference: string | null; order_number: string | null; amount_cents?: number | string | null; currency?: string | null; state: string; attempts: number; created_at: string; updated_at: string } | null> {
     const { data, error } = await this.supabaseService.getClient().from('flexpaie_payouts').select('*').eq('reference', reference).maybeSingle();
     if (error) throw new Error(`Could not read the FlexPaie payout journal: ${error.message}`);
     return data ?? null;
@@ -442,11 +442,11 @@ export class FlexPaieAdapter implements PspAdapter {
    * Takes the right to send this withdrawal, before anything leaves. Only one sender can win: the insert (primary key)
    * for a first try, the NOT_SENT → SENDING update for a retry. The loser stops without sending.
    */
-  private async claimPayout(reference: string, existing: { state: string; attempts: number } | null): Promise<string> {
+  private async claimPayout(reference: string, existing: { state: string; attempts: number } | null, amount: { amount_cents: number; currency: string }): Promise<string> {
     const db = this.supabaseService.getClient();
     if (!existing) {
       const sent = payoutReference(reference, 1);
-      const { error } = await db.from('flexpaie_payouts').insert({ reference, sent_reference: sent, state: 'SENDING' });
+      const { error } = await db.from('flexpaie_payouts').insert({ reference, sent_reference: sent, state: 'SENDING', amount_cents: amount.amount_cents, currency: amount.currency });
       if (!error) return sent;
       if (/duplicate|unique/i.test(error.message)) throw new Error(`FlexPaie payout ${reference} is already being sent: not sent twice`);
       throw new PayoutNotSentError(UNAVAILABLE, `Journal des retraits FlexPaie inaccessible (migration 067 appliquée ?) : ${error.message}`);
@@ -505,7 +505,7 @@ export class FlexPaieAdapter implements PspAdapter {
       throw new PayoutRetryLaterError(`FlexPaie payout login failed: ${err?.message}`);
     }
 
-    const sentReference = await this.claimPayout(params.reference, existing);
+    const sentReference = await this.claimPayout(params.reference, existing, params);
 
     const body = {
       merchant: this.payoutMerchant(),
@@ -645,6 +645,18 @@ export class FlexPaieAdapter implements PspAdapter {
     return { status: 'PENDING', psp_payout_id: orderNumber };
   }
 
+  async payoutsInFlight(references: string[]): Promise<Set<string>> {
+    if (references.length === 0) return new Set();
+    const { data, error } = await this.supabaseService.getClient().from('flexpaie_payouts')
+      .select('reference').in('reference', references).in('state', ['SENDING', 'ACCEPTED']);
+    // Unknown is treated as "in flight": better a withdrawal hidden from the admin page for a while than paid twice.
+    if (error) {
+      this.logger.error(`Could not read the FlexPaie payout journal: ${error.message}`);
+      return new Set(references);
+    }
+    return new Set((data || []).map((r: any) => r.reference));
+  }
+
   /** A reference FlexPaie reports for this withdrawal: the one sent for an attempt, or the withdrawal id itself. */
   private isOurs(row: { reference: string; sent_reference: string | null }, reported: string): boolean {
     return reported === row.sent_reference || reported === row.reference;
@@ -682,6 +694,13 @@ export class FlexPaieAdapter implements PspAdapter {
     const t = await this.payoutCheck(claimed);
     if (!t || !this.isOurs(row, String(t.reference ?? ''))) {
       this.logger.warn(`FlexPaie payout callback for ${reference}: order ${claimed} is unknown or not ours — refused`);
+      return null;
+    }
+    // Same reference is not enough: the order must also be for the amount and currency we sent.
+    const sameAmount = t.amount === undefined || t.amount === null || row.amount_cents == null || toCents(t.amount) === Number(row.amount_cents);
+    const sameCurrency = !t.currency || !row.currency || String(t.currency).toUpperCase() === String(row.currency).toUpperCase();
+    if (!sameAmount || !sameCurrency) {
+      this.logger.error(`FlexPaie payout callback for ${reference}: order ${claimed} is for ${t.amount} ${t.currency}, not what we sent — refused`);
       return null;
     }
     await this.markPayout(reference, { order_number: claimed, ...(row.state === 'ABANDONED' ? {} : { state: 'ACCEPTED' }) });

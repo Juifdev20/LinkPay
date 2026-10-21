@@ -119,6 +119,11 @@ export interface PspAdapter {
    * still waits for an admin. Left out = every channel.
    */
   supportsPayoutChannel?(channel: string): boolean;
+  /**
+   * Of these withdrawal ids, the ones already handed to the provider and not settled (sent, or maybe sent). Those are
+   * NEVER manual, even once automatic payouts are switched off: an admin refunding or re-sending one could pay twice.
+   */
+  payoutsInFlight?(references: string[]): Promise<Set<string>>;
   /** What the provider would refuse in a payout, said BEFORE the wallet is debited (null = fine). */
   checkPayout?(params: { amount_cents: number; currency: string; channel: string }): string | null;
 

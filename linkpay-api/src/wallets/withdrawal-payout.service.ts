@@ -205,12 +205,16 @@ export class WithdrawalPayoutService {
     const adapter = this.pspFactory.get(w.psp_provider || undefined);
     // A manual withdrawal is unknown to the provider by design: "not found" must NEVER be read as "never sent"
     // (that would refund the wallet while an admin may be sending the money).
-    if (isManualPayout(adapter, w.channel)) return false;
+    // ...unless it was already handed to the provider (automatic payouts switched off since): that one is followed
+    // to its end like any other, never left to an admin who could refund or re-send it.
+    const manual = isManualPayout(adapter, w.channel);
+    if (manual && !(adapter.payoutsInFlight && (await adapter.payoutsInFlight([w.id])).has(w.id))) return false;
     const status = await adapter.getPayoutStatus(w.id, { psp_reference: w.psp_reference ?? null });
 
     if (status.status === 'NOT_SENT') {
       // Never handed to the provider (asked during the manual period, refused as busy, or the request died before
-      // sending): the adapter's journal says it is safe to send, so send it now.
+      // sending): the adapter's journal says it is safe to send, so send it now — if payouts are still automatic.
+      if (manual) return false;
       if (w.status !== 'PENDING') {
         this.logger.warn(`Withdrawal ${w.id} is ${w.status} but the provider says it was never sent — left alone`);
         return false;

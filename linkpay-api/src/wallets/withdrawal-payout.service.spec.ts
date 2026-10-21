@@ -222,3 +222,23 @@ describe('automatic payouts (FlexPaie PayoutService)', () => {
     });
   });
 });
+
+describe('automatic payouts switched OFF while withdrawals are with the provider', () => {
+  const old = (mins: number) => new Date(Date.now() - mins * 60_000).toISOString();
+
+  it('one already handed to the provider keeps being followed (never left to an admin), but nothing new is sent', async () => {
+    const statuses: Record<string, any> = { sent: { status: 'SUCCESS', psp_payout_id: 'O1' }, never: { status: 'NOT_SENT' } };
+    const adapter = {
+      supportsPayout: false,
+      payoutsInFlight: async (ids: string[]) => new Set(ids.filter((id) => id === 'sent')),
+      getPayoutStatus: jest.fn(async (id: string) => statuses[id]),
+      payout: jest.fn(),
+    };
+    const open = [{ ...W, id: 'sent', status: 'PROCESSING', created_at: old(5) }, { ...W, id: 'never', status: 'PENDING', created_at: old(5) }];
+    const { service, called } = setup(adapter, { finish_withdrawal: { ...W, status: 'SUCCESS' } }, open);
+    await expect(service.reconcile()).resolves.toBe(1);
+    expect(called()).toEqual(['finish_withdrawal']);
+    expect(adapter.getPayoutStatus).toHaveBeenCalledTimes(1); // "never" is manual: not even asked
+    expect(adapter.payout).not.toHaveBeenCalled();
+  });
+});

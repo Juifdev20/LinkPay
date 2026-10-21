@@ -101,6 +101,15 @@ Pratiques courantes des prestataires de paiement, sans attendre de réponse de F
 - **Longueur de la référence** : 22 à 25 caractères, la forme des références que FlexPaie accepte déjà pour les paiements (`TOPUP-20261009-AB12CD`, 21).
 - **Montants** : entiers seulement ; **minimum 100 CDF** (mesuré en production) et **1 USD** ; refusés **avant** de débiter le portefeuille. Les maximums sont les limites de retrait de l'administration (par opération, par jour, par mois). Si FlexPaie refuse un montant (0XX5), le retrait est remboursé avec son message.
 
+### Sécurité (revue du 21/10/2026)
+- **Personne ne peut déclarer un retrait payé ou échoué de l'extérieur** : le rappel n'est pas signé, il ne sert qu'à relire le statut chez FlexPaie, avec le numéro de commande que **nous** avons enregistré. Un numéro apporté par un rappel n'est gardé que si FlexPaie confirme notre référence, **le même montant et la même devise**.
+- **Jamais deux envois pour un retrait** : inscription au journal avant l'envoi (une seule possible), pas de nouvel envoi tant que l'issue d'un envoi est inconnue.
+- **Couper `FLEXPAIE_PAYOUTS_ENABLED`** n'abandonne rien : un retrait déjà confié à FlexPaie continue d'être vérifié jusqu'au bout et n'apparaît **pas** dans « Retraits à traiter » (un admin ne peut ni le rembourser ni le payer une seconde fois).
+- **Montants** : entiers seulement (refusés dès la demande), minimums vérifiés avant tout débit.
+- **Contrôle de risque** (cadence, nouveau portefeuille…) : s'il ne peut pas lire l'historique, **le retrait est refusé** (avant : il passait).
+- Déjà en place : code PIN (5 essais puis blocage), appareil vérifié, idempotence, débit atomique, limites par opération / jour / mois.
+- **Risques connus et acceptés** : remboursement après 30 min sans nouvelles (si FlexPaie a quand même envoyé, alerte « Retrait payé ET remboursé ») ; anciens retraits envoyés à l'activation (vider la page avant). Ces deux cas coûtent à ScanLinkPay, jamais au client.
+
 ### Ce qui reste manuel
 Les retraits **vers une banque**, et tous les retraits tant que `FLEXPAIE_PAYOUTS_ENABLED` n'est pas `true`, attendent un administrateur dans **Administration → Retraits à traiter** :
 - **« J'ai envoyé »** (avec la référence du transfert si elle existe) : le retrait devient « effectué », le client est averti, les frais restent à ScanLinkPay ;

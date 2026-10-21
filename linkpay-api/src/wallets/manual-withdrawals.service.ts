@@ -50,12 +50,26 @@ export class ManualWithdrawalsService {
     }
   }
 
+  /** The rows an admin may settle: manual ones, minus those already handed to the provider (see payoutsInFlight). */
+  private async manualOnly<T extends { id: string; psp_provider?: string | null; channel?: string }>(rows: T[]): Promise<T[]> {
+    const manual = rows.filter((w) => this.isManual(w));
+    const inFlight = new Set<string>();
+    const byProvider = new Map<string, string[]>();
+    for (const w of manual) byProvider.set(w.psp_provider || '', [...(byProvider.get(w.psp_provider || '') || []), w.id]);
+    for (const [provider, ids] of byProvider) {
+      let adapter;
+      try { adapter = this.pspFactory.get(provider || undefined); } catch { continue; }
+      if (adapter.payoutsInFlight) for (const id of await adapter.payoutsInFlight(ids)) inFlight.add(id);
+    }
+    return manual.filter((w) => !inFlight.has(w.id));
+  }
+
   /** `open` = waiting for the admin, `done` = the last decisions. Only withdrawals that are settled by hand. */
   async list(filter: 'open' | 'done' = 'open', limit = 50) {
     const q = this.db.from('withdrawals').select('*').order('created_at', { ascending: filter === 'open' }).limit(Math.min(Math.max(limit, 1), 100));
     const { data, error } = filter === 'open' ? await q.eq('status', 'PENDING') : await q.in('status', ['SUCCESS', 'REVERSED']);
     if (error) throw new Error(`Failed to list withdrawals: ${error.message}`);
-    const rows = (data || []).filter((w: any) => this.isManual(w));
+    const rows = filter === 'open' ? await this.manualOnly(data || []) : (data || []).filter((w: any) => this.isManual(w));
 
     const walletIds = [...new Set(rows.map((w: any) => w.wallet_id))];
     const owners = new Map<string, any>();
@@ -89,7 +103,7 @@ export class ManualWithdrawalsService {
   async openCount(): Promise<{ open: number }> {
     const { data, error } = await this.db.from('withdrawals').select('id, psp_provider, channel').eq('status', 'PENDING').limit(500);
     if (error) throw new Error(`Failed to count withdrawals: ${error.message}`);
-    return { open: (data || []).filter((w: any) => this.isManual(w)).length };
+    return { open: (await this.manualOnly(data || [])).length };
   }
 
   /**
@@ -107,7 +121,7 @@ export class ManualWithdrawalsService {
         this.logger.error(`Could not look for overdue withdrawals: ${error.message}`);
         return 0;
       }
-      const overdue = (data || []).filter((w: any) => this.isManual(w));
+      const overdue = await this.manualOnly(data || []);
       if (overdue.length === 0) return 0;
       const hours = Math.floor((now - new Date(overdue[0].created_at).getTime()) / 3_600_000);
       const urgent = now - new Date(overdue[0].created_at).getTime() >= URGENT_MS;
@@ -129,7 +143,9 @@ export class ManualWithdrawalsService {
   private async load(id: string, adminId: string) {
     const { data: w } = await this.db.from('withdrawals').select('*').eq('id', id).maybeSingle();
     if (!w) throw new NotFoundException('Retrait introuvable.');
-    if (!this.isManual(w)) throw new BadRequestException("Ce retrait n'est pas traité à la main : le prestataire s'en charge.");
+    if (!this.isManual(w) || (await this.manualOnly([w])).length === 0) {
+      throw new BadRequestException("Ce retrait n'est pas traité à la main : le prestataire s'en charge.");
+    }
     const { data: wallet } = await this.db.from('wallets').select('user_id').eq('id', w.wallet_id).maybeSingle();
     if (wallet?.user_id && wallet.user_id === adminId) {
       throw new ForbiddenException('Vous ne pouvez pas traiter votre propre retrait.');

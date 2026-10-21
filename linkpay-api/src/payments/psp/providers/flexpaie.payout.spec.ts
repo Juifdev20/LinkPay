@@ -380,3 +380,19 @@ describe('against a local PayoutService double (real network calls)', () => {
     expect(await adapter.getPayoutStatus(REF)).toEqual({ status: 'SUCCESS', psp_payout_id: 'PO1' });
   });
 });
+
+describe('security review', () => {
+  it('a callback order with our reference but another amount is refused (not recorded)', async () => {
+    const { adapter, rows } = setup({ rows: { [REF]: { state: 'SENDING', sent_reference: SENT1, amount_cents: 500000, currency: 'CDF' } } });
+    fetchMock.mockResolvedValueOnce(LOGIN).mockResolvedValueOnce(reply({ code: '0', reference: SENT1, orderNumber: 'X9', amount: '100', currency: 'CDF', status: '1' }));
+    expect(await adapter.acceptPayoutCallback(Buffer.from(JSON.stringify({ reference: SENT1, orderNumber: 'X9' })))).toBeNull();
+    expect(rows.get(REF).order_number).toBeNull();
+  });
+
+  it('the journal remembers the amount and currency sent', async () => {
+    const { adapter, rows } = setup();
+    fetchMock.mockResolvedValueOnce(LOGIN).mockResolvedValueOnce(ACCEPTED('O1'));
+    await adapter.payout(PARAMS);
+    expect(rows.get(REF)).toMatchObject({ amount_cents: 500000, currency: 'CDF' });
+  });
+});

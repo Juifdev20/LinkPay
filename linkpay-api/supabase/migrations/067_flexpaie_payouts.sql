@@ -17,6 +17,8 @@
 -- sent_reference = the reference given to FlexPaie for the current attempt ("RET-<16 hex>-<attempt>", 22 to 25
 -- characters, the shape of the references FlexPaie already accepts for payments). A new one per attempt, so a retry is
 -- never refused as a duplicate of the attempt FlexPaie turned down; the callback is matched back with it.
+-- amount_cents / currency = what was asked: an order number brought by a callback is kept only if FlexPaie's own
+-- record of it carries our reference AND this amount and currency.
 --
 -- API only. Run once in the Supabase SQL editor (after 066), BEFORE deploying the API version that uses it.
 -- ============================================================================
@@ -25,6 +27,8 @@ CREATE TABLE IF NOT EXISTS flexpaie_payouts (
   reference TEXT PRIMARY KEY,
   sent_reference TEXT UNIQUE,
   order_number TEXT UNIQUE,
+  amount_cents BIGINT,
+  currency TEXT,
   state TEXT NOT NULL DEFAULT 'SENDING' CHECK (state IN ('SENDING', 'ACCEPTED', 'NOT_SENT', 'ABANDONED')),
   attempts INTEGER NOT NULL DEFAULT 1,
   last_error TEXT,
