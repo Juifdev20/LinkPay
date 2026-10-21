@@ -28,15 +28,15 @@ describe('PaymentsService.processWebhook', () => {
     expect(handleSuccess).not.toHaveBeenCalled();
   });
 
-  it('still accepts mock webhooks on a deployment that runs on the mock provider (dev)', async () => {
+  it('refuses a "mock" webhook EVERYWHERE, even where PSP_PROVIDER says mock (no fictitious money)', async () => {
     const { service, handleSuccess } = makeService('mock', { id: 'i1', psp_provider: 'mock' });
-    await expect(service.processWebhook('mock', MOCK_BODY, '', {})).resolves.toMatchObject({ status: 'processed' });
-    expect(handleSuccess).toHaveBeenCalled();
+    await expect(service.processWebhook('mock', MOCK_BODY, '', {})).rejects.toBeInstanceOf(NotFoundException);
+    expect(handleSuccess).not.toHaveBeenCalled();
   });
 
   it("refuses a webhook from a provider other than the intent's own", async () => {
-    const { service, handleSuccess } = makeService('mock', { id: 'i1', psp_provider: 'cinetpay' });
-    await expect(service.processWebhook('mock', MOCK_BODY, '', {})).rejects.toBeInstanceOf(BadRequestException);
+    const { service, handleSuccess } = makeService('cinetpay', { id: 'i1', psp_provider: 'flexpaie' });
+    await expect(service.processWebhook('cinetpay', MOCK_BODY, '', {})).rejects.toBeInstanceOf(BadRequestException);
     expect(handleSuccess).not.toHaveBeenCalled();
   });
 
@@ -64,5 +64,14 @@ describe('CinetPayAdapter.parseWebhookEvent', () => {
   it('accepts the webhook when CinetPay confirms the same merchant transaction', async () => {
     const adapter = adapterWith({ status: 'SUCCESS', code: 100, transactionId: 'T-REAL', merchantTransactionId: 'SLP-SMALL-1' });
     await expect(adapter.parseWebhookEvent(body('SLP-SMALL-1'), {})).resolves.toMatchObject({ status: 'SUCCESS', psp_intent_id: 'SLP-SMALL-1' });
+  });
+});
+
+describe('CinetPay test keys (sandbox): refused, never fictitious money', () => {
+  it('a payment, a status check and a webhook are all refused', async () => {
+    const adapter = new CinetPayAdapter({ get: (k: string, d?: any) => ({ CINETPAY_API_KEY_CD: 'sk_test_abc', CINETPAY_API_PASSWORD_CD: 'x' } as any)[k] ?? d } as any);
+    await expect(adapter.createPaymentIntent({ amount_cents: 10000, currency: 'CDF', reference: 'R1', redirect_url: 'https://x', webhook_url: 'https://y' } as any)).rejects.toThrow(/indisponibles/);
+    await expect(adapter.getTransactionStatus('R1')).rejects.toThrow(/indisponibles/);
+    await expect(adapter.parseWebhookEvent(Buffer.from('{}'), {})).rejects.toThrow(/indisponibles/);
   });
 });

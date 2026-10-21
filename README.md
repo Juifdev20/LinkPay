@@ -15,7 +15,7 @@ LinkPay/
 │   │   ├── merchants/          # Boutiques, équipe (inviter/retirer un caissier)
 │   │   ├── organizations/      # Comptes "entreprise" : KYB, multi-boutiques, numéro ScanLinkPay, dashboard, dépenses
 │   │   ├── payment-requests/   # Demandes de paiement (lien + QR)
-│   │   ├── payments/           # Paiement + adaptateurs PSP (mock, FlexPaie, CinetPay)
+│   │   ├── payments/           # Paiement + adaptateurs PSP (FlexPaie, CinetPay) — argent réel uniquement
 │   │   ├── wallets/             # Portefeuille LinkPay (solde, PIN, transfert P2P, recharge, retrait)
 │   │   ├── tontines/            # Épargne collective (cycles, cotisations, invitations, cron de rappel)
 │   │   ├── transactions/       # Historique et reçus
@@ -62,7 +62,7 @@ LinkPay/
 - **Supabase Realtime** — notifications et transactions poussées en direct au frontend
 - **JWT** maison (access + refresh tokens) avec **session unique par compte** (un compte ne peut être connecté que sur un seul appareil à la fois ; réinitialisable par un admin)
 - **RBAC** à 6 rôles : `super_admin`, `admin`, `enterprise`, `merchant`, `cashier`, `client`
-- **Adaptateur PSP** (pattern extensible) : `mock` (démo, succès simulé), `flexpaie` (Mobile Money RDC + carte, voir `docs/FLEXPAIE.md`) et `cinetpay` (Mobile Money RDC — Orange/Airtel/M-Pesa — + carte, préparé mais non testé en conditions réelles, voir `.env.example`)
+- **Adaptateur PSP** (pattern extensible), **argent réel uniquement** (plus de prestataire simulé ; argent de test : `docs/RECHARGE_TEST.md`) : `flexpaie` (Mobile Money RDC + carte, voir `docs/FLEXPAIE.md`) et `cinetpay` (Mobile Money RDC — Orange/Airtel/M-Pesa — + carte, préparé mais non testé en conditions réelles, voir `.env.example`)
 - **Portefeuille LinkPay** : solde CDF/USD indépendants, numéro unique généré automatiquement, transfert P2P, PIN transactionnel, recharge/retrait
 - **Tontines** : cycles d'épargne collective avec invitations, cotisations, et une tâche planifiée (`@nestjs/schedule`) pour les rappels
 - **Push notifications** : Web Push (VAPID) pour la PWA, Firebase Cloud Messaging pour l'app Android (Capacitor)
@@ -153,8 +153,9 @@ JWT_SECRET=une-chaîne-secrète-longue
 JWT_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=365d
 
-# PSP — laisser "mock" pour développer sans compte prestataire réel
-PSP_PROVIDER=mock
+# PSP — un vrai prestataire (il n'y a plus de mode simulé). Sans lui, les paiements sont refusés.
+# Argent de test : docs/RECHARGE_TEST.md (éditeur SQL de Supabase).
+PSP_PROVIDER=flexpaie
 PSP_SANDBOX=true
 # Si compte CinetPay actif (Mobile Money RDC) — nouvelle API panel.cinetpay.net :
 # PSP_PROVIDER=cinetpay
@@ -236,7 +237,7 @@ Deux façons d'initier un paiement :
 Les deux convergent ensuite sur le même parcours :
 1. Client ouvre le lien / scanne le QR (aucun compte requis)
 2. Choix du mode (Mobile Money + opérateur, carte, ou solde LinkPay si connecté), saisie des infos
-3. PSP traite la transaction (`mock` : succès simulé après un court délai ; `cinetpay` : vraie redirection Mobile Money/carte)
+3. PSP traite la transaction (FlexPaie : demande de confirmation sur le téléphone, ou page de paiement par carte)
 4. Transaction enregistrée, commission calculée, grand livre mis à jour
 5. Notification instantanée (temps réel) au commerçant et au client
 6. Reçu disponible, commerçant peut demander un règlement

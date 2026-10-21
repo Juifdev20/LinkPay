@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -16,6 +16,7 @@ import { completeTopupOnce } from './topup-completion';
 import { completeFundedTransferOnce } from './funded-transfer-completion';
 import { confirmedAmountMatches } from '../payments/psp/amount-check';
 import { assertNumberMatchesOperator } from '../payments/mobile-money';
+import { assertTestMoneyStaysInTests } from '../common/test-money';
 
 @Injectable()
 export class WalletsService {
@@ -114,12 +115,12 @@ export class WalletsService {
   /**
    * Which ways of paying the app offers for a top-up. The bank card goes through the provider's own payment page
    * (FlexPaie, type 2): it is offered only when the provider supports it AND it was switched on (CARD_PAYMENTS_ENABLED=true
-   * on Render, after a real test), so a half-tested channel is never open to everybody. The mock provider (demo) allows it.
+   * on Render, after a real test), so a half-tested channel is never open to everybody.
    */
   paymentMethods(): { mobile_money: boolean; card: boolean } {
     const provider = this.pspFactory.get().provider;
     const switchedOn = String(this.configService.get<string>('CARD_PAYMENTS_ENABLED', '') ?? '').trim().toLowerCase() === 'true';
-    return { mobile_money: true, card: provider === 'mock' || (provider === 'flexpaie' && switchedOn) };
+    return { mobile_money: true, card: provider === 'flexpaie' && switchedOn };
   }
 
   async initiateTopup(
@@ -232,16 +233,6 @@ export class WalletsService {
 
     if (error) {
       throw new Error(`Failed to create wallet top-up: ${error.message}`);
-    }
-
-    // Mock PSP has no real checkout/webhook delivery — simulate the same
-    // short "confirming on your phone" delay used for merchant payments,
-    // then credit immediately (see payments.service.ts for the sibling flow).
-    if (provider === 'mock') {
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      await this.completeTopup(topup.id, pspResult.psp_intent_id);
-      const balances = await this.getBalances(wallet.id);
-      return { topup: { ...topup, status: 'SUCCESS' }, balances };
     }
 
     return { topup, checkout_url: pspResult.checkout_url };
@@ -506,6 +497,9 @@ export class WalletsService {
     if (recipientWallet.id === senderWallet.id) {
       throw new BadRequestException('Vous ne pouvez pas vous transférer de l\'argent à vous-même');
     }
+
+    // Test money only moves between test wallets (never into a real one).
+    await assertTestMoneyStaysInTests(this.supabaseService.getClient(), { walletId: senderWallet.id }, { walletId: recipientWallet.id });
 
     // A transfer into a store's or enterprise's wallet is a sale made outside
     // the invoice flow: no receipt, no entry in the merchant's sales, and no
@@ -775,14 +769,6 @@ export class WalletsService {
       throw new Error(`Failed to create transfer: ${insertError.message}`);
     }
 
-    // Mock PSP has no real checkout/webhook delivery — settle like a top-up does.
-    if (provider === 'mock') {
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      await this.completeFundedTransfer(transferRow.id, pspResult.psp_intent_id);
-      const { data: settled } = await this.supabaseService.getClient().from('transfers').select('*').eq('id', transferRow.id).single();
-      return { transfer: settled, reference: transferRow.psp_intent_id };
-    }
-
     return { transfer: transferRow, reference: transferRow.psp_intent_id, checkout_url: pspResult.checkout_url };
   }
 
@@ -884,6 +870,7 @@ export class WalletsService {
 
   private explainTransferFailure(message: string): string {
     if (message?.includes('INSUFFICIENT_BALANCE')) return 'Solde ScanLinkPay insuffisant pour ce transfert.';
+    if (message?.includes('TEST_MONEY_TO_REAL_WALLET')) return "L'argent de test ne peut aller que vers un autre portefeuille de test.";
     if (message?.includes('not PENDING')) return 'Ce transfert a déjà été traité.';
     if (message?.includes('WALLET_')) return 'Le compte du destinataire ou de l\'expéditeur n\'est pas actif.';
     return 'Le transfert a échoué. Aucun montant n\'a été débité.';
@@ -945,6 +932,7 @@ export class WalletsService {
     }
 
     await assertNoRecentSecurityChange(this.supabaseService.getClient(), userId);
+    await assertTestMoneyStaysInTests(this.supabaseService.getClient(), { walletId: wallet.id }, null);
     await this.walletPinService.verifyPin(userId, dto.pin);
 
     const rule = await this.walletLimitsService.getRule('WITHDRAWAL', dto.currency);
@@ -1026,6 +1014,9 @@ export class WalletsService {
     if (error) {
       if (/Insufficient balance/i.test(error.message)) {
         throw new BadRequestException('Solde ScanLinkPay insuffisant pour ce retrait.');
+      }
+      if (/TEST_WALLET_WITHDRAWAL/.test(error.message)) {
+        throw new ForbiddenException("Ce portefeuille contient de l'argent de test : il ne peut pas sortir de ScanLinkPay.");
       }
       if (/duplicate key|idempotency_key/i.test(error.message)) {
         // The same request arrived twice at once: the other one won. Answer with ITS withdrawal.

@@ -21,8 +21,8 @@ export class PendingPaymentsReconciliationService {
 
   @Cron(CronExpression.EVERY_MINUTE)
   async run(): Promise<{ checked: number; settled: number }> {
-    const provider = this.config.get<string>('PSP_PROVIDER', 'mock');
-    if (this.running || provider === 'mock') return { checked: 0, settled: 0 };
+    const provider = this.config.get<string>('PSP_PROVIDER', '');
+    if (this.running || !provider) return { checked: 0, settled: 0 };
     if (this.jobLock && !(await this.jobLock.acquire('psp-reconcile', 50))) return { checked: 0, settled: 0 };
     this.running = true;
     try {

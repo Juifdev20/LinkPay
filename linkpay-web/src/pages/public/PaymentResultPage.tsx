@@ -18,7 +18,7 @@ export default function PaymentResultPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
 
-  // Fast path: the mock/synchronous in-app payment flow (PaymentLinkPage.tsx)
+  // Fast path: the synchronous in-app payment flow (PaymentLinkPage.tsx)
   // navigates here with router state already carrying the outcome — no
   // network round trip needed.
   const state = location.state as { status?: string; reference?: string; message?: string } | null;

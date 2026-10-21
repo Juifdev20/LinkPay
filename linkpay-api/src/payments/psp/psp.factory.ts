@@ -1,7 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PspAdapter } from './psp.adapter';
-import { MockPspAdapter } from './providers/mock.adapter';
 import { CinetPayAdapter } from './providers/cinetpay.adapter';
 import { FlexPaieAdapter } from './providers/flexpaie.adapter';
 
@@ -12,11 +11,9 @@ export class PspFactory {
 
   constructor(
     private configService: ConfigService,
-    private mockAdapter: MockPspAdapter,
     private cinetPayAdapter: CinetPayAdapter,
     private flexPaieAdapter: FlexPaieAdapter,
   ) {
-    this.register('mock', mockAdapter);
     this.register('cinetpay', cinetPayAdapter);
     this.register('flexpaie', flexPaieAdapter);
   }
@@ -26,11 +23,17 @@ export class PspFactory {
     this.logger.log(`Registered PSP adapter: ${provider}`);
   }
 
+  /**
+   * The provider that moves REAL money. There is no simulated ("mock") provider any more and no default: without
+   * PSP_PROVIDER set to a real provider, every payment, top-up and withdrawal is refused — never "succeeds" for free.
+   * Test money is written by the developers directly in the database (docs/RECHARGE_TEST.md), never through the app.
+   */
   get(provider?: string): PspAdapter {
-    const providerName = provider || this.configService.get<string>('PSP_PROVIDER', 'mock');
+    const providerName = (provider || this.configService.get<string>('PSP_PROVIDER', '') || '').trim();
     const adapter = this.adapters.get(providerName);
     if (!adapter) {
-      throw new Error(`PSP provider "${providerName}" not registered`);
+      this.logger.error(providerName ? `PSP provider "${providerName}" is not available` : 'PSP_PROVIDER is not set: payments are refused');
+      throw new ServiceUnavailableException('Les paiements sont momentanément indisponibles.');
     }
     return adapter;
   }

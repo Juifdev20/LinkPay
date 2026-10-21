@@ -22,6 +22,7 @@ import { confirmedAmountMatches } from './psp/amount-check';
 import { assertMerchantCanReceive } from '../common/merchant-status';
 import { assertNumberMatchesOperator } from './mobile-money';
 import { assertNoRecentSecurityChange } from '../common/security-hold';
+import { assertTestMoneyStaysInTests } from '../common/test-money';
 
 @Injectable()
 export class PaymentsService {
@@ -191,23 +192,6 @@ export class PaymentsService {
       throw new Error(`Failed to create payment intent: ${intentError.message}`);
     }
 
-    // The mock PSP has no real checkout page or webhook delivery mechanism —
-    // simulate a successful payment instead of leaving the intent stuck
-    // PENDING forever (see README: "PSP mock: succès automatique"). A short
-    // artificial delay stands in for the real round trip of a mobile money
-    // STK/USSD push, where the customer confirms with their PIN on their own
-    // phone before the provider calls our webhook.
-    if (provider === 'mock') {
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      const transaction = await this.handleSuccessfulPayment(intent, { psp_intent_id: pspResult.psp_intent_id });
-      return {
-        payment_intent_id: intent.id,
-        psp_intent_id: pspResult.psp_intent_id,
-        status: 'SUCCESS',
-        reference: transaction?.reference,
-      };
-    }
-
     return {
       payment_intent_id: intent.id,
       psp_intent_id: pspResult.psp_intent_id,
@@ -285,6 +269,7 @@ export class PaymentsService {
     // PIN verified before anything is created/debited — never trust the
     // frontend's "user confirmed" state for a financial operation.
     await assertNoRecentSecurityChange(this.supabaseService.getClient(), userId);
+    await this.assertTestMoneyToMerchant(userId, request.merchant_id);
     await this.walletPinService.verifyPin(userId, pin);
 
     const fees = await this.commissionsService.calculateFeesPreview(
@@ -480,13 +465,18 @@ export class PaymentsService {
     };
   }
 
+  /** Test money may pay only a merchant whose owner's wallet is a test wallet too (docs/RECHARGE_TEST.md). */
+  private async assertTestMoneyToMerchant(payerId: string, merchantId: string) {
+    const client = this.supabaseService.getClient();
+    const { data: merchant } = await client.from('merchants').select('owner_id').eq('id', merchantId).maybeSingle();
+    await assertTestMoneyStaysInTests(client, { userId: payerId }, { userId: merchant?.owner_id ?? null });
+  }
+
   async processWebhook(provider: string, payload: Buffer, signature: string, headers: Record<string, string>) {
-    // `provider` comes from the public URL. The mock adapter accepts any
-    // payload as genuine, so unless this deployment actually runs on it,
-    // anyone could POST /webhooks/mock and mark a payment as paid for free.
-    const configuredProvider = this.configService.get<string>('PSP_PROVIDER', 'mock');
-    if (provider === 'mock' && configuredProvider !== 'mock') {
-      this.logger.warn('Rejected a mock webhook: PSP_PROVIDER is not "mock" on this deployment');
+    // `provider` comes from the public URL. There is no simulated provider any more (no fictitious money): a call
+    // naming "mock" is somebody trying to fake a payment.
+    if (provider === 'mock') {
+      this.logger.warn('Rejected a mock webhook: there is no simulated payment provider');
       void this.securityAlerts.alert({
         severity: 'warning',
         title: 'Faux webhook de paiement rejeté',
@@ -947,7 +937,7 @@ export class PaymentsService {
    * is credited once).
    */
   async reconcilePending(provider: string, limit = 50): Promise<{ checked: number; settled: number }> {
-    if (!provider || provider === 'mock' || provider === 'wallet') return { checked: 0, settled: 0 };
+    if (!provider || provider === 'wallet') return { checked: 0, settled: 0 };
     const adapter = this.pspFactory.get(provider);
     const db = this.supabaseService.getClient();
     const olderThan = new Date(Date.now() - 45_000).toISOString();

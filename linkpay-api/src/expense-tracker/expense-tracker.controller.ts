@@ -126,7 +126,7 @@ export class ExpenseTrackerController {
   }
 
   @Post('pro/activate/cinetpay')
-  @ApiOperation({ summary: 'Activate/renew unlimited access via CinetPay — returns a checkout URL (or completes immediately with the mock PSP)' })
+  @ApiOperation({ summary: 'Activate/renew unlimited access via CinetPay — returns a checkout URL' })
   async activateProViaCinetPay(@CurrentUser('id') userId: string) {
     return this.expenseTrackerService.activateProViaCinetPay(userId);
   }

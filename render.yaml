@@ -90,8 +90,8 @@ services:
         value: 12h
       - key: ADMIN_ALLOWED_IPS
         sync: false
-      # Chosen in the Render dashboard (mock | flexpaie | cinetpay), NOT forced here: switching to flexpaie before its
-      # credentials exist would break every payment. See docs/FLEXPAIE.md.
+      # Chosen in the Render dashboard (flexpaie | cinetpay). REQUIRED: there is no simulated provider any more, and
+      # without a real one every payment is refused. See docs/FLEXPAIE.md; test money: docs/RECHARGE_TEST.md.
       - key: PSP_PROVIDER
         sync: false
       # FlexPaie (docs/FLEXPAIE.md): the address, merchant code and token come from FlexPaie with the account.

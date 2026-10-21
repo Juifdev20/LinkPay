@@ -359,15 +359,6 @@ export class ExpenseTrackerService {
       throw new Error(`Failed to create expense pro payment: ${error.message}`);
     }
 
-    // Mock PSP has no real checkout/webhook delivery — same short-circuit
-    // pattern as WalletsService.initiateTopup()'s mock branch.
-    if (provider === 'mock') {
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      const { data: newExpiry } = await this.db.rpc('extend_expense_pro', { p_user_id: userId });
-      await this.db.from('expense_pro_payments').update({ status: 'SUCCESS', extended_to: newExpiry }).eq('id', payment.id);
-      return { payment: { ...payment, status: 'SUCCESS', extended_to: newExpiry }, pro_expires_at: newExpiry };
-    }
-
     return { payment, checkout_url: pspResult.checkout_url };
   }
 

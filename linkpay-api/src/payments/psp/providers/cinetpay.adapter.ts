@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CinetPayClient, parseNotification, Currency } from 'cinetpay-js';
 import {
@@ -40,10 +40,14 @@ export class CinetPayAdapter implements PspAdapter {
   readonly provider = 'cinetpay';
   private readonly logger = new Logger(CinetPayAdapter.name);
   private client: CinetPayClient;
+  /** sk_test_ keys = CinetPay's sandbox, where payments "succeed" without real money: never used. */
+  private readonly sandbox: boolean;
 
   constructor(private configService: ConfigService) {
     const apiKey = this.configService.get<string>('CINETPAY_API_KEY_CD', '');
     const apiPassword = this.configService.get<string>('CINETPAY_API_PASSWORD_CD', '');
+    this.sandbox = /^sk_test_/i.test(String(apiKey ?? '').trim());
+    if (this.sandbox) this.logger.error('CinetPay test keys (sk_test_) are configured: CinetPay is refused (no fictitious money)');
 
     this.client = new CinetPayClient({
       credentials: {
@@ -70,7 +74,12 @@ export class CinetPayAdapter implements PspAdapter {
     return `+243${local}`;
   }
 
+  private assertRealMoney() {
+    if (this.sandbox) throw new ServiceUnavailableException('Les paiements sont momentanément indisponibles.');
+  }
+
   async createPaymentIntent(params: CreatePaymentIntentParams): Promise<PaymentIntentResult> {
+    this.assertRealMoney();
     // CinetPay amounts are whole currency units (e.g. 1500 = 1500 CDF), not
     // the cents/centimes ScanLinkPay uses internally everywhere else.
     // A fraction of a unit cannot be billed: rounding it away would charge the customer less than we credit.
@@ -117,6 +126,7 @@ export class CinetPayAdapter implements PspAdapter {
   }
 
   async parseWebhookEvent(payload: Buffer, headers: Record<string, string>): Promise<WebhookEventResult> {
+    this.assertRealMoney();
     const body = JSON.parse(payload.toString());
     const notification = parseNotification(body);
 
@@ -173,6 +183,7 @@ export class CinetPayAdapter implements PspAdapter {
   }
 
   async getTransactionStatus(psp_intent_id: string): Promise<TransactionStatusResult> {
+    this.assertRealMoney();
     const statusResult = await this.client.payment.getStatus(psp_intent_id, COUNTRY);
     const status = statusResult.status === 'SUCCESS' ? 'SUCCESS' : statusResult.status === 'FAILED' ? 'FAILED' : 'PENDING';
 

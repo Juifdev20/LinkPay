@@ -30,7 +30,7 @@ Avant `PSP_PROVIDER=flexpaie` :
 1. Supabase → SQL Editor : exécuter `linkpay-api/supabase/migrations/060_flexpaie_orders.sql` (choisir « Run and enable RLS »).
 2. Faire un petit paiement Mobile Money (quelques centaines de FC) et vérifier que le solde est crédité.
 
-Tant que `PSP_PROVIDER` n'est pas `flexpaie`, le code FlexPaie est inactif et ne change rien.
+`PSP_PROVIDER` est **obligatoire** : il n'y a plus de prestataire simulé (`mock`). Sans lui, l'API refuse tous les paiements, recharges et retraits (elle ne les fait plus « réussir » toute seule). L'argent de test se met depuis Supabase : `docs/RECHARGE_TEST.md`.
 
 ### Retraits automatiques (PayoutService FlexPaie)
 

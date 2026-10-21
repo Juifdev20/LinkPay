@@ -56,7 +56,7 @@ export function ExpenseProUpgrade({ status, context = 'paywall' }: ExpenseProUpg
         followCheckout(data.checkout_url, navigate);
         return;
       }
-      // Mock provider settles synchronously.
+      // An already-settled payment comes back synchronously.
       invalidateAfterActivation();
     },
     onError: (err: any) => setError(err.response?.data?.message || "Échec de l'activation"),

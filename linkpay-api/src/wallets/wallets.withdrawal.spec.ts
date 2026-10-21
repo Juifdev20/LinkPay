@@ -82,3 +82,21 @@ describe('WalletsService.requestWithdrawal — 24 h after a change of keys', () 
     expect(fake.queries.some((q) => q.target.startsWith('rpc:'))).toBe(false);
   });
 });
+
+describe('WalletsService.requestWithdrawal — test money', () => {
+  it('a test wallet can never withdraw: refused before the PIN and before anything is debited', async () => {
+    const fake = createFakeSupabase((q: RecordedQuery) => {
+      if (q.target === 'wallets') return { data: { ...WALLET, is_test: true } };
+      return { data: null };
+    });
+    const pin = { verifyPin: jest.fn(async () => undefined) };
+    const payouts = { dispatch: jest.fn() };
+    const service = new WalletsService(
+      fake.service, { get: () => ({ provider: 'flexpaie' }) } as any, { create: jest.fn() } as any, { get: (_k: string, d?: any) => d } as any,
+      pin as any, {} as any, { log: jest.fn() } as any, {} as any, payouts as any, { assessOutflow: jest.fn() } as any,
+    );
+    await expect(service.requestWithdrawal('u1', DTO, 'key-t')).rejects.toThrow(/argent de test/);
+    expect(pin.verifyPin).not.toHaveBeenCalled();
+    expect(fake.queries.some((q) => q.target.startsWith('rpc:'))).toBe(false);
+  });
+});

@@ -67,9 +67,9 @@ describe('PaymentsService.reconcilePending', () => {
     }
   });
 
-  it('does nothing for the mock provider and for wallet payments', async () => {
+  it('does nothing for wallet payments or without a provider', async () => {
     const { service, fake, factory } = setup({}, {});
-    for (const p of ['mock', 'wallet', '']) expect(await service.reconcilePending(p)).toEqual({ checked: 0, settled: 0 });
+    for (const p of ['wallet', '']) expect(await service.reconcilePending(p)).toEqual({ checked: 0, settled: 0 });
     expect(fake.queries).toHaveLength(0);
     expect(factory.get).not.toHaveBeenCalled();
   });
@@ -86,8 +86,8 @@ describe('PendingPaymentsReconciliationService (every minute)', () => {
     expect(await svc.run()).toEqual({ checked: 2, settled: 1 });
     expect(payments.reconcilePending).toHaveBeenCalledWith('flexpaie');
   });
-  it('does nothing in mock mode, or when another instance holds the lock', async () => {
-    expect((await make('mock').svc.run()).checked).toBe(0);
+  it('does nothing without a configured provider, or when another instance holds the lock', async () => {
+    expect((await make('').svc.run()).checked).toBe(0);
     const { svc, payments } = make('flexpaie', { acquire: jest.fn(async () => false) });
     expect((await svc.run()).checked).toBe(0);
     expect(payments.reconcilePending).not.toHaveBeenCalled();

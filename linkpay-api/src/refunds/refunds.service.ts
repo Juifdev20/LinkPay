@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenEx
 import { SupabaseService } from '../supabase/supabase.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { assertNoRecentSecurityChange } from '../common/security-hold';
+import { assertTestMoneyStaysInTests } from '../common/test-money';
 
 @Injectable()
 export class RefundsService {
@@ -54,6 +55,9 @@ export class RefundsService {
     this.assertOwnsTransaction(transaction.merchant_id, callerMerchantId, callerRole);
     // Money leaves the merchant's wallet: not within 24 h of a change of the keys of the person refunding.
     await assertNoRecentSecurityChange(this.supabaseService.getClient(), userId);
+    // Test money in the merchant's wallet never reaches a real client.
+    const { data: merchant } = await this.supabaseService.getClient().from('merchants').select('owner_id').eq('id', transaction.merchant_id).maybeSingle();
+    await assertTestMoneyStaysInTests(this.supabaseService.getClient(), { userId: merchant?.owner_id ?? null }, { userId: transaction.client_id ?? null });
 
     const { data: refund, error: refundError } = await this.supabaseService.getClient()
       .rpc('refund_to_client_wallet', {

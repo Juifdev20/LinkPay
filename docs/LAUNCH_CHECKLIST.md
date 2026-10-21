@@ -21,7 +21,7 @@ Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente
 - [ ] Nouveau mot de passe / clés CinetPay, nouvelle clé FCM, nouveau token FlexPaie si le précédent a été partagé.
 - [ ] `APP_CODE_PEPPER` : 32+ caractères aléatoires, à définir **avant** que les utilisateurs choisissent leur code d'accès, puis ne plus jamais le changer (sinon tous devront en choisir un nouveau).
 - [ ] `TWO_FACTOR_ENCRYPTION_KEY` : 32+ caractères aléatoires, à définir **avant** que les administrateurs activent la 2FA, puis ne plus jamais la changer.
-- [ ] `NODE_ENV=production`, `ENABLE_SWAGGER=false`, `PSP_PROVIDER` = le vrai fournisseur (jamais `mock`).
+- [ ] `NODE_ENV=production`, `ENABLE_SWAGGER=false`, `PSP_PROVIDER` = le vrai fournisseur (`mock` n'existe plus : sans fournisseur, les paiements sont refusés).
 - [ ] **Alertes par email** : créer un compte gratuit sur resend.com, vérifier votre domaine d'envoi, puis définir `RESEND_API_KEY` et `ALERT_EMAIL_FROM` (et `ALERT_EMAILS` pour des destinataires en plus). Tester : déclencher une alerte critique (ex. un mauvais code 2FA sur un compte admin) et vérifier la réception.
 - [ ] Optionnel mais recommandé : `ADMIN_ALLOWED_IPS` si les administrateurs ont une IP fixe (bureau/VPN).
 
