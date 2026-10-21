@@ -17,7 +17,7 @@ Tout le travail est dans `main` (dernière fusion : PR #25). Rien n'est en atten
 - Redéployer `linkpay-api` et `linkpay-web`, reconstruire l'APK Android.
 
 ## En attente de FlexPaie (message à leur envoyer)
-- Adresses et identifiants de production du PayoutService, et les questions de `docs/FLEXPAIE.md` (« À demander à FlexPaie », point 1).
+- Adresses et identifiants de production du PayoutService.
 - Format du rappel (callback), frais (Mobile Money ≈ 2,5 %, carte ≈ 3 %), montants avec centimes (USD), montants minimum/maximum, mode test, règlement (quand ils nous reversent), préfixes des opérateurs, cartes locales et prépayées.
 
 ## Sécurité à faire

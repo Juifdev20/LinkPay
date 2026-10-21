@@ -36,7 +36,7 @@ Le mot recouvre trois situations différentes.
 - **C. Un marchand rembourse un client sur une vente** : `RefundsService` déplace l'argent du portefeuille du marchand vers celui du client, en base. FlexPaie n'est pas concerné.
 
 ## À demander à FlexPaie
-1. **Envoi d'argent (PayoutService)** : les trois adresses de production (connexion, envoi, vérification) et l'identifiant / mot de passe du module ; le `check` des envois est-il le même hôte que celui des paiements, avec le jeton du PayoutService ? Quand un envoi est encore en cours, que répond le `check` (un statut « en attente » comme le 2 des paiements, ou rien) ? Le statut « 1 » est-il toujours définitif ? Une `reference` refusée par « 0XX1 » (envoi déjà en cours) peut-elle être renvoyée telle quelle ? Le « 0XX1 » vaut-il pour tout le compte marchand ou pour un numéro ? Longueur maximale de la `reference` (nous envoyons l'identifiant du retrait, 36 caractères). Montants minimum et maximum par envoi, et en USD.
+1. **Envoi d'argent (PayoutService)** : seulement les trois adresses de production et l'identifiant / mot de passe du module (le reste est tranché dans « Retraits automatiques », « Ce que la documentation ne dit pas »).
 2. **Doublons** : une `reference` déjà utilisée est-elle refusée ? Peut-on interroger une transaction par notre référence ? (`check` ne marche que par `orderNumber` : si la réponse de la demande de paiement se perd, nous ne pouvons pas la retrouver.)
 3. **Durée du message à valider** (Mobile Money) : au bout de combien de temps un paiement « en attente » (2) devient-il « échoué » (1) ?
 4. **Règlement** : quand et comment l'argent encaissé arrive chez nous (délai, compte, relevé).
@@ -76,8 +76,8 @@ Source : documentation Payout v1.03. Code : fin de `flexpaie.adapter.ts`, `walle
 | Étape | Appel |
 |---|---|
 | Connexion | `POST <FLEXPAIE_PAYOUT_AUTH_URL>` `{username, password}` → `{code, token, expire_in}`. Le jeton est gardé jusqu'à une minute avant son expiration. |
-| Envoi | `POST <FLEXPAIE_PAYOUT_URL>` `{merchant, type "1", reference, amount, currency, customer "243…", description, callback_url}` → `{code, status "0XX0".."0XX5", message, orderNumber}`. `reference` = identifiant du retrait. |
-| Vérification | `GET <FLEXPAIE_PAYOUT_CHECK_URL>/<orderNumber>` → `status` 0 envoyé, 1 échoué. |
+| Envoi | `POST <FLEXPAIE_PAYOUT_URL>` `{merchant, type "1", reference, amount, currency, customer "243…", description, callback_url}` → `{code, status "0XX0".."0XX5", message, orderNumber}`. `reference` = `RET-<16 caractères>-<essai>` (22 à 25 caractères), nouvelle à chaque essai. |
+| Vérification | `GET <FLEXPAIE_PAYOUT_CHECK_URL>/<orderNumber>` → `status` 0 envoyé, 1 échoué (mêmes codes que pour les paiements : 2 en cours, 3/4/5 non abouti). |
 | Rappel | Reçu sur `/api/v1/webhooks/payouts/flexpaie` : jamais cru, il ne fait que déclencher la vérification. |
 
 Un retrait Mobile Money :
@@ -91,6 +91,15 @@ Un retrait Mobile Money :
    - **pas de réponse** (délai dépassé, erreur 5xx) : l'argent est **peut-être parti**, le retrait n'est **ni renvoyé ni remboursé**. Le rappel de FlexPaie apporte le numéro de commande (vérifié chez FlexPaie avant d'être gardé) et la vérification conclut. **Sans aucune nouvelle au bout de 30 minutes, le retrait est remboursé.** Si FlexPaie annonce ensuite que l'argent est bien parti, une alerte critique « Retrait payé ET remboursé » est envoyée pour régulariser avec le client.
 
 Les retraits demandés pendant la période manuelle et encore « en attente » au moment de l'activation **partent automatiquement** à la minute suivante. **Avant d'activer, vider la page « Retraits à traiter »** : un retrait déjà payé à la main mais pas encore marqué « J'ai envoyé » serait payé une seconde fois.
+
+### Ce que la documentation ne dit pas : choix appliqués
+Pratiques courantes des prestataires de paiement, sans attendre de réponse de FlexPaie :
+- **Statut d'un envoi en cours** : la vérification des envois a la **même adresse** (`/api/rest/v1/check/<orderNumber>`) que celle des paiements ; on lit donc les mêmes codes : 0 envoyé, 2 en cours, 1/3/4/5 non abouti (remboursé), tout autre code = on attend (jamais un verdict).
+- **Jeton de la vérification** : celui du PayoutService ; s'il est refusé, une nouvelle connexion, puis en dernier recours le jeton des paiements (`FLEXPAIE_TOKEN`).
+- **Adresse de vérification** : `FLEXPAIE_PAYOUT_CHECK_URL` si FlexPaie en donne une, sinon celle des paiements (`FLEXPAIE_CHECK_URL`).
+- **Doublons** : une **référence neuve à chaque essai** (`RET-…-1`, `RET-…-2`…). Un nouvel essai après « 0XX1 » n'est donc jamais refusé comme doublon. Le journal garde la référence de l'essai en cours, pour reconnaître le rappel.
+- **Longueur de la référence** : 22 à 25 caractères, la forme des références que FlexPaie accepte déjà pour les paiements (`TOPUP-20261009-AB12CD`, 21).
+- **Montants** : entiers seulement ; **minimum 100 CDF** (mesuré en production) et **1 USD** ; refusés **avant** de débiter le portefeuille. Les maximums sont les limites de retrait de l'administration (par opération, par jour, par mois). Si FlexPaie refuse un montant (0XX5), le retrait est remboursé avec son message.
 
 ### Ce qui reste manuel
 Les retraits **vers une banque**, et tous les retraits tant que `FLEXPAIE_PAYOUTS_ENABLED` n'est pas `true`, attendent un administrateur dans **Administration → Retraits à traiter** :

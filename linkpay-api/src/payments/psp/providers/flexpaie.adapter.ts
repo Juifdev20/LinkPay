@@ -63,6 +63,17 @@ export const PAYOUT_RETRY_FOR_MS = 24 * 3_600_000;
 
 const UNAVAILABLE = 'Le service de retrait est momentanément indisponible.';
 
+/**
+ * Smallest payout per currency. CDF: FlexPaie's own minimum, measured in production (99 refused, 100 accepted).
+ * USD: one dollar, the usual Mobile Money floor. Checked BEFORE the wallet is debited.
+ */
+const PAYOUT_MINIMUM_CENTS: Record<string, number> = { CDF: 100_00, USD: 1_00 };
+
+/** The reference given to FlexPaie for one attempt: short (22 characters at most), new for each attempt. */
+export function payoutReference(withdrawalId: string, attempt: number): string {
+  return `RET-${withdrawalId.replace(/-/g, '').slice(0, 16).toUpperCase()}-${attempt}`;
+}
+
 /** Check-transaction status codes (documentation, "Check transaction"). Anything unknown is treated as "still waiting". */
 const STATUS: Record<string, 'SUCCESS' | 'FAILED' | 'PENDING'> = {
   '0': 'SUCCESS', // processed successfully
@@ -414,7 +425,7 @@ export class FlexPaieAdapter implements PspAdapter {
     return this.payoutTokenRequest;
   }
 
-  private async payoutRow(reference: string): Promise<{ reference: string; order_number: string | null; state: string; attempts: number; created_at: string; updated_at: string } | null> {
+  private async payoutRow(reference: string): Promise<{ reference: string; sent_reference: string | null; order_number: string | null; state: string; attempts: number; created_at: string; updated_at: string } | null> {
     const { data, error } = await this.supabaseService.getClient().from('flexpaie_payouts').select('*').eq('reference', reference).maybeSingle();
     if (error) throw new Error(`Could not read the FlexPaie payout journal: ${error.message}`);
     return data ?? null;
@@ -431,19 +442,35 @@ export class FlexPaieAdapter implements PspAdapter {
    * Takes the right to send this withdrawal, before anything leaves. Only one sender can win: the insert (primary key)
    * for a first try, the NOT_SENT → SENDING update for a retry. The loser stops without sending.
    */
-  private async claimPayout(reference: string, existing: { state: string; attempts: number } | null): Promise<void> {
+  private async claimPayout(reference: string, existing: { state: string; attempts: number } | null): Promise<string> {
     const db = this.supabaseService.getClient();
     if (!existing) {
-      const { error } = await db.from('flexpaie_payouts').insert({ reference, state: 'SENDING' });
-      if (!error) return;
+      const sent = payoutReference(reference, 1);
+      const { error } = await db.from('flexpaie_payouts').insert({ reference, sent_reference: sent, state: 'SENDING' });
+      if (!error) return sent;
       if (/duplicate|unique/i.test(error.message)) throw new Error(`FlexPaie payout ${reference} is already being sent: not sent twice`);
       throw new PayoutNotSentError(UNAVAILABLE, `Journal des retraits FlexPaie inaccessible (migration 067 appliquée ?) : ${error.message}`);
     }
+    const sent = payoutReference(reference, existing.attempts + 1);
     const { data, error } = await db.from('flexpaie_payouts')
-      .update({ state: 'SENDING', attempts: existing.attempts + 1, updated_at: new Date().toISOString() })
+      .update({ state: 'SENDING', attempts: existing.attempts + 1, sent_reference: sent, updated_at: new Date().toISOString() })
       .eq('reference', reference).eq('state', 'NOT_SENT').select('reference');
     if (error) throw new PayoutRetryLaterError(`Could not claim FlexPaie payout ${reference}: ${error.message}`);
     if (!data || (Array.isArray(data) && data.length === 0)) throw new Error(`FlexPaie payout ${reference} is already being sent: not sent twice`);
+    return sent;
+  }
+
+  /**
+   * What FlexPaie would refuse, said before the wallet is debited (null = fine): only whole amounts, in CDF or USD,
+   * from the minimum up. The maximums are the withdrawal limits set in the administration.
+   */
+  checkPayout(params: { amount_cents: number; currency: string; channel: string }): string | null {
+    if (!this.supportsPayout || !this.supportsPayoutChannel(params.channel)) return null;
+    const minimum = PAYOUT_MINIMUM_CENTS[params.currency];
+    if (minimum === undefined) return 'Le retrait Mobile Money se fait en CDF ou en USD.';
+    if (!isWholeCurrencyUnits(params.amount_cents)) return "Le retrait Mobile Money n'accepte que des montants entiers (sans centimes).";
+    if (params.amount_cents < minimum) return `Montant minimum pour un retrait Mobile Money : ${(minimum / 100).toLocaleString('fr-FR')} ${params.currency}.`;
+    return null;
   }
 
   async payout(params: PayoutParams): Promise<PayoutResult> {
@@ -451,9 +478,8 @@ export class FlexPaieAdapter implements PspAdapter {
       throw new PayoutNotSentError("Les retraits automatiques ne sont pas activés : l'envoi d'argent par FlexPaie n'est pas connecté.");
     }
     if (!this.supportsPayoutChannel(params.channel)) throw new PayoutNotSentError("FlexPaie n'envoie de l'argent que vers le Mobile Money.");
-    if (!isWholeCurrencyUnits(params.amount_cents)) {
-      throw new PayoutNotSentError("Le retrait Mobile Money n'accepte que des montants entiers (sans centimes).");
-    }
+    const refused = this.checkPayout(params);
+    if (refused) throw new PayoutNotSentError(refused);
     let customer: string;
     try {
       customer = toFlexPaieMsisdn(params.destination?.phone);
@@ -479,16 +505,16 @@ export class FlexPaieAdapter implements PspAdapter {
       throw new PayoutRetryLaterError(`FlexPaie payout login failed: ${err?.message}`);
     }
 
-    await this.claimPayout(params.reference, existing);
+    const sentReference = await this.claimPayout(params.reference, existing);
 
     const body = {
       merchant: this.payoutMerchant(),
       type: '1',
-      reference: params.reference,
+      reference: sentReference,
       amount: String(params.amount_cents / 100),
       currency: params.currency,
       customer,
-      description: `Retrait ScanLinkPay ${params.reference}`,
+      description: `Retrait ScanLinkPay ${sentReference}`,
       callback_url: params.callback_url,
     };
 
@@ -563,7 +589,15 @@ export class FlexPaieAdapter implements PspAdapter {
       answer = await this.send('GET', url, undefined, await this.payoutAuthorization());
     } catch (err: any) {
       if (!(err instanceof FlexPaieCallError && err.refusedToken)) throw err;
-      answer = await this.send('GET', url, undefined, await this.payoutAuthorization(true));
+      try {
+        answer = await this.send('GET', url, undefined, await this.payoutAuthorization(true));
+      } catch (again: any) {
+        // The documentation names "the authorization token" without saying which: the check service is the one that
+        // answers for payments, so the collecting token is tried last.
+        const collecting = String(this.configService.get('FLEXPAIE_TOKEN', '') ?? '').trim();
+        if (!(again instanceof FlexPaieCallError && again.refusedToken) || !collecting) throw again;
+        answer = await this.send('GET', url, undefined, this.authorization());
+      }
     }
     const t = answer?.transaction ?? answer;
     return t && t.status !== undefined && t.status !== null && String(t.status) !== '' ? t : null;
@@ -599,14 +633,28 @@ export class FlexPaieAdapter implements PspAdapter {
       this.logger.warn(`FlexPaie payout ${reference}: order ${orderNumber} not found (yet) by the check`);
       return { status: 'PENDING', psp_payout_id: orderNumber };
     }
-    if (t.reference && String(t.reference) !== reference) {
+    if (t.reference && !this.isOurs(row, String(t.reference))) {
       this.logger.error(`FlexPaie payout ${reference}: order ${orderNumber} carries another reference (${t.reference}) — ignored`);
       return { status: 'PENDING', psp_payout_id: orderNumber };
     }
-    const status = String(t.status).trim();
-    if (status === '0') return { status: 'SUCCESS', psp_payout_id: orderNumber };
-    if (status === '1') return { status: 'FAILED', psp_payout_id: orderNumber, failure_reason: "L'envoi vers votre numéro Mobile Money a échoué. Votre argent a été remis dans votre portefeuille." };
+    // The same check service as for payments (same address in both documentations): the same status codes —
+    // 0 done, 2 still in progress, 1/3/4/5 not done; anything else keeps waiting, never a verdict.
+    const status = mapFlexPaieStatus(t.status);
+    if (status === 'SUCCESS') return { status: 'SUCCESS', psp_payout_id: orderNumber };
+    if (status === 'FAILED') return { status: 'FAILED', psp_payout_id: orderNumber, failure_reason: "L'envoi vers votre numéro Mobile Money a échoué. Votre argent a été remis dans votre portefeuille." };
     return { status: 'PENDING', psp_payout_id: orderNumber };
+  }
+
+  /** A reference FlexPaie reports for this withdrawal: the one sent for an attempt, or the withdrawal id itself. */
+  private isOurs(row: { reference: string; sent_reference: string | null }, reported: string): boolean {
+    return reported === row.sent_reference || reported === row.reference;
+  }
+
+  /** The journal row a reference reported by FlexPaie belongs to (the attempt's reference, or the withdrawal id). */
+  private async payoutRowByReported(reported: string) {
+    const { data, error } = await this.supabaseService.getClient().from('flexpaie_payouts').select('*').eq('sent_reference', reported).maybeSingle();
+    if (error) throw new Error(`Could not read the FlexPaie payout journal: ${error.message}`);
+    return data ?? (await this.payoutRow(reported));
   }
 
   /**
@@ -615,10 +663,11 @@ export class FlexPaieAdapter implements PspAdapter {
    */
   async acceptPayoutCallback(payload: Buffer): Promise<string | null> {
     const body = this.parseCallback(payload);
-    const reference = typeof body?.reference === 'string' ? body.reference.trim() : '';
-    if (!reference || reference.length > 100) return null;
-    const row = await this.payoutRow(reference);
+    const reported = typeof body?.reference === 'string' ? body.reference.trim() : '';
+    if (!reported || reported.length > 100) return null;
+    const row = await this.payoutRowByReported(reported);
     if (!row) return null;
+    const reference = row.reference;
 
     const claimed = body?.orderNumber ? String(body.orderNumber).trim() : '';
     if (row.order_number) {
@@ -631,7 +680,7 @@ export class FlexPaieAdapter implements PspAdapter {
     if (!claimed || claimed.length > 100) return reference;
 
     const t = await this.payoutCheck(claimed);
-    if (!t || String(t.reference ?? '') !== reference) {
+    if (!t || !this.isOurs(row, String(t.reference ?? ''))) {
       this.logger.warn(`FlexPaie payout callback for ${reference}: order ${claimed} is unknown or not ours — refused`);
       return null;
     }

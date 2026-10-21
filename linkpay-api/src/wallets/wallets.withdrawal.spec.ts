@@ -5,7 +5,7 @@ import { createFakeSupabase, RecordedQuery } from '../test-utils/fake-supabase';
 const WALLET = { id: 'wal1', status: 'ACTIVE', user_id: 'u1' };
 const DTO = { amount_cents: 200000, currency: 'CDF', channel: 'mobile_money' as const, destination: { operator: 'mpesa', phone: '+243900000000' }, pin: '1234' };
 
-function setup(dispatchResult: any) {
+function setup(dispatchResult: any, provider: any = { provider: 'mock' }) {
   const fake = createFakeSupabase((q: RecordedQuery) => {
     if (q.target === 'wallets') return { data: WALLET };
     if (q.target === 'withdrawals') {
@@ -17,7 +17,7 @@ function setup(dispatchResult: any) {
   const payouts = { dispatch: jest.fn(async () => dispatchResult) };
   const service = new WalletsService(
     fake.service,
-    { get: () => ({ provider: 'mock' }) } as any,
+    { get: () => provider } as any,
     { create: jest.fn(async () => undefined) } as any,
     { get: (_k: string, d?: any) => d } as any,
     { verifyPin: jest.fn(async () => undefined) } as any,
@@ -51,5 +51,14 @@ describe('WalletsService.requestWithdrawal', () => {
     expect(err).toBeInstanceOf(BadRequestException);
     expect(err.message).toMatch(/Numéro invalide/);
     expect(err.message).toMatch(/resté dans votre portefeuille/);
+  });
+});
+
+describe('WalletsService.requestWithdrawal — what the provider would refuse', () => {
+  it('is refused BEFORE anything is debited (no withdrawal, no dispatch)', async () => {
+    const { service, payouts, fake } = setup({}, { provider: 'flexpaie', checkPayout: () => 'Montant minimum pour un retrait Mobile Money : 100 CDF.' });
+    await expect(service.requestWithdrawal('u1', { ...DTO, amount_cents: 5000 }, 'key-x')).rejects.toThrow('Montant minimum');
+    expect(payouts.dispatch).not.toHaveBeenCalled();
+    expect(fake.queries.some((q) => q.target.startsWith('rpc:') || q.target === 'withdrawals')).toBe(false);
   });
 });

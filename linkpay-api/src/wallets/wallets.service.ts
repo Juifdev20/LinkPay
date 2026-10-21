@@ -922,6 +922,9 @@ export class WalletsService {
       throw new BadRequestException('Compte de destination requis');
     }
     if (dto.channel === 'mobile_money') assertNumberMatchesOperator(dto.destination.operator, dto.destination.phone);
+    // What the provider would refuse (cents, below its minimum…) is said now, not after debiting and refunding.
+    const payoutRefusal = this.pspFactory.get().checkPayout?.(dto);
+    if (payoutRefusal) throw new BadRequestException(payoutRefusal);
 
     const wallet = await this.getWalletByUserId(userId);
 

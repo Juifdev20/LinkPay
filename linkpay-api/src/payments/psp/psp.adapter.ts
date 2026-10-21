@@ -119,6 +119,8 @@ export interface PspAdapter {
    * still waits for an admin. Left out = every channel.
    */
   supportsPayoutChannel?(channel: string): boolean;
+  /** What the provider would refuse in a payout, said BEFORE the wallet is debited (null = fine). */
+  checkPayout?(params: { amount_cents: number; currency: string; channel: string }): string | null;
 
   createPaymentIntent(params: CreatePaymentIntentParams): Promise<PaymentIntentResult>;
   verifyWebhook(payload: Buffer, signature: string, headers: Record<string, string>): boolean;

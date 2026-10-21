@@ -1,5 +1,5 @@
 import * as http from 'http';
-import { FlexPaieAdapter, PAYOUT_NO_NEWS_MS, PAYOUT_RETRY_FOR_MS } from './flexpaie.adapter';
+import { FlexPaieAdapter, PAYOUT_NO_NEWS_MS, PAYOUT_RETRY_FOR_MS, payoutReference } from './flexpaie.adapter';
 import { PayoutNotSentError, PayoutRetryLaterError, isManualPayout } from '../psp.adapter';
 
 // FlexPaie PayoutService (documentation v1.03): its own login, POST …/pay, GET …/check/<orderNumber>.
@@ -15,6 +15,7 @@ const CFG: Record<string, string> = {
   FLEXPAIE_MERCHANT: 'SCANLINK',
 };
 const REF = '11111111-1111-4111-8111-111111111111';
+const SENT1 = 'RET-1111111111114111-1';
 const PARAMS = { reference: REF, amount_cents: 500000, currency: 'CDF', channel: 'mobile_money' as const, destination: { operator: 'mpesa', phone: '+243 81 234 56 78' }, callback_url: 'https://api.example/api/v1/webhooks/payouts/flexpaie' };
 
 /** The journal (flexpaie_payouts) in memory: insert (unique reference), update with filters, select … maybeSingle. */
@@ -67,6 +68,28 @@ function setup(opts: { config?: Record<string, string>; rows?: Record<string, an
   return { adapter, rows: j.rows };
 }
 
+describe('references and amounts', () => {
+  it('a short reference (the shape FlexPaie accepts for payments), new for each attempt', () => {
+    expect(payoutReference(REF, 1)).toBe(SENT1);
+    expect(payoutReference(REF, 1).length).toBeLessThanOrEqual(25);
+    expect(payoutReference(REF, 1440).length).toBeLessThanOrEqual(25);
+  });
+
+  it('what FlexPaie would refuse is said BEFORE the wallet is debited', () => {
+    const { adapter } = setup();
+    const mm = (amount_cents: number, currency = 'CDF') => adapter.checkPayout({ amount_cents, currency, channel: 'mobile_money' });
+    expect(mm(100_00)).toBeNull();
+    expect(mm(99_00)).toMatch(/Montant minimum.*100 CDF/);
+    expect(mm(1_00, 'USD')).toBeNull();
+    expect(mm(50, 'USD')).toMatch(/entiers|minimum/);
+    expect(mm(100_50)).toMatch(/entiers/);
+    expect(mm(100_00, 'EUR')).toMatch(/CDF ou en USD/);
+    // a bank withdrawal (manual) or payouts switched off: nothing to say
+    expect(adapter.checkPayout({ amount_cents: 50, currency: 'CDF', channel: 'bank' })).toBeNull();
+    expect(setup({ config: { ...CFG, FLEXPAIE_PAYOUTS_ENABLED: '' } }).adapter.checkPayout({ amount_cents: 50, currency: 'CDF', channel: 'mobile_money' })).toBeNull();
+  });
+});
+
 describe('switching automatic withdrawals on', () => {
   it('off unless FLEXPAIE_PAYOUTS_ENABLED=true: withdrawals stay manual and nothing is sent', async () => {
     const { adapter } = setup({ config: { ...CFG, FLEXPAIE_PAYOUTS_ENABLED: '' } });
@@ -98,9 +121,9 @@ describe('sending a withdrawal', () => {
     expect(login).toEqual({ url: CFG.FLEXPAIE_PAYOUT_AUTH_URL, method: 'POST', auth: undefined, body: { username: 'scanlink', password: PASSWORD } });
     expect(pay).toEqual({
       url: CFG.FLEXPAIE_PAYOUT_URL, method: 'POST', auth: 'Bearer payout-token-1',
-      body: { merchant: 'SCANLINK', type: '1', reference: REF, amount: '5000', currency: 'CDF', customer: '243812345678', description: `Retrait ScanLinkPay ${REF}`, callback_url: PARAMS.callback_url },
+      body: { merchant: 'SCANLINK', type: '1', reference: SENT1, amount: '5000', currency: 'CDF', customer: '243812345678', description: `Retrait ScanLinkPay ${SENT1}`, callback_url: PARAMS.callback_url },
     });
-    expect(rows.get(REF)).toMatchObject({ state: 'ACCEPTED', order_number: 'LeR4frf045091721' });
+    expect(rows.get(REF)).toMatchObject({ state: 'ACCEPTED', order_number: 'LeR4frf045091721', sent_reference: SENT1 });
   });
 
   it('reuses the token until it expires (one login for several withdrawals)', async () => {
@@ -142,7 +165,10 @@ describe('what FlexPaie answers (0XX1 … 0XX5)', () => {
 
     fetchMock.mockResolvedValueOnce(ACCEPTED('O7'));
     await expect(adapter.payout(PARAMS)).resolves.toEqual({ psp_payout_id: 'O7', status: 'PENDING' });
-    expect(rows.get(REF)).toMatchObject({ state: 'ACCEPTED', attempts: 2 });
+    expect(rows.get(REF)).toMatchObject({ state: 'ACCEPTED', attempts: 2, sent_reference: 'RET-1111111111114111-2' });
+    // a NEW reference for the new attempt: never refused as a duplicate of the one FlexPaie turned down
+    const sent = calls().filter((c) => c.url === CFG.FLEXPAIE_PAYOUT_URL).map((c) => c.body.reference);
+    expect(sent).toEqual([SENT1, 'RET-1111111111114111-2']);
   });
 
   it('0XX2 our FlexPaie balance is too low: refunded, and the administrators are told to top it up', async () => {
@@ -243,6 +269,24 @@ describe('the status of a payout', () => {
     expect(calls()[1]).toMatchObject({ url: `${CFG.FLEXPAIE_PAYOUT_CHECK_URL}/O1`, method: 'GET', auth: 'Bearer payout-token-1' });
   });
 
+  it('the same codes as the payment check: 2 = still in progress, 5 = cancelled', async () => {
+    const { adapter } = setup({ rows: { [REF]: { state: 'ACCEPTED', order_number: 'O1', sent_reference: SENT1 } } });
+    fetchMock.mockResolvedValueOnce(LOGIN)
+      .mockResolvedValueOnce(check({ code: '0', reference: SENT1, orderNumber: 'O1', status: '2' }))
+      .mockResolvedValueOnce(check({ code: '0', reference: SENT1, orderNumber: 'O1', status: '5' }));
+    expect((await adapter.getPayoutStatus(REF)).status).toBe('PENDING');
+    expect((await adapter.getPayoutStatus(REF)).status).toBe('FAILED');
+  });
+
+  it('the PayoutService token refused by the check: the payment token is tried last', async () => {
+    const { adapter } = setup({ config: { ...CFG, FLEXPAIE_TOKEN: 'collect-token' }, rows: { [REF]: { state: 'ACCEPTED', order_number: 'O1' } } });
+    fetchMock.mockResolvedValueOnce(LOGIN).mockResolvedValueOnce(reply({}, 401))
+      .mockResolvedValueOnce(reply({ code: '0', token: 'Bearer payout-token-2', expire_in: 3600 })).mockResolvedValueOnce(reply({}, 401))
+      .mockResolvedValueOnce(check({ code: '0', reference: REF, orderNumber: 'O1', status: '0' }));
+    expect((await adapter.getPayoutStatus(REF)).status).toBe('SUCCESS');
+    expect(calls()[4].auth).toBe('Bearer collect-token');
+  });
+
   it('status 1 = failed (refund); "transaction non trouvée" or another reference = keep waiting', async () => {
     const { adapter } = setup({ rows: { [REF]: { state: 'ACCEPTED', order_number: 'O1' } } });
     fetchMock.mockResolvedValueOnce(LOGIN)
@@ -264,6 +308,13 @@ describe('the status of a payout', () => {
 
 describe('the callback (unsigned: only a hint)', () => {
   const cb = (body: any) => Buffer.from(JSON.stringify(body));
+
+  it('carries the reference of the attempt: matched back to the withdrawal', async () => {
+    const { adapter, rows } = setup({ rows: { [REF]: { state: 'SENDING', sent_reference: SENT1 } } });
+    fetchMock.mockResolvedValueOnce(LOGIN).mockResolvedValueOnce(reply({ code: '0', reference: SENT1, orderNumber: 'O8', status: '0' }));
+    expect(await adapter.acceptPayoutCallback(cb({ code: '0', reference: SENT1, orderNumber: 'O8' }))).toBe(REF);
+    expect(rows.get(REF)).toMatchObject({ order_number: 'O8', state: 'ACCEPTED' });
+  });
 
   it('brings the order number our request lost: recorded only once FlexPaie confirms it is ours', async () => {
     const { adapter, rows } = setup({ rows: { [REF]: { state: 'SENDING' } } });
