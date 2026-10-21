@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import { SupabaseService } from '../supabase/supabase.service';
 import { PspFactory } from '../payments/psp/psp.factory';
+import { isManualPayout } from '../payments/psp/psp.adapter';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WalletPinService } from './wallet-pin.service';
 import { WalletLimitsService } from './wallet-limits.service';
@@ -903,12 +904,10 @@ export class WalletsService {
   }
 
   // ==========================================================================
-  // Withdrawal — reserves funds immediately (debit_wallet), then settles.
-  // No real Mobile Money/bank payout PSP is integrated yet — the mock
-  // provider settles automatically after a short delay, same honesty
-  // constraint as wallet top-ups (README already documents "mock: succès
-  // automatique"). A real payout integration would replace only the
-  // settlement step below; the reservation/restitution mechanics stay.
+  // Withdrawal — reserves funds immediately (request_withdrawal), then sends
+  // the money through the provider (WithdrawalPayoutService): automatically
+  // for Mobile Money with FlexPaie's PayoutService, by an admin for a bank
+  // account or when automatic payouts are switched off.
   // ==========================================================================
 
   async requestWithdrawal(
@@ -961,7 +960,7 @@ export class WalletsService {
       changes: { amount_cents: dto.amount_cents, channel: dto.channel },
     });
 
-    const manualPayout = this.pspFactory.get(withdrawal.psp_provider || undefined).supportsPayout === false;
+    const manualPayout = isManualPayout(this.pspFactory.get(withdrawal.psp_provider || undefined), withdrawal.channel);
     await this.notificationsService.create({
       user_id: userId,
       type: 'withdrawal_processing',
@@ -975,14 +974,9 @@ export class WalletsService {
     // The payout goes out through the payment provider. The withdrawal is
     // only reported as done once the provider confirms it; until then it
     // stays "PROCESSING" and WithdrawalPayoutService settles it (including
-    // refunding the wallet if the provider confirms a failure).
-    const backendUrl = this.configService.get<string>('BACKEND_URL')
-      || this.configService.get<string>('RENDER_EXTERNAL_URL')
-      || `http://localhost:${this.configService.get<number>('PORT', 3000)}`;
-    const { withdrawal: settled, rejectedReason, manual } = await this.withdrawalPayouts.dispatch(
-      withdrawal,
-      `${backendUrl}/api/v1/webhooks/${withdrawal.psp_provider}`,
-    );
+    // refunding the wallet if the provider confirms a failure). The provider
+    // posts its outcome to /webhooks/payouts/<provider>.
+    const { withdrawal: settled, rejectedReason, manual } = await this.withdrawalPayouts.dispatch(withdrawal);
 
     if (rejectedReason) {
       throw new BadRequestException(`Le retrait n'a pas pu être effectué : ${rejectedReason} Votre argent est resté dans votre portefeuille.`);

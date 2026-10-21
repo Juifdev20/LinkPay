@@ -32,6 +32,22 @@ Avant `PSP_PROVIDER=flexpaie` :
 
 Tant que `PSP_PROVIDER` n'est pas `flexpaie`, le code FlexPaie est inactif et ne change rien.
 
+### Retraits automatiques (PayoutService FlexPaie)
+
+Identifiants **différents** de ceux des paiements : FlexPaie les donne pour le module « PayoutService ». Détail et ordre de mise en service : `docs/FLEXPAIE.md`, section « Retraits automatiques ».
+
+| Variable | Valeur | Remarque |
+|---|---|---|
+| `FLEXPAIE_PAYOUT_AUTH_URL` | l'adresse de connexion, **en entier** | se termine par `/api/v1/auth/authenticate` |
+| `FLEXPAIE_PAYOUT_URL` | l'adresse d'envoi, **en entier** | se termine par `/pay` |
+| `FLEXPAIE_PAYOUT_CHECK_URL` | l'adresse de vérification des envois | facultative : sinon `FLEXPAIE_CHECK_URL` ; la fin `/orderNumber` est tolérée |
+| `FLEXPAIE_PAYOUT_USERNAME` | l'identifiant du PayoutService | secret |
+| `FLEXPAIE_PAYOUT_PASSWORD` | le mot de passe du PayoutService | secret |
+| `FLEXPAIE_PAYOUT_MERCHANT` | le code marchand des envois | facultative : sinon `FLEXPAIE_MERCHANT` |
+| `FLEXPAIE_PAYOUTS_ENABLED` | `true` | **en dernier** : migration `067` exécutée et page « Retraits à traiter » vidée |
+
+Sans `FLEXPAIE_PAYOUTS_ENABLED=true` (ou si une des valeurs obligatoires manque), les retraits restent traités à la main. Les retraits vers une banque restent toujours manuels.
+
 ---
 
 ## 2. Variables déjà prévues dans `render.yaml` — service `linkpay-api`

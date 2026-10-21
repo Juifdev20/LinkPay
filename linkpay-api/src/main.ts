@@ -18,7 +18,7 @@ const CINETPAY_HOSTS = ['api.cinetpay.net', 'api.cinetpay.co'];
 /** FlexPaie is reached at the addresses its own contract gives (Mobile Money, card and status check can be three different hosts); it too is usually reachable only from a whitelisted IP. */
 function flexPaieHosts(): string[] {
   const hosts = new Set<string>();
-  for (const key of ['FLEXPAIE_BASE_URL', 'FLEXPAIE_MOMO_URL', 'FLEXPAIE_CARD_URL', 'FLEXPAIE_CHECK_URL']) {
+  for (const key of ['FLEXPAIE_BASE_URL', 'FLEXPAIE_MOMO_URL', 'FLEXPAIE_CARD_URL', 'FLEXPAIE_CHECK_URL', 'FLEXPAIE_PAYOUT_AUTH_URL', 'FLEXPAIE_PAYOUT_URL', 'FLEXPAIE_PAYOUT_CHECK_URL']) {
     try {
       if (process.env[key]) hosts.add(new URL(String(process.env[key]).trim()).hostname);
     } catch {

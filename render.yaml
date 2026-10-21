@@ -107,6 +107,19 @@ services:
         sync: false
       - key: FLEXPAIE_TOKEN
         sync: false
+      # Automatic withdrawals (FlexPaie PayoutService, docs/FLEXPAIE.md). Off until FLEXPAIE_PAYOUTS_ENABLED=true.
+      - key: FLEXPAIE_PAYOUT_AUTH_URL
+        sync: false
+      - key: FLEXPAIE_PAYOUT_URL
+        sync: false
+      - key: FLEXPAIE_PAYOUT_CHECK_URL
+        sync: false
+      - key: FLEXPAIE_PAYOUT_USERNAME
+        sync: false
+      - key: FLEXPAIE_PAYOUT_PASSWORD
+        sync: false
+      - key: FLEXPAIE_PAYOUTS_ENABLED
+        sync: false
       # Bank card top-ups: put "true" only after a real card test (docs/FLEXPAIE.md). Closed by default.
       - key: CARD_PAYMENTS_ENABLED
         sync: false

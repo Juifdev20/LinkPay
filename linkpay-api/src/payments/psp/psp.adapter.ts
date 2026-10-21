@@ -67,8 +67,12 @@ export interface PayoutResult {
 }
 
 export interface PayoutStatusResult {
-  /** NOT_FOUND: the provider has no payout with this reference — it was never sent. */
-  status: 'SUCCESS' | 'PENDING' | 'FAILED' | 'NOT_FOUND';
+  /**
+   * NOT_FOUND: the provider has no payout with this reference — it was never sent.
+   * NOT_SENT: WE know it was never sent (never tried, or refused up front for a passing reason such as "another
+   * payout is in progress"): safe to send it now. Only an adapter that records its attempts can say so.
+   */
+  status: 'SUCCESS' | 'PENDING' | 'FAILED' | 'NOT_FOUND' | 'NOT_SENT';
   psp_payout_id?: string;
   failure_reason?: string;
 }
@@ -82,9 +86,23 @@ export interface PayoutStatusResult {
  * merchant twice.
  */
 export class PayoutNotSentError extends Error {
-  constructor(message: string) {
+  /** Set when the cause is on our side (the provider account, its balance, our access): the administrators are told. */
+  readonly adminAlert?: string;
+  constructor(message: string, adminAlert?: string) {
     super(message);
     this.name = 'PayoutNotSentError';
+    this.adminAlert = adminAlert;
+  }
+}
+
+/**
+ * Thrown by payout() when the provider certainly did not send the money, but for a passing reason (it is busy with
+ * another payout): the withdrawal stays open, funds reserved, and is sent again by the reconciliation.
+ */
+export class PayoutRetryLaterError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PayoutRetryLaterError';
   }
 }
 
@@ -96,6 +114,11 @@ export interface PspAdapter {
    * reconciliation never concludes anything about them. Left out = payouts are supported.
    */
   readonly supportsPayout?: boolean;
+  /**
+   * When payouts are supported, whether this channel is: FlexPaie only sends to Mobile Money, so a bank withdrawal
+   * still waits for an admin. Left out = every channel.
+   */
+  supportsPayoutChannel?(channel: string): boolean;
 
   createPaymentIntent(params: CreatePaymentIntentParams): Promise<PaymentIntentResult>;
   verifyWebhook(payload: Buffer, signature: string, headers: Record<string, string>): boolean;
@@ -105,5 +128,17 @@ export interface PspAdapter {
 
   /** Sends money out (a wallet withdrawal) to a Mobile Money number or bank account. */
   payout(params: PayoutParams): Promise<PayoutResult>;
-  getPayoutStatus(reference: string): Promise<PayoutStatusResult>;
+  /** `hint.psp_reference`: the provider's id stored on the withdrawal, for a provider that can only be asked by it. */
+  getPayoutStatus(reference: string, hint?: { psp_reference?: string | null }): Promise<PayoutStatusResult>;
+  /**
+   * The provider's payout callback (POST /webhooks/payouts/<provider>). Returns the withdrawal reference it is
+   * about, or null to ignore it. Never trusted as a verdict: the caller then asks getPayoutStatus().
+   */
+  acceptPayoutCallback?(payload: Buffer): Promise<string | null>;
+}
+
+/** True when a withdrawal on this channel waits for an admin instead of going out through the provider. */
+export function isManualPayout(adapter: Pick<PspAdapter, 'supportsPayout' | 'supportsPayoutChannel'>, channel: string): boolean {
+  if (adapter.supportsPayout === false) return true;
+  return !!adapter.supportsPayoutChannel && !adapter.supportsPayoutChannel(channel);
 }

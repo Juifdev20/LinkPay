@@ -1,9 +1,10 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SupabaseService } from '../supabase/supabase.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PspFactory } from '../payments/psp/psp.factory';
-import { PayoutNotSentError } from '../payments/psp/psp.adapter';
+import { PayoutNotSentError, PayoutRetryLaterError, isManualPayout } from '../payments/psp/psp.adapter';
 import { JobLockService } from '../common/job-lock/job-lock.service';
 import { SecurityAlertsService } from '../security/security-alerts.service';
 
@@ -46,18 +47,28 @@ export class WithdrawalPayoutService {
     private notificationsService: NotificationsService,
     @Optional() private jobLock?: JobLockService,
     @Optional() private alerts?: SecurityAlertsService,
+    @Optional() private configService?: ConfigService,
   ) {}
 
   private get db() {
     return this.supabaseService.getClient();
   }
 
+  /** Where the provider posts the outcome of a payout (WithdrawalCallbacksController). */
+  private callbackUrl(provider: string): string | undefined {
+    const backendUrl = this.configService?.get<string>('BACKEND_URL')
+      || this.configService?.get<string>('RENDER_EXTERNAL_URL')
+      || (this.configService ? `http://localhost:${this.configService.get<number>('PORT', 3000)}` : '');
+    return backendUrl ? `${backendUrl.replace(/\/+$/, '')}/api/v1/webhooks/payouts/${provider}` : undefined;
+  }
+
   /** Starts the payout of a withdrawal whose funds are already reserved. */
   async dispatch(withdrawal: any, callbackUrl?: string): Promise<{ withdrawal: any; rejectedReason?: string; manual?: boolean }> {
     const adapter = this.pspFactory.get(withdrawal.psp_provider || undefined);
 
-    // No payout API (FlexPaie): the request stays PENDING, funds reserved, for an admin to send by hand.
-    if (adapter.supportsPayout === false) {
+    // No payout API, or a channel the provider cannot send to (a bank account with FlexPaie): the request stays
+    // PENDING, funds reserved, for an admin to send by hand.
+    if (isManualPayout(adapter, withdrawal.channel)) {
       // Somebody has to send this money: tell the administrators now (bell + push), never fail the request over it.
       const label = `${(Number(withdrawal.amount_cents) / 100).toLocaleString('fr-FR')} ${withdrawal.currency}`;
       void Promise.resolve().then(() => this.alerts?.alert({
@@ -79,10 +90,26 @@ export class WithdrawalPayoutService {
         currency: withdrawal.currency,
         channel: withdrawal.channel,
         destination: withdrawal.destination,
-        callback_url: callbackUrl,
+        callback_url: callbackUrl ?? this.callbackUrl(adapter.provider),
       });
     } catch (err: any) {
+      if (err instanceof PayoutRetryLaterError) {
+        // Certainly not sent, for a passing reason: stays open, funds reserved; reconcile() sends it again.
+        this.logger.warn(`Payout for withdrawal ${withdrawal.id} not sent yet, will be retried: ${err.message}`);
+        return { withdrawal };
+      }
       if (err instanceof PayoutNotSentError) {
+        const adminAlert = err.adminAlert;
+        if (adminAlert) {
+          void Promise.resolve().then(() => this.alerts?.alert({
+            severity: 'critical',
+            audience: 'admins',
+            title: 'Retrait automatique impossible',
+            body: `${adminAlert} Le client a été remboursé dans son portefeuille.`,
+            dedupeKey: `payout-blocked:${adapter.provider}:${adminAlert.slice(0, 40)}`,
+            data: { withdrawal_id: withdrawal.id, kind: 'payout_blocked' },
+          })).catch((e) => this.logger.error(`Could not alert the administrators: ${e?.message}`));
+        }
         const reversed = await this.apply(withdrawal.id, { status: 'FAILED', reason: err.message });
         return { withdrawal: reversed ?? withdrawal, rejectedReason: err.message };
       }
@@ -178,8 +205,19 @@ export class WithdrawalPayoutService {
     const adapter = this.pspFactory.get(w.psp_provider || undefined);
     // A manual withdrawal is unknown to the provider by design: "not found" must NEVER be read as "never sent"
     // (that would refund the wallet while an admin may be sending the money).
-    if (adapter.supportsPayout === false) return false;
-    const status = await adapter.getPayoutStatus(w.id);
+    if (isManualPayout(adapter, w.channel)) return false;
+    const status = await adapter.getPayoutStatus(w.id, { psp_reference: w.psp_reference ?? null });
+
+    if (status.status === 'NOT_SENT') {
+      // Never handed to the provider (asked during the manual period, refused as busy, or the request died before
+      // sending): the adapter's journal says it is safe to send, so send it now.
+      if (w.status !== 'PENDING') {
+        this.logger.warn(`Withdrawal ${w.id} is ${w.status} but the provider says it was never sent — left alone`);
+        return false;
+      }
+      const sent = await this.dispatch(w);
+      return sent.withdrawal?.status !== w.status;
+    }
 
     if (status.status === 'SUCCESS') {
       await this.apply(w.id, { status: 'SUCCESS', psp_reference: status.psp_payout_id });
@@ -202,6 +240,44 @@ export class WithdrawalPayoutService {
       }
     }
     return false;
+  }
+
+  /**
+   * The provider's payout callback. Never a verdict by itself (FlexPaie's is unsigned): the adapter extracts which
+   * withdrawal it is about, and that withdrawal is settled from what the provider's status check says.
+   */
+  async handleCallback(provider: string, payload: Buffer): Promise<{ received: true }> {
+    let adapter;
+    try {
+      adapter = this.pspFactory.get(provider);
+    } catch {
+      throw new NotFoundException();
+    }
+    if (!adapter.acceptPayoutCallback) throw new NotFoundException();
+
+    const reference = await adapter.acceptPayoutCallback(payload ?? Buffer.alloc(0));
+    if (!reference || !/^[0-9a-f-]{36}$/i.test(reference)) return { received: true };
+    const { data: w } = await this.db.from('withdrawals').select('*').eq('id', reference).maybeSingle();
+    if (!w || w.psp_provider !== adapter.provider) return { received: true };
+
+    if (w.status === 'PENDING' || w.status === 'PROCESSING') {
+      await this.reconcileOne(w);
+    } else if (w.status === 'REVERSED') {
+      // Refunded because the provider never answered… and now it says the money left: paid twice. Tell someone.
+      const status = await adapter.getPayoutStatus(w.id, { psp_reference: w.psp_reference ?? null }).catch(() => null);
+      if (status?.status === 'SUCCESS') {
+        this.logger.error(`Withdrawal ${w.id} was refunded but the provider reports it as paid`);
+        void Promise.resolve().then(() => this.alerts?.alert({
+          severity: 'critical',
+          audience: 'admins',
+          title: 'Retrait payé ET remboursé',
+          body: `Le retrait ${w.id} a été remboursé faute de réponse, mais FlexPaie confirme maintenant l'envoi (${status.psp_payout_id ?? 'sans numéro'}). À régulariser avec le client.`,
+          dedupeKey: `payout-double:${w.id}`,
+          data: { withdrawal_id: w.id, kind: 'payout_double' },
+        })).catch(() => null);
+      }
+    }
+    return { received: true };
   }
 
   private async notify(withdrawal: any, type: 'withdrawal_success' | 'withdrawal_failed') {

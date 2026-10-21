@@ -1,22 +1,27 @@
 import { WithdrawalPayoutService } from './withdrawal-payout.service';
-import { PayoutNotSentError } from '../payments/psp/psp.adapter';
+import { NotFoundException } from '@nestjs/common';
+import { PayoutNotSentError, PayoutRetryLaterError } from '../payments/psp/psp.adapter';
 import { createFakeSupabase, RecordedQuery } from '../test-utils/fake-supabase';
 
 const W = { id: 'w1', wallet_id: 'wal1', amount_cents: 200000, fee_cents: 5000, currency: 'CDF', channel: 'mobile_money', destination: { operator: 'mpesa', phone: '+243900000000' }, psp_provider: 'mock', status: 'PENDING', created_at: new Date().toISOString() };
 
 type Rpcs = Record<string, any>;
-function setup(adapter: any, rpcs: Rpcs = {}, openWithdrawals: any[] = []) {
+function setup(adapter: any, rpcs: Rpcs = {}, openWithdrawals: any[] = [], extra: { alerts?: any; config?: Record<string, any>; row?: any } = {}) {
   const fake = createFakeSupabase((q: RecordedQuery) => {
     if (q.target.startsWith('rpc:')) {
       const fn = q.target.slice(4);
       return fn in rpcs ? { data: rpcs[fn] } : { data: null };
     }
     if (q.target === 'wallets') return { data: { user_id: 'user-1' } };
-    if (q.target === 'withdrawals') return { data: q.calls.some((c) => c.method === 'order') ? openWithdrawals : { ...W, status: 'PROCESSING' } };
+    if (q.target === 'withdrawals') {
+      if (q.calls.some((c) => c.method === 'maybeSingle')) return { data: extra.row ?? null };
+      return { data: q.calls.some((c) => c.method === 'order') ? openWithdrawals : { ...W, status: 'PROCESSING' } };
+    }
     return undefined;
   });
   const notifications = { create: jest.fn(async () => undefined) };
-  const service = new WithdrawalPayoutService(fake.service, { get: () => adapter } as any, notifications as any);
+  const config = extra.config ? ({ get: (k: string, d?: any) => extra.config![k] ?? d } as any) : undefined;
+  const service = new WithdrawalPayoutService(fake.service, { get: () => adapter } as any, notifications as any, undefined, extra.alerts, config);
   const called = () => fake.queries.filter((q) => q.target.startsWith('rpc:')).map((q) => q.target.slice(4));
   return { service, fake, notifications, called };
 }
@@ -125,5 +130,95 @@ describe('WithdrawalPayoutService.reconcile', () => {
     const open = ['bad', 'good'].map((id) => ({ ...W, id, status: 'PROCESSING', created_at: old(5) }));
     const { service } = setup(adapter, { finish_withdrawal: { ...W, status: 'SUCCESS' } }, open);
     await expect(service.reconcile()).resolves.toBe(1);
+  });
+});
+
+describe('automatic payouts (FlexPaie PayoutService)', () => {
+  const old = (mins: number) => new Date(Date.now() - mins * 60_000).toISOString();
+  const UUID = '11111111-1111-4111-8111-111111111111';
+
+  it('the provider is posted the outcome at /webhooks/payouts/<provider> by default', async () => {
+    const adapter = { provider: 'flexpaie', payout: jest.fn(async () => ({ psp_payout_id: 'p1', status: 'PENDING' })) };
+    const { service } = setup(adapter, { mark_withdrawal_processing: { ...W, status: 'PROCESSING' } }, [], { config: { BACKEND_URL: 'https://api.example/' } });
+    await service.dispatch(W);
+    expect(adapter.payout).toHaveBeenCalledWith(expect.objectContaining({ callback_url: 'https://api.example/api/v1/webhooks/payouts/flexpaie' }));
+  });
+
+  it('"busy, try later": NOT refunded, stays open for the next round', async () => {
+    const adapter = { payout: async () => { throw new PayoutRetryLaterError('busy'); } };
+    const { service, called } = setup(adapter);
+    const r = await service.dispatch(W);
+    expect(r).toEqual({ withdrawal: W });
+    expect(called()).toEqual([]);
+  });
+
+  it('a refusal caused on our side (FlexPaie balance): refunded AND the administrators alerted', async () => {
+    const alerts = { alert: jest.fn(async () => undefined) };
+    const adapter = { provider: 'flexpaie', payout: async () => { throw new PayoutNotSentError('Indisponible.', 'Solde FlexPaie insuffisant.'); } };
+    const { service, called } = setup(adapter, { fail_withdrawal: { ...W, status: 'REVERSED' } }, [], { alerts });
+    const r = await service.dispatch(W);
+    expect(r.rejectedReason).toBe('Indisponible.');
+    expect(called()).toEqual(['fail_withdrawal']);
+    await new Promise((res) => setImmediate(res));
+    expect(alerts.alert).toHaveBeenCalledWith(expect.objectContaining({ severity: 'critical', audience: 'admins', body: expect.stringContaining('Solde FlexPaie insuffisant.') }));
+  });
+
+  it('a bank withdrawal stays with the admin even when payouts are automatic', async () => {
+    const adapter = { supportsPayout: true, supportsPayoutChannel: (c: string) => c === 'mobile_money', payout: jest.fn(), getPayoutStatus: jest.fn() };
+    const { service } = setup(adapter, {}, [{ ...W, channel: 'bank', created_at: old(30) }]);
+    expect((await service.dispatch({ ...W, channel: 'bank' })).manual).toBe(true);
+    await service.reconcile();
+    expect(adapter.payout).not.toHaveBeenCalled();
+    expect(adapter.getPayoutStatus).not.toHaveBeenCalled();
+  });
+
+  it('reconcile sends what was never sent (asked during the manual period, or refused as busy)', async () => {
+    const adapter = { getPayoutStatus: jest.fn(async () => ({ status: 'NOT_SENT' })), payout: jest.fn(async () => ({ psp_payout_id: 'O1', status: 'PENDING' })) };
+    const { service, called } = setup(adapter, { mark_withdrawal_processing: { ...W, status: 'PROCESSING' } }, [{ ...W, status: 'PENDING', created_at: old(600) }]);
+    await expect(service.reconcile()).resolves.toBe(1);
+    expect(adapter.payout).toHaveBeenCalledTimes(1);
+    expect(called()).toEqual(['mark_withdrawal_processing']);
+  });
+
+  it('reconcile hands the stored provider id to the status check', async () => {
+    const adapter = { getPayoutStatus: jest.fn(async () => ({ status: 'PENDING' })) };
+    const { service } = setup(adapter, {}, [{ ...W, status: 'PROCESSING', psp_reference: 'O1', created_at: old(5) }]);
+    await service.reconcile();
+    expect(adapter.getPayoutStatus).toHaveBeenCalledWith('w1', { psp_reference: 'O1' });
+  });
+
+  describe('callback', () => {
+    it('unknown provider, or one without payout callbacks: 404', async () => {
+      const none = new WithdrawalPayoutService({} as any, { get: () => { throw new Error('unknown'); } } as any, {} as any);
+      await expect(none.handleCallback('nope', Buffer.from('{}'))).rejects.toBeInstanceOf(NotFoundException);
+      const { service } = setup({ provider: 'mock' });
+      await expect(service.handleCallback('mock', Buffer.from('{}'))).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('settles the withdrawal it names from the provider\'s own status, not from the callback', async () => {
+      const adapter = { provider: 'flexpaie', acceptPayoutCallback: jest.fn(async () => UUID), getPayoutStatus: jest.fn(async () => ({ status: 'SUCCESS', psp_payout_id: 'O1' })) };
+      const { service, called } = setup(adapter, { finish_withdrawal: { ...W, status: 'SUCCESS' } }, [], { row: { ...W, id: UUID, psp_provider: 'flexpaie', status: 'PROCESSING' } });
+      await expect(service.handleCallback('flexpaie', Buffer.from('{}'))).resolves.toEqual({ received: true });
+      expect(adapter.getPayoutStatus).toHaveBeenCalledWith(UUID, { psp_reference: null });
+      expect(called()).toEqual(['finish_withdrawal']);
+    });
+
+    it('ignored when the adapter does not recognise it', async () => {
+      const adapter = { provider: 'flexpaie', acceptPayoutCallback: async () => null, getPayoutStatus: jest.fn() };
+      const { service, called } = setup(adapter);
+      await expect(service.handleCallback('flexpaie', Buffer.from('{}'))).resolves.toEqual({ received: true });
+      expect(adapter.getPayoutStatus).not.toHaveBeenCalled();
+      expect(called()).toEqual([]);
+    });
+
+    it('refunded for lack of news, then reported as paid: critical alert (paid twice)', async () => {
+      const alerts = { alert: jest.fn(async () => undefined) };
+      const adapter = { provider: 'flexpaie', acceptPayoutCallback: async () => UUID, getPayoutStatus: async () => ({ status: 'SUCCESS', psp_payout_id: 'O1' }) };
+      const { service, called } = setup(adapter, {}, [], { alerts, row: { ...W, id: UUID, psp_provider: 'flexpaie', status: 'REVERSED' } });
+      await service.handleCallback('flexpaie', Buffer.from('{}'));
+      await new Promise((res) => setImmediate(res));
+      expect(called()).toEqual([]);
+      expect(alerts.alert).toHaveBeenCalledWith(expect.objectContaining({ severity: 'critical', title: 'Retrait payé ET remboursé' }));
+    });
   });
 });

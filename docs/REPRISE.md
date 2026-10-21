@@ -5,6 +5,7 @@ Tout le travail est dans `main` (dernière fusion : PR #25). Rien n'est en atten
 ## En place
 - Carte ScanLinkPay (impression, activation, paiement par scan avec PIN) — `docs/carte/`.
 - FlexPaie : encaissement Mobile Money et carte bancaire, vérification et rattrapage automatiques — `docs/FLEXPAIE.md`.
+- FlexPaie PayoutService : retraits Mobile Money automatiques (migration `067`, `FLEXPAIE_PAYOUTS_ENABLED`) ; retraits bancaires manuels — `docs/FLEXPAIE.md`, « Retraits automatiques ».
 - Pages de recharge modernes, numéro vérifié par opérateur (web + API), retour dans l'application.
 - Retraits traités à la main par un admin (page « Retraits à traiter », alertes, compteur).
 - Écrans de PIN et de verrouillage au même design.
@@ -16,7 +17,7 @@ Tout le travail est dans `main` (dernière fusion : PR #25). Rien n'est en atten
 - Redéployer `linkpay-api` et `linkpay-web`, reconstruire l'APK Android.
 
 ## En attente de FlexPaie (message à leur envoyer)
-- API d'envoi d'argent (retraits, règlements aux commerçants, remboursements).
+- Adresses et identifiants de production du PayoutService, et les questions de `docs/FLEXPAIE.md` (« À demander à FlexPaie », point 1).
 - Format du rappel (callback), frais (Mobile Money ≈ 2,5 %, carte ≈ 3 %), montants avec centimes (USD), montants minimum/maximum, mode test, règlement (quand ils nous reversent), préfixes des opérateurs, cartes locales et prépayées.
 
 ## Sécurité à faire
@@ -25,8 +26,7 @@ Tout le travail est dans `main` (dernière fusion : PR #25). Rien n'est en atten
 
 ## Idées pour la suite
 - Supervision des paiements en attente (page de rapprochement avec les relevés FlexPaie).
-- Brancher l'envoi d'argent dès que FlexPaie fournit son API : `FlexPaieAdapter.payout()` et retirer `supportsPayout = false`.
-- Règlements aux commerçants (non couverts par les retraits manuels).
+- Mettre en service les retraits automatiques (`docs/FLEXPAIE.md`, « Mise en service ») : tests réels de 100 CDF sur chaque réseau.
 
 ## Intégrations (HotelSaver) — ajouts compatibles (15/10/2026)
 - `POST /payment-requests/quick-pay` accepte en plus `commission_model` (`MERCHANT_PAID` par défaut, `CUSTOMER_PAID`, `SHARED`), `description` (≤ 200 caractères, nettoyée) et `expires_in_minutes` ; la réponse contient `fees` (commission ScanLinkPay, frais du fournisseur, total payé, net reçu). Sans ces champs, rien ne change.

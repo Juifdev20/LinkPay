@@ -43,8 +43,9 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 /**
- * Withdrawals that wait for a person, because the payment provider has no API to send money out (FlexPaie): the amount
- * has already left the wallet; the admin sends it by hand to the Mobile Money number shown, then confirms here.
+ * Withdrawals that wait for a person: bank withdrawals (FlexPaie's PayoutService only sends to Mobile Money), and all
+ * of them while automatic payouts are switched off. The amount has already left the wallet; the admin sends it by
+ * hand to the account shown, then confirms here.
  */
 export default function WithdrawalsPage() {
   const queryClient = useQueryClient();
@@ -82,7 +83,7 @@ export default function WithdrawalsPage() {
     <div className="mx-auto max-w-3xl p-4 md:p-6">
       <PageHeader title="Retraits à traiter" />
       <p className="mb-4 text-sm text-muted-foreground">
-        L'argent a déjà été retiré du portefeuille du client. Envoyez-le au numéro indiqué, puis confirmez ici. En cas de refus, le montant et les frais lui sont rendus.
+        Ne restent ici que les retraits à envoyer à la main : vers une banque (les retraits Mobile Money partent automatiquement), ou tous tant que les retraits automatiques sont désactivés. L'argent a déjà été retiré du portefeuille du client. Envoyez-le au compte indiqué, puis confirmez ici. En cas de refus, le montant et les frais lui sont rendus.
       </p>
 
       <div role="tablist" className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-secondary p-1">

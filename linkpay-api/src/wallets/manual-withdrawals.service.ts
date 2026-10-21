@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundEx
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SupabaseService } from '../supabase/supabase.service';
 import { PspFactory } from '../payments/psp/psp.factory';
+import { isManualPayout } from '../payments/psp/psp.adapter';
 import { AuditService } from '../audit/audit.service';
 import { WithdrawalPayoutService } from './withdrawal-payout.service';
 import { JobLockService } from '../common/job-lock/job-lock.service';
@@ -14,7 +15,8 @@ const OVERDUE_MS = 2 * 3_600_000;
 const URGENT_MS = 6 * 3_600_000;
 
 /**
- * Withdrawals that wait for an admin, because the payment provider has no API to send money out (FlexPaie).
+ * Withdrawals that wait for an admin: those the provider cannot send (a bank account with FlexPaie, whose PayoutService
+ * only sends to Mobile Money), and all of them while automatic payouts are switched off (FLEXPAIE_PAYOUTS_ENABLED).
  *
  * The wallet was already debited when the person asked (request_withdrawal, atomic). The admin sends the money by hand
  * and then either
@@ -40,9 +42,9 @@ export class ManualWithdrawalsService {
     return this.supabase.getClient();
   }
 
-  private isManual(w: { psp_provider?: string | null }): boolean {
+  private isManual(w: { psp_provider?: string | null; channel?: string }): boolean {
     try {
-      return this.pspFactory.get(w.psp_provider || undefined).supportsPayout === false;
+      return isManualPayout(this.pspFactory.get(w.psp_provider || undefined), w.channel ?? '');
     } catch {
       return false;
     }
@@ -85,7 +87,7 @@ export class ManualWithdrawalsService {
 
   /** Number of withdrawals waiting for an admin (the badge in the menu). */
   async openCount(): Promise<{ open: number }> {
-    const { data, error } = await this.db.from('withdrawals').select('id, psp_provider').eq('status', 'PENDING').limit(500);
+    const { data, error } = await this.db.from('withdrawals').select('id, psp_provider, channel').eq('status', 'PENDING').limit(500);
     if (error) throw new Error(`Failed to count withdrawals: ${error.message}`);
     return { open: (data || []).filter((w: any) => this.isManual(w)).length };
   }
@@ -99,7 +101,7 @@ export class ManualWithdrawalsService {
     if (this.jobLock && !(await this.jobLock.acquire('manual-withdrawal-reminder', 300))) return 0;
     try {
       const { data, error } = await this.db
-        .from('withdrawals').select('id, created_at, psp_provider').eq('status', 'PENDING')
+        .from('withdrawals').select('id, created_at, psp_provider, channel').eq('status', 'PENDING')
         .lt('created_at', new Date(now - OVERDUE_MS).toISOString()).order('created_at', { ascending: true }).limit(200);
       if (error) {
         this.logger.error(`Could not look for overdue withdrawals: ${error.message}`);

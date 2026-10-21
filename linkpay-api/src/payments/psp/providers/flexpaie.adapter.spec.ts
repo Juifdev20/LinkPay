@@ -257,10 +257,10 @@ describe('the callback (no signature: only a hint)', () => {
 });
 
 describe('what FlexPaie does not document', () => {
-  it('no automatic withdrawal is attempted, and it is said so; no automatic refund either', async () => {
+  it('without the PayoutService switched on, no withdrawal is attempted, and it is said so; no automatic refund either', async () => {
     const { adapter } = setup();
+    expect(adapter.supportsPayout).toBe(false);
     await expect(adapter.payout({ reference: 'w1', amount_cents: 100, currency: 'CDF', channel: 'mobile_money', destination: {} })).rejects.toBeInstanceOf(PayoutNotSentError);
-    expect(await adapter.getPayoutStatus('w1')).toEqual({ status: 'NOT_FOUND' });
     await expect(adapter.refund({ psp_intent_id: 'x', amount_cents: 100 })).rejects.toBeInstanceOf(BadRequestException);
     expect(fetchMock).not.toHaveBeenCalled();
   });

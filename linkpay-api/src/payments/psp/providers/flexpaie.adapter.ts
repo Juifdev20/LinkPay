@@ -13,6 +13,7 @@ import {
   PayoutResult,
   PayoutStatusResult,
   PayoutNotSentError,
+  PayoutRetryLaterError,
 } from '../psp.adapter';
 import { isWholeCurrencyUnits } from '../amount-check';
 
@@ -33,13 +34,34 @@ import { isWholeCurrencyUnits } from '../amount-check';
  *  - The callback sent to `callback_url` carries NO signature. It is therefore only ever a hint: the real status is
  *    always read back from FlexPaie (check), with the order number WE recorded for that reference — the same pattern
  *    as the CinetPay adapter. A forged callback can at most make us ask FlexPaie a question.
- *  - No API to send money (withdrawals, merchant payouts) and no refund API is documented: payout() and refund()
- *    say so instead of pretending.
+ *  - No refund API is documented: refund() says so instead of pretending.
+ *  - Sending money (withdrawals) is a separate product, the "PayoutService" (its own login, documentation v1.03):
+ *    see the last section of this file.
  *
  * Everywhere else in ScanLinkPay a payment is found by OUR reference (it travels in the return link and is stored as
  * psp_intent_id). FlexPaie only knows its own orderNumber, so the pair is kept in `flexpaie_orders` (migration 060).
  */
 const TIMEOUT_MS = 20_000;
+
+/** Connection errors that mean the request never reached FlexPaie (unknown host, nobody listening, no route). */
+const NEVER_REACHED = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH']);
+
+class FlexPaieCallError extends Error {
+  readonly neverReached: boolean;
+  readonly refusedToken: boolean;
+  constructor(message: string, opts: { neverReached?: boolean; refusedToken?: boolean } = {}) {
+    super(message);
+    this.neverReached = !!opts.neverReached;
+    this.refusedToken = !!opts.refusedToken;
+  }
+}
+
+/** A payout stuck in SENDING (no answer, no order number) for this long is taken as never sent: refunded. */
+export const PAYOUT_NO_NEWS_MS = 30 * 60_000;
+/** A payout FlexPaie keeps refusing as "busy" is given up (refunded) after this long. */
+export const PAYOUT_RETRY_FOR_MS = 24 * 3_600_000;
+
+const UNAVAILABLE = 'Le service de retrait est momentanément indisponible.';
 
 /** Check-transaction status codes (documentation, "Check transaction"). Anything unknown is treated as "still waiting". */
 const STATUS: Record<string, 'SUCCESS' | 'FAILED' | 'PENDING'> = {
@@ -75,9 +97,23 @@ const toCents = (value: unknown): number => {
 @Injectable()
 export class FlexPaieAdapter implements PspAdapter {
   readonly provider = 'flexpaie';
-  // No API to send money out is documented: withdrawals are settled by an admin, by hand.
-  readonly supportsPayout = false;
   private readonly logger = new Logger(FlexPaieAdapter.name);
+  /** The PayoutService token (from its own login), kept until shortly before it expires. */
+  private payoutToken: { value: string; expiresAt: number } | null = null;
+  private payoutTokenRequest: Promise<string> | null = null;
+
+  /**
+   * Withdrawals go out automatically once FLEXPAIE_PAYOUTS_ENABLED=true AND the PayoutService access is configured.
+   * Otherwise they wait for an admin (Administration → Retraits à traiter), as before.
+   */
+  get supportsPayout(): boolean {
+    return this.payoutsEnabled() && this.payoutConfigured();
+  }
+
+  /** FlexPaie's PayoutService only sends to Mobile Money: a bank withdrawal still waits for an admin. */
+  supportsPayoutChannel(channel: string): boolean {
+    return channel === 'mobile_money';
+  }
 
   constructor(private configService: ConfigService, private supabaseService: SupabaseService) {
     if (this.configService.get('NODE_ENV') === 'production') {
@@ -87,6 +123,9 @@ export class FlexPaieAdapter implements PspAdapter {
           break;
         }
       }
+    }
+    if (this.payoutsEnabled() && !this.payoutConfigured()) {
+      this.logger.error('FLEXPAIE_PAYOUTS_ENABLED is set but the PayoutService access is incomplete (FLEXPAIE_PAYOUT_AUTH_URL, FLEXPAIE_PAYOUT_URL, FLEXPAIE_PAYOUT_USERNAME, FLEXPAIE_PAYOUT_PASSWORD, merchant code): withdrawals stay manual.');
     }
   }
 
@@ -125,16 +164,21 @@ export class FlexPaieAdapter implements PspAdapter {
     }
   }
 
-  /** One call to FlexPaie at a full address. Never logs the token or the body. */
+  /** One call to FlexPaie with the collecting token. */
   private async call(method: 'GET' | 'POST', url: string, body?: Record<string, unknown>): Promise<any> {
     this.assertConfigured(url);
+    return this.send(method, url, body, this.authorization());
+  }
+
+  /** One HTTP call to FlexPaie at a full address. Never logs the token or the body. */
+  private async send(method: 'GET' | 'POST', url: string, body: Record<string, unknown> | undefined, authorization?: string): Promise<any> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     let res: Response;
     try {
       res = await fetch(url, {
         method,
-        headers: { Authorization: this.authorization(), 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers: { ...(authorization ? { Authorization: authorization } : {}), 'Content-Type': 'application/json', Accept: 'application/json' },
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
@@ -144,16 +188,20 @@ export class FlexPaieAdapter implements PspAdapter {
       const cause = err?.cause?.code || err?.cause?.message || '';
       let host = '';
       try { host = new URL(url).host; } catch { host = 'invalid address'; }
-      throw new Error(`FlexPaie unreachable: ${err?.name === 'AbortError' ? 'timeout' : err?.message}${cause ? ` (${String(cause).slice(0, 120)})` : ''} [host: ${host}]`);
+      throw new FlexPaieCallError(
+        `FlexPaie unreachable: ${err?.name === 'AbortError' ? 'timeout' : err?.message}${cause ? ` (${String(cause).slice(0, 120)})` : ''} [host: ${host}]`,
+        // No connection was ever made: the request certainly did not reach FlexPaie. A timeout is NOT that.
+        { neverReached: err?.name !== 'AbortError' && NEVER_REACHED.has(String(err?.cause?.code ?? '')) },
+      );
     } finally {
       clearTimeout(timer);
     }
-    if (res.status === 401 || res.status === 403) throw new Error(`FlexPaie Authentication failed (HTTP ${res.status})`);
-    if (!res.ok) throw new Error(`FlexPaie HTTP ${res.status}`);
+    if (res.status === 401 || res.status === 403) throw new FlexPaieCallError(`FlexPaie Authentication failed (HTTP ${res.status})`, { refusedToken: true });
+    if (!res.ok) throw new FlexPaieCallError(`FlexPaie HTTP ${res.status}`);
     try {
       return await res.json();
     } catch {
-      throw new Error('FlexPaie answered something that is not JSON');
+      throw new FlexPaieCallError('FlexPaie answered something that is not JSON');
     }
   }
 
@@ -304,18 +352,290 @@ export class FlexPaieAdapter implements PspAdapter {
     };
   }
 
-  // ---------------------------------------------------------------- what the documentation does not offer
+  // ---------------------------------------------------------------- refunds: not offered by FlexPaie
 
   async refund(params: RefundParams): Promise<RefundResult> {
     this.logger.warn(`FlexPaie refund requested for ${params.psp_intent_id} — no refund API documented, must be done with FlexPaie`);
     throw new BadRequestException("Le remboursement automatique n'est pas disponible avec FlexPaie — traitez-le avec FlexPaie.");
   }
 
-  async payout(_params: PayoutParams): Promise<PayoutResult> {
-    throw new PayoutNotSentError("Les retraits automatiques ne sont pas encore disponibles : l'envoi d'argent par FlexPaie n'est pas encore connecté.");
+
+  // ---------------------------------------------------------------- sending money (PayoutService, v1.03)
+  //
+  //   POST <auth>   {username, password}                → {code, token: "Bearer …", expire_in}
+  //   POST <pay>    {merchant, type "1", reference, amount, currency, customer, description, callback_url}
+  //                 → {code, status "0XX0".."0XX5", message, orderNumber}
+  //   GET  <check>/<orderNumber>                        → {code, reference, orderNumber, status "0"|"1", …}
+  //
+  // The journal `flexpaie_payouts` (migration 067) is written BEFORE the request leaves: it is what stops a payout
+  // from being sent twice, and what remembers the order number without which FlexPaie cannot be asked anything.
+
+  private payoutsEnabled(): boolean {
+    return String(this.configService.get<string>('FLEXPAIE_PAYOUTS_ENABLED', '') ?? '').trim().toLowerCase() === 'true';
   }
 
-  async getPayoutStatus(_reference: string): Promise<PayoutStatusResult> {
-    return { status: 'NOT_FOUND' };
+  private payoutMerchant(): string {
+    return String(this.configService.get<string>('FLEXPAIE_PAYOUT_MERCHANT', '') ?? '').trim() || this.merchant();
+  }
+
+  private payoutCheckUrl(): string {
+    return this.env('FLEXPAIE_PAYOUT_CHECK_URL').replace(/\/(ORDER[A-Z_]*|orderNumber)$/i, '') || this.checkUrl();
+  }
+
+  private payoutConfigured(): boolean {
+    return !!(this.env('FLEXPAIE_PAYOUT_AUTH_URL') && this.env('FLEXPAIE_PAYOUT_URL') && this.payoutCheckUrl() && this.payoutMerchant()
+      && String(this.configService.get('FLEXPAIE_PAYOUT_USERNAME', '') ?? '').trim()
+      && String(this.configService.get('FLEXPAIE_PAYOUT_PASSWORD', '') ?? ''));
+  }
+
+  /** The PayoutService token: one login, reused until a minute before it expires. `fresh` forces a new login. */
+  private async payoutAuthorization(fresh = false): Promise<string> {
+    if (!fresh && this.payoutToken && this.payoutToken.expiresAt > Date.now()) return this.payoutToken.value;
+    if (fresh) this.payoutToken = null;
+    this.payoutTokenRequest ??= (async () => {
+      try {
+        const answer = await this.send('POST', this.env('FLEXPAIE_PAYOUT_AUTH_URL'), {
+          username: String(this.configService.get('FLEXPAIE_PAYOUT_USERNAME', '') ?? '').trim(),
+          password: String(this.configService.get('FLEXPAIE_PAYOUT_PASSWORD', '') ?? ''),
+        });
+        const token = String(answer?.token ?? '').trim();
+        if (String(answer?.code) !== '0' || !token) {
+          throw new FlexPaieCallError(`FlexPaie payout login refused: code=${answer?.code} message=${String(answer?.message ?? '').slice(0, 120)}`, { refusedToken: true });
+        }
+        const seconds = Number(answer?.expire_in);
+        const lifetimeMs = Number.isFinite(seconds) && seconds > 0 ? Math.max(seconds - 60, 30) * 1000 : 10 * 60_000;
+        const value = /^bearer\s/i.test(token) ? token : `Bearer ${token}`;
+        this.payoutToken = { value, expiresAt: Date.now() + lifetimeMs };
+        return value;
+      } finally {
+        this.payoutTokenRequest = null;
+      }
+    })();
+    return this.payoutTokenRequest;
+  }
+
+  private async payoutRow(reference: string): Promise<{ reference: string; order_number: string | null; state: string; attempts: number; created_at: string; updated_at: string } | null> {
+    const { data, error } = await this.supabaseService.getClient().from('flexpaie_payouts').select('*').eq('reference', reference).maybeSingle();
+    if (error) throw new Error(`Could not read the FlexPaie payout journal: ${error.message}`);
+    return data ?? null;
+  }
+
+  private async markPayout(reference: string, patch: Record<string, unknown>): Promise<boolean> {
+    const { error } = await this.supabaseService.getClient().from('flexpaie_payouts')
+      .update({ ...patch, updated_at: new Date().toISOString() }).eq('reference', reference);
+    if (error) this.logger.error(`Could not update the FlexPaie payout journal for ${reference}: ${error.message}`);
+    return !error;
+  }
+
+  /**
+   * Takes the right to send this withdrawal, before anything leaves. Only one sender can win: the insert (primary key)
+   * for a first try, the NOT_SENT → SENDING update for a retry. The loser stops without sending.
+   */
+  private async claimPayout(reference: string, existing: { state: string; attempts: number } | null): Promise<void> {
+    const db = this.supabaseService.getClient();
+    if (!existing) {
+      const { error } = await db.from('flexpaie_payouts').insert({ reference, state: 'SENDING' });
+      if (!error) return;
+      if (/duplicate|unique/i.test(error.message)) throw new Error(`FlexPaie payout ${reference} is already being sent: not sent twice`);
+      throw new PayoutNotSentError(UNAVAILABLE, `Journal des retraits FlexPaie inaccessible (migration 067 appliquée ?) : ${error.message}`);
+    }
+    const { data, error } = await db.from('flexpaie_payouts')
+      .update({ state: 'SENDING', attempts: existing.attempts + 1, updated_at: new Date().toISOString() })
+      .eq('reference', reference).eq('state', 'NOT_SENT').select('reference');
+    if (error) throw new PayoutRetryLaterError(`Could not claim FlexPaie payout ${reference}: ${error.message}`);
+    if (!data || (Array.isArray(data) && data.length === 0)) throw new Error(`FlexPaie payout ${reference} is already being sent: not sent twice`);
+  }
+
+  async payout(params: PayoutParams): Promise<PayoutResult> {
+    if (!this.supportsPayout) {
+      throw new PayoutNotSentError("Les retraits automatiques ne sont pas activés : l'envoi d'argent par FlexPaie n'est pas connecté.");
+    }
+    if (!this.supportsPayoutChannel(params.channel)) throw new PayoutNotSentError("FlexPaie n'envoie de l'argent que vers le Mobile Money.");
+    if (!isWholeCurrencyUnits(params.amount_cents)) {
+      throw new PayoutNotSentError("Le retrait Mobile Money n'accepte que des montants entiers (sans centimes).");
+    }
+    let customer: string;
+    try {
+      customer = toFlexPaieMsisdn(params.destination?.phone);
+    } catch {
+      throw new PayoutNotSentError('Numéro Mobile Money invalide.');
+    }
+
+    const existing = await this.payoutRow(params.reference);
+    if (existing?.state === 'ACCEPTED' && existing.order_number) return { psp_payout_id: existing.order_number, status: 'PENDING' };
+    if (existing && existing.state !== 'NOT_SENT') {
+      // SENDING: a request may already have left. Sending again could pay twice: it is settled by the check instead.
+      throw new Error(`FlexPaie payout ${params.reference} is ${existing.state}: not sent again`);
+    }
+
+    // Logging in comes first: if it fails, nothing was claimed and nothing left — the withdrawal is simply tried again.
+    let authorization: string;
+    try {
+      authorization = await this.payoutAuthorization();
+    } catch (err: any) {
+      if (err instanceof FlexPaieCallError && err.refusedToken) {
+        throw new PayoutNotSentError(UNAVAILABLE, `Connexion au PayoutService FlexPaie refusée : vérifiez FLEXPAIE_PAYOUT_USERNAME / FLEXPAIE_PAYOUT_PASSWORD. (${err.message})`);
+      }
+      throw new PayoutRetryLaterError(`FlexPaie payout login failed: ${err?.message}`);
+    }
+
+    await this.claimPayout(params.reference, existing);
+
+    const body = {
+      merchant: this.payoutMerchant(),
+      type: '1',
+      reference: params.reference,
+      amount: String(params.amount_cents / 100),
+      currency: params.currency,
+      customer,
+      description: `Retrait ScanLinkPay ${params.reference}`,
+      callback_url: params.callback_url,
+    };
+
+    for (let attempt = 0; ; attempt++) {
+      let answer: any;
+      try {
+        answer = await this.send('POST', this.env('FLEXPAIE_PAYOUT_URL'), body, authorization);
+      } catch (err: any) {
+        if (err instanceof FlexPaieCallError && err.neverReached) {
+          await this.markPayout(params.reference, { state: 'NOT_SENT', last_error: err.message.slice(0, 300) });
+          throw new PayoutRetryLaterError(err.message);
+        }
+        if (err instanceof FlexPaieCallError && err.refusedToken) {
+          if (attempt === 0) {
+            authorization = await this.payoutAuthorization(true).catch(() => authorization);
+            continue;
+          }
+          await this.markPayout(params.reference, { state: 'NOT_SENT', last_error: err.message.slice(0, 300) });
+          throw new PayoutNotSentError(UNAVAILABLE, `FlexPaie refuse le jeton du PayoutService (${err.message}).`);
+        }
+        // Timeout, 5xx, garbled answer: the money MAY have left. Stays SENDING; the callback or the check settles it.
+        await this.markPayout(params.reference, { last_error: String(err?.message).slice(0, 300) });
+        throw err;
+      }
+
+      const code = String(answer?.code ?? '').trim();
+      // The documentation writes the statuses "0XX0".."0XX5" (and once "OXX0", with a letter O): only the last digit counts.
+      const outcome = String(answer?.status ?? '').trim().slice(-1);
+      const message = String(answer?.message ?? '').slice(0, 200);
+      const orderNumber = answer?.orderNumber ? String(answer.orderNumber) : '';
+
+      if (code === '0' && (outcome === '0' || outcome === '') && orderNumber) {
+        let saved = false;
+        for (let i = 0; i < 3 && !saved; i++) saved = await this.markPayout(params.reference, { state: 'ACCEPTED', order_number: orderNumber, last_error: null });
+        // Even if the journal could not be written, the order number travels back and is stored on the withdrawal.
+        return { psp_payout_id: orderNumber, status: 'PENDING' };
+      }
+
+      if (outcome === '4' && attempt === 0) {
+        authorization = await this.payoutAuthorization(true).catch(() => authorization);
+        continue;
+      }
+
+      if (code !== '1' && !['1', '2', '3', '4', '5'].includes(outcome)) {
+        // Neither an acceptance we can follow nor a refusal: treat like a lost answer.
+        await this.markPayout(params.reference, { last_error: `unexpected answer code=${code} status=${answer?.status}`.slice(0, 300) });
+        throw new Error(`FlexPaie payout ${params.reference}: unexpected answer code=${code} status=${answer?.status}`);
+      }
+
+      await this.markPayout(params.reference, { state: 'NOT_SENT', last_error: `${answer?.status ?? code}: ${message}`.slice(0, 300) });
+      this.logger.warn(`FlexPaie refused payout ${params.reference}: code=${code} status=${answer?.status} message=${message}`);
+      switch (outcome) {
+        case '1':
+          throw new PayoutRetryLaterError(`FlexPaie is busy with another payout: ${message}`);
+        case '2':
+          throw new PayoutNotSentError(UNAVAILABLE, `Solde FlexPaie insuffisant pour un retrait de ${body.amount} ${body.currency} : approvisionnez le compte marchand FlexPaie.`);
+        case '3':
+          throw new PayoutNotSentError("Ce numéro Mobile Money n'est pas pris en charge par le service de retrait. Vérifiez le numéro et l'opérateur.");
+        case '4':
+          throw new PayoutNotSentError(UNAVAILABLE, `FlexPaie refuse le jeton du PayoutService (${message}).`);
+        default:
+          throw new PayoutNotSentError(message || "Le retrait a été refusé par le service de paiement.");
+      }
+    }
+  }
+
+  /** Asks FlexPaie about one payout, with the PayoutService token. Null when they know no such order. */
+  private async payoutCheck(orderNumber: string): Promise<any | null> {
+    const url = `${this.payoutCheckUrl()}/${encodeURIComponent(orderNumber)}`;
+    let answer: any;
+    try {
+      answer = await this.send('GET', url, undefined, await this.payoutAuthorization());
+    } catch (err: any) {
+      if (!(err instanceof FlexPaieCallError && err.refusedToken)) throw err;
+      answer = await this.send('GET', url, undefined, await this.payoutAuthorization(true));
+    }
+    const t = answer?.transaction ?? answer;
+    return t && t.status !== undefined && t.status !== null && String(t.status) !== '' ? t : null;
+  }
+
+  async getPayoutStatus(reference: string, hint?: { psp_reference?: string | null }): Promise<PayoutStatusResult> {
+    const row = await this.payoutRow(reference);
+    // Never handed to FlexPaie (a withdrawal from the manual period, or a request that died before sending): send it.
+    if (!row) return { status: 'NOT_SENT' };
+
+    if (row.state === 'NOT_SENT') {
+      if (Date.now() - new Date(row.created_at).getTime() > PAYOUT_RETRY_FOR_MS) {
+        return { status: 'FAILED', failure_reason: "Le retrait n'a pas pu être envoyé : le service de paiement est resté indisponible. Votre argent a été remis dans votre portefeuille." };
+      }
+      return { status: 'NOT_SENT' };
+    }
+
+    const orderNumber = row.order_number || hint?.psp_reference || '';
+    if (!orderNumber) {
+      if (row.state === 'ABANDONED' || (row.state === 'SENDING' && Date.now() - new Date(row.updated_at).getTime() > PAYOUT_NO_NEWS_MS)) {
+        if (row.state !== 'ABANDONED') {
+          this.logger.warn(`FlexPaie payout ${reference}: no answer and no callback for 30 minutes — taken as never sent, refunded`);
+          await this.markPayout(reference, { state: 'ABANDONED' });
+        }
+        return { status: 'FAILED', failure_reason: "Le retrait n'a pas pu être confirmé par le service de paiement. Votre argent a été remis dans votre portefeuille." };
+      }
+      return { status: 'PENDING' };
+    }
+    if (!row.order_number) await this.markPayout(reference, { order_number: orderNumber, ...(row.state === 'SENDING' ? { state: 'ACCEPTED' } : {}) });
+
+    const t = await this.payoutCheck(orderNumber);
+    if (!t) {
+      this.logger.warn(`FlexPaie payout ${reference}: order ${orderNumber} not found (yet) by the check`);
+      return { status: 'PENDING', psp_payout_id: orderNumber };
+    }
+    if (t.reference && String(t.reference) !== reference) {
+      this.logger.error(`FlexPaie payout ${reference}: order ${orderNumber} carries another reference (${t.reference}) — ignored`);
+      return { status: 'PENDING', psp_payout_id: orderNumber };
+    }
+    const status = String(t.status).trim();
+    if (status === '0') return { status: 'SUCCESS', psp_payout_id: orderNumber };
+    if (status === '1') return { status: 'FAILED', psp_payout_id: orderNumber, failure_reason: "L'envoi vers votre numéro Mobile Money a échoué. Votre argent a été remis dans votre portefeuille." };
+    return { status: 'PENDING', psp_payout_id: orderNumber };
+  }
+
+  /**
+   * FlexPaie's payout callback: unsigned, so only a hint. Its one useful content is the order number when our own
+   * request lost its answer — recorded only after FlexPaie's check confirms that order carries OUR reference.
+   */
+  async acceptPayoutCallback(payload: Buffer): Promise<string | null> {
+    const body = this.parseCallback(payload);
+    const reference = typeof body?.reference === 'string' ? body.reference.trim() : '';
+    if (!reference || reference.length > 100) return null;
+    const row = await this.payoutRow(reference);
+    if (!row) return null;
+
+    const claimed = body?.orderNumber ? String(body.orderNumber).trim() : '';
+    if (row.order_number) {
+      if (claimed && claimed !== row.order_number) {
+        this.logger.warn(`FlexPaie payout callback for ${reference} names order ${claimed}, recorded ${row.order_number} — refused`);
+        return null;
+      }
+      return reference;
+    }
+    if (!claimed || claimed.length > 100) return reference;
+
+    const t = await this.payoutCheck(claimed);
+    if (!t || String(t.reference ?? '') !== reference) {
+      this.logger.warn(`FlexPaie payout callback for ${reference}: order ${claimed} is unknown or not ours — refused`);
+      return null;
+    }
+    await this.markPayout(reference, { order_number: claimed, ...(row.state === 'ABANDONED' ? {} : { state: 'ACCEPTED' }) });
+    return reference;
   }
 }
