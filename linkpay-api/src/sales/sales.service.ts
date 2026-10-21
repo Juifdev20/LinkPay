@@ -387,6 +387,7 @@ export class SalesService {
       };
     }
 
+
     return {
       sales_count: (sales || []).length,
       revenue,

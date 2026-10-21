@@ -5,7 +5,7 @@ export type Currency = 'CDF' | 'USD';
 
 export type HomeDay = { date: string; revenue: number };
 export type HomeTop = { name: string; qty: number; revenue: number };
-export type HomeSale = { id: string; label: string; at: string; method?: string | null; amount: number };
+export type HomeSale = { id: string; label: string; at: string; method?: string | null; amount: number; currency?: string };
 
 export type HomeData = {
   /** First load with nothing cached yet — show skeletons. */
@@ -130,6 +130,7 @@ export function useHomeData(org: any, merchants: any[] | undefined, currency: Cu
           at: t.paid_at || t.updated_at,
           method: t.payment_method,
           amount: t.total_cents,
+          currency: t.currency,
         });
       }
       held += (heldQ?.data as any)?.total || 0;
@@ -144,7 +145,7 @@ export function useHomeData(org: any, merchants: any[] | undefined, currency: Cu
     }
     recent = ((Array.isArray(salesRecent.data) ? salesRecent.data : salesRecent.data?.data) || [])
       .filter((s: any) => s.status === 'paid' && s.currency === currency)
-      .map((s: any) => ({ id: s.id, label: s.reference || 'Vente', at: s.paid_at || s.created_at, method: s.payment_method, amount: s.total_cents }));
+      .map((s: any) => ({ id: s.id, label: s.reference || 'Vente', at: s.paid_at || s.created_at, method: s.payment_method, amount: s.total_cents, currency: s.currency }));
   }
 
   recent = recent.sort((a, b) => (b.at || '').localeCompare(a.at || '')).slice(0, 5);

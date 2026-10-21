@@ -21,7 +21,6 @@ import { shareOrCopy, publicOrigin } from '@/lib/share';
 import { StationSwitcher } from '@/components/StationSwitcher';
 import { useStationScope, resolveStation } from '@/lib/station-scope';
 
-
 /** Shown once the KYB onboarding is submitted, while status is still
  * 'pending' — distinct from the wizard itself (onboarding_completed_at is
  * already set) and from the active dashboard (status isn't 'active' yet). */

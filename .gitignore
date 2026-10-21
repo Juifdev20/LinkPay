@@ -40,3 +40,7 @@ linkpay-web/dev-dist/
 
 # Claude IDE artifacts
 .claude/
+
+# Fichiers de test temporaires (non à committer)
+linkpay-api/setup-test.mjs
+linkpay-api/.test-ids.json

@@ -34,8 +34,12 @@ const orgTransactionsTab: Tab = { to: '/dashboard/organization/transactions', la
 const financeTab: Tab = { to: SALES_DASHBOARD_PATH, label: 'Finances', icon: BarChart3, end: true, central: true };
 const walletTab: Tab = { to: '/dashboard/wallet', label: 'Portefeuille', icon: Wallet, end: true, central: true };
 
-// Selling is the daily business activity — the supermarket/electronics
-// cashier lands on the POS till; other sectors keep the Ventes form.
+// Selling is the daily business activity — the supermarket cashier lands on
+// the POS till; the electronics vendeur (who also runs the cash desk for
+// the Ventes flow) keeps the Ventes form as their central tab. Transactions
+// stays one tap away via the sidebar/"Plus" page for roles with more than
+// 3 business destinations (see computeVisibleTabs below), rather than
+// fighting Stock for the 4th fixed slot.
 const venteTab: Tab = { to: '/dashboard/pos', label: 'Vente', icon: ShoppingCart, end: false, central: true };
 
 const staffTabsFor = (role: string, orgSector?: string): Tab[] | undefined => {

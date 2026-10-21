@@ -13,8 +13,16 @@ import { ShoppingCart, PauseCircle, ScanLine, QrCode, Vault, ChevronRight, Alert
 const dayKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-/** The cashier's paid tickets of the last 7 days, all pages (the API returns their own tickets only). */
-async function fetchMyWeek(stationId: string, from: string): Promise<any[]> {
+type Period = '7j' | '30j' | 'mois';
+
+const PERIOD_LABELS: Record<Period, string> = {
+  '7j': '7 derniers jours',
+  '30j': '30 derniers jours',
+  'mois': 'Ce mois',
+};
+
+/** Cashier's paid tickets for [from, today], all pages (API returns their own tickets only). */
+async function fetchMyTickets(stationId: string, from: string): Promise<any[]> {
   const all: any[] = [];
   for (let page = 1; page <= 10; page++) {
     const { data } = await api.get(`/merchants/${stationId}/pos/tickets`, { params: { status: 'paid', from, page, limit: 100 } });
@@ -40,6 +48,7 @@ export default function CashierHome() {
     setCurrencyState(c);
     try { localStorage.setItem('pos-currency', c); } catch { /* not persisted */ }
   };
+  const [period, setPeriod] = useState<Period>('7j');
 
   const { data: org } = useQuery({
     queryKey: ['my-organization'],
@@ -53,20 +62,25 @@ export default function CashierHome() {
   });
   const stationId = user?.station_id || stations?.[0]?.id;
 
-  // ---- The 7-day window, today last ----
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - 6);
-  const keys = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    return dayKey(d);
-  });
-  const todayKey = keys[6];
+  // ---- Date range for the selected period ----
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const start = new Date(todayMidnight);
+  if (period === '7j') start.setDate(todayMidnight.getDate() - 6);
+  else if (period === '30j') start.setDate(todayMidnight.getDate() - 29);
+  else start.setDate(1); // mois: first day of current month
+
+  // Build one key per day in the range
+  const keys: string[] = [];
+  for (const d = new Date(start); d <= todayMidnight; d.setDate(d.getDate() + 1)) {
+    keys.push(dayKey(new Date(d)));
+  }
+  const todayKey = keys[keys.length - 1];
+  const yesterdayKey = keys[keys.length - 2] || '';
 
   const { data: tickets, isLoading: ticketsLoading } = useQuery({
-    queryKey: ['cashier-week', stationId, todayKey],
-    queryFn: () => fetchMyWeek(stationId!, start.toISOString()),
+    queryKey: ['cashier-tickets', stationId, period, todayKey],
+    queryFn: () => fetchMyTickets(stationId!, start.toISOString()),
     enabled: !!stationId,
   });
 
@@ -89,8 +103,7 @@ export default function CashierHome() {
   });
   const held = heldData?.total || 0;
 
-  // Articles at or under their alert level — whenever they got there. Same
-  // query as the till's catalog, so it's usually already in the cache.
+  // Articles at or under their alert level.
   const { data: catalog } = useQuery({
     queryKey: ['pos-catalog', stationId],
     queryFn: async () => (await api.get(`/merchants/${stationId}/stock-items`)).data as any[],
@@ -100,9 +113,11 @@ export default function CashierHome() {
     .filter((i) => i.quantity <= (i.low_stock_threshold ?? 5))
     .sort((a, b) => a.quantity - b.quantity);
 
-  // ---- Aggregation, in the chosen currency ----
+  // ---- Aggregation in the chosen currency ----
   const mine = (tickets || []).filter((t) => t.currency === currency && t.paid_at);
-  const byDay: Record<string, { revenue: number; count: number }> = Object.fromEntries(keys.map((k) => [k, { revenue: 0, count: 0 }]));
+  const byDay: Record<string, { revenue: number; count: number }> = Object.fromEntries(
+    keys.map((k) => [k, { revenue: 0, count: 0 }])
+  );
   for (const t of mine) {
     const k = dayKey(new Date(t.paid_at));
     if (byDay[k]) {
@@ -111,10 +126,21 @@ export default function CashierHome() {
     }
   }
   const days: HomeDay[] = keys.map((k) => ({ date: k, revenue: byDay[k].revenue }));
-  const recent: HomeSale[] = [...mine]
+
+  // Recent sales: show ALL tickets regardless of currency (last 5), display in their own currency
+  const recent: HomeSale[] = [...(tickets || [])]
+    .filter((t) => t.paid_at)
     .sort((a, b) => (b.paid_at > a.paid_at ? 1 : -1))
     .slice(0, 5)
-    .map((t) => ({ id: t.id, label: `Ticket #${t.ticket_number ?? '—'}`, at: t.paid_at, method: t.payment_method, amount: t.total_cents }));
+    .map((t) => ({
+      id: t.id,
+      label: `Ticket #${t.ticket_number ?? '—'}`,
+      at: t.paid_at,
+      method: t.payment_method,
+      amount: t.total_cents,
+      currency: t.currency,
+    }));
+
   const loading = !stationId || ticketsLoading;
 
   const actions: QuickAction[] = [
@@ -133,8 +159,8 @@ export default function CashierHome() {
         orgName={place}
         currency={currency}
         onCurrency={setCurrency}
-        today={{ revenue: byDay[todayKey].revenue, count: byDay[todayKey].count }}
-        yesterday={{ revenue: byDay[keys[5]].revenue }}
+        today={{ revenue: byDay[todayKey]?.revenue ?? 0, count: byDay[todayKey]?.count ?? 0 }}
+        yesterday={{ revenue: byDay[yesterdayKey]?.revenue ?? 0 }}
         loading={loading}
         onOpenTill={() => navigate('/dashboard/pos')}
       />
@@ -185,7 +211,7 @@ export default function CashierHome() {
         )}
       </div>
 
-      {/* Low stock: the cashier sees the shelf empty first and reminds the manager or the owner. */}
+      {/* Low stock alert */}
       {lowStock.length > 0 && (
         <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/40">
           <div className="flex items-center gap-2">
@@ -214,9 +240,24 @@ export default function CashierHome() {
         </div>
       )}
 
+      {/* Period selector + chart + recent sales */}
       <div className="space-y-5 lg:grid lg:grid-cols-2 lg:gap-5 lg:space-y-0 lg:items-start">
-        <SalesChart days={days} currency={currency} loading={loading} />
-        <RecentSales sales={recent} currency={currency} loading={loading} moreTo="/dashboard/pos?onglet=ventes" />
+        <div className="space-y-3">
+          {/* Period selector */}
+          <div className="flex items-center gap-1 rounded-xl bg-muted p-1">
+            {(['7j', '30j', 'mois'] as const).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-colors ${period === p ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                {p === 'mois' ? 'Ce mois' : p}
+              </button>
+            ))}
+          </div>
+          <SalesChart days={days} currency={currency} loading={loading} periodLabel={PERIOD_LABELS[period]} />
+        </div>
+        <RecentSales sales={recent} currency={currency} loading={loading} moreTo="/dashboard/organization/my-sales" />
       </div>
     </div>
   );
