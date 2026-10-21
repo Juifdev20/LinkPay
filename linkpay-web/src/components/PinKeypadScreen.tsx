@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Delete, Loader2, ShieldCheck } from 'lucide-react';
+import { Delete, Loader2, ShieldCheck, KeyRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import logoSrc from '@/assets/logo.png';
 
@@ -109,9 +109,37 @@ function PinFrame({ card, bottom }: { card: React.ReactNode; bottom?: React.Reac
   );
 }
 
-/** Same frame as the code screens, for the steps that need the normal keyboard (forgotten code → account password). */
-export function BlueCardScreen({ children }: { children: React.ReactNode }) {
-  return <PinFrame card={<div className="space-y-4">{children}</div>} />;
+/**
+ * A small window over a code screen (forgotten code → account password): the code screen stays visible underneath,
+ * blurred and darkened. Closes with Échap or a tap outside the window.
+ */
+export function PinDialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-[#0a1033]/45 p-4 backdrop-blur-md animate-in fade-in duration-200"
+      style={{ pointerEvents: 'auto' }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 text-center text-foreground shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-2 duration-200 dark:border-white/10 dark:bg-[#121b57]"
+      >
+        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-gradient text-white shadow-brand">
+          <KeyRound className="h-6 w-6" />
+        </span>
+        <p className="mt-4 text-lg font-semibold">{title}</p>
+        <div className="mt-2">{children}</div>
+      </div>
+    </div>
+  );
 }
 
 interface KeypadProps {
@@ -132,6 +160,8 @@ interface KeypadProps {
   footer?: React.ReactNode;
   /** Extra action above the footer (fingerprint). */
   extra?: React.ReactNode;
+  /** A window is open over the screen: the keypad and the computer keyboard do nothing. */
+  paused?: boolean;
 }
 
 const DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
@@ -141,10 +171,10 @@ const DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
  * backspace, 0 and "Entrée". Typing on a computer keyboard works too. There is no text field at all, so on a phone the
  * system keyboard never opens over our keypad, and nothing moves while digits are typed.
  */
-export function PinKeypadScreen({ title, value, length, onChange, onEnter, error, note, hint, busy, footer, extra }: KeypadProps) {
+export function PinKeypadScreen({ title, value, length, onChange, onEnter, error, note, hint, busy, footer, extra, paused }: KeypadProps) {
   // Refs so the keyboard listener always sees the current value without being re-attached on every digit.
-  const state = useRef({ value, busy, onChange, onEnter, length });
-  state.current = { value, busy, onChange, onEnter, length };
+  const state = useRef({ value, busy: busy || paused, onChange, onEnter, length });
+  state.current = { value, busy: busy || paused, onChange, onEnter, length };
 
   const press = (digit: string) => {
     const s = state.current;
@@ -162,6 +192,7 @@ export function PinKeypadScreen({ title, value, length, onChange, onEnter, error
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (state.current.busy) return;
       const t = e.target as HTMLElement | null;
       if (t && t.tagName === 'INPUT' && !(t as HTMLInputElement).readOnly) return; // a real text field has the keyboard
       if (e.ctrlKey || e.metaKey || e.altKey) return;

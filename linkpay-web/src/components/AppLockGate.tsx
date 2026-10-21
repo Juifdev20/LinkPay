@@ -7,7 +7,7 @@ import { weakAppCodeReason } from '@/lib/code-strength';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PinKeypadScreen, BlueCardScreen, identityNote } from '@/components/PinKeypadScreen';
+import { PinKeypadScreen, PinDialog, identityNote } from '@/components/PinKeypadScreen';
 import { Loader2, Fingerprint } from 'lucide-react';
 
 const errorMessage = (err: any, fallback: string) => err?.response?.data?.message || fallback;
@@ -119,6 +119,8 @@ function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => vo
   const [busy, setBusy] = useState(false);
   const [forgot, setForgot] = useState(false);
   const [password, setPassword] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
   const biometric = isAppLockEnabled();
 
   const submit = async (value: string) => {
@@ -153,38 +155,26 @@ function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => vo
 
   const reset = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBusy(true);
-    setError('');
+    setResetBusy(true);
+    setResetError('');
     try {
       await api.post('/auth/app-code/reset', { password });
       await onForgot(); // profile now says has_app_code: false → the gate shows the "choose a code" screen
     } catch (err: any) {
-      setError(errorMessage(err, 'Réinitialisation impossible.'));
+      setResetError(errorMessage(err, 'Réinitialisation impossible.'));
     } finally {
-      setBusy(false);
+      setResetBusy(false);
     }
   };
 
-  if (forgot) {
-    return (
-      <BlueCardScreen>
-        <p className="text-[17px] font-semibold">Code oublié ?</p>
-        <p className="text-[13px] leading-snug text-muted-foreground">Confirmez avec le mot de passe de votre compte, puis choisissez un nouveau code.</p>
-        <form onSubmit={reset} className="space-y-3">
-          {error && <p className="text-sm text-red-600 font-medium" role="alert">{error}</p>}
-          <Input type="password" autoFocus placeholder="Mot de passe du compte" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
-          <Button type="submit" className="w-full" disabled={busy || !password}>
-            {busy && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}Continuer
-          </Button>
-          <button type="button" className="text-xs text-muted-foreground underline w-full" onClick={() => { setForgot(false); setError(''); }}>Retour</button>
-        </form>
-      </BlueCardScreen>
-    );
-  }
+
+  const closeForgot = () => { setForgot(false); setPassword(''); setResetError(''); };
 
   return (
+    <>
     <PinKeypadScreen
       title="Entrez votre code PIN"
+      paused={forgot}
       value={code}
       length={CODE_LENGTH}
       busy={busy}
@@ -202,11 +192,27 @@ function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => vo
       ) : undefined}
       footer={(
         <>
-          <button type="button" className="font-semibold hover:text-primary" onClick={() => { setForgot(true); setError(''); }}>Code PIN oublié ?</button>
+          <button type="button" className="font-semibold hover:text-primary" onClick={() => setForgot(true)}>Code PIN oublié ?</button>
           <button type="button" className="text-xs font-medium text-primary underline underline-offset-2 dark:text-sky-300" onClick={async () => { await onLogout(); window.location.href = '/login'; }}>Se déconnecter</button>
         </>
       )}
     />
+    {forgot && (
+      <PinDialog title="Code oublié ?" onClose={closeForgot}>
+        <p className="text-sm leading-snug text-muted-foreground">Confirmez avec le mot de passe de votre compte, puis choisissez un nouveau code.</p>
+        <form onSubmit={reset} className="mt-5 text-left">
+          <Input type="password" autoFocus placeholder="Mot de passe du compte" value={password} onChange={(e) => { setPassword(e.target.value); setResetError(''); }} autoComplete="current-password" className="text-base" />
+          <p className="mt-1.5 min-h-[1.25rem] text-[13px] font-medium leading-5 text-destructive" role="alert">{resetError}</p>
+          <div className="mt-3 grid grid-cols-2 gap-2.5">
+            <Button type="button" variant="outline" className="h-12 rounded-xl" onClick={closeForgot}>Annuler</Button>
+            <Button type="submit" className="h-12 rounded-xl" disabled={resetBusy || !password}>
+              {resetBusy && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}Continuer
+            </Button>
+          </div>
+        </form>
+      </PinDialog>
+    )}
+    </>
   );
 }
 

@@ -41,7 +41,8 @@ CDF/USD indicatif réglé par le super admin** ; **avatar = silhouette** (pas de
   tontine, abonnement…). Téléphone : dégradé bleu, logo, carte avec un point par chiffre et le numéro masqué
   (`•••••••567`), pavé de touches arrondies, « Entrée » en dégradé quand le code est complet. Ordinateur : barre
   (logo, « Sécurisé »), fond à courbes, tout dans une carte centrée. Pas de champ texte : rien ne bouge pendant la
-  saisie (ligne d'erreur réservée).
+  saisie (ligne d'erreur réservée). « Code oublié ? » s'ouvre dans une petite fenêtre (`PinDialog`) au-dessus de
+  l'écran du code, flouté et assombri (Échap ou un appui à côté pour fermer).
 - Vérification : banc de captures Playwright (API simulée) clair/sombre, `npm run build`, 722 tests API.
 
 À faire : migration 072 (Test puis production) ; puis peaufiner les écrans entreprise, caisse, vendeur et admin avec
