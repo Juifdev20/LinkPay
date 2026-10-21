@@ -109,11 +109,12 @@ Les retraits **vers une banque**, et tous les retraits tant que `FLEXPAIE_PAYOUT
 Règles de sécurité : le code de l'application d'authentification est demandé pour chaque décision ; un administrateur ne peut pas traiter un retrait de son propre portefeuille ; chaque décision est écrite dans le journal d'audit (`withdrawal_manual_sent`, `withdrawal_manual_rejected`) ; deux administrateurs qui cliquent en même temps ne règlent le retrait qu'une fois.
 
 ### Mise en service
-1. Supabase → SQL Editor : exécuter `linkpay-api/supabase/migrations/067_flexpaie_payouts.sql`.
-2. Render → `linkpay-api` → Environment : les variables `FLEXPAIE_PAYOUT_*` (voir `docs/RENDER_ENV.md`), **sans** encore `FLEXPAIE_PAYOUTS_ENABLED`.
-3. Vider la page « Retraits à traiter ».
-4. Mettre `FLEXPAIE_PAYOUTS_ENABLED=true`, puis faire un retrait réel de 100 CDF vers un numéro de chaque réseau (M-Pesa, Orange, Airtel, Africell) et vérifier : argent reçu, retrait « effectué », notification.
-5. En cas de problème : retirer `FLEXPAIE_PAYOUTS_ENABLED` (les nouveaux retraits redeviennent manuels ; ceux déjà envoyés continuent d'être vérifiés).
+1. Supabase → SQL Editor : exécuter `linkpay-api/supabase/migrations/067_flexpaie_payouts.sql` (**avant** le déploiement).
+2. Déployer la nouvelle version de l'API (fusion dans `main`, Render redéploie `linkpay-api`). Sans `FLEXPAIE_PAYOUTS_ENABLED`, rien ne change : les retraits restent manuels.
+3. Render → `linkpay-api` → Environment : les variables `FLEXPAIE_PAYOUT_*` (voir `docs/RENDER_ENV.md`), **sans** encore `FLEXPAIE_PAYOUTS_ENABLED`. Les adresses, l'identifiant et le mot de passe sont ceux que FlexPaie donne pour le PayoutService.
+4. Vider la page « Retraits à traiter ».
+5. Mettre `FLEXPAIE_PAYOUTS_ENABLED=true`, puis faire un retrait réel de 100 CDF vers un numéro de chaque réseau (M-Pesa, Orange, Airtel, Africell) et vérifier : argent reçu, retrait « effectué », notification.
+6. En cas de problème : retirer `FLEXPAIE_PAYOUTS_ENABLED` (les nouveaux retraits redeviennent manuels ; ceux déjà envoyés continuent d'être vérifiés).
 
 ## Carte bancaire (Visa, Mastercard, American Express, Diners Club)
 La page de paiement de FlexPaie affiche les logos Visa, Mastercard, American Express et Diners Club (constaté lors d'un test réel le 10 octobre 2026 ; la documentation v2.0 ne cite que Visa : cartes locales et prépayées à confirmer avec FlexPaie). Les frais de la carte sont à la charge du client : 100 CDF demandés → 103 CDF débités (environ 3 %), le portefeuille est crédité de 100.
