@@ -649,7 +649,11 @@ export class FlexPaieAdapter implements PspAdapter {
     if (references.length === 0) return new Set();
     const { data, error } = await this.supabaseService.getClient().from('flexpaie_payouts')
       .select('reference').in('reference', references).in('state', ['SENDING', 'ACCEPTED']);
-    // Unknown is treated as "in flight": better a withdrawal hidden from the admin page for a while than paid twice.
+    // No journal yet (migration 067 not applied): nothing was ever handed to FlexPaie, so nothing is in flight.
+    if (error && /flexpaie_payouts/i.test(String(error.message)) && /does not exist|schema cache/i.test(String(error.message))) {
+      return new Set();
+    }
+    // Any other unknown is treated as "in flight": better a withdrawal hidden from the admin page for a while than paid twice.
     if (error) {
       this.logger.error(`Could not read the FlexPaie payout journal: ${error.message}`);
       return new Set(references);
