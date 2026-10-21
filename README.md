@@ -189,6 +189,8 @@ VITE_SUPABASE_ANON_KEY=votre-clé-anon
 VITE_VAPID_PUBLIC_KEY=   # doit correspondre à VAPID_PUBLIC_KEY côté backend
 ```
 
+Pour développer contre la base de test « LinkPay Test » (argent de test, aucun paiement réel), voir `docs/BASE_TEST.md`.
+
 Pour builder et tester l'app Android (Capacitor) sur un téléphone — y compris contre un backend local sans passer par Render — voir `TESTING_LOCAL.md` à la racine du dépôt.
 
 L'application démarre sur `http://localhost:5173`.

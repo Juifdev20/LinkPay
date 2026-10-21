@@ -7,6 +7,7 @@ Tout le travail est dans `main` (dernière fusion : PR #25). Rien n'est en atten
 - FlexPaie : encaissement Mobile Money et carte bancaire, vérification et rattrapage automatiques — `docs/FLEXPAIE.md`.
 - FlexPaie PayoutService : retraits Mobile Money automatiques (migration `067`, `FLEXPAIE_PAYOUTS_ENABLED`) ; retraits bancaires manuels — `docs/FLEXPAIE.md`, « Retraits automatiques ».
 - Plus aucun argent fictif dans l'application (prestataire `mock` supprimé ; CinetPay, jamais utilisé, retiré du projet ; FlexPaie seul prestataire) ; argent de test uniquement depuis l'éditeur SQL, enfermé dans les portefeuilles de test (migration `069`) — `docs/RECHARGE_TEST.md`.
+- Deux bases : production et « LinkPay Test » (développeurs, argent de test) — `docs/BASE_TEST.md`, construite avec `linkpay-api/supabase/base_test.sql` (`node supabase/construire-base-test.js`).
 - Pause de 24 h sur toute sortie d'argent après un changement de mot de passe, PIN, téléphone ou e-mail (migration `068`, `src/common/security-hold.ts`).
 - Pages de recharge modernes, numéro vérifié par opérateur (web + API), retour dans l'application.
 - Retraits traités à la main par un admin (page « Retraits à traiter », alertes, compteur).
