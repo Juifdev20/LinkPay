@@ -123,6 +123,7 @@ Règles de sécurité : le code de l'application d'authentification est demandé
 2. Déployer la nouvelle version de l'API (fusion dans `main`, Render redéploie `linkpay-api`). Sans `FLEXPAIE_PAYOUTS_ENABLED`, rien ne change : les retraits restent manuels.
 3. Render → `linkpay-api` → Environment : les variables `FLEXPAIE_PAYOUT_*` (voir `docs/RENDER_ENV.md`), **sans** encore `FLEXPAIE_PAYOUTS_ENABLED`. Les adresses, l'identifiant et le mot de passe sont ceux que FlexPaie donne pour le PayoutService.
 4. Vider la page « Retraits à traiter ».
+   Et retirer l'argent fictif déjà présent (anciennes recharges `mock`) : `docs/RECHARGE_TEST.md`, section « Argent fictif déjà dans la base ».
 5. Mettre `FLEXPAIE_PAYOUTS_ENABLED=true`, puis faire un retrait réel de 100 CDF vers un numéro de chaque réseau (M-Pesa, Orange, Airtel, Africell) et vérifier : argent reçu, retrait « effectué », notification.
 6. En cas de problème : retirer `FLEXPAIE_PAYOUTS_ENABLED` (les nouveaux retraits redeviennent manuels ; ceux déjà envoyés continuent d'être vérifiés).
 

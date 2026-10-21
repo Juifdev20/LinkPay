@@ -58,3 +58,36 @@ métadonnées (`ledger_entries.metadata`) et la référence `TEST-…`.
 
 Migration : `linkpay-api/supabase/migrations/069_test_money.sql` (à exécuter avant de déployer l'API qui lit
 `wallets.is_test`).
+
+## Argent fictif déjà dans la base (à vérifier AVANT d'activer les retraits automatiques)
+Avant cette version, le prestataire simulé `mock` créditait de **vrais** portefeuilles sans argent réel. Avec les
+retraits automatiques, cet argent pourrait sortir en vrai. Cette requête (lecture seule, ne modifie rien) liste les
+portefeuilles qui en ont reçu :
+
+```sql
+WITH fictif AS (
+  SELECT wallet_id, currency, amount_cents, 'recharge mock' AS origine
+    FROM wallet_topups WHERE psp_provider = 'mock' AND status = 'SUCCESS'
+  UNION ALL
+  SELECT recipient_wallet_id, currency, amount_cents, 'transfert payé par mock'
+    FROM transfers WHERE psp_provider = 'mock' AND status = 'SUCCESS'
+  UNION ALL
+  SELECT t.credited_wallet_id, t.currency, t.net_cents, 'vente payée par mock'
+    FROM transactions t JOIN payment_intents i ON i.id = t.payment_intent_id
+   WHERE i.psp_provider = 'mock' AND t.credited_wallet_id IS NOT NULL
+)
+SELECT w.wallet_number, p.full_name, p.phone, f.currency, f.origine,
+       SUM(f.amount_cents) / 100.0 AS montant_fictif,
+       wallet_balance_cents(w.id, f.currency) / 100.0 AS solde_actuel
+  FROM fictif f JOIN wallets w ON w.id = f.wallet_id LEFT JOIN profiles p ON p.id = w.user_id
+ GROUP BY w.id, w.wallet_number, p.full_name, p.phone, f.currency, f.origine
+ ORDER BY montant_fictif DESC;
+```
+
+Pour chaque portefeuille listé, décider (c'est une décision humaine : il peut aussi contenir de l'argent réel) :
+- **compte de développeur ou de démonstration** → le marquer comme portefeuille de test, il ne pourra plus rien retirer :
+  `UPDATE wallets SET is_test = true WHERE wallet_number = 'LP-…';`
+- **vrai client** → retirer seulement la part fictive par une écriture inverse (jamais en modifiant un solde) :
+  `SELECT debit_wallet('<id du portefeuille>', <montant en centimes>, 'ADJUSTMENT', 'FICTIF-RETIRE-<date>', 'CDF', '{"source":"nettoyage-mock"}');`
+
+À faire **avant** `FLEXPAIE_PAYOUTS_ENABLED=true`.

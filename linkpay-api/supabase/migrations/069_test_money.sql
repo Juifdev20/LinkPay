@@ -20,6 +20,9 @@
 
 ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT false;
 
+-- A payment intent no longer defaults to the simulated provider (the API always names the real one).
+ALTER TABLE payment_intents ALTER COLUMN psp_provider DROP DEFAULT;
+
 -- Balance of one wallet in one currency (the ledger is the source of truth).
 CREATE OR REPLACE FUNCTION public.wallet_balance_cents(p_wallet UUID, p_currency TEXT)
 RETURNS BIGINT
