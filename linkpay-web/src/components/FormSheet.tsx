@@ -45,24 +45,29 @@ export function FormSheet({ children, onClose, title = 'Formulaire', fullPage = 
   // BottomNav hides itself for as long as any FormSheet is mounted (see
   // sheet-store.ts) — registered here so it works regardless of which page
   // renders the sheet. No-op on desktop (BottomNav doesn't render there).
+  // A full page keeps the bottom bar (as in the design): only a real sheet hides it.
   useEffect(() => {
+    if (page) return;
     useSheetStore.getState().open();
     return () => useSheetStore.getState().close();
-  }, []);
+  }, [page]);
 
   return (
-    <DialogPrimitive.Root open onOpenChange={(open) => !open && onClose()}>
+    // A full page is not modal: the bottom bar under it stays usable (tapping a tab leaves the page).
+    <DialogPrimitive.Root open modal={!page} onOpenChange={(open) => !open && onClose()}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-black/50 md:backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in data-[state=closed]:animate-out data-[state=closed]:fade-out" />
+        {!page && <DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-black/50 md:backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in data-[state=closed]:animate-out data-[state=closed]:fade-out" />}
         <DialogPrimitive.Content
           // The full-screen code screen (PinInput) lives outside the sheet: touching it must not close the sheet.
           onInteractOutside={(e) => {
+            // Full page: a tap on the bottom bar navigates by itself, it must not also "close" (go back).
+            if (page) e.preventDefault();
             if ((e.target as HTMLElement | null)?.closest?.('[data-pin-screen]')) e.preventDefault();
           }}
           className={cn(
             'fixed z-[60] flex flex-col bg-card shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out',
             page
-              ? 'inset-x-0 top-0 bg-background safe-area-top safe-area-bottom data-[state=open]:slide-in-from-right-8 data-[state=open]:fade-in'
+              ? 'inset-x-0 top-0 z-[55] bg-background safe-area-top data-[state=open]:fade-in'
               : isDesktop
               ? 'left-1/2 top-1/2 w-full max-w-md max-h-[85vh] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-border data-[state=open]:fade-in data-[state=open]:zoom-in-95 data-[state=closed]:fade-out data-[state=closed]:zoom-out-95'
               : 'inset-x-0 rounded-t-3xl safe-area-bottom data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom',
@@ -78,7 +83,8 @@ export function FormSheet({ children, onClose, title = 'Formulaire', fullPage = 
                   // from window.visualViewport via
                   // useVisualViewportInset() instead. Not needed on
                   // desktop, which has no on-screen keyboard to dodge.
-                  bottom: keyboardInset,
+                  // Full page: down to the bottom bar (68px + the phone's bottom inset), or to the keyboard when it is open.
+                  bottom: page && !keyboardInset ? 'calc(68px + env(safe-area-inset-bottom))' : keyboardInset,
                   maxHeight: page ? undefined : `calc(92dvh - ${keyboardInset}px)`,
                 }
           }

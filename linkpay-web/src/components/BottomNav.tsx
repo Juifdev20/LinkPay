@@ -151,7 +151,7 @@ export function BottomNav() {
   return (
     <nav
       className={cn(
-        'md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-t border-border shadow-nav safe-area-bottom transition-transform duration-200',
+        'md:hidden fixed bottom-0 left-0 right-0 z-[58] bg-card/95 backdrop-blur-md border-t border-border shadow-nav safe-area-bottom transition-transform duration-200',
         hidden && 'translate-y-full',
       )}
     >
