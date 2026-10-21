@@ -31,7 +31,7 @@ const FEATURES = [
  */
 export function AuthShell({ title, subtitle, headline, switchPrompt, switchLabel, switchTo, children }: AuthShellProps) {
   return (
-    <div className="relative min-h-[100dvh] overflow-x-hidden bg-background md:grid md:grid-cols-2 lg:grid-cols-[1.05fr_1fr]">
+    <div className="relative min-h-[100dvh] overflow-x-hidden bg-background md:grid md:h-[100dvh] md:overflow-hidden md:grid-cols-2 lg:grid-cols-[1.05fr_1fr]">
       {/* ── Phone header ── */}
       <header className="relative bg-brand-gradient safe-area-top md:hidden">
         <div className="flex flex-col items-center px-6 pb-[4.5rem] pt-9 text-center">
@@ -47,7 +47,7 @@ export function AuthShell({ title, subtitle, headline, switchPrompt, switchLabel
       </header>
 
       {/* ── Computer brand panel ── */}
-      <aside className="relative hidden overflow-hidden border-r border-border bg-card md:sticky md:top-0 md:flex md:h-[100dvh] md:flex-col md:px-10 md:py-8 lg:px-16">
+      <aside className="relative hidden overflow-hidden border-r border-border bg-card md:flex md:h-full md:flex-col md:px-10 md:py-8 lg:px-16">
         <div className="pointer-events-none absolute -left-32 -top-32 h-96 w-96 rounded-full bg-primary/10 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-40 -right-24 h-[28rem] w-[28rem] rounded-full bg-secondary/10 blur-3xl" />
         <Logo size="md" className="relative" />
@@ -81,7 +81,7 @@ export function AuthShell({ title, subtitle, headline, switchPrompt, switchLabel
       </aside>
 
       {/* ── Form (both) ── */}
-      <main className="relative z-10 flex flex-col px-4 pb-10 md:px-10 md:py-8">
+      <main className="relative z-10 flex flex-col px-4 pb-10 md:h-full md:overflow-y-auto md:px-10 md:py-8">
         <p className="hidden justify-end text-sm text-muted-foreground md:flex">
           {switchPrompt}&nbsp;
           <Link to={switchTo} className="font-semibold text-primary hover:underline">{switchLabel}</Link>
