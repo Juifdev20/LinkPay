@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { assertNoRecentSecurityChange } from '../common/security-hold';
 
 @Injectable()
 export class RefundsService {
@@ -51,6 +52,8 @@ export class RefundsService {
     }
 
     this.assertOwnsTransaction(transaction.merchant_id, callerMerchantId, callerRole);
+    // Money leaves the merchant's wallet: not within 24 h of a change of the keys of the person refunding.
+    await assertNoRecentSecurityChange(this.supabaseService.getClient(), userId);
 
     const { data: refund, error: refundError } = await this.supabaseService.getClient()
       .rpc('refund_to_client_wallet', {

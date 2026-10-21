@@ -107,6 +107,7 @@ Pratiques courantes des prestataires de paiement, sans attendre de réponse de F
 - **Couper `FLEXPAIE_PAYOUTS_ENABLED`** n'abandonne rien : un retrait déjà confié à FlexPaie continue d'être vérifié jusqu'au bout et n'apparaît **pas** dans « Retraits à traiter » (un admin ne peut ni le rembourser ni le payer une seconde fois).
 - **Montants** : entiers seulement (refusés dès la demande), minimums vérifiés avant tout débit.
 - **Contrôle de risque** (cadence, nouveau portefeuille…) : s'il ne peut pas lire l'historique, **le retrait est refusé** (avant : il passait).
+- **Pause de 24 h après un changement de clé** (migration `068`) : après un changement de mot de passe (y compris par le lien reçu par e-mail), de code PIN (y compris le premier), de numéro de téléphone ou d'e-mail, **aucun argent ne sort du compte pendant 24 h** : ni retrait, ni transfert, ni paiement d'un marchand par le portefeuille, ni remboursement par un marchand. Le transfert est inclus, sinon un voleur viderait le compte vers un autre portefeuille puis retirerait de là. La date est posée par des déclencheurs dans la base, donc aucun chemin n'y échappe.
 - Déjà en place : code PIN (5 essais puis blocage), appareil vérifié, idempotence, débit atomique, limites par opération / jour / mois.
 - **Risques connus et acceptés** : remboursement après 30 min sans nouvelles (si FlexPaie a quand même envoyé, alerte « Retrait payé ET remboursé ») ; anciens retraits envoyés à l'activation (vider la page avant). Ces deux cas coûtent à ScanLinkPay, jamais au client.
 
@@ -118,7 +119,7 @@ Les retraits **vers une banque**, et tous les retraits tant que `FLEXPAIE_PAYOUT
 Règles de sécurité : le code de l'application d'authentification est demandé pour chaque décision ; un administrateur ne peut pas traiter un retrait de son propre portefeuille ; chaque décision est écrite dans le journal d'audit (`withdrawal_manual_sent`, `withdrawal_manual_rejected`) ; deux administrateurs qui cliquent en même temps ne règlent le retrait qu'une fois.
 
 ### Mise en service
-1. Supabase → SQL Editor : exécuter `linkpay-api/supabase/migrations/067_flexpaie_payouts.sql` (**avant** le déploiement).
+1. Supabase → SQL Editor : exécuter `linkpay-api/supabase/migrations/067_flexpaie_payouts.sql`, puis `068_security_hold.sql` (**avant** le déploiement).
 2. Déployer la nouvelle version de l'API (fusion dans `main`, Render redéploie `linkpay-api`). Sans `FLEXPAIE_PAYOUTS_ENABLED`, rien ne change : les retraits restent manuels.
 3. Render → `linkpay-api` → Environment : les variables `FLEXPAIE_PAYOUT_*` (voir `docs/RENDER_ENV.md`), **sans** encore `FLEXPAIE_PAYOUTS_ENABLED`. Les adresses, l'identifiant et le mot de passe sont ceux que FlexPaie donne pour le PayoutService.
 4. Vider la page « Retraits à traiter ».

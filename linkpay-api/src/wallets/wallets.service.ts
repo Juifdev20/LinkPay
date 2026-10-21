@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { SupabaseService } from '../supabase/supabase.service';
 import { PspFactory } from '../payments/psp/psp.factory';
 import { isManualPayout } from '../payments/psp/psp.adapter';
+import { assertNoRecentSecurityChange } from '../common/security-hold';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WalletPinService } from './wallet-pin.service';
 import { WalletLimitsService } from './wallet-limits.service';
@@ -522,6 +523,7 @@ export class WalletsService {
     // Skipped only for the pre-authorized tontine auto-payment path (see
     // internalOptions above) — every other caller still requires it.
     if (!internalOptions?.skipPinVerification) {
+      await assertNoRecentSecurityChange(this.supabaseService.getClient(), userId);
       await this.walletPinService.verifyPin(userId, dto.pin);
     }
 
@@ -942,6 +944,7 @@ export class WalletsService {
       throw new BadRequestException(`Votre wallet est ${wallet.status}, retrait impossible`);
     }
 
+    await assertNoRecentSecurityChange(this.supabaseService.getClient(), userId);
     await this.walletPinService.verifyPin(userId, dto.pin);
 
     const rule = await this.walletLimitsService.getRule('WITHDRAWAL', dto.currency);

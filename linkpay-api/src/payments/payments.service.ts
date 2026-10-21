@@ -21,6 +21,7 @@ import { completeFundedTransferOnce } from '../wallets/funded-transfer-completio
 import { confirmedAmountMatches } from './psp/amount-check';
 import { assertMerchantCanReceive } from '../common/merchant-status';
 import { assertNumberMatchesOperator } from './mobile-money';
+import { assertNoRecentSecurityChange } from '../common/security-hold';
 
 @Injectable()
 export class PaymentsService {
@@ -283,6 +284,7 @@ export class PaymentsService {
 
     // PIN verified before anything is created/debited — never trust the
     // frontend's "user confirmed" state for a financial operation.
+    await assertNoRecentSecurityChange(this.supabaseService.getClient(), userId);
     await this.walletPinService.verifyPin(userId, pin);
 
     const fees = await this.commissionsService.calculateFeesPreview(

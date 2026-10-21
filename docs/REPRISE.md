@@ -6,6 +6,7 @@ Tout le travail est dans `main` (dernière fusion : PR #25). Rien n'est en atten
 - Carte ScanLinkPay (impression, activation, paiement par scan avec PIN) — `docs/carte/`.
 - FlexPaie : encaissement Mobile Money et carte bancaire, vérification et rattrapage automatiques — `docs/FLEXPAIE.md`.
 - FlexPaie PayoutService : retraits Mobile Money automatiques (migration `067`, `FLEXPAIE_PAYOUTS_ENABLED`) ; retraits bancaires manuels — `docs/FLEXPAIE.md`, « Retraits automatiques ».
+- Pause de 24 h sur toute sortie d'argent après un changement de mot de passe, PIN, téléphone ou e-mail (migration `068`, `src/common/security-hold.ts`).
 - Pages de recharge modernes, numéro vérifié par opérateur (web + API), retour dans l'application.
 - Retraits traités à la main par un admin (page « Retraits à traiter », alertes, compteur).
 - Écrans de PIN et de verrouillage au même design.
