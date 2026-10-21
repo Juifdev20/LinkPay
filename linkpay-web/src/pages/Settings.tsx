@@ -119,10 +119,96 @@ export default function SettingsPage() {
   });
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="mx-auto max-w-5xl space-y-5 px-4 py-5 pb-28 md:p-6">
       <PageHeader title="Paramètres" />
 
       <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start space-y-6 lg:space-y-0">
+        <div className="space-y-6 min-w-0">
+      {/* General settings */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Préférences et sécurité</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-500"><Moon className="h-[18px] w-[18px]" /></span>
+            <div className="flex-1">
+              <p className="font-medium text-sm text-foreground">Thème sombre</p>
+              <p className="text-xs text-muted-foreground">Réduit la luminosité de l'interface.</p>
+            </div>
+            <Switch checked={effectiveTheme === 'dark'} onCheckedChange={toggleTheme} />
+          </div>
+          <AccessCodeSettings />
+          <RecoveryCodeSettings />
+          <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-success/10 text-success"><Fingerprint className="h-[18px] w-[18px]" /></span>
+            <div className="flex-1">
+              <p className="font-medium text-sm text-foreground">Déverrouillage biométrique</p>
+              <p className="text-xs text-muted-foreground">
+                {!appLockSupported
+                  ? 'Non disponible sur cet appareil/navigateur.'
+                  : "Raccourci : empreinte ou visage à la place du code d'accès."}
+              </p>
+              {appLockError && (
+                <p className="text-xs text-destructive mt-1">{appLockError}</p>
+              )}
+            </div>
+            {appLockBusy && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />}
+            <Switch
+              checked={appLockEnabled}
+              disabled={appLockBusy || !appLockSupported}
+              onCheckedChange={handleToggleAppLock}
+            />
+          </div>
+          <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-sky-500/10 text-sky-500"><Bell className="h-[18px] w-[18px]" /></span>
+            <div className="flex-1">
+              <p className="font-medium text-sm text-foreground">Notifications push</p>
+              <p className="text-xs text-muted-foreground">
+                {pushPermission === 'unsupported'
+                  ? "Non disponible sur cet appareil/navigateur."
+                  : pushPermission === 'denied'
+                  ? 'Bloquées — réactivez-les depuis les réglages de votre navigateur.'
+                  : 'Recevez une alerte même quand l\'app est fermée.'}
+              </p>
+            </div>
+            {pushBusy && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />}
+            <Switch
+              checked={pushEnabled}
+              disabled={pushBusy || pushPermission === 'unsupported' || pushPermission === 'denied'}
+              onCheckedChange={handleTogglePush}
+            />
+          </div>
+          <button
+            onClick={() => setShowHelp(!showHelp)}
+            className="flex items-center gap-3 w-full px-6 py-3.5 hover:bg-accent transition-colors text-left border-b border-border"
+          >
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><HelpCircle className="h-[18px] w-[18px]" /></span>
+            <span className="flex-1 font-medium text-sm text-foreground">Aide & support</span>
+            <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition-transform', showHelp && 'rotate-90')} />
+          </button>
+          {showHelp && (
+            <p className="px-6 py-3.5 text-sm text-muted-foreground border-b border-border bg-secondary/50">
+              Besoin d'aide ? Contactez-nous à support@linkpay.cd ou au +243 800 000 000.
+            </p>
+          )}
+          <button
+            onClick={() => setShowTerms(!showTerms)}
+            className="flex items-center gap-3 w-full px-6 py-3.5 hover:bg-accent transition-colors text-left"
+          >
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground"><FileText className="h-[18px] w-[18px]" /></span>
+            <span className="flex-1 font-medium text-sm text-foreground">Conditions générales</span>
+            <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition-transform', showTerms && 'rotate-90')} />
+          </button>
+          {showTerms && (
+            <p className="px-6 py-3.5 text-sm text-muted-foreground bg-secondary/50">
+              En utilisant ScanLinkPay, vous acceptez nos conditions d'utilisation et notre politique de confidentialité.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+        </div>
+
         <div className="space-y-6 min-w-0">
       {/* Become a merchant */}
       {user?.role === 'client' && (
@@ -252,92 +338,6 @@ export default function SettingsPage() {
         </Card>
       )}
 
-        </div>
-
-        <div className="space-y-6 min-w-0">
-      {/* General settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Général</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
-            <Moon className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-            <div className="flex-1">
-              <p className="font-medium text-sm text-foreground">Thème sombre</p>
-              <p className="text-xs text-muted-foreground">Réduit la luminosité de l'interface.</p>
-            </div>
-            <Switch checked={effectiveTheme === 'dark'} onCheckedChange={toggleTheme} />
-          </div>
-          <AccessCodeSettings />
-          <RecoveryCodeSettings />
-          <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
-            <Fingerprint className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-            <div className="flex-1">
-              <p className="font-medium text-sm text-foreground">Déverrouillage biométrique</p>
-              <p className="text-xs text-muted-foreground">
-                {!appLockSupported
-                  ? 'Non disponible sur cet appareil/navigateur.'
-                  : "Raccourci : empreinte ou visage à la place du code d'accès."}
-              </p>
-              {appLockError && (
-                <p className="text-xs text-destructive mt-1">{appLockError}</p>
-              )}
-            </div>
-            {appLockBusy && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />}
-            <Switch
-              checked={appLockEnabled}
-              disabled={appLockBusy || !appLockSupported}
-              onCheckedChange={handleToggleAppLock}
-            />
-          </div>
-          <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
-            <Bell className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-            <div className="flex-1">
-              <p className="font-medium text-sm text-foreground">Notifications push</p>
-              <p className="text-xs text-muted-foreground">
-                {pushPermission === 'unsupported'
-                  ? "Non disponible sur cet appareil/navigateur."
-                  : pushPermission === 'denied'
-                  ? 'Bloquées — réactivez-les depuis les réglages de votre navigateur.'
-                  : 'Recevez une alerte même quand l\'app est fermée.'}
-              </p>
-            </div>
-            {pushBusy && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />}
-            <Switch
-              checked={pushEnabled}
-              disabled={pushBusy || pushPermission === 'unsupported' || pushPermission === 'denied'}
-              onCheckedChange={handleTogglePush}
-            />
-          </div>
-          <button
-            onClick={() => setShowHelp(!showHelp)}
-            className="flex items-center gap-3 w-full px-6 py-3.5 hover:bg-accent transition-colors text-left border-b border-border"
-          >
-            <HelpCircle className="w-5 h-5 text-muted-foreground" />
-            <span className="flex-1 font-medium text-sm text-foreground">Aide & support</span>
-            <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition-transform', showHelp && 'rotate-90')} />
-          </button>
-          {showHelp && (
-            <p className="px-6 py-3.5 text-sm text-muted-foreground border-b border-border bg-secondary/50">
-              Besoin d'aide ? Contactez-nous à support@linkpay.cd ou au +243 800 000 000.
-            </p>
-          )}
-          <button
-            onClick={() => setShowTerms(!showTerms)}
-            className="flex items-center gap-3 w-full px-6 py-3.5 hover:bg-accent transition-colors text-left"
-          >
-            <FileText className="w-5 h-5 text-muted-foreground" />
-            <span className="flex-1 font-medium text-sm text-foreground">Conditions générales</span>
-            <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition-transform', showTerms && 'rotate-90')} />
-          </button>
-          {showTerms && (
-            <p className="px-6 py-3.5 text-sm text-muted-foreground bg-secondary/50">
-              En utilisant ScanLinkPay, vous acceptez nos conditions d'utilisation et notre politique de confidentialité.
-            </p>
-          )}
-        </CardContent>
-      </Card>
         </div>
       </div>
 

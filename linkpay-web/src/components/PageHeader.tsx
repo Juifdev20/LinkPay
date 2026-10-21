@@ -38,17 +38,16 @@ export function PageHeader({ title, action, hideBack }: PageHeaderProps) {
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-2 min-w-0 flex-1">
         {!hideBack && (
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
+            type="button"
             onClick={() => navigate(-1)}
-            className="h-9 w-9 flex-shrink-0 -ml-2"
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm transition-colors hover:bg-accent"
             aria-label="Retour"
           >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
+            <ArrowLeft className="h-5 w-5" />
+          </button>
         )}
-        <h1 className="text-2xl font-bold text-foreground truncate min-w-0">{title}</h1>
+        <h1 className="min-w-0 truncate text-[22px] font-bold tracking-tight text-foreground md:text-2xl">{title}</h1>
       </div>
 
       {action && Icon && (
@@ -63,7 +62,7 @@ export function PageHeader({ title, action, hideBack }: PageHeaderProps) {
             <Button
               asChild
               size="icon"
-              className="md:hidden fixed bottom-24 right-4 z-40 h-14 w-14 rounded-full shadow-card-hover"
+              className="md:hidden fixed bottom-24 right-4 z-40 h-14 w-14 rounded-full shadow-brand"
             >
               <Link to={action.to} aria-label={action.label} title={action.label}>
                 <Icon className="w-6 h-6" />
@@ -81,7 +80,7 @@ export function PageHeader({ title, action, hideBack }: PageHeaderProps) {
               size="icon"
               aria-label={action.label}
               title={action.label}
-              className="md:hidden fixed bottom-24 right-4 z-40 h-14 w-14 rounded-full shadow-card-hover"
+              className="md:hidden fixed bottom-24 right-4 z-40 h-14 w-14 rounded-full shadow-brand"
             >
               <Icon className="w-6 h-6" />
             </Button>

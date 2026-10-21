@@ -54,7 +54,7 @@ export function AccessCodeSettings() {
     <>
       <div className="px-6 py-3.5 border-b border-border">
         <button className="flex items-center gap-3 w-full text-left" onClick={() => (open ? close() : setOpen(true))}>
-          <KeyRound className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><KeyRound className="h-[18px] w-[18px]" /></span>
           <div className="flex-1">
             <p className="font-medium text-sm text-foreground">Code d'accès</p>
             <p className="text-xs text-muted-foreground">Demandé à chaque ouverture de l'application. Modifier votre code à 6 chiffres.</p>
@@ -89,7 +89,7 @@ export function AccessCodeSettings() {
         )}
       </div>
       <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
-        <Timer className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-warning/10 text-warning"><Timer className="h-[18px] w-[18px]" /></span>
         <div className="flex-1">
           <p className="font-medium text-sm text-foreground">Verrouillage automatique</p>
           <p className="text-xs text-muted-foreground">Redemande le code après ce délai sans utilisation.</p>

@@ -52,6 +52,12 @@ CDF/USD indicatif réglé par le super admin** ; **avatar = silhouette** (pas de
   expirés) : grande icône, montant en gros, détails façon reçu avec référence copiable, actions.
 - **Mot de passe oublié, nouveau mot de passe, code de secours, double authentification admin** : même cadre que la
   connexion (`AuthShell`, titre facultatif).
+- **Pages du portefeuille et du marchand** : en-tête commun (`PageHeader`) avec bouton retour rond ; listes en français
+  (plus de « PENDING » / « SUCCESS » : `TransactionItem`, demandes de paiement) avec filtres en pastilles
+  (`components/ui/filter-chips.tsx`) ; Nouvelle demande et Encaisser par carte utilisent la même saisie de montant que
+  la recharge (`AmountEntry`, montants entiers) ; Équipe affiche les rôles (Propriétaire / Caissier) ; Ma carte,
+  Paramètres (préférences d'abord) et le scanner (cadre de visée, bouton manuel de nouveau lisible) retouchés.
+  Tontines et Épargne ne sont pas retouchées : elles sont masquées (`lib/features.ts`).
 - Vérification : banc de captures Playwright (API simulée) clair/sombre, `npm run build`, 722 tests API.
 
 À faire : migration 072 (Test puis production) ; puis peaufiner les écrans entreprise, caisse, vendeur et admin avec
