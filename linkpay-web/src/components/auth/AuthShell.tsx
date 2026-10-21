@@ -81,16 +81,19 @@ export function AuthShell({ title, subtitle, headline, switchPrompt, switchLabel
       </aside>
 
       {/* ── Form (both) ── */}
-      <main className="relative z-10 flex flex-col px-4 pb-10 md:h-full md:overflow-y-auto md:px-10 md:py-8">
-        <p className="hidden justify-end text-sm text-muted-foreground md:flex">
+      {/* Computer: the column never scrolls; the card fits the screen, its title stays put and only the fields scroll inside it. */}
+      <main className="relative z-10 flex flex-col px-4 pb-10 md:h-full md:min-h-0 md:px-10 md:py-8">
+        <p className="hidden shrink-0 justify-end text-sm text-muted-foreground md:flex">
           {switchPrompt}&nbsp;
           <Link to={switchTo} className="font-semibold text-primary hover:underline">{switchLabel}</Link>
         </p>
-        <div className="-mt-12 w-full md:my-auto md:mt-0 md:py-8">
-          <div className="mx-auto w-full max-w-md rounded-3xl border border-border bg-card p-5 shadow-soft sm:p-7 md:p-8 md:shadow-xl">
-            <h2 className="text-2xl font-bold tracking-tight text-foreground md:text-[1.75rem]">{title}</h2>
-            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{subtitle}</p>
-            <div className="mt-6">{children}</div>
+        <div className="-mt-12 w-full md:mt-0 md:flex md:min-h-0 md:flex-1 md:items-center md:pt-6">
+          <div className="mx-auto flex w-full max-w-md flex-col rounded-3xl border border-border bg-card shadow-soft md:max-h-full md:shadow-xl">
+            <div className="shrink-0 px-5 pt-5 sm:px-7 sm:pt-7 md:border-b md:border-border/60 md:px-8 md:pb-5 md:pt-8">
+              <h2 className="text-2xl font-bold tracking-tight text-foreground md:text-[1.75rem]">{title}</h2>
+              <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{subtitle}</p>
+            </div>
+            <div className="mt-6 px-5 pb-5 sm:px-7 sm:pb-7 md:mt-0 md:min-h-0 md:overflow-y-auto md:px-8 md:pb-8 md:pt-5 [scrollbar-gutter:stable]">{children}</div>
           </div>
         </div>
       </main>
