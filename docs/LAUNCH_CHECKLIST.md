@@ -18,10 +18,10 @@ Cochez dans l'ordre. Ne passez pas à l'étape suivante tant que la précédente
 
 - [ ] Nouvelle clé `service_role` Supabase (Settings → API → *Roll*), puis `SUPABASE_SERVICE_ROLE_KEY` mis à jour.
 - [ ] Nouveau `JWT_SECRET` (48 caractères aléatoires minimum). Tous les utilisateurs devront se reconnecter.
-- [ ] Nouveau mot de passe / clés CinetPay, nouvelle clé FCM, nouveau token FlexPaie si le précédent a été partagé.
+- [ ] Nouvelle clé FCM, nouveau token FlexPaie si le précédent a été partagé.
 - [ ] `APP_CODE_PEPPER` : 32+ caractères aléatoires, à définir **avant** que les utilisateurs choisissent leur code d'accès, puis ne plus jamais le changer (sinon tous devront en choisir un nouveau).
 - [ ] `TWO_FACTOR_ENCRYPTION_KEY` : 32+ caractères aléatoires, à définir **avant** que les administrateurs activent la 2FA, puis ne plus jamais la changer.
-- [ ] `NODE_ENV=production`, `ENABLE_SWAGGER=false`, `PSP_PROVIDER` = le vrai fournisseur (jamais `mock`).
+- [ ] `NODE_ENV=production`, `ENABLE_SWAGGER=false`, `PSP_PROVIDER` = le vrai fournisseur (`mock` n'existe plus : sans fournisseur, les paiements sont refusés).
 - [ ] **Alertes par email** : créer un compte gratuit sur resend.com, vérifier votre domaine d'envoi, puis définir `RESEND_API_KEY` et `ALERT_EMAIL_FROM` (et `ALERT_EMAILS` pour des destinataires en plus). Tester : déclencher une alerte critique (ex. un mauvais code 2FA sur un compte admin) et vérifier la réception.
 - [ ] Optionnel mais recommandé : `ADMIN_ALLOWED_IPS` si les administrateurs ont une IP fixe (bureau/VPN).
 
@@ -69,7 +69,7 @@ Si un super administrateur unique perd son téléphone **et** ses codes de secou
 
 ## 4. Paiements (avant le premier vrai franc)
 
-- [ ] Tester chaque flux en **sandbox** du fournisseur (CinetPay / FlexPaie) avec de petits montants : recharge, paiement marchand, remboursement, retrait réussi, retrait échoué.
+- [ ] Tester chaque flux avec FlexPaie (pas de sandbox : en production) avec de petits montants réels : recharge, paiement marchand, remboursement, retrait réussi, retrait échoué.
 - [ ] Vérifier qu'un faux webhook (mauvaise signature) est rejeté **et** génère une alerte critique.
 - [ ] Fixer des plafonds bas dans *Frais et limites* : par exemple 20 $ par opération et 50 $ par jour, et monter petit à petit.
 - [ ] Prévoir un **compte de réserve** couvrant une perte possible les premières semaines.

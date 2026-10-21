@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Headers, Query, Param, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, Min, IsString, IsOptional, IsIn, IsObject, Length } from 'class-validator';
+import { IsInt, IsNumber, Min, IsString, IsOptional, IsIn, IsObject, Length } from 'class-validator';
 import { WalletsService } from './wallets.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { toPage, toLimit } from '../common/utils/pagination';
@@ -86,7 +86,7 @@ class TransferDto {
 
 class WithdrawalDto {
   @ApiProperty({ example: 50000 })
-  @IsNumber()
+  @IsInt()
   @Min(1)
   amount_cents!: number;
 

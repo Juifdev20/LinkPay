@@ -104,7 +104,7 @@ export class ExpenseTrackerService {
     };
   }
 
-  /** First-ever choice: the free, count-limited trial. Choosing "unlimited" instead just means paying directly (activateProViaWallet/CinetPay below), no separate call needed. */
+  /** First-ever choice: the free, count-limited trial. Choosing "unlimited" instead just means paying directly (activateProViaWallet/MobileMoney below), no separate call needed. */
   async choosePlan(userId: string) {
     const existing = await this.getProStatus(userId);
     if (existing) {
@@ -306,7 +306,7 @@ export class ExpenseTrackerService {
     return { pro_expires_at: newExpiry };
   }
 
-  async activateProViaCinetPay(userId: string) {
+  async activateProViaMobileMoney(userId: string) {
     const settings = await this.getSettings();
     if (!settings) {
       throw new Error('Expense tracker settings not configured');
@@ -346,8 +346,8 @@ export class ExpenseTrackerService {
         user_id: userId,
         amount_cents: settings.monthly_price_cents,
         currency: settings.monthly_price_currency,
-        // The column name says "cinetpay" for "paid through the payment provider"; psp_provider says which one.
-        payment_method: 'cinetpay',
+        // Paid through the payment provider; psp_provider says which one.
+        payment_method: 'mobile_money',
         status: 'PENDING',
         psp_provider: provider,
         psp_intent_id: pspResult.psp_intent_id,
@@ -357,15 +357,6 @@ export class ExpenseTrackerService {
 
     if (error) {
       throw new Error(`Failed to create expense pro payment: ${error.message}`);
-    }
-
-    // Mock PSP has no real checkout/webhook delivery — same short-circuit
-    // pattern as WalletsService.initiateTopup()'s mock branch.
-    if (provider === 'mock') {
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      const { data: newExpiry } = await this.db.rpc('extend_expense_pro', { p_user_id: userId });
-      await this.db.from('expense_pro_payments').update({ status: 'SUCCESS', extended_to: newExpiry }).eq('id', payment.id);
-      return { payment: { ...payment, status: 'SUCCESS', extended_to: newExpiry }, pro_expires_at: newExpiry };
     }
 
     return { payment, checkout_url: pspResult.checkout_url };

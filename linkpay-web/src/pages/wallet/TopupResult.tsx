@@ -20,10 +20,10 @@ interface TopupStatusResponse {
 }
 
 /**
- * Lands here after a real CinetPay top-up redirect (wallets.service.ts sets
+ * Lands here after a real top-up redirect from the payment provider (wallets.service.ts sets
  * redirect_url to .../dashboard/wallet/topup/result?ref=<reference>). Unlike
  * Topup.tsx's own inline pending/success steps (only reached by the
- * synchronous mock-provider path), this page has no in-memory result to show
+ * synchronous path), this page has no in-memory result to show
  * — it must ask the backend, and poll while the webhook may still be
  * catching up.
  */

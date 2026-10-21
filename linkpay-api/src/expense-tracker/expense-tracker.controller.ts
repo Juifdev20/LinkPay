@@ -125,14 +125,14 @@ export class ExpenseTrackerController {
     return this.expenseTrackerService.activateProViaWallet(userId, dto.pin);
   }
 
-  @Post('pro/activate/cinetpay')
-  @ApiOperation({ summary: 'Activate/renew unlimited access via CinetPay — returns a checkout URL (or completes immediately with the mock PSP)' })
-  async activateProViaCinetPay(@CurrentUser('id') userId: string) {
-    return this.expenseTrackerService.activateProViaCinetPay(userId);
+  @Post('pro/activate/mobile-money')
+  @ApiOperation({ summary: 'Activate/renew unlimited access, paid by Mobile Money through the payment provider (FlexPaie)' })
+  async activateProViaMobileMoney(@CurrentUser('id') userId: string) {
+    return this.expenseTrackerService.activateProViaMobileMoney(userId);
   }
 
   @Get('pro/payments/:reference/status')
-  @ApiOperation({ summary: 'Poll a CinetPay Pro-activation payment by reference' })
+  @ApiOperation({ summary: 'Poll a Mobile Money Pro-activation payment by reference' })
   async getProPaymentStatus(@CurrentUser('id') userId: string, @Param('reference') reference: string) {
     return this.expenseTrackerService.getProPaymentStatus(userId, reference);
   }

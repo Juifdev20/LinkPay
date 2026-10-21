@@ -9,16 +9,14 @@ import { AppModule } from './app.module';
 import { createCsrfMiddleware } from './auth/csrf.middleware';
 import { configureTrustProxy, resolveTrustProxyHops } from './common/utils/trust-proxy';
 
-// CinetPay's SDK talks to exactly these hosts (sandbox + production) — see
-// cinetpay.adapter.ts. Only requests to these get routed through the proxy;
-// everything else (Supabase Auth/REST, etc.) must keep using the platform's
-// normal outbound path.
-const CINETPAY_HOSTS = ['api.cinetpay.net', 'api.cinetpay.co'];
-
-/** FlexPaie is reached at the addresses its own contract gives (Mobile Money, card and status check can be three different hosts); it too is usually reachable only from a whitelisted IP. */
+/**
+ * FlexPaie is reached at the addresses its own contract gives (Mobile Money, card and status check can be different
+ * hosts). Only requests to these go through the proxy; everything else (Supabase Auth/REST, etc.) keeps the
+ * platform's normal outbound path.
+ */
 function flexPaieHosts(): string[] {
   const hosts = new Set<string>();
-  for (const key of ['FLEXPAIE_BASE_URL', 'FLEXPAIE_MOMO_URL', 'FLEXPAIE_CARD_URL', 'FLEXPAIE_CHECK_URL']) {
+  for (const key of ['FLEXPAIE_BASE_URL', 'FLEXPAIE_MOMO_URL', 'FLEXPAIE_CARD_URL', 'FLEXPAIE_CHECK_URL', 'FLEXPAIE_PAYOUT_AUTH_URL', 'FLEXPAIE_PAYOUT_URL', 'FLEXPAIE_PAYOUT_CHECK_URL']) {
     try {
       if (process.env[key]) hosts.add(new URL(String(process.env[key]).trim()).hostname);
     } catch {
@@ -32,8 +30,8 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
   // Route outbound HTTP requests through a fixed-IP proxy when PROXY_URL is
-  // set — needed on Render (shared outbound IPs) for CinetPay IP
-  // whitelisting. Scoped to CinetPay's own hosts only: undici's
+  // set — for a payment provider that only accepts a whitelisted IP (Render
+  // shares outbound IPs). Scoped to FlexPaie's own hosts only: undici's
   // setGlobalDispatcher() would apply to EVERY outbound fetch in the
   // process, including the Supabase client's own calls (auth, REST) — that
   // previously broke login/signup once PROXY_URL was set, since Supabase
@@ -43,7 +41,7 @@ async function bootstrap() {
   if (process.env.PROXY_URL) {
     const proxyAgent = new ProxyAgent(process.env.PROXY_URL);
     const originalFetch = globalThis.fetch;
-    const proxiedHosts = [...CINETPAY_HOSTS, ...flexPaieHosts()];
+    const proxiedHosts = flexPaieHosts();
     globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' || input instanceof URL ? input : input.url;
       const hostname = new URL(url).hostname;
@@ -52,9 +50,9 @@ async function bootstrap() {
       }
       return originalFetch(input, init);
     }) as typeof fetch;
-    logger.log(`Payment provider requests (${[...CINETPAY_HOSTS, ...flexPaieHosts()].join(', ')}) routed via proxy: ${process.env.PROXY_URL.replace(/\/\/.*@/, '//***@')}`);
+    logger.log(`Payment provider requests (${flexPaieHosts().join(', ')}) routed via proxy: ${process.env.PROXY_URL.replace(/\/\/.*@/, '//***@')}`);
   } else {
-    logger.log('PROXY_URL not set — outbound requests use the platform IP (CinetPay may require a fixed IP; FlexPaie does not, per FlexPaie)');
+    logger.log('PROXY_URL not set — outbound requests use the platform IP (FlexPaie does not require a fixed IP)');
   }
 
   const app = await NestFactory.create(AppModule, {

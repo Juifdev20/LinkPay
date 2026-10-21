@@ -30,7 +30,23 @@ Avant `PSP_PROVIDER=flexpaie` :
 1. Supabase → SQL Editor : exécuter `linkpay-api/supabase/migrations/060_flexpaie_orders.sql` (choisir « Run and enable RLS »).
 2. Faire un petit paiement Mobile Money (quelques centaines de FC) et vérifier que le solde est crédité.
 
-Tant que `PSP_PROVIDER` n'est pas `flexpaie`, le code FlexPaie est inactif et ne change rien.
+`PSP_PROVIDER` est **obligatoire** : il n'y a plus de prestataire simulé (`mock`). Sans lui, l'API refuse tous les paiements, recharges et retraits (elle ne les fait plus « réussir » toute seule). L'argent de test se met depuis Supabase : `docs/RECHARGE_TEST.md`.
+
+### Retraits automatiques (PayoutService FlexPaie)
+
+Identifiants **différents** de ceux des paiements : FlexPaie les donne pour le module « PayoutService ». Détail et ordre de mise en service : `docs/FLEXPAIE.md`, section « Retraits automatiques ».
+
+| Variable | Valeur | Remarque |
+|---|---|---|
+| `FLEXPAIE_PAYOUT_AUTH_URL` | l'adresse de connexion, **en entier** | se termine par `/api/v1/auth/authenticate` |
+| `FLEXPAIE_PAYOUT_URL` | l'adresse d'envoi, **en entier** | se termine par `/pay` |
+| `FLEXPAIE_PAYOUT_CHECK_URL` | l'adresse de vérification des envois | facultative : sinon `FLEXPAIE_CHECK_URL` ; la fin `/orderNumber` est tolérée |
+| `FLEXPAIE_PAYOUT_USERNAME` | l'identifiant du PayoutService | secret |
+| `FLEXPAIE_PAYOUT_PASSWORD` | le mot de passe du PayoutService | secret |
+| `FLEXPAIE_PAYOUT_MERCHANT` | le code marchand des envois | facultative : sinon `FLEXPAIE_MERCHANT` |
+| `FLEXPAIE_PAYOUTS_ENABLED` | `true` | **en dernier** : migration `067` exécutée et page « Retraits à traiter » vidée |
+
+Sans `FLEXPAIE_PAYOUTS_ENABLED=true` (ou si une des valeurs obligatoires manque), les retraits restent traités à la main. Les retraits vers une banque restent toujours manuels.
 
 ---
 
@@ -52,7 +68,6 @@ Elles sont déclarées avec `sync: false` : Render demande leur valeur au premie
 | `DEVICE_INTEGRITY_MODE`, `ANDROID_*`, `PLAY_INTEGRITY_*`, `INTEGRITY_*` | contrôle de l'appareil Android (voir `docs/ANDROID_INTEGRITY.md`) |
 | `ADMIN_ALLOWED_IPS` | adresses IP autorisées pour l'administration (optionnel) |
 | `VAPID_*`, `FCM_*` | notifications push |
-| `CINETPAY_API_KEY_CD`, `CINETPAY_API_PASSWORD_CD` | ancien prestataire (inutile si FlexPaie est choisi) |
 
 Déjà fixées dans le fichier (pas besoin d'y toucher) : `NODE_ENV=production`, `PORT=3000`, `JWT_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN`, `ENABLE_SWAGGER=false`, `ADMIN_REFRESH_EXPIRES_IN`.
 

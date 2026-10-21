@@ -8,7 +8,7 @@ const MAX_ATTEMPTS = 20;
 
 /**
  * Polls a payment/top-up status endpoint while it stays PENDING — the
- * frontend's fallback for when a CinetPay webhook hasn't arrived yet (or
+ * frontend's fallback for when the provider's webhook hasn't arrived yet (or
  * never will, for older transactions initiated before the backend webhook
  * URL fix). Stops polling once a terminal status is reached, or after
  * MAX_ATTEMPTS, exposing `timedOut` so callers can show "still processing"

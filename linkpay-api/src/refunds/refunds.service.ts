@@ -1,6 +1,8 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { assertNoRecentSecurityChange } from '../common/security-hold';
+import { assertTestMoneyStaysInTests } from '../common/test-money';
 
 @Injectable()
 export class RefundsService {
@@ -33,7 +35,7 @@ export class RefundsService {
    * doesn't hold enough — typically because they already withdrew the
    * money — the refund is refused and they must top up or refund in cash:
    * the balance never goes negative. A payer without a ScanLinkPay account
-   * can't be refunded here either (CinetPay has no refund API, so there is
+   * can't be refunded here either (FlexPaie has no refund API, so there is
    * nowhere to send the money): that one is also done in cash.
    */
   async createRefund(transactionId: string, data: {
@@ -51,6 +53,11 @@ export class RefundsService {
     }
 
     this.assertOwnsTransaction(transaction.merchant_id, callerMerchantId, callerRole);
+    // Money leaves the merchant's wallet: not within 24 h of a change of the keys of the person refunding.
+    await assertNoRecentSecurityChange(this.supabaseService.getClient(), userId);
+    // Test money in the merchant's wallet never reaches a real client.
+    const { data: merchant } = await this.supabaseService.getClient().from('merchants').select('owner_id').eq('id', transaction.merchant_id).maybeSingle();
+    await assertTestMoneyStaysInTests(this.supabaseService.getClient(), { userId: merchant?.owner_id ?? null }, { userId: transaction.client_id ?? null });
 
     const { data: refund, error: refundError } = await this.supabaseService.getClient()
       .rpc('refund_to_client_wallet', {

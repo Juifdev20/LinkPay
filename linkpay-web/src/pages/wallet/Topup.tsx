@@ -109,7 +109,7 @@ export default function TopupPage() {
         return;
       }
 
-      // Mock provider (and an idempotent replay) settle synchronously.
+      // An idempotent replay settles synchronously.
       setResult(data.topup);
       if (data.topup?.status === 'PENDING') {
         setStep('pending');

@@ -106,6 +106,10 @@ export class RiskService {
         client.from('wallets').select('created_at').eq('id', p.walletId).single(),
       ]);
 
+      // A failed read must not look like "no recent activity" (Supabase returns errors instead of throwing).
+      const readError = transfers.error || withdrawals.error || wallet.error;
+      if (readError) throw new Error(readError.message);
+
       const transferRows: any[] = transfers.data || [];
       const opsLastHour = transferRows.length + (withdrawals.data || []).length;
       if (opsLastHour >= MAX_OUTFLOW_OPS_PER_HOUR) {
@@ -131,6 +135,11 @@ export class RiskService {
       const review = REVIEW_AMOUNT_CENTS[p.currency];
       if (review && p.amountCents >= review) flags.push('LARGE_OUTFLOW');
     } catch (err: any) {
+      // A withdrawal leaves ScanLinkPay for good (and is now sent automatically): it is not let through unchecked.
+      if (p.kind === 'WITHDRAWAL') {
+        this.logger.error(`Outflow risk check failed, withdrawal refused: ${err?.message}`);
+        throw new HttpException('Le retrait est momentanément indisponible. Réessayez dans quelques minutes.', HttpStatus.SERVICE_UNAVAILABLE);
+      }
       this.logger.error(`Outflow risk check failed (letting the operation through): ${err?.message}`);
       return;
     }
