@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { PinInput } from '@/components/PinInput';
 import { formatCurrency } from '@/lib/utils';
-import { Loader2, Crown, Wallet, CreditCard } from 'lucide-react';
+import { Loader2, Crown, Wallet, Smartphone } from 'lucide-react';
 import { followCheckout } from '@/lib/safe-url';
 
 interface ExpenseProUpgradeProps {
@@ -17,7 +17,7 @@ interface ExpenseProUpgradeProps {
 
 /**
  * Two activation paths, same choice already offered for wallet top-ups:
- * debit the ScanLinkPay balance (PIN required) or pay via CinetPay. Reused
+ * debit the ScanLinkPay balance (PIN required) or pay by Mobile Money (FlexPaie). Reused
  * both on the first-time plan-selection screen (ExpensePlanSelection.tsx)
  * and as the paywall once the trial's report limit (or a paid period) runs
  * out — activating always grants 30 days of unlimited access from here.
@@ -49,8 +49,8 @@ export function ExpenseProUpgrade({ status, context = 'paywall' }: ExpenseProUpg
     },
   });
 
-  const cinetpayMutation = useMutation({
-    mutationFn: async () => (await api.post('/expense-tracker/pro/activate/cinetpay')).data,
+  const mobileMoneyMutation = useMutation({
+    mutationFn: async () => (await api.post('/expense-tracker/pro/activate/mobile-money')).data,
     onSuccess: (data) => {
       if (data.checkout_url) {
         followCheckout(data.checkout_url, navigate);
@@ -90,9 +90,9 @@ export function ExpenseProUpgrade({ status, context = 'paywall' }: ExpenseProUpg
               <Wallet className="mr-2 w-4 h-4" />
               Payer depuis mon solde ScanLinkPay
             </Button>
-            <Button variant="outline" className="w-full" onClick={() => cinetpayMutation.mutate()} disabled={cinetpayMutation.isPending}>
-              {cinetpayMutation.isPending ? <Loader2 className="mr-2 w-4 h-4 animate-spin" /> : <CreditCard className="mr-2 w-4 h-4" />}
-              Payer avec CinetPay
+            <Button variant="outline" className="w-full" onClick={() => mobileMoneyMutation.mutate()} disabled={mobileMoneyMutation.isPending}>
+              {mobileMoneyMutation.isPending ? <Loader2 className="mr-2 w-4 h-4 animate-spin" /> : <Smartphone className="mr-2 w-4 h-4" />}
+              Payer par Mobile Money
             </Button>
           </div>
         ) : (

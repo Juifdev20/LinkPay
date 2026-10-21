@@ -20,7 +20,7 @@ interface TopupStatusResponse {
 }
 
 /**
- * Lands here after a real CinetPay top-up redirect (wallets.service.ts sets
+ * Lands here after a real top-up redirect from the payment provider (wallets.service.ts sets
  * redirect_url to .../dashboard/wallet/topup/result?ref=<reference>). Unlike
  * Topup.tsx's own inline pending/success steps (only reached by the
  * synchronous path), this page has no in-memory result to show

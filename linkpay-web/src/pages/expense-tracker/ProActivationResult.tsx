@@ -14,7 +14,7 @@ interface ExpenseProPayment {
 }
 
 /**
- * Lands here after a real CinetPay redirect for a Pro-activation payment
+ * Lands here after the payment provider's redirect for a Pro-activation payment
  * (expense-tracker.service.ts sets redirect_url to .../pro/result?ref=...).
  * Same polling pattern as wallet/TopupResult.tsx — the webhook may still be
  * catching up when the user is redirected back.

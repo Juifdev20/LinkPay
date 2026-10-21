@@ -68,7 +68,6 @@ Elles sont déclarées avec `sync: false` : Render demande leur valeur au premie
 | `DEVICE_INTEGRITY_MODE`, `ANDROID_*`, `PLAY_INTEGRITY_*`, `INTEGRITY_*` | contrôle de l'appareil Android (voir `docs/ANDROID_INTEGRITY.md`) |
 | `ADMIN_ALLOWED_IPS` | adresses IP autorisées pour l'administration (optionnel) |
 | `VAPID_*`, `FCM_*` | notifications push |
-| `CINETPAY_API_KEY_CD`, `CINETPAY_API_PASSWORD_CD` | ancien prestataire (inutile si FlexPaie est choisi) |
 
 Déjà fixées dans le fichier (pas besoin d'y toucher) : `NODE_ENV=production`, `PORT=3000`, `JWT_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN`, `ENABLE_SWAGGER=false`, `ADMIN_REFRESH_EXPIRES_IN`.
 

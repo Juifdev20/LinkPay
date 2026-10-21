@@ -35,7 +35,7 @@ export class RefundsService {
    * doesn't hold enough — typically because they already withdrew the
    * money — the refund is refused and they must top up or refund in cash:
    * the balance never goes negative. A payer without a ScanLinkPay account
-   * can't be refunded here either (CinetPay has no refund API, so there is
+   * can't be refunded here either (FlexPaie has no refund API, so there is
    * nowhere to send the money): that one is also done in cash.
    */
   async createRefund(transactionId: string, data: {

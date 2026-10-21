@@ -31,7 +31,7 @@ export class CommissionsService {
     // SHARED: the merchant's half is fixed on the fee BEFORE any rounding below.
     const sharedMerchantShare = Math.floor(platformFeeCents / 2);
 
-    // Mobile Money / card providers (FlexPaie, CinetPay) only take whole currency
+    // Mobile Money / card providers (FlexPaie) only take whole currency
     // units (see psp/amount-check.ts). When the payer covers the fee (CUSTOMER_PAID,
     // or their half of SHARED) on a whole amount, the payer's total almost always
     // ended up with cents — 59 USD + 1.47 = 60.47 — and the payment was refused.

@@ -1,7 +1,6 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PspAdapter } from './psp.adapter';
-import { CinetPayAdapter } from './providers/cinetpay.adapter';
 import { FlexPaieAdapter } from './providers/flexpaie.adapter';
 
 @Injectable()
@@ -11,10 +10,8 @@ export class PspFactory {
 
   constructor(
     private configService: ConfigService,
-    private cinetPayAdapter: CinetPayAdapter,
     private flexPaieAdapter: FlexPaieAdapter,
   ) {
-    this.register('cinetpay', cinetPayAdapter);
     this.register('flexpaie', flexPaieAdapter);
   }
 

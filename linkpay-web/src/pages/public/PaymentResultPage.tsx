@@ -23,7 +23,7 @@ export default function PaymentResultPage() {
   // network round trip needed.
   const state = location.state as { status?: string; reference?: string; message?: string } | null;
 
-  // Real path: a CinetPay checkout redirects the browser back here as a full
+  // Real path: the provider's payment page redirects the browser back here as a full
   // page navigation, which never carries router state — only the `?ref=`
   // query param survives. Poll the status endpoint using it, since the
   // redirect URL alone can't distinguish success from failure.

@@ -2,8 +2,7 @@
 
 **L'application ne crée jamais d'argent.** Il n'y a plus de prestataire « simulé » (`mock`) : chaque recharge, paiement,
 abonnement ou retrait passe par un vrai prestataire (FlexPaie) avec de l'argent réel. Sans `PSP_PROVIDER` réglé sur un
-vrai prestataire, l'API **refuse** les paiements (elle ne les fait plus « réussir » toute seule). Les clés de test
-CinetPay (`sk_test_…`) sont refusées pour la même raison.
+vrai prestataire, l'API **refuse** les paiements (elle ne les fait plus « réussir » toute seule).
 
 Pour tester, un développeur écrit de l'argent de test **directement dans la base**, depuis l'éditeur SQL de Supabase.
 

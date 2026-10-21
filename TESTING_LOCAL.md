@@ -11,7 +11,7 @@ Ce guide explique comment installer ScanLinkPay sur un téléphone Android et le
 - Android SDK + la commande `adb` accessible dans le terminal.
 - Un téléphone Android avec le **débogage USB activé** (Paramètres → Options pour développeurs), branché en USB, et l'autorisation de débogage acceptée sur l'écran du téléphone.
 - Le dépôt cloné.
-- **Le fichier `linkpay-api/.env`** — il contient les vrais secrets (Supabase, JWT, Firebase, CinetPay, VAPID). Il n'est **pas** dans git (volontairement). Demandez-le directement à Dieudonné, par un canal privé — jamais par email ou un chat non chiffré.
+- **Le fichier `linkpay-api/.env`** — il contient les vrais secrets (Supabase, JWT, Firebase, FlexPaie, VAPID). Il n'est **pas** dans git (volontairement). Demandez-le directement à Dieudonné, par un canal privé — jamais par email ou un chat non chiffré.
 
 ## Étapes
 

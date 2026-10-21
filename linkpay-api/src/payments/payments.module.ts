@@ -4,7 +4,6 @@ import { PaymentsService } from './payments.service';
 import { MerchantWalletCreditService } from './merchant-wallet-credit.service';
 import { PendingPaymentsReconciliationService } from './pending-payments-reconciliation.service';
 import { PspFactory } from './psp/psp.factory';
-import { CinetPayAdapter } from './psp/providers/cinetpay.adapter';
 import { FlexPaieAdapter } from './psp/providers/flexpaie.adapter';
 import { SupabaseModule } from '../supabase/supabase.module';
 import { PaymentRequestsModule } from '../payment-requests/payment-requests.module';
@@ -36,7 +35,7 @@ import { SalesModule } from '../sales/sales.module';
   // rather than importing WalletsModule, to avoid a circular module
   // dependency. Both are stateless Supabase wrappers, so a second instance
   // here is harmless.
-  providers: [PaymentsService, MerchantWalletCreditService, PendingPaymentsReconciliationService, PspFactory, CinetPayAdapter, FlexPaieAdapter, WalletPinService, WalletLimitsService],
+  providers: [PaymentsService, MerchantWalletCreditService, PendingPaymentsReconciliationService, PspFactory, FlexPaieAdapter, WalletPinService, WalletLimitsService],
   exports: [PaymentsService, PspFactory],
 })
 export class PaymentsModule {}

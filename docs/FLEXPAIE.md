@@ -119,7 +119,7 @@ Les retraits **vers une banque**, et tous les retraits tant que `FLEXPAIE_PAYOUT
 Règles de sécurité : le code de l'application d'authentification est demandé pour chaque décision ; un administrateur ne peut pas traiter un retrait de son propre portefeuille ; chaque décision est écrite dans le journal d'audit (`withdrawal_manual_sent`, `withdrawal_manual_rejected`) ; deux administrateurs qui cliquent en même temps ne règlent le retrait qu'une fois.
 
 ### Mise en service
-1. Supabase → SQL Editor : exécuter `linkpay-api/supabase/migrations/067_flexpaie_payouts.sql`, puis `068_security_hold.sql`, puis `069_test_money.sql` (**avant** le déploiement).
+1. Supabase → SQL Editor : exécuter `linkpay-api/supabase/migrations/067_flexpaie_payouts.sql`, puis `068_security_hold.sql`, `069_test_money.sql` et `070_expense_pro_payment_method.sql` (**avant** le déploiement).
 2. Déployer la nouvelle version de l'API (fusion dans `main`, Render redéploie `linkpay-api`). Sans `FLEXPAIE_PAYOUTS_ENABLED`, rien ne change : les retraits restent manuels.
 3. Render → `linkpay-api` → Environment : les variables `FLEXPAIE_PAYOUT_*` (voir `docs/RENDER_ENV.md`), **sans** encore `FLEXPAIE_PAYOUTS_ENABLED`. Les adresses, l'identifiant et le mot de passe sont ceux que FlexPaie donne pour le PayoutService.
 4. Vider la page « Retraits à traiter ».

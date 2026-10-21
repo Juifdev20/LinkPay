@@ -413,7 +413,7 @@ export class PaymentsService {
 
   /**
    * Checks a payment's status by reference — public (the payer may be
-   * anonymous, returning from a CinetPay redirect with no session). Used as
+   * anonymous, returning from the payment provider's page with no session). Used as
    * the fallback source of truth when a webhook hasn't arrived yet: if the
    * intent is still PENDING, re-verifies with the PSP directly and applies
    * the same handleSuccessfulPayment/handleFailedPayment transition the

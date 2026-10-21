@@ -69,7 +69,6 @@ describe('paying a top-up by bank card', () => {
   it('the app is told what is open', () => {
     expect(setup({ provider: 'flexpaie', cardOn: false }).self.paymentMethods()).toEqual({ mobile_money: true, card: false });
     expect(setup({ provider: 'flexpaie', cardOn: true }).self.paymentMethods()).toEqual({ mobile_money: true, card: true });
-    expect(setup({ provider: 'cinetpay', cardOn: true }).self.paymentMethods()).toEqual({ mobile_money: true, card: false });
     // no simulated provider any more: nothing is ever open "for the demo"
     expect(setup({ provider: 'mock' }).self.paymentMethods().card).toBe(false);
   });

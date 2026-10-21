@@ -33,7 +33,7 @@ import { isWholeCurrencyUnits } from '../amount-check';
  * What the documentation does NOT give, and what that means here:
  *  - The callback sent to `callback_url` carries NO signature. It is therefore only ever a hint: the real status is
  *    always read back from FlexPaie (check), with the order number WE recorded for that reference — the same pattern
- *    as the CinetPay adapter. A forged callback can at most make us ask FlexPaie a question.
+ *    everywhere else. A forged callback can at most make us ask FlexPaie a question.
  *  - No refund API is documented: refund() says so instead of pretending.
  *  - Sending money (withdrawals) is a separate product, the "PayoutService" (its own login, documentation v1.03):
  *    see the last section of this file.

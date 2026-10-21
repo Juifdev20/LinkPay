@@ -24,7 +24,7 @@ interface TopupStatusCardProps {
 /**
  * Shared success/pending/failed/timed-out card for a wallet top-up outcome —
  * used both by Topup.tsx (a synchronous result, e.g. an idempotent replay) and
- * TopupResult.tsx (the page a real CinetPay redirect lands on, driven by
+ * TopupResult.tsx (the page the payment provider sends the user back to, driven by
  * status polling). `kind="transfer"` swaps the wording for a PSP-funded
  * person-to-person send (Send.tsx / SendResult.tsx).
  */
