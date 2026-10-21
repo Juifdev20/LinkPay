@@ -36,6 +36,12 @@ CDF/USD indicatif réglé par le super admin** ; **avatar = silhouette** (pas de
   « Bienvenue sur / Rejoignez ScanLinkPay » + trois atouts + illustration, lien de bascule en haut à droite. **Rien ne
   bouge pendant la saisie** : ligne de message réservée sous chaque champ, jauge du mot de passe toujours présente,
   champs en 16 px (pas de zoom), erreurs e-mail / mot de passe à la sortie du champ (vérifié : 0 px de décalage).
+- **Écran du code PIN / code d'accès** (`components/PinKeypadScreen.tsx`, maquette « Écran d'authentification PIN ») :
+  un seul écran pour toutes les saisies de code (ouverture de l'application, envoi, retrait, paiement, carte, épargne,
+  tontine, abonnement…). Téléphone : dégradé bleu, logo, carte avec un point par chiffre et le numéro masqué
+  (`•••••••567`), pavé de touches arrondies, « Entrée » en dégradé quand le code est complet. Ordinateur : barre
+  (logo, « Sécurisé »), fond à courbes, tout dans une carte centrée. Pas de champ texte : rien ne bouge pendant la
+  saisie (ligne d'erreur réservée).
 - Vérification : banc de captures Playwright (API simulée) clair/sombre, `npm run build`, 722 tests API.
 
 À faire : migration 072 (Test puis production) ; puis peaufiner les écrans entreprise, caisse, vendeur et admin avec

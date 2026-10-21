@@ -135,7 +135,7 @@ export default function MyCardPage() {
           </div>
           <div>
             <Label>Votre PIN</Label>
-            <PinInput value={pin} onChange={setPin} length={4} title="Entrer votre code PIN" hint="Pour activer votre carte" />
+            <PinInput value={pin} onChange={setPin} length={4} title="Entrez votre code PIN" hint="Pour activer votre carte" />
           </div>
           <Button type="submit" className="w-full" disabled={busy || number.replace(/\D/g, '').length !== 16 || pin.length < 4}>
             {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Activer la carte

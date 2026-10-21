@@ -10,7 +10,7 @@ interface PinInputProps {
   length?: number;
   autoFocus?: boolean;
   error?: boolean;
-  /** Title of the code screen. Default: "Entrer votre code PIN". */
+  /** Title of the code screen. Default: "Entrez votre code PIN". */
   title?: string;
   /** A few words under the title ("Confirmez l'envoi de 5 000 FC à Marie"). */
   hint?: string;
@@ -67,7 +67,7 @@ export function PinInput({ value, onChange, length = 4, autoFocus, error, title,
       </button>
       {open && createPortal(
         <PinKeypadScreen
-          title={title ?? 'Entrer votre code PIN'}
+          title={title ?? 'Entrez votre code PIN'}
           hint={hint}
           value={value}
           length={length}
@@ -76,7 +76,7 @@ export function PinInput({ value, onChange, length = 4, autoFocus, error, title,
           error={message}
           note={identityNote(user)}
           footer={
-            <button type="button" className="text-[16px] text-foreground py-1" onClick={() => { onChange(''); setOpen(false); }}>
+            <button type="button" className="py-1 font-semibold hover:text-primary" onClick={() => { onChange(''); setOpen(false); }}>
               Annuler
             </button>
           }

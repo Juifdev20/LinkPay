@@ -168,7 +168,7 @@ function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => vo
   if (forgot) {
     return (
       <BlueCardScreen>
-        <p className="text-[19px]">Code oublié ?</p>
+        <p className="text-[17px] font-semibold">Code oublié ?</p>
         <p className="text-[13px] leading-snug text-muted-foreground">Confirmez avec le mot de passe de votre compte, puis choisissez un nouveau code.</p>
         <form onSubmit={reset} className="space-y-3">
           {error && <p className="text-sm text-red-600 font-medium" role="alert">{error}</p>}
@@ -184,7 +184,7 @@ function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => vo
 
   return (
     <PinKeypadScreen
-      title="Entrer votre code PIN"
+      title="Entrez votre code PIN"
       value={code}
       length={CODE_LENGTH}
       busy={busy}
@@ -202,8 +202,8 @@ function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => vo
       ) : undefined}
       footer={(
         <>
-          <button type="button" className="text-[19px]" onClick={() => { setForgot(true); setError(''); }}>Code PIN oublié?</button>
-          <button type="button" className="text-xs text-muted-foreground underline" onClick={async () => { await onLogout(); window.location.href = '/login'; }}>Se déconnecter</button>
+          <button type="button" className="font-semibold hover:text-primary" onClick={() => { setForgot(true); setError(''); }}>Code PIN oublié ?</button>
+          <button type="button" className="text-xs font-medium text-primary underline underline-offset-2 dark:text-sky-300" onClick={async () => { await onLogout(); window.location.href = '/login'; }}>Se déconnecter</button>
         </>
       )}
     />
@@ -279,7 +279,7 @@ function CreateCode({ onDone }: { onDone: () => Promise<void> }) {
       error={error}
       onChange={confirmed}
       onEnter={() => confirmed(confirm)}
-      footer={<button type="button" className="text-[17px]" onClick={() => { setStep('choose'); setCode(''); setConfirm(''); setError(''); }}>Changer de code</button>}
+      footer={<button type="button" className="font-semibold hover:text-primary" onClick={() => { setStep('choose'); setCode(''); setConfirm(''); setError(''); }}>Changer de code</button>}
     />
   );
 }
