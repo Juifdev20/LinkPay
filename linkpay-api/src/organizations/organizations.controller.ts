@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Put, Patch, Body, Param, Query, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Body, Param, Query, Headers, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OrganizationsService, toStaffOrganization } from './organizations.service';
 import { MerchantsService } from '../merchants/merchants.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
-import { IsString, IsOptional, MaxLength, IsObject, IsNumber, IsIn, Min, Max } from 'class-validator';
+import { IsString, IsOptional, MaxLength, IsObject, IsNumber, IsIn, IsUUID, Min, Max } from 'class-validator';
+import { OrgTreasuryService } from './org-treasury.service';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CreateMerchantDto } from '../merchants/merchants.controller';
 import { RequireSubscription } from '../subscriptions/subscription.guard';
@@ -50,6 +51,37 @@ class CreateExpenseDto {
   @IsString()
   @MaxLength(500)
   description?: string;
+
+  @ApiPropertyOptional({ description: 'Station the expense belongs to (omit for "Sans station")' })
+  @IsOptional()
+  @IsUUID()
+  merchant_id?: string;
+}
+
+class TreasuryPasswordDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(72)
+  password!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MaxLength(72)
+  confirm!: string;
+}
+
+class TreasuryUnlockDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(72)
+  password!: string;
+}
+
+class TreasuryChangePasswordDto extends TreasuryPasswordDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(72)
+  current_password!: string;
 }
 
 class RenameStationDto {
@@ -66,6 +98,7 @@ export class OrganizationsController {
   constructor(
     private orgsService: OrganizationsService,
     private merchantsService: MerchantsService,
+    private treasury: OrgTreasuryService,
   ) {}
 
   @Post()
@@ -320,6 +353,72 @@ export class OrganizationsController {
     const org = await this.orgsService.getOrganizationById(id);
     this.assertOwnOrg(org.owner_id, callerId);
     return this.orgsService.getExpensesSummary(id);
+  }
+
+  @Get(':id/expenses/stats')
+  @ApiOperation({ summary: 'Expenses per business day over the last N days (and today), all stations or ?merchant_id= (owner only)' })
+  async getOrgExpensesStats(
+    @Param('id') id: string,
+    @CurrentUser('id') callerId: string,
+    @Query('days') days?: string,
+    @Query('merchant_id') merchantId?: string,
+  ) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    if (merchantId) {
+      const stations = await this.orgsService.getOrganizationMerchants(id, merchantId);
+      if (!stations.length) throw new ForbiddenException("Cette station n'appartient pas à votre entreprise");
+    }
+    return this.orgsService.getExpensesStats(id, days ? Number(days) : 7, merchantId || undefined);
+  }
+
+  // ---- Trésorerie (general cash desk): owner only, behind its own password ----
+
+  @Get(':id/treasury/status')
+  @ApiOperation({ summary: 'Is the treasury password set / is the screen locked out? (owner only)' })
+  async treasuryStatus(@Param('id') id: string, @CurrentUser('id') callerId: string) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.treasury.status(id);
+  }
+
+  @Post(':id/treasury/password')
+  @ApiOperation({ summary: 'First entry: choose the treasury password (typed twice) (owner only)' })
+  async treasuryCreatePassword(@Param('id') id: string, @Body() dto: TreasuryPasswordDto, @CurrentUser('id') callerId: string) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    await this.treasury.createPassword(id, dto.password, dto.confirm);
+    return this.treasury.unlock(id, callerId, dto.password);
+  }
+
+  @Post(':id/treasury/password/change')
+  @ApiOperation({ summary: 'Change the treasury password, proving the current one (owner only)' })
+  async treasuryChangePassword(@Param('id') id: string, @Body() dto: TreasuryChangePasswordDto, @CurrentUser('id') callerId: string) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    await this.treasury.changePassword(id, dto.current_password, dto.password, dto.confirm);
+    return { ok: true };
+  }
+
+  @Post(':id/treasury/unlock')
+  @ApiOperation({ summary: 'Check the treasury password and get a 15-minute access token (owner only)' })
+  async treasuryUnlock(@Param('id') id: string, @Body() dto: TreasuryUnlockDto, @CurrentUser('id') callerId: string) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    return this.treasury.unlock(id, callerId, dto.password);
+  }
+
+  @Get(':id/treasury')
+  @ApiOperation({ summary: 'Collected, spent and real cash per station — needs the x-treasury-token (owner only)' })
+  async treasuryOverview(
+    @Param('id') id: string,
+    @CurrentUser('id') callerId: string,
+    @Headers('x-treasury-token') token?: string,
+  ) {
+    const org = await this.orgsService.getOrganizationById(id);
+    this.assertOwnOrg(org.owner_id, callerId);
+    this.treasury.assertToken(id, callerId, token);
+    return this.treasury.overview(id);
   }
 
   @Post(':id/merchants/:merchantId/enter')

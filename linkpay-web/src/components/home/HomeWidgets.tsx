@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDownRight, ArrowUpRight, ChevronRight, ShoppingCart, Store, type LucideIcon } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, ChevronRight, MinusCircle, ShoppingCart, Store, type LucideIcon } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import type { Currency, HomeDay, HomeSale, HomeTop } from './useHomeData';
 
@@ -46,6 +46,7 @@ export function HomeHero({
   onOpenTill,
   heroLabel,
   storeIcon,
+  expenseToday,
 }: {
   firstName?: string;
   orgName?: string;
@@ -59,6 +60,8 @@ export function HomeHero({
   heroLabel?: string;
   /** Show a store icon badge before the org name (Gérant dashboard). */
   storeIcon?: boolean;
+  /** What was spent today (owner's home): shown under the sales, for the station chosen. */
+  expenseToday?: number;
 }) {
   const date = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
   const trend = yesterday.revenue > 0 ? Math.round(((today.revenue - yesterday.revenue) / yesterday.revenue) * 100) : null;
@@ -135,6 +138,15 @@ export function HomeHero({
             </>
           )}
         </div>
+
+        {!loading && expenseToday !== undefined && (
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-black/15 px-4 py-2.5">
+            <span className="flex items-center gap-2 text-sm text-white/85">
+              <MinusCircle className="h-4 w-4 text-rose-200" /> Dépenses du jour
+            </span>
+            <span className="text-base font-bold text-rose-100">{expenseToday > 0 ? '−' : ''}{money(expenseToday, currency)}</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -148,10 +160,10 @@ export type QuickAction = { label: string; icon: LucideIcon; onClick: () => void
 export function QuickActions({ actions }: { actions: QuickAction[] }) {
   return (
     // Phone: round icons with their label under. Computer: compact cards side by side, icon and label on one line.
-    <div className="grid grid-cols-4 gap-2 md:gap-3">
+    <div className={`grid gap-2 md:gap-3 ${actions.length > 4 ? 'grid-cols-5' : 'grid-cols-4'}`}>
       {actions.map((a) => (
         <button key={a.label} onClick={a.onClick} className="group flex flex-col items-center gap-1.5 rounded-2xl py-2 active:scale-95 transition-all md:flex-row md:gap-3 md:border md:border-border md:bg-card md:px-4 md:py-3 md:shadow-soft md:hover:-translate-y-0.5 md:hover:shadow-md">
-          <span className={`flex h-14 w-14 items-center justify-center rounded-2xl shadow-sm md:h-11 md:w-11 md:rounded-xl ${a.tone}`}>
+          <span className={`flex items-center justify-center rounded-2xl shadow-sm md:h-11 md:w-11 md:rounded-xl ${actions.length > 4 ? 'h-12 w-12' : 'h-14 w-14'} ${a.tone}`}>
             <a.icon className="h-6 w-6 md:h-5 md:w-5" />
           </span>
           <span className="text-xs font-medium text-foreground md:text-sm md:font-semibold">{a.label}</span>
@@ -170,60 +182,108 @@ export function SalesChart({
   currency,
   loading,
   periodLabel,
+  expenses,
 }: {
   days: HomeDay[];
   currency: Currency;
   loading: boolean;
   periodLabel?: string;
+  /** Spent per day (same days as `days`): drawn as a red curve over the bars (owner's home). */
+  expenses?: HomeDay[];
 }) {
   const [picked, setPicked] = useState<number>(days.length - 1);
   const safePicked = Math.min(picked, days.length - 1);
-  const max = Math.max(1, ...days.map((d) => d.revenue));
+  const spent = (i: number) => expenses?.[i]?.revenue ?? 0;
+  const max = Math.max(1, ...days.map((d) => d.revenue), ...(expenses || []).map((d) => d.revenue));
   const total = days.reduce((s, d) => s + d.revenue, 0);
+  const totalSpent = (expenses || []).reduce((s, d) => s + d.revenue, 0);
   const sel = days[safePicked] || days[days.length - 1];
   const manyBars = days.length > 14;
   const label = (date: string) =>
     new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '');
 
+  // Plot geometry (px): the chart is 128 px high, the day label takes the bottom 14 px, bars use at most 96 px.
+  const PLOT = 114;
+  const BAR_MAX = 96;
+  const x = (i: number) => ((i + 0.5) / days.length) * 100;
+  const yPct = (cents: number) => 100 - (((cents / max) * BAR_MAX) / PLOT) * 100;
+  const curve = expenses && !loading ? days.map((_, i) => `${x(i)},${yPct(spent(i))}`).join(' ') : '';
+
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-foreground">{periodLabel ?? '7 derniers jours'}</p>
-          <p className="text-xs text-muted-foreground">Total {money(total, currency)}</p>
+          <p className="text-sm font-semibold text-foreground">
+            {expenses ? `Entrées / sorties · ${periodLabel ?? '7 jours'}` : (periodLabel ?? '7 derniers jours')}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {expenses ? (
+              <>Entrées {money(total, currency)} · <span className="font-semibold text-rose-500">Sorties {money(totalSpent, currency)}</span></>
+            ) : (
+              <>Total {money(total, currency)}</>
+            )}
+          </p>
         </div>
         {!loading && sel && (
           <div className="text-right">
             <p className="text-sm font-bold text-foreground">{money(sel.revenue, currency)}</p>
+            {expenses && <p className="text-xs font-semibold text-rose-500">−{money(spent(safePicked), currency)}</p>}
             <p className="text-xs capitalize text-muted-foreground">
               {new Date(`${sel.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric' })}
             </p>
           </div>
         )}
       </div>
-      <div className="mt-4 flex h-32 items-end gap-1">
-        {days.map((d, i) => {
-          const isToday = i === days.length - 1;
-          // Bars use at most 75% of the height: the amount is written above each one.
-          const h = loading ? 20 + ((i * 37) % 55) : Math.max(4, Math.round((d.revenue / max) * 75));
-          // For many bars: only show label for today and every 7th bar
-          const showLabel = !manyBars || isToday || i % 7 === 0;
-          return (
-            <button key={d.date} onClick={() => setPicked(i)} className="flex h-full flex-1 flex-col items-center justify-end gap-1">
-              {!loading && !manyBars && d.revenue > 0 && (
-                <span className="text-[10px] font-semibold leading-none text-foreground/80">{compactAmount(d.revenue)}</span>
-              )}
-              <div
-                style={{ height: `${h}%` }}
-                className={`w-full rounded-md transition-all ${loading ? 'animate-pulse bg-muted' : isToday ? 'bg-gradient-to-t from-primary to-sky-500' : i === safePicked ? 'bg-primary/70' : 'bg-primary/40'}`}
-              />
-              <span className={`text-[10px] capitalize leading-none ${isToday ? 'font-semibold text-foreground' : 'text-muted-foreground'} ${!showLabel ? 'invisible' : ''}`}>
-                {isToday ? 'Auj.' : label(d.date)}
+      <div className="relative mt-4 h-32">
+        <div className="flex h-full items-end">
+          {days.map((d, i) => {
+            const isToday = i === days.length - 1;
+            // Bars use at most 75% of the height: the amount is written above each one.
+            const h = loading ? 20 + ((i * 37) % 55) : Math.max(4, Math.round((d.revenue / max) * 75));
+            // For many bars: only show label for today and every 7th bar
+            const showLabel = !manyBars || isToday || i % 7 === 0;
+            return (
+              <button key={d.date} onClick={() => setPicked(i)} className="flex h-full flex-1 flex-col items-center justify-end gap-1 px-[2px]">
+                {!loading && !manyBars && d.revenue > 0 && (
+                  <span className="text-[10px] font-semibold leading-none text-foreground/80">{compactAmount(d.revenue)}</span>
+                )}
+                <div
+                  style={{ height: `${h}%` }}
+                  className={`w-full rounded-md transition-all ${loading ? 'animate-pulse bg-muted' : isToday ? 'bg-gradient-to-t from-primary to-sky-500' : i === safePicked ? 'bg-primary/70' : 'bg-primary/40'}`}
+                />
+                <span className={`text-[10px] capitalize leading-none ${isToday ? 'font-semibold text-foreground' : 'text-muted-foreground'} ${!showLabel ? 'invisible' : ''}`}>
+                  {isToday ? 'Auj.' : label(d.date)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Red curve of what was spent, over the bars (same scale). */}
+        {expenses && !loading && (
+          <div className="pointer-events-none absolute inset-x-0 top-0" style={{ bottom: 14 }}>
+            <svg className="h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+              <polyline points={curve} fill="none" stroke="rgb(244 63 94)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+            </svg>
+            {days.map((d, i) => (
+              <span key={d.date} className="absolute" style={{ left: `${x(i)}%`, top: `${yPct(spent(i))}%` }}>
+                <span className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card bg-rose-500" />
+                {!manyBars && spent(i) > 0 && (
+                  <span className="absolute -translate-x-1/2 -translate-y-[170%] whitespace-nowrap rounded bg-card/85 px-0.5 text-[10px] font-bold leading-none text-rose-500">
+                    {compactAmount(spent(i))}
+                  </span>
+                )}
               </span>
-            </button>
-          );
-        })}
+            ))}
+          </div>
+        )}
       </div>
+      {expenses && (
+        <div className="mt-3 flex items-center gap-4 text-[11px] text-muted-foreground">
+          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-primary/60" /> Entrées</span>
+          <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded bg-rose-500" /> Sorties (dépenses)</span>
+        </div>
+      )}
     </div>
   );
 }

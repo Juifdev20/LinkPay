@@ -14,6 +14,8 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useNavigate } from 'react-router-dom';
 import { useAppLock } from '@/lib/app-lock-store';
 import { PosTill } from './PosTill';
+import { StationChips } from '@/components/StationChips';
+import { useStationScope, resolveStation } from '@/lib/station-scope';
 import { PosHeldTickets, PosSalesHistory, PosSessionPanel, SessionDetailSheet } from './PosPanels';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
@@ -73,7 +75,8 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
   // carry merchant_id in their JWT; org owners and org-scoped staff pick
   // among the org's stores (auto-selected when there's exactly one).
   // ------------------------------------------------------------------
-  const [pickedMerchant, setPickedMerchant] = useState('');
+  // The station picked is the one shared with the owner's home dashboard (useStationScope).
+  const scope = useStationScope();
 
   const { data: org } = useQuery({
     queryKey: ['my-organization'],
@@ -87,7 +90,7 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
     enabled: !user?.merchant_id && !!org?.id,
   });
 
-  const merchantId = user?.merchant_id || pickedMerchant || (merchants?.length === 1 ? merchants[0].id : '');
+  const merchantId = user?.merchant_id || resolveStation(scope.stationId, merchants) || (merchants?.length === 1 ? merchants[0].id : '');
   const merchantName = merchants?.find((m: any) => m.id === merchantId)?.name;
 
   // Remembered per device — the till always reopening on CDF made a USD
@@ -252,18 +255,14 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
         <PageHeader title="Caisse" />
       </div>
 
+      {/* A till has its own cash drawer and tickets per station: one station at a time (no « Toutes »). */}
       {!user?.merchant_id && merchants?.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {merchants.map((m: any) => (
-            <button
-              key={m.id}
-              onClick={() => setPickedMerchant(m.id)}
-              className={`flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-medium border ${merchantId === m.id ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'}`}
-            >
-              {m.name}
-            </button>
-          ))}
-        </div>
+        <StationChips stations={merchants} value={merchantId || null} onChange={scope.setStation} allowAll={false} />
+      )}
+      {!user?.merchant_id && merchants?.length > 1 && !merchantId && (
+        <Card><CardContent className="pt-6 text-center text-sm text-muted-foreground">
+          Choisissez la station dans laquelle vous vendez : chaque caisse a ses propres espèces et ses tickets.
+        </CardContent></Card>
       )}
 
       {/* Store + currency + lock — one compact row on desktop so the till

@@ -82,6 +82,7 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/organization/restock', label: "Demandes d'achat", icon: Truck, roles: rolesFor('/dashboard/organization/restock'), section: 'stock' },
 
   // ---- Entreprise: business modules, not account config, so they live in the nav rather than Settings.
+  { to: '/dashboard/organization/treasury', label: 'Trésorerie', icon: Landmark, roles: rolesFor('/dashboard/organization/treasury'), section: 'business' },
   { to: '/dashboard/organization/wallet', label: 'Portefeuille entreprise', icon: Wallet, roles: rolesFor('/dashboard/organization/wallet'), section: 'business' },
   { to: '/dashboard/organization/staff', label: 'Utilisateurs internes', icon: Users, roles: rolesFor('/dashboard/organization/staff'), labelFor: { gerant: 'Mes employés' }, section: 'business' },
   { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'], section: 'business' },

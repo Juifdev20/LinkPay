@@ -511,8 +511,10 @@ export class SalesService {
   /** Financial dashboard numbers for paid sales in [from, to). Money is always
    * kept per currency — CDF and USD are never summed together. Net margin
    * deducts the platform/PSP fees recorded on the linked wallet transaction. */
-  async getStats(orgId: string, callerId: string, callerOrgId: string | undefined, from?: string, to?: string, callerRole?: string, days?: number) {
+  async getStats(orgId: string, callerId: string, callerOrgId: string | undefined, from?: string, to?: string, callerRole?: string, days?: number, merchantId?: string) {
     const station = await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SALES_VIEW_ROLES);
+    // The owner may look at one station (?merchant_id=); a staff member is always held to their own.
+    const scope = station ?? (merchantId && /^[0-9a-f-]{36}$/i.test(merchantId) ? merchantId : null);
 
     // `days` = "the last N business days up to now", cut by the server in the business timezone
     // (the caller's clock is ignored); `today` is then answered by the server too.
@@ -531,7 +533,7 @@ export class SalesService {
       .select('id, currency, total_cents, paid_at, transaction_id, sale_items(name, category, stock_item_id, quantity, unit_price_cents, unit_cost_cents)')
       .eq('organization_id', orgId)
       .eq('status', 'PAID');
-    query = this.inStation(query, station);
+    query = this.inStation(query, scope);
     if (from) query = query.gte('paid_at', from);
     if (to) query = query.lt('paid_at', to);
     const { data: sales, error } = await query;

@@ -10,6 +10,9 @@ import { PosOfflinePaymentSheet } from '@/pages/pos/PosOfflinePayment';
 import api from '@/lib/api';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { PageHeader } from '@/components/PageHeader';
+import { StationChips } from '@/components/StationChips';
+import { useStationScope, resolveStation } from '@/lib/station-scope';
+import { useAuthStore } from '@/lib/auth-store';
 import { FormSheet } from '@/components/FormSheet';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -56,10 +59,23 @@ export default function SalesPage() {
     queryFn: async () => (await api.get(`/organizations/${org.id}/stock-items`)).data,
     enabled: !!org?.id,
   });
-  const catalog: any[] = items || [];
-  const byId = useMemo(() => new Map(catalog.map((i) => [i.id, i])), [catalog]);
+  const allItems: any[] = items || [];
+  const byId = useMemo(() => new Map(allItems.map((i) => [i.id, i])), [allItems]);
+
+  // The owner picks « Toutes les stations » or one station (the choice is shared with the home dashboard);
+  // an employee only ever gets their own station's articles from the API.
+  const user = useAuthStore((st) => st.user);
+  const isOwner = user?.role === 'enterprise' || !!user?.acting_as_org_id;
+  const scope = useStationScope();
+  const { data: merchants } = useQuery({
+    queryKey: ['org-merchants', org?.id],
+    queryFn: async () => (await api.get(`/organizations/${org.id}/merchants`)).data,
+    enabled: !!org?.id && isOwner,
+  });
+  const stationId = isOwner ? resolveStation(scope.stationId, merchants) : null;
+  const catalog: any[] = useMemo(() => (stationId ? allItems.filter((i) => i.merchant_id === stationId) : allItems), [allItems, stationId]);
   const multiStation = useMemo(() => new Set(catalog.map((i) => i.merchant_id)).size > 1, [catalog]);
-  const stationName = (merchantId?: string) => catalog.find((i) => i.merchant_id === merchantId)?.merchant_name || null;
+  const stationName = (merchantId?: string) => allItems.find((i) => i.merchant_id === merchantId)?.merchant_name || null;
 
   const { data: sale } = useQuery({
     queryKey: ['org-sale', org?.id, activeSaleId],
@@ -400,6 +416,9 @@ export default function SalesPage() {
       <div className="lg:grid lg:grid-cols-[1fr_400px] lg:gap-6 lg:items-start space-y-5 lg:space-y-0">
         {/* ============================== Catalog ============================== */}
         <div className="space-y-4 min-w-0">
+          {isOwner && merchants?.length > 1 && (
+            <StationChips stations={merchants} value={stationId} onChange={scope.setStation} />
+          )}
           <div className="flex gap-2">
             <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />

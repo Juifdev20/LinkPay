@@ -6,6 +6,8 @@ export interface StationSummary {
   name: string;
   /** Today's till takings per currency (stores-breakdown today_pos_sales). */
   today?: Record<string, number>;
+  /** Today's recorded expenses per currency (stores-breakdown today_expenses). */
+  expenses?: Record<string, number>;
 }
 
 /**
@@ -26,10 +28,12 @@ export function StationSwitcher({
 }) {
   if (stations.length < 2) return null;
   const total = stations.reduce((sum, s) => sum + (s.today?.[currency] || 0), 0);
+  const totalSpent = stations.reduce((sum, s) => sum + (s.expenses?.[currency] || 0), 0);
   const chips = [
-    { id: null as string | null, name: 'Toutes les stations', amount: total, icon: Layers },
-    ...stations.map((s) => ({ id: s.id as string | null, name: s.name, amount: s.today?.[currency] || 0, icon: Store })),
+    { id: null as string | null, name: 'Toutes les stations', amount: total, spent: totalSpent, icon: Layers },
+    ...stations.map((s) => ({ id: s.id as string | null, name: s.name, amount: s.today?.[currency] || 0, spent: s.expenses?.[currency] || 0, icon: Store })),
   ];
+  const showSpent = stations.some((s) => s.expenses);
 
   return (
     <div className="-mx-4 overflow-x-auto px-4 lg:mx-0 lg:px-0" role="tablist" aria-label="Station affichée">
@@ -57,6 +61,12 @@ export function StationSwitcher({
                 {formatCurrency(c.amount, currency)}
               </span>
               <span className={cn('text-[11px]', active ? 'text-primary-foreground/80' : 'text-muted-foreground')}>Recette du jour</span>
+              {showSpent && (
+                <span className={cn('mt-1.5 text-xs font-bold', active ? 'text-rose-100' : 'text-rose-500')}>
+                  {c.spent > 0 ? '−' : ''}{formatCurrency(c.spent, currency)}
+                  <span className={cn('block text-[11px] font-normal', active ? 'text-primary-foreground/80' : 'text-muted-foreground')}>Dépense du jour</span>
+                </span>
+              )}
             </button>
           );
         })}

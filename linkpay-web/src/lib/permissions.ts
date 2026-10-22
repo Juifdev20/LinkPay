@@ -49,6 +49,8 @@ export const ROUTE_ROLES = {
   '/dashboard/organization/subscription': ['enterprise', 'gerant'],
   // The owner's wallet, where every station's ScanLinkPay payments land (and the subscription is paid from).
   '/dashboard/organization/wallet': ['enterprise'],
+  // The owner's general cash desk (collected, spent, real cash), behind its own password.
+  '/dashboard/organization/treasury': ['enterprise'],
   '/dashboard/organization/sales': ['enterprise', 'gerant', 'vendeur', 'caissier'],
   '/dashboard/organization/sales/history': ['enterprise', 'gerant', 'vendeur', 'caissier', 'comptable'],
   '/dashboard/organization/sales/dashboard': ['enterprise', 'gerant', 'vendeur', 'caissier', 'comptable'],

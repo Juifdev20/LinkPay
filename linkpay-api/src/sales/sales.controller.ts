@@ -109,8 +109,9 @@ export class SalesController {
     @Query('to') to?: string,
     @CurrentUser('role') callerRole?: string,
     @Query('days') days?: string,
+    @Query('merchant_id') merchantId?: string,
   ) {
-    return this.salesService.getStats(orgId, callerId, callerOrgId, from, to, callerRole, days ? Number(days) : undefined);
+    return this.salesService.getStats(orgId, callerId, callerOrgId, from, to, callerRole, days ? Number(days) : undefined, merchantId);
   }
 
   // Declared before ':saleId' so "history" is not read as a sale id.

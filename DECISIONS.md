@@ -5,6 +5,23 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 22/10/2026 (soir) — Accueil patron : dépenses par station, courbe rouge et Trésorerie protégée (migration 083)
+
+- **Dépenses par station** : `organization_expenses.merchant_id` (NULL = « Sans station », comptée dans « Toutes »).
+  `created_at` vient de l'horloge de confiance. Les chips, la grande carte bleue et le graphique 7 jours suivent la
+  station et la devise choisies ; le graphique montre les entrées (barres) et les sorties (courbe rouge).
+  Routes : `GET /organizations/:id/expenses/stats?days=&merchant_id=` ; `stores-breakdown` ajoute `today_expenses` /
+  `week_expenses` ; `sales/stats` accepte `merchant_id` (propriétaire seulement, un employé reste sur sa station).
+- **Trésorerie (caisse générale)** : `GET /organizations/:id/treasury` = encaissé (tickets caisse payés + ventes
+  `PAID`) − dépensé = réel en caisse, par station et par devise, depuis l'ouverture. **Lecture seule** : aucune écriture
+  d'argent, aucun solde touché.
+- **Mot de passe trésorerie**, distinct de celui du stock : haché (bcrypt) dans `organizations`, créé à la première
+  entrée (saisi deux fois, niveau « Moyen » minimum, vérifié aussi côté serveur), 5 essais puis blocage 15 min. Un bon mot
+  de passe donne un jeton signé de 15 min (HMAC dérivé de `JWT_SECRET`, lié à l'entreprise et à l'utilisateur, jamais un
+  jeton de connexion) exigé par l'en-tête `x-treasury-token`. Le jeton reste en mémoire sur l'appareil. Réservé au patron.
+
+---
+
 ## 22/10/2026 (après-midi) — Deux secteurs seulement ; les Ventes électronique sur le modèle de la Caisse
 
 ### 1. « Alimentation » fusionnée dans « Supermarché » (migration 076)

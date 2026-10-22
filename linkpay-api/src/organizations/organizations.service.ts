@@ -5,7 +5,7 @@ import { AuthService } from '../auth/auth.service';
 import { MerchantsService } from '../merchants/merchants.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { sumByCurrency } from '../common/utils/currency';
-import { businessDayKey, startOfBusinessDay } from '../common/utils/business-day';
+import { businessDayKey, startOfBusinessDay, lastBusinessDays } from '../common/utils/business-day';
 import { trustedNow } from '../common/utils/trusted-clock';
 import { requireStaffStation } from '../common/org-access';
 import * as QRCode from 'qrcode';
@@ -19,7 +19,10 @@ import * as QRCode from 'qrcode';
 /** organizations.sector — what the business sells, and so how (till or Ventes). */
 const ORGANIZATION_SECTORS = ['supermarche', 'electronique'];
 
-const ORGANIZATION_PRIVATE_FIELDS = ['stock_password_hash', 'stock_password_attempts', 'stock_password_locked_until'] as const;
+const ORGANIZATION_PRIVATE_FIELDS = [
+  'stock_password_hash', 'stock_password_attempts', 'stock_password_locked_until',
+  'treasury_password_hash', 'treasury_password_attempts', 'treasury_password_locked_until',
+] as const;
 
 /**
  * What a staff member (cashier, manager...) sees of their organization: enough
@@ -279,7 +282,7 @@ export class OrganizationsService {
 
     const breakdown = await Promise.all(
       merchants.map(async (m) => {
-        const [stats, { data: tickets }, { data: sales }, { count: staffCount }] = await Promise.all([
+        const [stats, { data: tickets }, { data: sales }, { count: staffCount }, { data: spent }] = await Promise.all([
           this.merchantsService.getMerchantStats(m.id),
           // The till's paid tickets (cash and ScanLinkPay) of the last 7 days — a cash sale never
           // becomes a wallet transaction, so `volume` alone would miss most of a station's takings.
@@ -287,7 +290,11 @@ export class OrganizationsService {
           // The Ventes module's paid sales (businesses that sell without a till) count as station takings too.
           client.from('sales').select('total_cents, currency, paid_at').eq('merchant_id', m.id).eq('status', 'PAID').gte('paid_at', weekStart.toISOString()),
           client.from('organization_staff').select('id', { count: 'exact', head: true }).eq('merchant_id', m.id).is('deactivated_at', null),
+          // The station's recorded expenses of the week (table missing before migration 019/083: no expenses).
+          client.from('organization_expenses').select('amount_cents, currency, created_at').eq('organization_id', orgId).eq('merchant_id', m.id).gte('created_at', weekStart.toISOString()),
         ]);
+        const outgoings = spent || [];
+        const todaysSpent = outgoings.filter((e: any) => e.created_at && dayOf(e.created_at) === todayKey);
         const takings = [...(tickets || []), ...(sales || [])];
         const todays = takings.filter((t) => t.paid_at && dayOf(t.paid_at) === todayKey);
         return {
@@ -297,6 +304,8 @@ export class OrganizationsService {
           staff_count: staffCount || 0,
           today_pos_sales: sumByCurrency(todays, 'total_cents'),
           week_pos_sales: sumByCurrency(takings, 'total_cents'),
+          today_expenses: sumByCurrency(todaysSpent, 'amount_cents'),
+          week_expenses: sumByCurrency(outgoings, 'amount_cents'),
           ...stats,
         };
       }),
@@ -559,7 +568,11 @@ export class OrganizationsService {
     );
   }
 
-  async createExpense(orgId: string, userId: string, data: { amount_cents: number; currency?: string; description?: string }) {
+  async createExpense(orgId: string, userId: string, data: { amount_cents: number; currency?: string; description?: string; merchant_id?: string }) {
+    if (data.merchant_id) {
+      const stations = await this.getOrganizationMerchants(orgId, data.merchant_id);
+      if (!stations.length) throw new BadRequestException("Cette station n'appartient pas à votre entreprise");
+    }
     const { data: expense, error } = await this.supabaseService.getClient()
       .from('organization_expenses')
       .insert({
@@ -567,7 +580,10 @@ export class OrganizationsService {
         amount_cents: data.amount_cents,
         currency: data.currency || 'CDF',
         description: data.description,
+        merchant_id: data.merchant_id || null,
         created_by: userId,
+        // The trusted clock, like sales: the day an expense falls on must not depend on this host's clock.
+        created_at: trustedNow().toISOString(),
       })
       .select()
       .single();
@@ -613,5 +629,42 @@ export class OrganizationsService {
       this.logger.warn(`Expenses list unavailable for org ${orgId} (migration 017 likely pending): ${err.message}`);
       return [];
     }
+  }
+
+  /**
+   * Expenses of the last `days` business days (the server cuts the days, like sales stats), for the
+   * home chart's red curve: per day and currency, plus today's total. `stationId` narrows to one station.
+   */
+  async getExpensesStats(orgId: string, days = 7, stationId?: string) {
+    const now = trustedNow();
+    const windowDays = Math.min(Math.max(Math.floor(days) || 7, 1), 90);
+    const dayKeys = lastBusinessDays(windowDays, now);
+    const from = new Date(startOfBusinessDay(now).getTime() - (windowDays - 1) * 24 * 60 * 60 * 1000);
+    const todayKey = businessDayKey(now);
+    const byDay = new Map<string, { CDF: number; USD: number }>(dayKeys.map((k) => [k, { CDF: 0, USD: 0 }]));
+    try {
+      let query = this.supabaseService.getClient()
+        .from('organization_expenses')
+        .select('amount_cents, currency, created_at')
+        .eq('organization_id', orgId)
+        .gte('created_at', from.toISOString());
+      if (stationId) query = query.eq('merchant_id', stationId);
+      const { data, error } = await query;
+      if (error) throw error;
+      for (const e of data || []) {
+        // An expense can't be dated after now: clamp, like sales.
+        const day = businessDayKey(new Date(Math.min(new Date(e.created_at).getTime(), now.getTime())));
+        const slot = byDay.get(day);
+        if (slot) slot[e.currency === 'USD' ? 'USD' : 'CDF'] += e.amount_cents || 0;
+      }
+    } catch (err: any) {
+      this.logger.warn(`Expenses stats unavailable for org ${orgId} (migration 083 likely pending): ${err.message}`);
+    }
+    return {
+      day_keys: dayKeys,
+      today_key: todayKey,
+      daily: dayKeys.map((day) => ({ day, ...byDay.get(day)! })),
+      today: byDay.get(todayKey) ?? { CDF: 0, USD: 0 },
+    };
   }
 }

@@ -13,11 +13,12 @@ import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { DualCurrencyStat } from '@/components/DualCurrencyStat';
 import OnboardingWizard from '@/pages/organization/OnboardingWizard';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
-import { Building2, Loader2, QrCode, X, Copy, Check, Trophy, MinusCircle, Clock, AlertTriangle, ShoppingCart, PackagePlus, PauseCircle } from 'lucide-react';
+import { Building2, Loader2, QrCode, X, Copy, Check, Trophy, MinusCircle, Landmark, Clock, AlertTriangle, ShoppingCart, PackagePlus, PauseCircle } from 'lucide-react';
 import { shareOrCopy, publicOrigin } from '@/lib/share';
 import { StationSwitcher } from '@/components/StationSwitcher';
 import { useStationScope, resolveStation } from '@/lib/station-scope';
@@ -112,18 +113,22 @@ export default function OrganizationProfilePage() {
   });
 
   const [showAddExpense, setShowAddExpense] = useState(false);
-  const [newExpense, setNewExpense] = useState({ amount: '', description: '', currency: 'CDF' as 'CDF' | 'USD' });
+  const [newExpense, setNewExpense] = useState({ amount: '', description: '', currency: 'CDF' as 'CDF' | 'USD', merchant_id: '' });
   const addExpenseMutation = useMutation({
     mutationFn: async () =>
       (await api.post(`/organizations/${org.id}/expenses`, {
         amount_cents: Math.round((parseFloat(newExpense.amount) || 0) * 100),
         currency: newExpense.currency,
         description: newExpense.description,
+        ...(newExpense.merchant_id ? { merchant_id: newExpense.merchant_id } : {}),
       })).data,
     onSuccess: () => {
       setShowAddExpense(false);
-      setNewExpense({ amount: '', description: '', currency: 'CDF' });
+      setNewExpense({ amount: '', description: '', currency: 'CDF', merchant_id: '' });
       queryClient.invalidateQueries({ queryKey: ['org-expenses-summary', org.id] });
+      queryClient.invalidateQueries({ queryKey: ['home-expenses', org.id] });
+      queryClient.invalidateQueries({ queryKey: ['org-stores-breakdown', org.id] });
+      queryClient.invalidateQueries({ queryKey: ['org-treasury', org.id] });
     },
   });
 
@@ -147,7 +152,7 @@ export default function OrganizationProfilePage() {
     setCurrencyState(c);
     try { localStorage.setItem('pos-currency', c); } catch { /* not persisted */ }
   };
-  const home = useHomeData(org, scopedMerchants, currency);
+  const home = useHomeData(org, scopedMerchants, currency, { stationId, withExpenses: isOwner });
   const usesPos = isSupermarket(org?.sector);
 
   // Same query as the Stock page — usually already in the cache.
@@ -177,14 +182,16 @@ export default function OrganizationProfilePage() {
     ...(org?.scanlinkpay_number
       ? [{ label: 'Recevoir', icon: QrCode, onClick: () => setShowQrPresent(true), tone: 'bg-sky-500/15 text-sky-600' }]
       : []),
-    ...(isOwner ? [{ label: 'Dépense', icon: MinusCircle, onClick: () => setShowAddExpense(true), tone: 'bg-rose-500/15 text-rose-600' }] : []),
+    // An expense starts on the station the owner is looking at (or none when every station is shown).
+    ...(isOwner ? [{ label: 'Dépense', icon: MinusCircle, onClick: () => { setNewExpense((e) => ({ ...e, merchant_id: stationId ?? '' })); setShowAddExpense(true); }, tone: 'bg-rose-500/15 text-rose-600' }] : []),
+    ...(isOwner ? [{ label: 'Trésorerie', icon: Landmark, onClick: () => navigate('/dashboard/organization/treasury'), tone: 'bg-amber-500/15 text-amber-600' }] : []),
   ];
 
   const stationName = isOwner
     ? (stationId ? merchants?.find((m: any) => m.id === stationId)?.name : undefined)
     : user?.station_name;
   const heroName = stationName ? `${org?.name} · ${stationName}` : org?.name;
-  const stationChips = ((storesBreakdown as any[]) || []).map((st) => ({ id: st.merchant_id, name: st.merchant_name, today: st.today_pos_sales }));
+  const stationChips = ((storesBreakdown as any[]) || []).map((st) => ({ id: st.merchant_id, name: st.merchant_name, today: st.today_pos_sales, expenses: st.today_expenses }));
 
   if (isLoading) {
     return (
@@ -226,6 +233,7 @@ export default function OrganizationProfilePage() {
         yesterday={home.yesterday}
         loading={home.loading}
         onOpenTill={() => navigate(sellPath)}
+        expenseToday={isOwner ? home.expenses.today : undefined}
       />
 
       <QuickActions actions={actions} />
@@ -234,7 +242,7 @@ export default function OrganizationProfilePage() {
 
       <div className="space-y-5 lg:grid lg:grid-cols-2 lg:gap-5 lg:space-y-0 lg:items-start">
         <div className="space-y-5">
-          <SalesChart days={home.days} currency={currency} loading={home.loading} />
+          <SalesChart days={home.days} currency={currency} loading={home.loading} expenses={isOwner ? home.expenses.days : undefined} />
           <TopProducts top={home.top} currency={currency} loading={home.loading} />
         </div>
         <div className="space-y-5">
@@ -281,6 +289,15 @@ export default function OrganizationProfilePage() {
               />
             </div>
             <CurrencySelector value={newExpense.currency} onChange={(c) => setNewExpense({ ...newExpense, currency: c })} />
+            {(merchants?.length || 0) > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="expense_station">Station</Label>
+                <Select id="expense_station" value={newExpense.merchant_id} onChange={(e) => setNewExpense({ ...newExpense, merchant_id: e.target.value })}>
+                  <option value="">Aucune station précise</option>
+                  {(merchants || []).map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="expense_description">Description</Label>
               <Input
