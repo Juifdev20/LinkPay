@@ -207,7 +207,17 @@ export class ExpenseTrackerService {
     return this.getReport(userId, reportId);
   }
 
-  async addEntry(userId: string, reportId: string, dto: { amount_cents: number; currency?: string; description?: string }) {
+  async addEntry(
+    userId: string,
+    reportId: string,
+    dto: { amount_cents: number; currency?: string; description?: string; client_ref?: string; noted_at?: string },
+  ) {
+    // A note written offline and already received (its answer was lost): give back the first one, never a duplicate.
+    if (dto.client_ref) {
+      const existing = await this.entryByClientRef(userId, dto.client_ref);
+      if (existing) return existing;
+    }
+
     await this.assertNotReadOnly(userId);
     const report = await this.getOwnReport(userId, reportId);
 
@@ -215,22 +225,55 @@ export class ExpenseTrackerService {
       throw new ForbiddenException('Cette dépense est déjà clôturée.');
     }
 
-    const { data: entry, error } = await this.db
-      .from('expense_entries')
-      .insert({
-        report_id: reportId,
-        user_id: userId,
-        amount_cents: dto.amount_cents,
-        currency: dto.currency === 'USD' ? 'USD' : 'CDF',
-        description: dto.description,
-      })
-      .select()
-      .single();
+    const row: Record<string, unknown> = {
+      report_id: reportId,
+      user_id: userId,
+      amount_cents: dto.amount_cents,
+      currency: dto.currency === 'USD' ? 'USD' : 'CDF',
+      description: dto.description,
+    };
+    const notedAt = this.offlineNotedAt(dto.noted_at);
+    if (notedAt) row.created_at = notedAt;
+    if (dto.client_ref) row.client_ref = dto.client_ref;
+
+    let { data: entry, error } = await this.db.from('expense_entries').insert(row).select().single();
+
+    // Two sends of the same offline note crossed: the unique index kept one, return it.
+    if (error && dto.client_ref && (error as any).code === '23505') {
+      const existing = await this.entryByClientRef(userId, dto.client_ref);
+      if (existing) return existing;
+    }
+    // Migration 073 not run yet: still record the note (without the duplicate protection).
+    if (error && dto.client_ref && /client_ref/.test(error.message)) {
+      this.logger.warn('expense_entries.client_ref missing — run migration 073');
+      delete row.client_ref;
+      ({ data: entry, error } = await this.db.from('expense_entries').insert(row).select().single());
+    }
 
     if (error) {
       throw new Error(`Failed to add expense entry: ${error.message}`);
     }
     return entry;
+  }
+
+  private async entryByClientRef(userId: string, clientRef: string) {
+    const { data, error } = await this.db
+      .from('expense_entries')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('client_ref', clientRef)
+      .maybeSingle();
+    return error ? null : data;
+  }
+
+  /** The time an offline note was written, kept only if it is in the past 30 days (never in the future). */
+  private offlineNotedAt(notedAt?: string): string | null {
+    if (!notedAt) return null;
+    const t = Date.parse(notedAt);
+    if (!Number.isFinite(t)) return null;
+    const now = Date.now();
+    if (t > now + 5 * 60_000 || t < now - 30 * 24 * 3600_000) return null;
+    return new Date(Math.min(t, now)).toISOString();
   }
 
   /** Closing is what "generates" a report against the trial count — increments trial_reports_used by 1 when the caller is on the trial plan. */

@@ -8,6 +8,8 @@ import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { useAuthStore } from '@/lib/auth-store';
 import { FEATURES } from '@/lib/features';
+import { useOutboxRunner } from '@/hooks/useOutboxRunner';
+import { RequireOnline } from '@/components/RequireOnline';
 import { useEffect, Suspense } from 'react';
 import { lazyPage, prefetchPages, PageFallback } from '@/lib/lazy-page';
 import { startScreenProtection } from '@/lib/screen-protection';
@@ -94,6 +96,7 @@ const OrganizationReceivePage = lazyPage(() => import('@/pages/organization/Rece
 import StaffHome from '@/pages/staff/StaffHome';
 const SettingsPage = lazyPage(() => import('@/pages/Settings'));
 const NotificationsPage = lazyPage(() => import('@/pages/Notifications'));
+const SyncPage = lazyPage(() => import('@/pages/Sync'));
 const MorePage = lazyPage(() => import('@/pages/More'));
 const ProfilePage = lazyPage(() => import('@/pages/Profile'));
 import InstallPrompt from '@/components/InstallPrompt';
@@ -176,6 +179,9 @@ export default function App() {
 
   useEffect(() => prefetchPages(), []);
 
+  // What was done offline goes to the server as soon as it can (lib/outbox.ts).
+  useOutboxRunner();
+
   // Android app: verify the phone (Play Integrity + root checks) when the app opens with a session — at most every 6 hours.
   useEffect(() => {
     if (isAuthenticated) void runDeviceCheck();
@@ -238,7 +244,7 @@ export default function App() {
       >
         <Route index element={<DashboardIndex />} />
         <Route path="payment-requests" element={<PaymentRequestsPage />} />
-        <Route path="payment-requests/new" element={<CreatePaymentRequestPage />} />
+        <Route path="payment-requests/new" element={<RequireOnline what="Créer une demande de paiement"><CreatePaymentRequestPage /></RequireOnline>} />
         <Route path="transactions" element={<MerchantTransactionsPage />} />
         <Route
           path="team"
@@ -251,9 +257,9 @@ export default function App() {
         <Route path="client" element={<ClientDashboard />} />
         <Route path="client/transactions" element={<ProtectedRoute roles={rolesFor('/dashboard/client/transactions')}><ClientTransactionsPage /></ProtectedRoute>} />
         <Route path="wallet" element={<StaffWalletPage />} />
-        <Route path="wallet/topup" element={<TopupPage />} />
+        <Route path="wallet/topup" element={<RequireOnline what="Recharger"><TopupPage /></RequireOnline>} />
         <Route path="wallet/topup/result" element={<TopupResultPage />} />
-        <Route path="wallet/send" element={<SendPage />} />
+        <Route path="wallet/send" element={<RequireOnline what="Envoyer de l'argent"><SendPage /></RequireOnline>} />
         <Route path="wallet/send/result" element={<SendResultPage />} />
         <Route path="wallet/receive" element={<ReceivePage />} />
         {FEATURES.savings && <Route path="savings" element={<SavingsPotPage />} />}
@@ -274,9 +280,9 @@ export default function App() {
             <Route path="tontines/:id/settings" element={<TontineSettingsPage />} />
           </>
         )}
-        <Route path="wallet/pay" element={<PayInvoicePage />} />
+        <Route path="wallet/pay" element={<RequireOnline what="Payer"><PayInvoicePage /></RequireOnline>} />
         <Route path="wallet/scan" element={<ScanQrPage />} />
-        <Route path="wallet/withdraw" element={<WithdrawPage />} />
+        <Route path="wallet/withdraw" element={<RequireOnline what="Retirer de l'argent"><WithdrawPage /></RequireOnline>} />
         <Route path="wallet/pin" element={<SetPinPage />} />
         <Route path="wallet/transactions" element={<WalletTransactionsPage />} />
         <Route path="card" element={<ProtectedRoute roles={rolesFor('/dashboard/card')}><MyCardPage /></ProtectedRoute>} />
@@ -284,7 +290,7 @@ export default function App() {
           path="card/charge"
           element={
             <ProtectedRoute roles={rolesFor('/dashboard/card/charge')}>
-              <ChargeCardPage />
+              <RequireOnline what="Encaisser par carte"><ChargeCardPage /></RequireOnline>
             </ProtectedRoute>
           }
         />
@@ -306,6 +312,7 @@ export default function App() {
         />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="sync" element={<SyncPage />} />
         <Route path="more" element={<MorePage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route

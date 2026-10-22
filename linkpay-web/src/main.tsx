@@ -13,6 +13,8 @@ import '@fontsource/inter/latin-600.css';
 import '@fontsource/inter/latin-700.css';
 import '@fontsource/inter/latin-800.css';
 import './index.css';
+// How each kind of offline operation reaches the server (lib/outbox.ts).
+import './lib/outbox-handlers';
 
 setupAutoUpdate();
 

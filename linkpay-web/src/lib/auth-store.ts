@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { forgetOfflineCode } from './offline-code';
 import api from './api';
 import { supabase } from './supabase';
 import { getDeviceId } from './device';
@@ -102,7 +103,7 @@ function clearSupabaseSession() {
 
 const hasSession = hasStoredSession();
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   // Last known profile: screens render at once on launch while
   // fetchProfile() refreshes it in the background (App.tsx).
   user: hasSession ? getCachedUser<User>() : null,
@@ -191,6 +192,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
+    // The offline unlock fingerprint belongs to this session on this device.
+    forgetOfflineCode(get().user?.id);
     try {
       await api.post('/auth/logout');
     } catch {

@@ -5,6 +5,38 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 22/10/2026 — Mode hors ligne, point 1 (consulter, noter ses dépenses ; jamais d'argent)
+
+Demande du propriétaire : un mode hors ligne « comme HotelSaver », mobile (Android) et bureau (Windows, le site).
+Règle de fond : **aucun mouvement d'argent sans le serveur** (seul lui connaît le vrai solde ; hors ligne, on pourrait
+dépenser deux fois le même argent). Ce qui est fait :
+
+- **Réseau** (`lib/network.ts`) : l'application sait si le serveur répond (chaque réponse ou absence de réponse de l'API
+  compte, `navigator.onLine` seul ment) et garde l'heure de la dernière connexion. Hors ligne, un petit appel public
+  toutes les 15 s détecte le retour.
+- **Bandeau** (`components/OfflineBanner.tsx`) sous la barre du haut : « Hors ligne · données de 14:05 · 1 en attente »,
+  puis « De nouveau en ligne » ; rien quand tout va bien.
+- **File d'attente** (`lib/outbox.ts`, `lib/outbox-handlers.ts`, `hooks/useOutboxRunner.ts`) : chaque opération faite
+  hors ligne reçoit son identifiant sur le téléphone (`client_ref`), part dans l'ordre au retour du réseau ; pas de
+  réponse → elle attend ; serveur occupé → réessai espacé ; **refusée (4xx) → mise de côté avec la raison, jamais
+  renvoyée seule** ; gardée par compte sur l'appareil. Écran **Synchronisation** (`/dashboard/sync`, menu Plus).
+- **Écrans d'argent** (envoyer, recharger, retirer, payer, encaisser par carte, nouvelle demande) : ouverts sans réseau,
+  ils expliquent pourquoi (`RequireOnline`) ; ouverts en ligne, ils ne disparaissent pas sur une courte coupure.
+- **Déverrouillage par code sans réseau** (`lib/offline-code.ts`) : après chaque vérification en ligne réussie,
+  l'appareil garde une empreinte du code (PBKDF2-SHA256, sel aléatoire, 200 000 tours), jamais le code. Hors ligne :
+  comparaison locale, **5 erreurs → empreinte effacée, seul le serveur peut déverrouiller**. Effacée aussi au
+  changement / à la réinitialisation du code et à la déconnexion. Le déverrouillage n'ouvre que l'écran.
+- **Mes dépenses (carnet)** : une dépense notée sans réseau attend et part seule. API : `client_ref` + `noted_at`
+  (heure réelle de la note, 30 jours max, jamais dans le futur) ; **migration 073** (`expense_entries.client_ref`, index
+  unique par utilisateur) : la même note envoyée deux fois est gardée une fois. Sans la migration, la note passe quand
+  même (sans protection contre le double). Ouvrir une nouvelle page du carnet et la clôturer restent en ligne.
+- Le site et l'application Windows (qui charge le site) s'ouvrent hors ligne grâce au service worker (tous les écrans
+  sont mis en cache) ; l'APK Android embarque l'application.
+
+À faire : migration 073 (Test puis production). Point 2 (caisse, ventes, stock hors ligne) : en cours.
+
+---
+
 ## 21/10/2026 (soir) — Nouvelle interface (maquette ScanLinkPay 2026, clair et sombre)
 
 Le propriétaire a fourni une maquette à suivre « textuellement » (écrans client et marchand, mode clair et sombre).

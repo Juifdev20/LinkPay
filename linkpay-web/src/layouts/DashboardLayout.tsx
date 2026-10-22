@@ -12,6 +12,7 @@ import { NotificationsBell } from '@/components/NotificationsBell';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
 import { UserAvatar } from '@/components/UserAvatar';
 import { CardChargePrompt } from '@/components/card/CardChargePrompt';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import { useTheme } from '@/hooks/useTheme';
 import { usePaymentReceivedAlert } from '@/hooks/usePaymentReceivedAlert';
 import { LogOut, Building2, Sun, Moon, Menu, Search, X } from 'lucide-react';
@@ -192,6 +193,10 @@ export default function DashboardLayout() {
               desktop header above already accounts for its own space in
               the normal flow) */}
           <div className="pt-[68px] pb-20 md:pt-0 md:pb-0">
+            {/* Offline / synchronisation strip (nothing when all is normal). */}
+            <div className="sticky top-[68px] z-30 md:top-[69px]">
+              <OfflineBanner />
+            </div>
             {/* Only shown while "acting as" a store entered from the org
                 dashboard (acting_as_org_id) — not role-based, since role is
                 'merchant' in that state, indistinguishable from a real

@@ -4,6 +4,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { weakAppCodeReason } from '@/lib/code-strength';
 import { appCodeApplies, IDLE_CHOICES_MIN, getIdleLockMinutes, setIdleLockMinutes } from '@/lib/app-lock-store';
 import { PinInput } from '@/components/PinInput';
+import { rememberOfflineCode } from '@/lib/offline-code';
 import { Button } from '@/components/ui/button';
 import { Loader2, KeyRound, Timer, CheckCircle2 } from 'lucide-react';
 
@@ -32,6 +33,7 @@ export function AccessCodeSettings() {
     setError('');
     try {
       await api.put('/auth/app-code', { current_code: current, code, confirm_code: confirm });
+      await rememberOfflineCode(useAuthStore.getState().user?.id, code);
       close();
       setDone(true);
       window.setTimeout(() => setDone(false), 4000);

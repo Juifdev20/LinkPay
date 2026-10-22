@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PinKeypadScreen, PinDialog, identityNote } from '@/components/PinKeypadScreen';
 import { Loader2, Fingerprint } from 'lucide-react';
+import { checkOfflineCode, forgetOfflineCode, rememberOfflineCode } from '@/lib/offline-code';
+import { isNetworkError } from '@/lib/network';
 
 const errorMessage = (err: any, fallback: string) => err?.response?.data?.message || fallback;
 
@@ -128,12 +130,28 @@ function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => vo
     setError('');
     try {
       await api.post('/auth/app-code/verify', { code: value });
+      await rememberOfflineCode(user?.id, value);
       onUnlocked();
     } catch (err: any) {
       const data = err?.response?.data;
       if (data?.code === 'SESSION_TERMINATED') {
+        forgetOfflineCode(user?.id);
         await onLogout();
         window.location.href = '/login';
+        return;
+      }
+      // No network: check the code against the fingerprint left by the last online unlock (lib/offline-code.ts).
+      if (isNetworkError(err)) {
+        const offline = await checkOfflineCode(user?.id, value);
+        if (offline.result === 'ok') { onUnlocked(); return; }
+        setError(
+          offline.result === 'wrong'
+            ? `Code incorrect. Hors ligne, encore ${offline.left} essai${offline.left > 1 ? 's' : ''}.`
+            : offline.result === 'locked'
+            ? 'Trop d\'essais sans réseau : reconnectez-vous à Internet pour déverrouiller.'
+            : 'Pas de réseau. Ce code n\'a encore jamais été vérifié sur cet appareil : reconnectez-vous une première fois.',
+        );
+        setCode('');
         return;
       }
       setError(errorMessage(err, 'Vérification impossible. Réessayez.'));
@@ -159,6 +177,7 @@ function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => vo
     setResetError('');
     try {
       await api.post('/auth/app-code/reset', { password });
+      forgetOfflineCode(user?.id);
       await onForgot(); // profile now says has_app_code: false → the gate shows the "choose a code" screen
     } catch (err: any) {
       setResetError(errorMessage(err, 'Réinitialisation impossible.'));
@@ -229,6 +248,7 @@ function CreateCode({ onDone }: { onDone: () => Promise<void> }) {
     setError('');
     try {
       await api.post('/auth/app-code', { code: chosen, confirm_code: again });
+      await rememberOfflineCode(useAuthStore.getState().user?.id, chosen);
       await onDone();
     } catch (err: any) {
       setError(errorMessage(err, 'Impossible d’enregistrer le code.'));

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { useNetwork } from './network';
 import { useOtpPrompt } from './otp-prompt';
 import { useAppCodePrompt } from './app-code-prompt';
 import { useStockPasswordPrompt, rememberStockPassword, recalledStockPassword, forgetStockPassword } from './stock-password-prompt';
@@ -41,8 +42,14 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    useNetwork.getState().reachable();
+    return response;
+  },
   async (error) => {
+    // Any HTTP answer means the server is reachable; no answer at all means offline.
+    if (error?.response) useNetwork.getState().reachable();
+    else if (error?.code !== 'ERR_CANCELED') useNetwork.getState().unreachable();
     if (error.response?.status === 403) {
       const code = error.response.data?.code;
       // Sensitive admin action: ask for a fresh authenticator code, then repeat
