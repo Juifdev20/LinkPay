@@ -31,7 +31,9 @@ dépenser deux fois le même argent). Ce qui est fait :
   unique par utilisateur) : la même note envoyée deux fois est gardée une fois. Sans la migration, la note passe quand
   même (sans protection contre le double). Ouvrir une nouvelle page du carnet et la clôturer restent en ligne.
 - Le site et l'application Windows (qui charge le site) s'ouvrent hors ligne grâce au service worker (tous les écrans
-  sont mis en cache) ; l'APK Android embarque l'application.
+  sont mis en cache ; vérifié sur la version construite : pages rouvertes sans réseau) ; l'APK Android embarque
+  l'application. Application Windows lancée pour la toute première fois sans réseau : page « Pas de connexion
+  Internet » qui réessaie seule toutes les 15 s (`linkpay-desktop/src/main.js`) au lieu d'un écran vide.
 
 ### Point 2 — la caisse et le stock hors ligne (mobile et bureau)
 - **Vendre sans réseau** (`pages/pos/PosTill.tsx`, `PosOfflinePayment.tsx`) : sans réseau et sans ticket ouvert sur le
