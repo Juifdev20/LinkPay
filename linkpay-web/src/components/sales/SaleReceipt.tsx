@@ -31,7 +31,7 @@ export function SaleReceipt({
   const paid = sale.status === 'PAID';
 
   return (
-    <FormSheet onClose={onClose} title={paid ? 'Reçu de vente' : 'Ticket de vente'}>
+    <FormSheet onClose={onClose} title={paid ? 'Reçu de vente' : 'Ticket de vente'} size="narrow">
       <div className="p-6 space-y-4">
         {paid && (
           <div className="flex justify-center">

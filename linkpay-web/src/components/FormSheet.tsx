@@ -18,7 +18,18 @@ interface FormSheetProps {
    * Recharger, Retirer, Encaisser, Payer) instead of a bottom sheet. Desktop is unchanged.
    */
   fullPage?: boolean;
+  /**
+   * Width on a computer (the phone is always full width): 'default' 640 px for most forms and payments, 'wide'
+   * 880 px for long forms laid out in two columns (product sheet, new employee), 'narrow' 520 px for a receipt.
+   */
+  size?: 'default' | 'wide' | 'narrow';
 }
+
+const DESKTOP_WIDTH: Record<NonNullable<FormSheetProps['size']>, string> = {
+  narrow: 'max-w-[520px]',
+  default: 'max-w-[640px]',
+  wide: 'max-w-[880px]',
+};
 
 /**
  * Shared bottom-sheet shell for every multi-step form in the app (Topup,
@@ -33,7 +44,7 @@ interface FormSheetProps {
  * step logic itself needs to change. New forms opt into the same behavior
  * for free by doing the same.
  */
-export function FormSheet({ children, onClose, title = 'Formulaire', fullPage = false }: FormSheetProps) {
+export function FormSheet({ children, onClose, title = 'Formulaire', fullPage = false, size = 'default' }: FormSheetProps) {
   const keyboardInset = useVisualViewportInset();
   // Desktop already has its own sidebar navigation (no BottomNav to cover,
   // no on-screen keyboard to dodge) — the native-app bottom-sheet treatment
@@ -69,7 +80,7 @@ export function FormSheet({ children, onClose, title = 'Formulaire', fullPage = 
             page
               ? 'inset-x-0 top-0 z-[55] bg-background safe-area-top data-[state=open]:fade-in'
               : isDesktop
-              ? 'left-1/2 top-1/2 w-full max-w-md max-h-[85vh] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-border data-[state=open]:fade-in data-[state=open]:zoom-in-95 data-[state=closed]:fade-out data-[state=closed]:zoom-out-95'
+              ? cn('left-1/2 top-1/2 w-[calc(100vw-4rem)] max-h-[90vh] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-border data-[state=open]:fade-in data-[state=open]:zoom-in-95 data-[state=closed]:fade-out data-[state=closed]:zoom-out-95', DESKTOP_WIDTH[size])
               : 'inset-x-0 rounded-t-3xl safe-area-bottom data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom',
           )}
           style={
@@ -113,7 +124,9 @@ export function FormSheet({ children, onClose, title = 'Formulaire', fullPage = 
               </DialogPrimitive.Close>
             </>
           )}
-          <div className="flex-1 overflow-y-auto overscroll-contain rounded-b-[inherit]">{children}</div>
+          {/* On a computer the form fills the card: the phone-width column most forms wrap themselves in
+              (a div or a form, max-w-md / max-w-lg mx-auto) is lifted, with roomier padding. */}
+          <div className="flex-1 overflow-y-auto overscroll-contain rounded-b-[inherit] md:[&>*]:max-w-none md:[&>*]:px-8 md:[&>*]:pb-8">{children}</div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
