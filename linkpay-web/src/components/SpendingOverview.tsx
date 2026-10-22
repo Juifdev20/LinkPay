@@ -10,7 +10,7 @@ const PERIODS = [
 ] as const;
 
 const COLORS: Record<string, string> = {
-  transfer: '#4f6bff',
+  transfer: '#1338fe',
   merchant_payment: '#f59e0b',
   withdrawal: '#f43f5e',
   subscription: '#0ea5ff',
