@@ -44,7 +44,7 @@ export function StockItemDetailDialog({
   onDelete: (item: any) => void;
 }) {
   const queryClient = useQueryClient();
-  const canManage = useAuthStore((s) => s.user?.role) !== 'vendeur';
+  const canManage = !['vendeur', 'caissier'].includes(useAuthStore((s) => s.user?.role) || '');
   const [showMovement, setShowMovement] = useState(false);
   const [labelOpen, setLabelOpen] = useState(false);
   const [movement, setMovement] = useState({ type: 'in', quantity: '', reason: '' });

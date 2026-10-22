@@ -47,9 +47,21 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 - Électronique : la Caisse et « Mes ventes » (tickets de caisse) sont masquées. Le caissier d'une boutique
   électronique arrive sur le tableau de bord des ventes, et l'onglet central du patron ouvre Ventes, plus la Caisse.
 
+### 5. Un seul rôle de vente : « Vendeur / caissier » (migration 077)
+- Dans nos boutiques, la même personne vend et encaisse. Il n'y a plus deux rôles : un seul, **Vendeur / caissier**
+  (slug `caissier`, celui que connaissent déjà la caisse, le tiroir-caisse et les Ventes), dans les deux secteurs.
+  - Supermarché : il vend à la caisse.
+  - Électronique : il vend dans Ventes, et il a aussi le tableau de bord des ventes.
+- Migration `077` : les vendeurs existants deviennent vendeurs / caissiers, sur la même station (à leur prochaine
+  connexion).
+- L'API transforme encore « vendeur » en « caissier » si une ancienne application l'envoie.
+- Le stock ne bouge **qu'au paiement**, dans les deux secteurs : à l'encaissement du ticket de caisse, au paiement
+  (espèces ou ScanLinkPay) d'une vente électronique, et pour une vente hors ligne quand elle est encaissée.
+
 ### Reste à décider (non corrigé)
-- Une vente électronique en attente ne **réserve** pas le stock, et son QR reste payable tant qu'elle n'est pas annulée
-  (pas d'expiration).
+- Le QR d'une vente électronique en attente reste payable tant qu'elle n'est pas annulée (pas d'expiration). Le stock
+  n'est pas réservé pendant l'attente : voulu, le stock bouge au paiement (si l'article est parti entre-temps, les
+  espèces sont refusées).
 
 ---
 

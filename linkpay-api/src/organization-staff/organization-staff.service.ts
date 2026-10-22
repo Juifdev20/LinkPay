@@ -7,20 +7,12 @@ import { AuditService } from '../audit/audit.service';
 export const STAFF_ROLE_SLUGS = ['gerant', 'magasinier', 'vendeur', 'caissier', 'comptable'];
 
 /**
- * Roles that don't exist in a sector. A supermarket has no sales staff: the
- * customer serves themselves and the cashier scans, takes the money and
- * prints the ticket. The "vendeur" (advises and sells) belongs to shops.
+ * One person sells AND takes the money, in every sector: in our shops the seller is also the cashier. The role is
+ * called « Vendeur / caissier » (slug 'caissier', the one the till and the cash register already know). 'vendeur' is
+ * still accepted from an app not updated yet, and becomes 'caissier' (existing vendeurs: migration 077).
  */
-const ROLES_NOT_IN_SECTOR: Record<string, string[]> = {
-  supermarche: ['vendeur'],
-  // Folded into 'supermarche' by migration 076; read the same until every organization is migrated.
-  alimentation: ['vendeur'],
-};
-
-export function assertRoleFitsSector(sector: string | null | undefined, roleSlug: string) {
-  if (sector && ROLES_NOT_IN_SECTOR[sector]?.includes(roleSlug)) {
-    throw new BadRequestException("Un supermarché n'a pas de vendeurs : le caissier vend et encaisse.");
-  }
+export function normalizeStaffRole(roleSlug: string): string {
+  return roleSlug === 'vendeur' ? 'caissier' : roleSlug;
 }
 
 /** Who is managing staff: the owner (every station, station = null) or a station manager (their station only). */
