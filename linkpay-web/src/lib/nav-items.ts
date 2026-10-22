@@ -1,5 +1,5 @@
 import { isSupermarket } from '@/lib/sectors';
-import { ArrowLeftRight, LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, FileBarChart, Truck, CloudUpload, type LucideIcon } from 'lucide-react';
+import { ArrowLeftRight, LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, FileBarChart, Truck, CloudUpload, Landmark, type LucideIcon } from 'lucide-react';
 
 import { FEATURES } from '@/lib/features';
 import { ALL_ROLES, STAFF_ROLES, PERSONAL_ROLES, rolesFor } from '@/lib/permissions';
@@ -108,6 +108,8 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/admin/merchants', label: 'Commerçants', icon: Users, roles: ['admin', 'super_admin'], section: 'admin' },
   { to: '/dashboard/admin/cards', label: 'Cartes', icon: CreditCard, roles: ['admin', 'super_admin'], section: 'admin' },
   { to: '/dashboard/admin/settlements', label: 'Règlements', icon: Wallet, roles: ['admin', 'super_admin'], section: 'admin' },
+  // What ScanLinkPay may take out of its FlexPaie account without touching the users' money (migration 079).
+  { to: '/dashboard/admin/treasury', label: 'Trésorerie', icon: Landmark, roles: ['super_admin'], section: 'admin' },
   { to: '/dashboard/admin/users', label: 'Utilisateurs', icon: UserCog, roles: ['super_admin'], section: 'admin' },
   { to: '/dashboard/admin/subscriptions', label: 'Abonnements', icon: Sparkles, roles: ['super_admin'], section: 'admin' },
   { to: '/dashboard/admin/commissions', label: 'Commissions', icon: Percent, roles: ['super_admin'], section: 'admin' },

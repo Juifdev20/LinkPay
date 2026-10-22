@@ -106,6 +106,20 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 - L'ajout direct (`addMerchantUser`) est supprimé. Une ancienne application qui l'appelle crée désormais une invitation.
 - Ne concerne pas les entreprises : elles créent leurs employés elles-mêmes (Utilisateurs internes).
 
+### 10. Trésorerie (super admin) : ce qui peut sortir de FlexPaie sans risque (migration 079)
+- L'argent réel est sur le compte marchand FlexPaie. Les soldes ScanLinkPay sont une dette envers leurs titulaires.
+  Un abonnement, une commission ou un frais ne déplace pas d'argent chez FlexPaie : il fait passer une part de cet
+  argent des utilisateurs à ScanLinkPay.
+- Page **Trésorerie** (super admin) :
+  - **dû aux utilisateurs** = soldes positifs + épargne + retraits débités pas encore envoyés + paiements reçus pas
+    encore crédités aux marchands ; les portefeuilles de test sont exclus ;
+  - **retirable sans risque** = solde FlexPaie − dû aux utilisateurs. Le solde FlexPaie est relevé dans le tableau de
+    bord FlexPaie et saisi à la main, avec code d'authentification et journal. Aucune API FlexPaie n'est utilisée.
+  - Rien n'est affiché comme retirable tant que le solde n'a pas été saisi. Un montant négatif est montré en rouge
+    (« ne retirez rien »).
+- Recettes depuis le début, pour information : abonnements, commissions, frais de retrait et de transfert, mode Pro.
+- L'ancien argent fictif d'avant FlexPaie, s'il en reste, est compté comme dû : le chiffre est prudent.
+
 ### Reste à décider (non corrigé)
 - Le stock n'est pas réservé pendant l'attente : voulu, le stock bouge au paiement (si l'article est parti
   entre-temps, les espèces sont refusées).
