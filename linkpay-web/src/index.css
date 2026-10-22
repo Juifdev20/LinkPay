@@ -156,5 +156,18 @@
   .safe-area-top {
     padding-top: env(safe-area-inset-top);
   }
+  /* Offset to clear the fixed mobile TopBar:
+     68 px of visual content + safe-area-inset-top (status bar on edge-to-edge Android/iOS).
+     On desktop (md:) the TopBar is hidden and the in-flow header takes its role, so reset to 0. */
+  .topbar-offset {
+    padding-top: calc(68px + env(safe-area-inset-top, 0px));
+  }
+  .topbar-sticky {
+    top: calc(68px + env(safe-area-inset-top, 0px));
+  }
+  @media (min-width: 768px) {
+    .topbar-offset { padding-top: 0; }
+    .topbar-sticky { top: 69px; }
+  }
 }
 

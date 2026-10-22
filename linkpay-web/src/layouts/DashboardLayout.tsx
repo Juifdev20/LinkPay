@@ -212,12 +212,13 @@ export default function DashboardLayout() {
           </div>
 
           <TopBar />
-          {/* pt-20 clears the fixed TopBar (mobile only, hence md:pt-0 — the
-              desktop header above already accounts for its own space in
-              the normal flow) */}
-          <div className="pt-[68px] pb-20 md:pt-0 md:pb-0">
-            {/* Offline / synchronisation strip (nothing when all is normal). */}
-            <div className="sticky top-[68px] z-30 md:top-[69px]">
+          {/* topbar-offset pushes content below the fixed TopBar:
+              68 px of visual bar + env(safe-area-inset-top) for the Android
+              status bar in edge-to-edge mode. Resets to 0 on md: (desktop). */}
+          <div className="topbar-offset pb-20 md:pb-0">
+            {/* Offline / synchronisation strip — sticks just below the TopBar
+                on mobile (topbar-sticky) and below the desktop header. */}
+            <div className="sticky topbar-sticky z-30">
               <OfflineBanner />
             </div>
             {/* Only shown while "acting as" a store entered from the org
