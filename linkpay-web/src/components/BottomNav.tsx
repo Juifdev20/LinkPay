@@ -1,3 +1,4 @@
+import { isSupermarket } from '@/lib/sectors';
 import { NavLink, useLocation } from 'react-router-dom';
 import { Home, Receipt, QrCode, Settings, ShoppingCart, BarChart3, Menu, History, ClipboardList, Wallet } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -43,7 +44,7 @@ const walletTab: Tab = { to: '/dashboard/wallet', label: 'Portefeuille', icon: W
 const venteTab: Tab = { to: '/dashboard/pos', label: 'Vente', icon: ShoppingCart, end: false, central: true };
 
 const staffTabsFor = (role: string, orgSector?: string): Tab[] | undefined => {
-  const caissierSale = orgSector === 'supermarche' ? venteTab : salesTab;
+  const caissierSale = isSupermarket(orgSector) ? venteTab : salesTab;
   const map: Record<string, Tab[]> = {
     vendeur: [homeTab, historyTab, salesTab, settingsTab],
     // The station manager: their station's dashboard, its payments and the till (the rest is under Plus).

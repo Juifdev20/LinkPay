@@ -15,6 +15,7 @@ function setup() {
   const service: any = new (SalesService as any)(fake.service, {}, {}, {}, {});
   jest.spyOn(service, 'assertOrgAccess').mockResolvedValue(undefined);
   jest.spyOn(service, 'getOrgMerchant').mockResolvedValue({ id: 'm1' });
+  jest.spyOn(service, 'ownerSaleStation').mockResolvedValue({ id: 'm1' });
   return { service, fake };
 }
 

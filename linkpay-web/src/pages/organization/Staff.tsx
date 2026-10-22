@@ -1,3 +1,4 @@
+import { isSupermarket } from '@/lib/sectors';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -26,7 +27,7 @@ const ROLES = [
 const EMPTY_FORM = { nom: '', postnom: '', prenom: '', telephone: '', email: '', role_slug: 'caissier', merchant_id: '' };
 
 /** A supermarket has no sales staff: the cashier sells and takes the money (the API refuses it too). */
-const rolesForSector = (sector?: string) => (sector === 'supermarche' ? ROLES.filter((r) => r.slug !== 'vendeur') : ROLES);
+const rolesForSector = (sector?: string) => (isSupermarket(sector) ? ROLES.filter((r) => r.slug !== 'vendeur') : ROLES);
 
 /** "ABC · Station Gombe" on the credentials sheet, so the person knows where they work. */
 function stationLabel(orgName: string, station?: string | null) {

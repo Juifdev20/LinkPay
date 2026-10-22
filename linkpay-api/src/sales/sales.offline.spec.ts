@@ -11,6 +11,7 @@ function setup(rpc: { data?: any; error?: { message: string } }, station: string
   service.auditService = { log: jest.fn(async () => undefined) };
   jest.spyOn(service, 'assertOrgAccess').mockResolvedValue(station);
   jest.spyOn(service, 'getOrgMerchant').mockResolvedValue({ id: 'main-shop' });
+  jest.spyOn(service, 'ownerSaleStation').mockResolvedValue({ id: 'main-shop' });
   jest.spyOn(service, 'getSale').mockResolvedValue({ id: 's9', reference: 'SALE-HL-ABC', status: 'PAID' });
   return { service, fake };
 }

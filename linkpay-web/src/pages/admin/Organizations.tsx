@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { sectorLabel } from '@/lib/sectors';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/PageHeader';
@@ -40,7 +41,7 @@ export default function AdminOrganizationsPage() {
                       {expandedId === org.id ? <ChevronUp className="w-4 h-4 flex-shrink-0 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 flex-shrink-0 text-muted-foreground" />}
                       <div className="min-w-0">
                         <p className="font-semibold text-foreground truncate">{org.name}</p>
-                        <p className="text-sm text-muted-foreground">{org.sector || '—'} · Soumis le {org.submitted_at ? formatDate(org.submitted_at) : '—'}</p>
+                        <p className="text-sm text-muted-foreground">{sectorLabel(org.sector)} · Soumis le {org.submitted_at ? formatDate(org.submitted_at) : '—'}</p>
                       </div>
                     </button>
                     <div className="flex items-center gap-3 flex-shrink-0">

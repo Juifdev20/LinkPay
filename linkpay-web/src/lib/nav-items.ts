@@ -1,3 +1,4 @@
+import { isSupermarket } from '@/lib/sectors';
 import { ArrowLeftRight, LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, FileBarChart, Truck, CloudUpload, type LucideIcon } from 'lucide-react';
 
 import { FEATURES } from '@/lib/features';
@@ -124,7 +125,7 @@ const SECTOR_HIDDEN: Record<string, string[]> = {
 };
 
 export function navItemsFor(role: string, sector?: string): NavItem[] {
-  const hidden = new Set(sector ? SECTOR_HIDDEN[sector] ?? [] : []);
+  const hidden = new Set(sector ? SECTOR_HIDDEN[isSupermarket(sector) ? 'supermarche' : sector] ?? [] : []);
   return navItems
     .filter((i) => i.roles.includes(role) && !hidden.has(i.to))
     .map((i) => (i.labelFor?.[role] ? { ...i, label: i.labelFor[role] } : i));

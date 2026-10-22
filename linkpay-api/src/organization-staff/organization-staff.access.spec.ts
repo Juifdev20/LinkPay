@@ -114,11 +114,12 @@ describe('roles that fit the sector', () => {
   it('a supermarket has no sales staff (the cashier sells and takes the money)', () => {
     expect(() => assertRoleFitsSector('supermarche', 'vendeur')).toThrow(/pas de vendeurs/);
     expect(() => assertRoleFitsSector('supermarche', 'caissier')).not.toThrow();
+    // A food shop is a supermarket (migration 076), even before it is migrated.
+    expect(() => assertRoleFitsSector('alimentation', 'vendeur')).toThrow(/pas de vendeurs/);
   });
 
   it('shops keep their sales staff', () => {
     expect(() => assertRoleFitsSector('electronique', 'vendeur')).not.toThrow();
-    expect(() => assertRoleFitsSector('alimentation', 'vendeur')).not.toThrow();
     expect(() => assertRoleFitsSector(undefined, 'vendeur')).not.toThrow();
   });
 });

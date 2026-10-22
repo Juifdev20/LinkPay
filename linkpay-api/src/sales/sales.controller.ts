@@ -162,4 +162,16 @@ export class SalesController {
   ) {
     return this.salesService.payCash(orgId, saleId, callerId, callerOrgId, callerRole);
   }
+
+  @Post(':id/sales/:saleId/cancel')
+  @ApiOperation({ summary: 'Cancel a sale not paid yet (the customer left) and close its payment QR' })
+  async cancelSale(
+    @Param('id') orgId: string,
+    @Param('saleId') saleId: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+    @CurrentUser('role') callerRole?: string,
+  ) {
+    return this.salesService.cancelSale(orgId, saleId, callerId, callerOrgId, callerRole);
+  }
 }

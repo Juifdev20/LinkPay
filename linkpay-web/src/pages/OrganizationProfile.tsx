@@ -1,3 +1,4 @@
+import { isSupermarket } from '@/lib/sectors';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/lib/auth-store';
@@ -147,7 +148,7 @@ export default function OrganizationProfilePage() {
     try { localStorage.setItem('pos-currency', c); } catch { /* not persisted */ }
   };
   const home = useHomeData(org, scopedMerchants, currency);
-  const usesPos = org?.sector === 'supermarche';
+  const usesPos = isSupermarket(org?.sector);
 
   // Same query as the Stock page — usually already in the cache.
   const { data: stockItems } = useQuery({

@@ -1,9 +1,11 @@
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { ReceiptLine } from './types';
+import { buildInvoiceModel, type InvoiceOrg, type InvoiceSale } from '@/lib/sale-invoice';
 
 const METHOD_LABELS: Record<string, string> = {
   cash: 'Espèces',
   scanlinkpay: 'ScanLinkPay',
+  wallet: 'ScanLinkPay',
   mixed: 'Mixte',
 };
 
@@ -91,6 +93,65 @@ export function buildPosReceipt(ticket: any): ReceiptLine[] {
   }
   lines.push(
     { type: 'separator' },
+    { type: 'text', text: 'Merci de votre visite', align: 'center' },
+    { type: 'text', text: 'propulsé par ScanLinkPay', align: 'center', small: true },
+  );
+  return lines;
+}
+
+/**
+ * A sale of the Ventes module (electronics shops) → the same thermal ticket as the till. Each line keeps what the
+ * customer needs for the warranty: brand, model, IMEI / serial number, warranty. The A4 invoice (SaleInvoice) stays
+ * available for the customers who ask for one.
+ */
+export function buildSaleReceipt(org: InvoiceOrg, sale: InvoiceSale, stationName?: string | null): ReceiptLine[] {
+  const model = buildInvoiceModel(org, sale);
+  const lines: ReceiptLine[] = [{ type: 'title', text: model.businessName }];
+  if (stationName) lines.push({ type: 'subtitle', text: stationName });
+  if (model.address) lines.push({ type: 'text', text: model.address, align: 'center', small: true });
+  if (model.phone) lines.push({ type: 'text', text: model.phone, align: 'center', small: true });
+
+  lines.push(
+    { type: 'separator' },
+    { type: 'field', label: model.reference, value: formatDate(sale.created_at || new Date().toISOString()) },
+    { type: 'separator' },
+  );
+  model.lines.forEach((line, i) => {
+    const item = sale.sale_items[i];
+    if (i > 0) lines.push({ type: 'text', text: ' ' });
+    // The product name as typed (a 32-column roll cuts long titles), then brand + model, then what the warranty needs.
+    lines.push({ type: 'field', label: `${line.quantity} x ${item.name}`, value: line.total });
+    const brandModel = [item.details?.brand, item.details?.model].filter(Boolean).join(' ');
+    if (brandModel && !item.name.toLowerCase().includes(brandModel.toLowerCase())) {
+      lines.push({ type: 'text', text: `  ${brandModel}`, small: true });
+    }
+    for (const spec of line.specs.filter((sp) => sp.label !== 'Marque' && sp.label !== 'Modèle')) {
+      lines.push({ type: 'text', text: `  ${spec.label} : ${spec.value}`, small: true });
+    }
+  });
+
+  const paid = sale.status === 'PAID';
+  lines.push(
+    { type: 'separator' },
+    { type: 'amount', label: 'TOTAL', value: model.total, large: true },
+    { type: 'separator' },
+    { type: 'field', label: 'Paiement', value: paid ? METHOD_LABELS[sale.payment_method || ''] || sale.payment_method || '-' : 'En attente' },
+  );
+  // What the customer handed over, typed by the seller on this device (the server only keeps the sale's total).
+  const received = Number((sale as { received_cents?: number }).received_cents || 0);
+  if (paid && sale.payment_method === 'cash' && received > sale.total_cents) {
+    lines.push(
+      { type: 'field', label: '  Reçu', value: formatCurrency(received, sale.currency), muted: true },
+      { type: 'amount', label: 'Monnaie rendue', value: formatCurrency(received - sale.total_cents, sale.currency) },
+    );
+  }
+  if (sale.offline) {
+    lines.push({ type: 'separator' }, { type: 'text', text: 'Vente enregistrée hors ligne', align: 'center', small: true });
+  }
+  lines.push({ type: 'separator' });
+  if (model.footerMessage) lines.push({ type: 'text', text: model.footerMessage, align: 'center', small: true });
+  lines.push(
+    { type: 'text', text: 'Gardez ce ticket : il vaut garantie', align: 'center', small: true },
     { type: 'text', text: 'Merci de votre visite', align: 'center' },
     { type: 'text', text: 'propulsé par ScanLinkPay', align: 'center', small: true },
   );

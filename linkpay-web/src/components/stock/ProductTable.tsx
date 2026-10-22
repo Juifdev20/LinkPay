@@ -116,7 +116,9 @@ export function ProductTable({
       // Internal category filter only active in compact (POS) mode
       if (!stockManagerMode && category && i.category !== category) return false;
       if (!q) return true;
-      return fold(i.name || '').includes(q) || (i.barcode || '').includes(q) || fold(getCategoryLabel(i.category)).includes(q);
+      // Brand, model and IMEI / serial only exist on electronics products.
+      return [i.name, i.brand, i.model, getCategoryLabel(i.category)].some((v) => v && fold(v).includes(q))
+        || (i.barcode || '').includes(q) || fold(i.serial_number || '').includes(q);
     });
     const sign = sort.dir === 'asc' ? 1 : -1;
     return filtered.sort((a, b) => {
@@ -175,9 +177,6 @@ export function ProductTable({
                 </td>
                 <td className="px-3 py-2 align-middle min-w-0">
                   <div className="flex items-center gap-2 min-w-0">
-                    {item.image_url && (
-                      <img src={item.image_url} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0 border border-border" />
-                    )}
                     <div className="min-w-0">
                       <p className="font-medium text-foreground truncate max-w-[180px]">{item.name}</p>
                       {showStore && item.merchant_name && (
@@ -258,7 +257,9 @@ export function ProductTable({
                   onClick={() => !disabled && onSelect(item)}
                   className={`transition-colors ${disabled ? 'opacity-50' : 'cursor-pointer hover:bg-accent/50 active:bg-primary/10'} ${qty ? 'bg-primary/5' : ''}`}
                 >
-                  <td className="px-3 py-2.5 min-w-0">
+                  {/* w-full + max-w-0: the name column takes what is left and truncates, so price and stock stay
+                      on screen on a phone. */}
+                  <td className="px-3 py-2.5 w-full max-w-0">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="font-medium text-foreground truncate">{item.name}</span>
                       {!!qty && (
@@ -268,7 +269,7 @@ export function ProductTable({
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground truncate">
-                      {[item.category && getCategoryLabel(item.category), showStore && item.merchant_name].filter(Boolean).join(' · ') || '—'}
+                      {[[item.brand, item.model].filter(Boolean).join(' ') || (item.category && getCategoryLabel(item.category)), showStore && item.merchant_name].filter(Boolean).join(' · ') || '—'}
                     </p>
                   </td>
                   <td className="px-3 py-2.5 text-right font-semibold text-foreground whitespace-nowrap">

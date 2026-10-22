@@ -5,6 +5,45 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 22/10/2026 (après-midi) — Deux secteurs seulement ; les Ventes électronique sur le modèle de la Caisse
+
+### 1. « Alimentation » fusionnée dans « Supermarché » (migration 076)
+- Il y avait trois secteurs ; « Alimentation » passait par le module Ventes, sans caisse. Une alimentation fonctionne
+  comme un supermarché : **deux secteurs** désormais :
+  - `supermarche` (« Supermarché & alimentation ») : caisse, ticket thermique, rayons ;
+  - `electronique` : Ventes avec IMEI, numéro de série, garantie.
+- Migration `076` : les entreprises `alimentation` deviennent `supermarche`, et leurs vendeurs deviennent caissiers
+  (le nouveau rôle s'applique à la prochaine connexion).
+- L'API ramène `alimentation` à `supermarche` (anciennes applications) et refuse tout autre secteur inconnu.
+- Le site lit encore `alimentation` comme un supermarché (`lib/sectors.ts`) tant que la migration n'est pas passée.
+
+### 2. Ventes (électronique) : même écran, même ticket que la Caisse
+- **Catalogue** : le tableau de la caisse (`ProductTable`), sans photo, avec recherche par nom, marque, modèle, IMEI ou
+  code-barres. Lecteur USB et caméra.
+- **Vente** : panneau « Nouvelle vente » à droite (barre panier + feuille sur téléphone).
+- **Encaisser** : la même feuille que la caisse (espèces remises, appoint, monnaie, ou QR ScanLinkPay), et
+  « Annuler la vente » si le client part (nouvelle route `POST /organizations/:id/sales/:saleId/cancel`).
+- **Ticket** : le ticket thermique de la caisse (`buildSaleReceipt`, même imprimante), avec IMEI et garantie sous chaque
+  article. La **facture A4** reste à un clic (« Facture A4 (garantie) »), aussi depuis « Toutes les ventes ».
+- Les photos de produits sont retirées partout de l'affichage (place en base, inutile pour le vendeur).
+
+### 3. Failles corrigées (module Ventes)
+- **Double paiement** : « Encaissé en espèces » pendant que le client confirmait par ScanLinkPay → le client payait deux
+  fois. Désormais le QR est fermé **d'abord**, et seulement si personne n'est en train de le payer ; sinon les espèces
+  sont refusées.
+- **Patron avec plusieurs stations** : il voyait le stock de toutes ses stations mais ne pouvait vendre que celui de la
+  première (erreur « n'appartient pas à cette entreprise »). La vente appartient maintenant à la station qui détient les
+  articles. Une vente = une station.
+- **Dernier article vendu deux fois** (deux ventes en attente) : les espèces sont refusées si l'article n'est plus en
+  stock. Un paiement ScanLinkPay déjà fait ne casse plus sur le stock : rien sous zéro, et l'écart est journalisé pour
+  l'inventaire, comme pour les ventes hors ligne.
+
+### Reste à décider (non corrigé)
+- Une vente électronique en attente ne **réserve** pas le stock, et son QR reste payable tant qu'elle n'est pas annulée
+  (pas d'expiration).
+
+---
+
 ## 22/10/2026 — Mode hors ligne : consulter, noter ses dépenses, vendre en espèces, gérer le stock ; jamais de transfert d'argent
 
 Demande du propriétaire : un mode hors ligne « comme HotelSaver », mobile (Android) et bureau (Windows, le site).

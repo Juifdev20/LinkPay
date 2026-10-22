@@ -13,6 +13,8 @@ export const STAFF_ROLE_SLUGS = ['gerant', 'magasinier', 'vendeur', 'caissier', 
  */
 const ROLES_NOT_IN_SECTOR: Record<string, string[]> = {
   supermarche: ['vendeur'],
+  // Folded into 'supermarche' by migration 076; read the same until every organization is migrated.
+  alimentation: ['vendeur'],
 };
 
 export function assertRoleFitsSector(sector: string | null | undefined, roleSlug: string) {

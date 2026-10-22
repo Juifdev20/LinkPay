@@ -14,6 +14,9 @@ import * as QRCode from 'qrcode';
  * are sent to the owner AND to the organization's staff (cashiers...), so a
  * hash left in them would let any staff member recover the stock password.
  */
+/** organizations.sector — what the business sells, and so how (till or Ventes). */
+const ORGANIZATION_SECTORS = ['supermarche', 'electronique'];
+
 const ORGANIZATION_PRIVATE_FIELDS = ['stock_password_hash', 'stock_password_attempts', 'stock_password_locked_until'] as const;
 
 /**
@@ -394,6 +397,11 @@ export class OrganizationsService {
       'onboarding_completed_at',
     ];
     const filtered: Record<string, any> = {};
+    // Two sectors (migration 076): a food shop is a supermarket; an app not updated yet may still send 'alimentation'.
+    if (updates.sector === 'alimentation') updates = { ...updates, sector: 'supermarche' };
+    if (updates.sector && !ORGANIZATION_SECTORS.includes(updates.sector)) {
+      throw new BadRequestException("Secteur inconnu : choisissez « Supermarché & alimentation » ou « Électronique ».");
+    }
 
     for (const key of allowedFields) {
       if (updates[key] !== undefined) {
