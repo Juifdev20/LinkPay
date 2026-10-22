@@ -179,6 +179,20 @@ Fonctionnement :
 - Encaisser par carte passe de 448 à 672 px.
 - Rien ne change sur téléphone.
 
+### 15. Code PIN refusé : les points ne restent plus figés en rouge
+- Avant : après un mauvais code, les points restaient rouges pendant qu'on retapait, jusqu'à la vérification
+  suivante. Certains écrans gardaient même le code refusé dans les cases.
+- Maintenant, sur tous les écrans de code (verrouillage, PIN de paiement, d'envoi, de retrait, code d'accès,
+  confirmation d'action sensible…), après un refus :
+  - les points tremblent en rouge ;
+  - le code refusé s'efface tout seul ;
+  - les points redeviennent gris, prêts pour un nouvel essai ;
+  - le motif reste écrit dessous jusqu'au premier chiffre tapé.
+- Le premier chiffre tapé commence toujours un nouveau code, même si l'ancien n'était pas encore effacé.
+- Sur les écrans où le code est saisi dans la page, un refus efface les cases et rouvre directement le clavier de code,
+  avec le motif. Les cases ne sont rouges que tant que rien n'a été retapé.
+- Fait une seule fois dans `PinKeypadScreen` et `PinInput` : tous les écrans en profitent.
+
 ### Reste à décider (non corrigé)
 - Le stock n'est pas réservé pendant l'attente : voulu, le stock bouge au paiement (si l'article est parti
   entre-temps, les espèces sont refusées).
