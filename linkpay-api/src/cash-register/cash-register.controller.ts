@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsNumber, Min, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsNumber, Min, IsOptional, IsString, MaxLength, IsUUID } from 'class-validator';
 import { CashRegisterService } from './cash-register.service';
 import { AppCodeConfirmGuard, RequireAppCode } from '../common/guards/app-code-confirm.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -34,6 +34,11 @@ class CashMovementDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+
+  @ApiProperty({ required: false, description: "Id créé sur l'appareil pour un mouvement fait hors ligne : envoyé deux fois, gardé une fois" })
+  @IsOptional()
+  @IsUUID()
+  client_ref?: string;
 }
 
 class CloseSessionDto {

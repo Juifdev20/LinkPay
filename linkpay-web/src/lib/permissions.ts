@@ -25,10 +25,15 @@ export const STAFF_ROLES = ['gerant', 'magasinier', 'vendeur', 'caissier', 'comp
 export const ROLE_LABELS: Record<string, string> = {
   enterprise: 'Responsable',
   gerant: 'Gérant de station',
-  caissier: 'Caissier',
-  vendeur: 'Vendeur',
+  caissier: 'Vendeur / caissier',
+  vendeur: 'Vendeur / caissier',
   magasinier: 'Magasinier',
   comptable: 'Comptable',
+  merchant: 'Marchand',
+  cashier: 'Caissier',
+  client: 'Client',
+  admin: 'Administrateur',
+  super_admin: 'Super administrateur',
 };
 
 export const isStaffRole = (role: string | undefined | null) => !!role && STAFF_ROLES.includes(role);
@@ -46,7 +51,7 @@ export const ROUTE_ROLES = {
   '/dashboard/organization/wallet': ['enterprise'],
   '/dashboard/organization/sales': ['enterprise', 'gerant', 'vendeur', 'caissier'],
   '/dashboard/organization/sales/history': ['enterprise', 'gerant', 'vendeur', 'caissier', 'comptable'],
-  '/dashboard/organization/sales/dashboard': ['enterprise', 'gerant', 'vendeur', 'comptable'],
+  '/dashboard/organization/sales/dashboard': ['enterprise', 'gerant', 'vendeur', 'caissier', 'comptable'],
   '/dashboard/organization/stock': ['enterprise', 'gerant', 'magasinier'],
   '/dashboard/organization/inventory': ['enterprise', 'magasinier'],
   // Restock requests: the station asks, the owner decides.

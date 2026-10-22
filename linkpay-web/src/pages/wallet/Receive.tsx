@@ -117,7 +117,7 @@ export default function ReceivePage() {
   };
 
   return (
-    <FormSheet onClose={() => navigate(-1)} title={isMerchant ? 'Encaisser' : "Recevoir de l'argent"}>
+    <FormSheet fullPage onClose={() => navigate(-1)} title={isMerchant ? 'Encaisser' : "Recevoir de l'argent"}>
       <div className="p-6 max-w-md mx-auto text-center">
         <h2 className="text-xl font-bold text-foreground mb-1">
           {isMerchant ? 'Encaisser un paiement' : "Recevoir de l'argent"}

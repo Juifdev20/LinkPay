@@ -20,7 +20,7 @@ export default function StockPage() {
   const user = useAuthStore((s) => s.user);
   // Vendeur sees the stock read-only (what can be sold, what is low); the
   // backend enforces the same rule on every write endpoint.
-  const canManage = user?.role !== 'vendeur';
+  const canManage = !['vendeur', 'caissier'].includes(user?.role || '');
 
   const [storeFilter, setStoreFilter] = useState<string | null>(null);
   const [query, setQuery] = useState('');

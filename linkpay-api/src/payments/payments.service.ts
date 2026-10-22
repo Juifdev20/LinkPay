@@ -21,6 +21,8 @@ import { completeFundedTransferOnce } from '../wallets/funded-transfer-completio
 import { confirmedAmountMatches } from './psp/amount-check';
 import { assertMerchantCanReceive } from '../common/merchant-status';
 import { assertNumberMatchesOperator } from './mobile-money';
+import { assertNoRecentSecurityChange } from '../common/security-hold';
+import { assertTestMoneyStaysInTests } from '../common/test-money';
 
 @Injectable()
 export class PaymentsService {
@@ -190,23 +192,6 @@ export class PaymentsService {
       throw new Error(`Failed to create payment intent: ${intentError.message}`);
     }
 
-    // The mock PSP has no real checkout page or webhook delivery mechanism —
-    // simulate a successful payment instead of leaving the intent stuck
-    // PENDING forever (see README: "PSP mock: succès automatique"). A short
-    // artificial delay stands in for the real round trip of a mobile money
-    // STK/USSD push, where the customer confirms with their PIN on their own
-    // phone before the provider calls our webhook.
-    if (provider === 'mock') {
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      const transaction = await this.handleSuccessfulPayment(intent, { psp_intent_id: pspResult.psp_intent_id });
-      return {
-        payment_intent_id: intent.id,
-        psp_intent_id: pspResult.psp_intent_id,
-        status: 'SUCCESS',
-        reference: transaction?.reference,
-      };
-    }
-
     return {
       payment_intent_id: intent.id,
       psp_intent_id: pspResult.psp_intent_id,
@@ -283,6 +268,8 @@ export class PaymentsService {
 
     // PIN verified before anything is created/debited — never trust the
     // frontend's "user confirmed" state for a financial operation.
+    await assertNoRecentSecurityChange(this.supabaseService.getClient(), userId);
+    await this.assertTestMoneyToMerchant(userId, request.merchant_id);
     await this.walletPinService.verifyPin(userId, pin);
 
     const fees = await this.commissionsService.calculateFeesPreview(
@@ -426,7 +413,7 @@ export class PaymentsService {
 
   /**
    * Checks a payment's status by reference — public (the payer may be
-   * anonymous, returning from a CinetPay redirect with no session). Used as
+   * anonymous, returning from the payment provider's page with no session). Used as
    * the fallback source of truth when a webhook hasn't arrived yet: if the
    * intent is still PENDING, re-verifies with the PSP directly and applies
    * the same handleSuccessfulPayment/handleFailedPayment transition the
@@ -478,13 +465,18 @@ export class PaymentsService {
     };
   }
 
+  /** Test money may pay only a merchant whose owner's wallet is a test wallet too (docs/RECHARGE_TEST.md). */
+  private async assertTestMoneyToMerchant(payerId: string, merchantId: string) {
+    const client = this.supabaseService.getClient();
+    const { data: merchant } = await client.from('merchants').select('owner_id').eq('id', merchantId).maybeSingle();
+    await assertTestMoneyStaysInTests(client, { userId: payerId }, { userId: merchant?.owner_id ?? null });
+  }
+
   async processWebhook(provider: string, payload: Buffer, signature: string, headers: Record<string, string>) {
-    // `provider` comes from the public URL. The mock adapter accepts any
-    // payload as genuine, so unless this deployment actually runs on it,
-    // anyone could POST /webhooks/mock and mark a payment as paid for free.
-    const configuredProvider = this.configService.get<string>('PSP_PROVIDER', 'mock');
-    if (provider === 'mock' && configuredProvider !== 'mock') {
-      this.logger.warn('Rejected a mock webhook: PSP_PROVIDER is not "mock" on this deployment');
+    // `provider` comes from the public URL. There is no simulated provider any more (no fictitious money): a call
+    // naming "mock" is somebody trying to fake a payment.
+    if (provider === 'mock') {
+      this.logger.warn('Rejected a mock webhook: there is no simulated payment provider');
       void this.securityAlerts.alert({
         severity: 'warning',
         title: 'Faux webhook de paiement rejeté',
@@ -706,6 +698,9 @@ export class PaymentsService {
     // claim at the top of this method.)
 
     await this.paymentRequestsService.markPaid(request.id);
+    // A Ventes sale paid by Mobile Money / card through its QR: paid, its stock leaves the shelf (as for a wallet payment).
+    await this.salesService.markPaidByPaymentRequest(request.id, transaction.id)
+      .catch((err: any) => this.logger.error(`Payment ${intent.id} is paid but its sale could not be marked paid: ${err.message}`));
 
     await this.generateReceipt(transaction, request.merchant);
 
@@ -843,19 +838,30 @@ export class PaymentsService {
     }
 
     if (status === 'SUCCESS') {
-      if (payment.status !== 'SUCCESS') {
+      // Claimed first: the webhook, the payer's status check and the reconciliation job can confirm the same payment
+      // at the same moment — only one may extend Pro (one payment, one month).
+      const { data: claimed } = payment.status === 'SUCCESS' ? { data: null } : await this.supabaseService.getClient()
+        .from('expense_pro_payments')
+        .update({ status: 'SUCCESS', updated_at: new Date().toISOString() })
+        .eq('id', payment.id)
+        .in('status', ['PENDING', 'FAILED'])
+        .select('id')
+        .maybeSingle();
+      if (claimed) {
         const { data: newExpiry, error: rpcError } = await this.supabaseService.getClient().rpc('extend_expense_pro', {
           p_user_id: payment.user_id,
         });
 
         if (rpcError) {
+          // Given back: the payment is real, the next confirmation extends it.
+          await this.supabaseService.getClient().from('expense_pro_payments').update({ status: 'PENDING' }).eq('id', payment.id).eq('status', 'SUCCESS');
           this.logger.error(`Failed to extend expense Pro for payment ${payment.id}: ${rpcError.message}`);
           return true;
         }
 
         await this.supabaseService.getClient()
           .from('expense_pro_payments')
-          .update({ status: 'SUCCESS', extended_to: newExpiry, updated_at: new Date().toISOString() })
+          .update({ extended_to: newExpiry, updated_at: new Date().toISOString() })
           .eq('id', payment.id);
 
         await this.notificationsService.create({
@@ -945,7 +951,7 @@ export class PaymentsService {
    * is credited once).
    */
   async reconcilePending(provider: string, limit = 50): Promise<{ checked: number; settled: number }> {
-    if (!provider || provider === 'mock' || provider === 'wallet') return { checked: 0, settled: 0 };
+    if (!provider || provider === 'wallet') return { checked: 0, settled: 0 };
     const adapter = this.pspFactory.get(provider);
     const db = this.supabaseService.getClient();
     const olderThan = new Date(Date.now() - 45_000).toISOString();

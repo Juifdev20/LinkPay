@@ -4,8 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { usePaymentStatusPoll } from '@/hooks/usePaymentStatusPoll';
 import { TopupStatusCard, TopupCardStatus } from '@/components/TopupStatusCard';
-import { Card, CardContent } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { ResultView, ResultCard } from '@/components/ResultView';
+import { Button } from '@/components/ui/button';
 
 interface FundedTransfer {
   id: string;
@@ -47,26 +47,19 @@ export default function SendResultPage() {
 
   if (!ref) {
     return (
-      <div className="p-6 max-w-lg mx-auto">
-        <Card>
-          <CardContent className="pt-6 text-center py-10">
-            <p className="text-muted-foreground">Référence d'envoi manquante.</p>
-          </CardContent>
-        </Card>
-      </div>
+      <ResultCard>
+        <ResultView tone="error" title="Opération introuvable" message="Référence d'envoi manquante. Retrouvez l'opération dans vos transactions.">
+          <Button className="h-[52px] w-full rounded-xl text-base font-semibold" onClick={() => navigate('/dashboard/wallet/transactions')}>Mes transactions</Button>
+        </ResultView>
+      </ResultCard>
     );
   }
 
   if (isLoading || !data) {
     return (
-      <div className="p-6 max-w-lg mx-auto">
-        <Card>
-          <CardContent className="pt-6 text-center py-16">
-            <Loader2 className="w-10 h-10 text-primary animate-spin mx-auto mb-4" />
-            <p className="text-foreground font-semibold">Vérification du statut...</p>
-          </CardContent>
-        </Card>
-      </div>
+      <ResultCard>
+        <ResultView tone="pending" title="Vérification en cours" message="Nous confirmons l'opération auprès du prestataire de paiement…" />
+      </ResultCard>
     );
   }
 

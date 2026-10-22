@@ -10,13 +10,17 @@ import { BottomNav } from '@/components/BottomNav';
 import { TopBar } from '@/components/TopBar';
 import { NotificationsBell } from '@/components/NotificationsBell';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
+import { UserAvatar } from '@/components/UserAvatar';
 import { CardChargePrompt } from '@/components/card/CardChargePrompt';
+import { OfflineBanner } from '@/components/OfflineBanner';
+import { GlobalSearch } from '@/components/GlobalSearch';
 import { useTheme } from '@/hooks/useTheme';
 import { usePaymentReceivedAlert } from '@/hooks/usePaymentReceivedAlert';
-import { LogOut, User, Building2, Sun, Moon, Menu, Search, X } from 'lucide-react';
+import { LogOut, Building2, Sun, Moon, Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SECTORS } from '@/pages/organization/OnboardingWizard';
-import { navItemsFor } from '@/lib/nav-items';
+import { groupNavItems, navItemsFor, SYNC_NAV_ITEM, type NavItem } from '@/lib/nav-items';
+import { usePendingCount } from '@/lib/outbox';
 import { ROLE_LABELS } from '@/lib/permissions';
 
 export default function DashboardLayout() {
@@ -27,7 +31,6 @@ export default function DashboardLayout() {
   const location = useLocation();
   const { toggleTheme, effectiveTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   usePaymentReceivedAlert(user?.id);
 
   // Same query key as OrganizationProfile.tsx's `my-organization` — react-query
@@ -66,7 +69,12 @@ export default function DashboardLayout() {
   // keep the enterprise/supermarket menu — they are the owner inside their
   // store, not a standalone merchant.
   const navRole = user?.acting_as_org_id ? 'enterprise' : user?.role;
-  const visibleItems = user && navRole ? navItemsFor(navRole, org?.sector) : [];
+  const roleItems = user && navRole ? navItemsFor(navRole, org?.sector) : [];
+  // Synchronisation lives in Paramètres; it joins the sidebar only while operations made offline wait to be sent.
+  const pendingOps = usePendingCount();
+  const navGroups = groupNavItems(pendingOps && roleItems.length ? [...roleItems, SYNC_NAV_ITEM] : roleItems);
+  const badgeFor = (item: NavItem) =>
+    item.to === '/dashboard/admin/withdrawals' ? openWithdrawals?.open || 0 : item.to === SYNC_NAV_ITEM.to ? pendingOps : 0;
 
   return (
     <div className="h-[100dvh] bg-background">
@@ -107,39 +115,54 @@ export default function DashboardLayout() {
               )}
             </div>
 
-            <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-              {visibleItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.to === '/dashboard'}
-                  className={({ isActive }) =>
-                    cn(
-                      'relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
-                      isActive
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                    )
-                  }
-                  title={sidebarCollapsed ? item.label : undefined}
-                >
-                  <item.icon className="w-5 h-5 flex-shrink-0" />
-                  {!sidebarCollapsed && <span>{item.label}</span>}
-                  {item.to === '/dashboard/admin/withdrawals' && !!openWithdrawals?.open && (
-                    <span className={cn('ml-auto rounded-full bg-destructive px-2 py-0.5 text-[11px] font-bold text-destructive-foreground', sidebarCollapsed && 'absolute right-1 top-1 ml-0 px-1.5')}>
-                      {openWithdrawals.open}
-                    </span>
+            {/* Grouped by what the entries are for (lib/nav-items.ts NAV_SECTIONS): selling first, then follow-up,
+                stock, the business, the person's own account; Notifications and Paramètres always at the bottom. */}
+            <nav className="flex-1 px-3 py-4 overflow-y-auto">
+              {navGroups.map((group, gi) => (
+                <div key={group.id} className={cn(gi > 0 && 'mt-4', group.id === 'system' && 'pt-4 border-t border-border')}>
+                  {group.title && !sidebarCollapsed && (
+                    <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">{group.title}</p>
                   )}
-                </NavLink>
+                  {group.title && sidebarCollapsed && <div className="mx-3 mb-3 border-t border-border" />}
+                  <div className="space-y-0.5">
+                    {group.items.map((item) => {
+                      const badge = badgeFor(item);
+                      return (
+                        <NavLink
+                          key={item.to}
+                          to={item.to}
+                          // Exact match when another entry lives under it (Administration / Retraits à traiter,
+                          // Ventes / Historique des ventes, Ma carte / Encaisser par carte): only one entry lit at a time.
+                          end={roleItems.some((o) => o.to !== item.to && o.to.startsWith(`${item.to}/`))}
+                          className={({ isActive }) =>
+                            cn(
+                              'relative flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all',
+                              isActive
+                                ? 'bg-primary text-primary-foreground shadow-sm'
+                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                            )
+                          }
+                          title={sidebarCollapsed ? item.label : undefined}
+                        >
+                          <item.icon className="w-5 h-5 flex-shrink-0" />
+                          {!sidebarCollapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
+                          {!!badge && (
+                            <span className={cn('ml-auto rounded-full bg-destructive px-2 py-0.5 text-[11px] font-bold text-destructive-foreground', sidebarCollapsed && 'absolute right-1 top-1 ml-0 px-1.5')}>
+                              {badge}
+                            </span>
+                          )}
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                </div>
               ))}
             </nav>
 
             <div className="p-4 border-t border-border">
               {!sidebarCollapsed && (
                 <div className="flex items-center gap-3 mb-3 px-3">
-                  <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center">
-                    <User className="w-4 h-4 text-muted-foreground" />
-                  </div>
+                  <UserAvatar className="w-9 h-9" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold truncate text-foreground">{user?.full_name || user?.email}</p>
                     {/* role 'merchant' here would be misleading — an org
@@ -160,43 +183,35 @@ export default function DashboardLayout() {
 
         {/* Main content */}
         <main className="flex-1 overflow-y-auto overscroll-contain">
-          {/* Desktop header — search (not yet wired to real search),
+          {/* Desktop header — page search (Ctrl+K),
               theme toggle, notifications, profile avatar. Mirrors what
               TopBar gives mobile users below. NotificationsBell lives here
               now instead of the sidebar header. */}
           <div className="hidden md:flex items-center justify-between p-4 border-b border-border bg-card sticky top-0 z-40">
             <div className="flex items-center gap-4 flex-1">
-              <div className="relative max-w-md w-full">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Rechercher..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
+              <GlobalSearch items={roleItems} />
             </div>
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="icon" onClick={toggleTheme} className="h-9 w-9">
                 {effectiveTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </Button>
               <NotificationsBell />
-              <Link
-                to="/dashboard/profile"
-                className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center hover:bg-accent transition-colors"
-                aria-label="Profil"
-              >
-                <User className="w-4 h-4 text-muted-foreground" />
+              <Link to="/dashboard/profile" className="rounded-full" aria-label="Profil">
+                <UserAvatar className="w-9 h-9" />
               </Link>
             </div>
           </div>
 
           <TopBar />
-          {/* pt-20 clears the fixed TopBar (mobile only, hence md:pt-0 — the
-              desktop header above already accounts for its own space in
-              the normal flow) */}
-          <div className="pt-20 pb-20 md:pt-0 md:pb-0">
+          {/* topbar-offset pushes content below the fixed TopBar:
+              68 px of visual bar + env(safe-area-inset-top) for the Android
+              status bar in edge-to-edge mode. Resets to 0 on md: (desktop). */}
+          <div className="topbar-offset pb-20 md:pb-0">
+            {/* Offline / synchronisation strip — sticks just below the TopBar
+                on mobile (topbar-sticky) and below the desktop header. */}
+            <div className="sticky topbar-sticky z-30">
+              <OfflineBanner />
+            </div>
             {/* Only shown while "acting as" a store entered from the org
                 dashboard (acting_as_org_id) — not role-based, since role is
                 'merchant' in that state, indistinguishable from a real

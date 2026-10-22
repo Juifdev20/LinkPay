@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDownRight, ArrowUpRight, ChevronRight, ShoppingCart, type LucideIcon } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, ChevronRight, ShoppingCart, Store, type LucideIcon } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import type { Currency, HomeDay, HomeSale, HomeTop } from './useHomeData';
 
@@ -44,6 +44,8 @@ export function HomeHero({
   yesterday,
   loading,
   onOpenTill,
+  heroLabel,
+  storeIcon,
 }: {
   firstName?: string;
   orgName?: string;
@@ -53,25 +55,36 @@ export function HomeHero({
   yesterday: { revenue: number };
   loading: boolean;
   onOpenTill: () => void;
+  /** Label above the revenue figure. Default: "Ventes du jour". */
+  heroLabel?: string;
+  /** Show a store icon badge before the org name (Gérant dashboard). */
+  storeIcon?: boolean;
 }) {
   const date = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
   const trend = yesterday.revenue > 0 ? Math.round(((today.revenue - yesterday.revenue) / yesterday.revenue) * 100) : null;
   const noSaleYet = !loading && today.revenue === 0;
 
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-indigo-600 to-violet-700 p-6 text-white shadow-xl shadow-primary/25">
+    <div className="relative overflow-hidden rounded-3xl bg-brand-gradient p-6 text-white shadow-xl shadow-primary/25">
       {/* Soft light blobs for depth */}
       <div className="pointer-events-none absolute -top-16 -right-10 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
-      <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-violet-300/20 blur-2xl" />
+      <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-sky-300/20 blur-2xl" />
 
       <div className="relative">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm text-white/80">
-              {greeting()}{firstName ? ` ${firstName}` : ''} 👋
-            </p>
-            <h1 className="mt-0.5 text-xl font-bold leading-tight break-words">{orgName}</h1>
-            <p className="mt-0.5 text-xs capitalize text-white/70">{date}</p>
+          <div className="min-w-0 flex items-start gap-3">
+            {storeIcon && (
+              <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-white/20">
+                <Store className="h-6 w-6 text-white" />
+              </span>
+            )}
+            <div className="min-w-0">
+              <p className="text-sm text-white/80">
+                {greeting()}{firstName ? `, ${firstName}` : ''} 👑
+              </p>
+              <h1 className="mt-0.5 text-xl font-bold leading-tight break-words">{orgName}</h1>
+              <p className="mt-0.5 text-xs capitalize text-white/70">{date}</p>
+            </div>
           </div>
           <div className="flex flex-shrink-0 rounded-full bg-white/15 p-0.5 text-xs font-semibold">
             {(['CDF', 'USD'] as const).map((c) => (
@@ -87,7 +100,7 @@ export function HomeHero({
         </div>
 
         <div className="mt-6">
-          <p className="text-sm text-white/80">Ventes du jour</p>
+          <p className="text-sm text-white/80">{heroLabel ?? 'Ventes du jour'}</p>
           {loading ? (
             <div className="mt-2 h-10 w-48 animate-pulse rounded-lg bg-white/20" />
           ) : noSaleYet ? (
@@ -134,13 +147,14 @@ export type QuickAction = { label: string; icon: LucideIcon; onClick: () => void
 
 export function QuickActions({ actions }: { actions: QuickAction[] }) {
   return (
-    <div className="grid grid-cols-4 gap-2">
+    // Phone: round icons with their label under. Computer: compact cards side by side, icon and label on one line.
+    <div className="grid grid-cols-4 gap-2 md:gap-3">
       {actions.map((a) => (
-        <button key={a.label} onClick={a.onClick} className="group flex flex-col items-center gap-1.5 rounded-2xl py-2 active:scale-95 transition-transform">
-          <span className={`flex h-14 w-14 items-center justify-center rounded-2xl shadow-sm ${a.tone}`}>
-            <a.icon className="h-6 w-6" />
+        <button key={a.label} onClick={a.onClick} className="group flex flex-col items-center gap-1.5 rounded-2xl py-2 active:scale-95 transition-all md:flex-row md:gap-3 md:border md:border-border md:bg-card md:px-4 md:py-3 md:shadow-soft md:hover:-translate-y-0.5 md:hover:shadow-md">
+          <span className={`flex h-14 w-14 items-center justify-center rounded-2xl shadow-sm md:h-11 md:w-11 md:rounded-xl ${a.tone}`}>
+            <a.icon className="h-6 w-6 md:h-5 md:w-5" />
           </span>
-          <span className="text-xs font-medium text-foreground">{a.label}</span>
+          <span className="text-xs font-medium text-foreground md:text-sm md:font-semibold">{a.label}</span>
         </button>
       ))}
     </div>
@@ -201,7 +215,7 @@ export function SalesChart({
               )}
               <div
                 style={{ height: `${h}%` }}
-                className={`w-full rounded-md transition-all ${loading ? 'animate-pulse bg-muted' : isToday ? 'bg-gradient-to-t from-primary to-violet-500' : i === safePicked ? 'bg-primary/70' : 'bg-primary/40'}`}
+                className={`w-full rounded-md transition-all ${loading ? 'animate-pulse bg-muted' : isToday ? 'bg-gradient-to-t from-primary to-sky-500' : i === safePicked ? 'bg-primary/70' : 'bg-primary/40'}`}
               />
               <span className={`text-[10px] capitalize leading-none ${isToday ? 'font-semibold text-foreground' : 'text-muted-foreground'} ${!showLabel ? 'invisible' : ''}`}>
                 {isToday ? 'Auj.' : label(d.date)}
@@ -288,14 +302,16 @@ export function RecentSales({
   currency,
   loading,
   moreTo,
+  title,
 }: {
   sales: HomeSale[];
   currency: Currency;
   loading: boolean;
   moreTo?: string;
+  title?: string;
 }) {
   return (
-    <ListCard title="Dernières ventes" action={moreTo ? { label: 'Tout voir', to: moreTo } : undefined}>
+    <ListCard title={title ?? 'Dernières ventes'} action={moreTo ? { label: 'Tout voir', to: moreTo } : undefined}>
       {loading ? (
         <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10" />)}</div>
       ) : !sales.length ? (

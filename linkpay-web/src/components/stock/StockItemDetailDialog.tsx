@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { enqueue, newClientRef } from '@/lib/outbox';
+import { isNetworkError, useNetwork } from '@/lib/network';
+import type { StockMovementPayload } from '@/lib/outbox-handlers';
 import { useAuthStore } from '@/lib/auth-store';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -11,6 +14,8 @@ import { formatCurrency } from '@/lib/utils';
 import { Loader2, Pencil, Trash2, Boxes, Printer } from 'lucide-react';
 import { getCategoryLabel, STOCK_CATEGORIES } from '@/lib/stock-categories';
 import { ProductLabelSheet } from './ProductLabelSheet';
+
+const MOVEMENT_LABEL = { in: 'Entrée', out: 'Sortie', adjustment: 'Ajustement' } as const;
 
 const CONDITIONS: Record<string, string> = { neuf: 'Neuf', occasion: 'Occasion', reconditionne: 'Reconditionné' };
 const MOVEMENT_TYPES = [
@@ -39,20 +44,41 @@ export function StockItemDetailDialog({
   onDelete: (item: any) => void;
 }) {
   const queryClient = useQueryClient();
-  const canManage = useAuthStore((s) => s.user?.role) !== 'vendeur';
+  const canManage = !['vendeur', 'caissier'].includes(useAuthStore((s) => s.user?.role) || '');
   const [showMovement, setShowMovement] = useState(false);
   const [labelOpen, setLabelOpen] = useState(false);
   const [movement, setMovement] = useState({ type: 'in', quantity: '', reason: '' });
 
+  // Offline (or the network drops while sending): the movement waits on the device with its own id and is applied
+  // once on the server when the network is back (lib/outbox.ts).
   const movementMutation = useMutation({
+    networkMode: 'always',
     mutationFn: async () => {
       const qty = Math.abs(Number(movement.quantity) || 0);
       const quantity_delta = movement.type === 'out' ? -qty : movement.type === 'in' ? qty : (Number(movement.quantity) || 0);
-      return (await api.post(`/merchants/${item.merchant_id}/stock-items/${item.id}/movements`, {
-        type: movement.type,
+      const payload: StockMovementPayload = {
+        merchant_id: item.merchant_id,
+        item_id: item.id,
+        org_id: orgId,
+        type: movement.type as StockMovementPayload['type'],
         quantity_delta,
         reason: movement.reason || undefined,
-      })).data;
+      };
+      const clientRef = newClientRef();
+      const label = `Stock · ${MOVEMENT_LABEL[payload.type]} ${quantity_delta > 0 ? '+' : ''}${quantity_delta} · ${item.name}`;
+      const queue = () => enqueue('stock.movement', label, payload, undefined, clientRef);
+      if (!useNetwork.getState().online) return queue();
+      try {
+        return (await api.post(`/merchants/${item.merchant_id}/stock-items/${item.id}/movements`, {
+          type: payload.type,
+          quantity_delta,
+          reason: payload.reason,
+          client_ref: clientRef,
+        })).data;
+      } catch (err) {
+        if (isNetworkError(err)) return queue();
+        throw err;
+      }
     },
     onSuccess: () => {
       setShowMovement(false);

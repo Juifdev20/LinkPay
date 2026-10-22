@@ -129,8 +129,27 @@ function createWindow() {
     }
   });
 
+  // The app is loaded from the web deployment; once opened it keeps working offline (its service worker). Only the
+  // very first launch on a PC without network can fail: show a clear page that retries by itself instead of a blank
+  // error.
+  mainWindow.webContents.on('did-fail-load', (_event, code, _desc, url, isMainFrame) => {
+    if (!isMainFrame || code === -3 /* aborted by a new navigation */ || !isTrusted(url)) return;
+    mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(OFFLINE_PAGE)}`);
+    setTimeout(() => { if (mainWindow) mainWindow.loadURL(APP_URL); }, 15_000);
+  });
+
   mainWindow.loadURL(APP_URL);
 }
+
+const OFFLINE_PAGE = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>ScanLinkPay</title>
+<style>body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;font-family:Segoe UI,system-ui,sans-serif;
+background:linear-gradient(165deg,#0a1270,#0f24c9 55%,#1230f8);color:#fff;text-align:center}
+.card{max-width:420px;padding:32px}h1{font-size:22px;margin:16px 0 8px}p{opacity:.85;line-height:1.5}
+.dot{width:12px;height:12px;border-radius:50%;background:#15b8fe;display:inline-block;animation:p 1.2s infinite}
+@keyframes p{50%{opacity:.25}}</style></head><body><div class="card"><div class="dot"></div>
+<h1>Pas de connexion Internet</h1>
+<p>ScanLinkPay doit être ouvert une première fois avec Internet sur cet ordinateur. Ensuite, la caisse fonctionne même sans réseau.</p>
+<p>Nouvel essai automatique dans quelques secondes…</p></div></body></html>`;
 
 // ------------------------------------------------------------------
 // Native bridge — every call checks it comes from our own page.

@@ -16,11 +16,11 @@ interface StatTileProps {
 /** Compact dashboard tile — everything stays inside the card (long amounts wrap instead of overflowing). */
 export function StatTile({ icon: Icon, label, value, money, subtitle, className }: StatTileProps) {
   return (
-    <Card className={cn('min-w-0 overflow-hidden p-3.5 text-left', className)}>
-      <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center mb-2.5">
+    <Card className={cn('min-w-0 overflow-hidden p-4 text-left shadow-soft', className)}>
+      <div className="w-9 h-9 rounded-xl bg-primary/10 dark:bg-primary/20 flex items-center justify-center mb-3">
         <Icon className="w-[18px] h-[18px] text-primary" />
       </div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground truncate">{label}</p>
+      <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground truncate">{label}</p>
       {money ? (
         <DualCurrencyStat amounts={money} compact className="mt-1" />
       ) : value !== undefined ? (

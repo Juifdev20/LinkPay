@@ -5,14 +5,11 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** "2 950,00 CDF" / "5,12 $US" — the currency written as in the app's design (CDF, $US), not the locale's "FC". */
 export function formatCurrency(cents: number, currency: string = 'CDF'): string {
-  const value = cents / 100;
-  const formatter = new Intl.NumberFormat('fr-CD', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-  });
-  return formatter.format(value);
+  const value = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100);
+  const symbol = currency === 'USD' ? '$US' : currency;
+  return `${value}\u00a0${symbol}`;
 }
 
 export function formatDate(date: string | Date): string {
@@ -46,4 +43,9 @@ export function safeRedirect(target: string | null): string {
     return '/dashboard';
   }
   return target;
+}
+
+/** « 0 commerçant », « 1 commerçant », « 3 commerçants » — never « commerçant(s) ». */
+export function countLabel(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n > 1 ? many : one}`;
 }

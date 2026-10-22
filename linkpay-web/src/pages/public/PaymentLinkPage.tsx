@@ -3,16 +3,14 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent } from '@/components/ui/card';
-import { Logo } from '@/components/Logo';
-import { PaymentMethodPicker } from '@/components/payment/PaymentMethodPicker';
+import { PublicShell, PublicCard } from '@/components/public/PublicShell';
+import { ResultView } from '@/components/ResultView';
+import { AuthField } from '@/components/auth/AuthField';
 import { MobileMoneyFields } from '@/components/payment/MobileMoneyFields';
 import { MobileMoneyWaiting } from '@/components/payment/MobileMoneyWaiting';
 import { isNumberReady, toApiPhone } from '@/lib/mobile-money';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Loader2, CheckCircle, AlertCircle, Lock, User, Wallet as WalletIcon, Sparkles, ArrowLeft } from 'lucide-react';
+import { Loader2, Lock, User, Wallet as WalletIcon, ShieldCheck, Store, Link2 as LinkIcon } from 'lucide-react';
 import { followCheckout } from '@/lib/safe-url';
 
 export default function PaymentLinkPage() {
@@ -35,22 +33,9 @@ export default function PaymentLinkPage() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  // This page is also reachable by a guest with no LinkPay account (a
-  // shared link/scanned QR from outside the app) — for them there's
-  // nowhere in-app to "go back" to, so this only renders for an
-  // already-authenticated user (e.g. arrived via the in-app QR scanner),
-  // who'd otherwise be stuck here with no way back except the OS/browser
-  // back gesture.
-  const BackToDashboard = () =>
-    isAuthenticated ? (
-      <button
-        onClick={() => navigate('/dashboard')}
-        className="fixed top-4 left-4 z-10 w-10 h-10 rounded-full bg-card border border-border flex items-center justify-center text-foreground shadow-sm hover:bg-accent transition-colors"
-        aria-label="Retour au tableau de bord"
-      >
-        <ArrowLeft className="w-5 h-5" />
-      </button>
-    ) : null;
+  // A guest (shared link, QR scanned outside the app) has nowhere in-app to go back to: the back arrow only shows for
+  // a signed-in user (e.g. arrived via the in-app QR scanner).
+  const back = isAuthenticated ? () => navigate('/dashboard') : undefined;
 
   const handlePay = async () => {
     setPaying(true);
@@ -83,185 +68,175 @@ export default function PaymentLinkPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
+      <PublicShell onBack={back}>
+        <PublicCard className="flex flex-col items-center py-14">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="mt-3 text-sm text-muted-foreground">Chargement du paiement…</p>
+        </PublicCard>
+      </PublicShell>
     );
   }
 
   if (error || !request) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 bg-background">
-        <BackToDashboard />
-        <div className="w-full max-w-md">
-          <div className="flex justify-center mb-8">
-            <Logo size="lg" />
-          </div>
-          <Card className="text-center">
-            <CardContent className="pt-6">
-              <div className="w-16 h-16 rounded-2xl bg-destructive/10 flex items-center justify-center mx-auto mb-4">
-                <AlertCircle className="w-8 h-8 text-destructive" />
-              </div>
-              <p className="text-muted-foreground">{error || 'Lien introuvable'}</p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <PublicShell onBack={back}>
+        <PublicCard className="py-8">
+          <ResultView tone="error" icon={LinkIcon} title="Lien introuvable" message="Ce lien de paiement n'existe pas ou n'est plus valable. Demandez un nouveau lien au commerçant." />
+        </PublicCard>
+      </PublicShell>
     );
   }
 
+  const merchantName = request.merchant?.name || 'Commerçant';
+  const total = formatCurrency(request.amount_cents, request.currency);
+
   if (request.status === 'PAID') {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 bg-background">
-        <BackToDashboard />
-        <div className="w-full max-w-md">
-          <div className="flex justify-center mb-8">
-            <Logo size="lg" />
-          </div>
-          <Card className="text-center">
-            <CardContent className="pt-6">
-              <div className="w-16 h-16 rounded-2xl bg-success/10 flex items-center justify-center mx-auto mb-4">
-                <CheckCircle className="w-8 h-8 text-success" />
-              </div>
-              <h2 className="text-xl font-bold text-foreground mb-2">Paiement effectué</h2>
-              <p className="text-muted-foreground">Ce lien a déjà été utilisé.</p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <PublicShell onBack={back}>
+        <PublicCard className="py-8">
+          <ResultView
+            tone="success"
+            title="Déjà payé"
+            amount={total}
+            message={`Ce paiement à ${merchantName} a déjà été effectué. Il n'y a rien d'autre à faire.`}
+            rows={[{ label: 'Référence', value: request.reference, copy: request.reference }]}
+          />
+        </PublicCard>
+      </PublicShell>
     );
   }
 
   if (request.status === 'CANCELLED' || request.status === 'EXPIRED') {
+    const expired = request.status === 'EXPIRED';
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 bg-background">
-        <BackToDashboard />
-        <div className="w-full max-w-md">
-          <div className="flex justify-center mb-8">
-            <Logo size="lg" />
-          </div>
-          <Card className="text-center">
-            <CardContent className="pt-6">
-              <div className="w-16 h-16 rounded-2xl bg-warning/10 flex items-center justify-center mx-auto mb-4">
-                <AlertCircle className="w-8 h-8 text-warning" />
-              </div>
-              <h2 className="text-xl font-bold text-foreground mb-2">Lien {request.status === 'EXPIRED' ? 'expiré' : 'annulé'}</h2>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <PublicShell onBack={back}>
+        <PublicCard className="py-8">
+          <ResultView
+            tone="waiting"
+            title={expired ? 'Lien expiré' : 'Lien annulé'}
+            message={`${expired ? 'Ce lien n\'est plus valable.' : `${merchantName} a annulé cette demande.`} Demandez un nouveau lien au commerçant si vous souhaitez toujours payer.`}
+            rows={[{ label: 'Référence', value: request.reference, copy: request.reference }]}
+          />
+        </PublicCard>
+      </PublicShell>
     );
   }
 
-  // Waiting for the customer to confirm on their own phone — this mirrors a
-  // real mobile money STK/USSD push, where ScanLinkPay never sees the PIN and the
-  // confirmation happens entirely on the customer's device.
+  // Waiting for the customer to confirm on their own phone: ScanLinkPay never sees their Mobile Money secret code.
   if (paying) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 bg-background">
-        <div className="w-full max-w-md">
-          <div className="flex justify-center mb-8">
-            <Logo size="lg" />
-          </div>
-          <Card>
-            <MobileMoneyWaiting operator={operator} phone={customerPhone} amountCents={request.amount_cents} currency={request.currency} />
-          </Card>
-        </div>
-      </div>
+      <PublicShell>
+        <PublicCard className="p-0 sm:p-0">
+          <MobileMoneyWaiting operator={operator} phone={customerPhone} amountCents={request.amount_cents} currency={request.currency} />
+        </PublicCard>
+      </PublicShell>
     );
   }
 
+  const walletPay = `/dashboard/wallet/pay?ref=${encodeURIComponent(request.reference)}`;
+
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8 bg-background">
-      <BackToDashboard />
-      <div className="w-full max-w-md">
-        <div className="flex justify-center mb-8">
-          <Logo size="lg" />
+    <PublicShell onBack={back}>
+      {/* What is being paid, like a receipt */}
+      <PublicCard className="p-0 sm:p-0">
+        <div className="p-5 sm:p-6">
+          <div className="flex items-center gap-3">
+            <MerchantAvatar name={merchantName} logo={request.merchant?.logo_url} />
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-muted-foreground">Paiement à</p>
+              <p className="truncate text-base font-bold text-foreground">{merchantName}</p>
+            </div>
+          </div>
+          <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Montant à payer</p>
+          <p className="mt-1 text-[2.5rem] font-extrabold leading-none tracking-tight tabular-nums text-foreground">{total}</p>
+          {request.description && <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{request.description}</p>}
         </div>
-        <Card>
-          <CardContent className="pt-6">
-            <h2 className="text-2xl font-bold text-foreground mb-1">{formatCurrency(request.amount_cents, request.currency)}</h2>
-            <p className="text-sm text-muted-foreground mb-6">
-              {request.description || 'Paiement à ' + (request.merchant?.name || 'commerçant')}
-            </p>
-            <div className="rounded-xl bg-secondary p-3 text-sm mb-6">
-              <div className="flex justify-between mb-1">
-                <span className="text-muted-foreground">Référence</span>
-                <span className="font-mono text-foreground">{request.reference}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Expire le</span>
-                <span className="text-foreground">{request.expires_at ? formatDate(request.expires_at) : '—'}</span>
+        <div className="relative border-t border-dashed border-border px-5 py-3.5 text-sm sm:px-6">
+          <span className="absolute -left-3 -top-3 h-6 w-6 rounded-full border border-border bg-background" aria-hidden />
+          <span className="absolute -right-3 -top-3 h-6 w-6 rounded-full border border-border bg-background" aria-hidden />
+          <div className="flex items-center justify-between gap-3 py-1">
+            <span className="text-muted-foreground">Référence</span>
+            <span className="truncate font-mono text-xs font-semibold text-foreground">{request.reference}</span>
+          </div>
+          {request.expires_at && (
+            <div className="flex items-center justify-between gap-3 py-1">
+              <span className="text-muted-foreground">Valable jusqu'au</span>
+              <span className="font-medium text-foreground">{formatDate(request.expires_at)}</span>
+            </div>
+          )}
+        </div>
+      </PublicCard>
+
+      {/* How to pay */}
+      <PublicCard>
+        {isAuthenticated ? (
+          <Button asChild className="h-[52px] w-full rounded-xl text-base font-semibold">
+            <Link to={walletPay}>
+              <WalletIcon className="mr-2 h-5 w-5" /> Payer avec mon solde
+            </Link>
+          </Button>
+        ) : (
+          <div className="rounded-2xl bg-primary/[0.06] p-4 ring-1 ring-primary/15">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-gradient text-white">
+                <WalletIcon className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Vous avez un compte ScanLinkPay ?</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">Payez en deux touches avec votre solde, ou créez un compte en quelques secondes.</p>
               </div>
             </div>
-
-            {isAuthenticated ? (
-              <Button
-                asChild
-                variant="outline"
-                className="w-full mb-6 border-primary/30 text-primary hover:bg-primary/5"
-                size="lg"
-              >
-                <Link to={`/dashboard/wallet/pay?ref=${encodeURIComponent(request.reference)}`}>
-                  <WalletIcon className="mr-2 w-4 h-4" />
-                  Payer avec mon solde ScanLinkPay
-                </Link>
+            <div className="mt-3.5 grid grid-cols-2 gap-2">
+              <Button asChild variant="outline" className="h-11 rounded-xl">
+                <Link to={`/register?redirect=${encodeURIComponent(walletPay)}`}>Créer un compte</Link>
               </Button>
-            ) : (
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 mb-6">
-                <div className="flex items-center gap-2 mb-1">
-                  <Sparkles className="w-4 h-4 text-primary flex-shrink-0" />
-                  <p className="text-sm font-semibold text-foreground">Payer avec votre solde ScanLinkPay ?</p>
-                </div>
-                <p className="text-xs text-muted-foreground mb-3">
-                  Créez votre compte en quelques secondes et profitez de toutes les fonctionnalités ScanLinkPay.
-                </p>
-                <div className="flex gap-2">
-                  <Button asChild size="sm" className="flex-1">
-                    <Link to={`/register?redirect=${encodeURIComponent(`/dashboard/wallet/pay?ref=${request.reference}`)}`}>
-                      S'inscrire
-                    </Link>
-                  </Button>
-                  <Button asChild size="sm" variant="outline" className="flex-1">
-                    <Link to={`/login?redirect=${encodeURIComponent(`/dashboard/wallet/pay?ref=${request.reference}`)}`}>
-                      J'ai déjà un compte
-                    </Link>
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            <div className="relative mb-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-border" />
-              </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="bg-card px-2 text-muted-foreground">ou payer par Mobile Money (sans compte)</span>
-              </div>
-            </div>
-
-            <div className="space-y-5">
-              <PaymentMethodPicker value="mobile_money" onChange={() => {}} methods={['mobile_money', 'card']} disabled={['card']} />
-              <div className="space-y-2">
-                <Label htmlFor="name" className="font-semibold">Votre nom</Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input id="name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Kambale Doli Delphin" className="pl-10 h-12 rounded-xl" />
-                </div>
-              </div>
-              <MobileMoneyFields operator={operator} onOperatorChange={setOperator} phone={customerPhone} onPhoneChange={setCustomerPhone} />
-              <Button className="w-full" size="lg" onClick={handlePay} disabled={paying || !isNumberReady(operator, customerPhone)}>
-                <Lock className="mr-2 w-4 h-4" />
-                Payer {formatCurrency(request.amount_cents, request.currency)}
+              <Button asChild className="h-11 rounded-xl">
+                <Link to={`/login?redirect=${encodeURIComponent(walletPay)}`}>Se connecter</Link>
               </Button>
-              <p className="text-xs text-muted-foreground text-center flex items-center justify-center gap-1">
-                <Lock className="w-3 h-3" />
-                Paiement sécurisé — votre code PIN reste sur votre téléphone
-              </p>
             </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+          </div>
+        )}
+
+        <div className="my-5 flex items-center gap-3 text-xs font-medium text-muted-foreground">
+          <span className="h-px flex-1 bg-border" /> ou par Mobile Money, sans compte <span className="h-px flex-1 bg-border" />
+        </div>
+
+        <div className="space-y-5">
+          <AuthField
+            id="name"
+            label={<>Votre nom <span className="font-normal text-muted-foreground">(facultatif)</span></>}
+            icon={User}
+            autoComplete="name"
+            placeholder="Ex. Kambale Doli"
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            hint="Le commerçant le verra sur son reçu."
+            className="mb-0"
+          />
+          <MobileMoneyFields operator={operator} onOperatorChange={setOperator} phone={customerPhone} onPhoneChange={setCustomerPhone} />
+          <Button className="h-[52px] w-full rounded-xl text-base font-semibold" onClick={handlePay} disabled={paying || !isNumberReady(operator, customerPhone)}>
+            <Lock className="mr-2 h-4 w-4" /> Payer {total}
+          </Button>
+          <p className="flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
+            <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-success" />
+            Votre code secret Mobile Money reste sur votre téléphone.
+          </p>
+        </div>
+      </PublicCard>
+    </PublicShell>
+  );
+}
+
+/** The shop's logo, or its initials on the brand gradient. */
+function MerchantAvatar({ name, logo }: { name: string; logo?: string | null }) {
+  const [broken, setBroken] = useState(false);
+  if (logo && !broken) {
+    return <img src={logo} alt="" onError={() => setBroken(true)} className="h-12 w-12 shrink-0 rounded-2xl border border-border object-cover" />;
+  }
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
+  return (
+    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-gradient text-base font-bold text-white shadow-brand">
+      {initials || <Store className="h-5 w-5" />}
+    </span>
   );
 }

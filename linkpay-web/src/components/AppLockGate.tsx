@@ -7,8 +7,10 @@ import { weakAppCodeReason } from '@/lib/code-strength';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PinKeypadScreen, BlueCardScreen, identityNote } from '@/components/PinKeypadScreen';
+import { PinKeypadScreen, PinDialog, identityNote } from '@/components/PinKeypadScreen';
 import { Loader2, Fingerprint } from 'lucide-react';
+import { checkOfflineCode, forgetOfflineCode, rememberOfflineCode } from '@/lib/offline-code';
+import { isNetworkError } from '@/lib/network';
 
 const errorMessage = (err: any, fallback: string) => err?.response?.data?.message || fallback;
 
@@ -119,6 +121,8 @@ function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => vo
   const [busy, setBusy] = useState(false);
   const [forgot, setForgot] = useState(false);
   const [password, setPassword] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
   const biometric = isAppLockEnabled();
 
   const submit = async (value: string) => {
@@ -126,12 +130,28 @@ function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => vo
     setError('');
     try {
       await api.post('/auth/app-code/verify', { code: value });
+      await rememberOfflineCode(user?.id, value);
       onUnlocked();
     } catch (err: any) {
       const data = err?.response?.data;
       if (data?.code === 'SESSION_TERMINATED') {
+        forgetOfflineCode(user?.id);
         await onLogout();
         window.location.href = '/login';
+        return;
+      }
+      // No network: check the code against the fingerprint left by the last online unlock (lib/offline-code.ts).
+      if (isNetworkError(err)) {
+        const offline = await checkOfflineCode(user?.id, value);
+        if (offline.result === 'ok') { onUnlocked(); return; }
+        setError(
+          offline.result === 'wrong'
+            ? `Code incorrect. Hors ligne, encore ${offline.left} essai${offline.left > 1 ? 's' : ''}.`
+            : offline.result === 'locked'
+            ? 'Trop d\'essais sans réseau : reconnectez-vous à Internet pour déverrouiller.'
+            : 'Pas de réseau. Ce code n\'a encore jamais été vérifié sur cet appareil : reconnectez-vous une première fois.',
+        );
+        setCode('');
         return;
       }
       setError(errorMessage(err, 'Vérification impossible. Réessayez.'));
@@ -153,38 +173,27 @@ function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => vo
 
   const reset = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBusy(true);
-    setError('');
+    setResetBusy(true);
+    setResetError('');
     try {
       await api.post('/auth/app-code/reset', { password });
+      forgetOfflineCode(user?.id);
       await onForgot(); // profile now says has_app_code: false → the gate shows the "choose a code" screen
     } catch (err: any) {
-      setError(errorMessage(err, 'Réinitialisation impossible.'));
+      setResetError(errorMessage(err, 'Réinitialisation impossible.'));
     } finally {
-      setBusy(false);
+      setResetBusy(false);
     }
   };
 
-  if (forgot) {
-    return (
-      <BlueCardScreen>
-        <p className="text-[19px]">Code oublié ?</p>
-        <p className="text-[13px] leading-snug text-slate-500">Confirmez avec le mot de passe de votre compte, puis choisissez un nouveau code.</p>
-        <form onSubmit={reset} className="space-y-3">
-          {error && <p className="text-sm text-red-600 font-medium" role="alert">{error}</p>}
-          <Input type="password" autoFocus placeholder="Mot de passe du compte" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
-          <Button type="submit" className="w-full" disabled={busy || !password}>
-            {busy && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}Continuer
-          </Button>
-          <button type="button" className="text-xs text-slate-500 underline w-full" onClick={() => { setForgot(false); setError(''); }}>Retour</button>
-        </form>
-      </BlueCardScreen>
-    );
-  }
+
+  const closeForgot = () => { setForgot(false); setPassword(''); setResetError(''); };
 
   return (
+    <>
     <PinKeypadScreen
-      title="Entrer votre code PIN"
+      title="Entrez votre code PIN"
+      paused={forgot}
       value={code}
       length={CODE_LENGTH}
       busy={busy}
@@ -196,17 +205,33 @@ function UnlockScreen({ onUnlocked, onForgot, onLogout }: { onUnlocked: () => vo
       }}
       onEnter={() => void submit(code)}
       extra={biometric ? (
-        <button type="button" className="flex items-center gap-2 text-sm text-slate-600 underline" onClick={tryBiometric} disabled={busy}>
+        <button type="button" className="flex items-center gap-2 text-sm text-muted-foreground underline" onClick={tryBiometric} disabled={busy}>
           <Fingerprint className="w-4 h-4" />Utiliser l'empreinte / le visage
         </button>
       ) : undefined}
       footer={(
         <>
-          <button type="button" className="text-[19px]" onClick={() => { setForgot(true); setError(''); }}>Code PIN oublié?</button>
-          <button type="button" className="text-xs text-slate-500 underline" onClick={async () => { await onLogout(); window.location.href = '/login'; }}>Se déconnecter</button>
+          <button type="button" className="font-semibold hover:text-primary" onClick={() => setForgot(true)}>Code PIN oublié ?</button>
+          <button type="button" className="text-xs font-medium text-primary underline underline-offset-2 dark:text-sky-300" onClick={async () => { await onLogout(); window.location.href = '/login'; }}>Se déconnecter</button>
         </>
       )}
     />
+    {forgot && (
+      <PinDialog title="Code oublié ?" onClose={closeForgot}>
+        <p className="text-sm leading-snug text-muted-foreground">Confirmez avec le mot de passe de votre compte, puis choisissez un nouveau code.</p>
+        <form onSubmit={reset} className="mt-5 text-left">
+          <Input type="password" autoFocus placeholder="Mot de passe du compte" value={password} onChange={(e) => { setPassword(e.target.value); setResetError(''); }} autoComplete="current-password" className="text-base" />
+          <p className="mt-1.5 min-h-[1.25rem] text-[13px] font-medium leading-5 text-destructive" role="alert">{resetError}</p>
+          <div className="mt-3 grid grid-cols-2 gap-2.5">
+            <Button type="button" variant="outline" className="h-12 rounded-xl" onClick={closeForgot}>Annuler</Button>
+            <Button type="submit" className="h-12 rounded-xl" disabled={resetBusy || !password}>
+              {resetBusy && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}Continuer
+            </Button>
+          </div>
+        </form>
+      </PinDialog>
+    )}
+    </>
   );
 }
 
@@ -223,6 +248,7 @@ function CreateCode({ onDone }: { onDone: () => Promise<void> }) {
     setError('');
     try {
       await api.post('/auth/app-code', { code: chosen, confirm_code: again });
+      await rememberOfflineCode(useAuthStore.getState().user?.id, chosen);
       await onDone();
     } catch (err: any) {
       setError(errorMessage(err, 'Impossible d’enregistrer le code.'));
@@ -279,7 +305,7 @@ function CreateCode({ onDone }: { onDone: () => Promise<void> }) {
       error={error}
       onChange={confirmed}
       onEnter={() => confirmed(confirm)}
-      footer={<button type="button" className="text-[17px]" onClick={() => { setStep('choose'); setCode(''); setConfirm(''); setError(''); }}>Changer de code</button>}
+      footer={<button type="button" className="font-semibold hover:text-primary" onClick={() => { setStep('choose'); setCode(''); setConfirm(''); setError(''); }}>Changer de code</button>}
     />
   );
 }

@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { CurrencySelector } from '@/components/CurrencySelector';
-import { Loader2, ChevronLeft, Smartphone, ShoppingCart, ShoppingBasket } from 'lucide-react';
+import { Loader2, ChevronLeft, Smartphone, ShoppingCart } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type Step = 'legal' | 'contact' | 'activity' | 'branding';
@@ -22,9 +22,10 @@ const STEPS: { id: Step; label: string }[] = [
 
 const LEGAL_FORMS = ['Ets', 'SARL', 'SUARL', 'SA', 'Association/ONG', 'Autre'];
 export const SECTORS = [
-  { value: 'electronique', label: "Shop d'appareils électroniques", icon: Smartphone },
-  { value: 'supermarche', label: 'Supermarché', icon: ShoppingCart },
-  { value: 'alimentation', label: 'Alimentation', icon: ShoppingBasket },
+  { value: 'supermarche', label: 'Supermarché & alimentation', hint: 'Vente à la caisse, ticket thermique', icon: ShoppingCart },
+  { value: 'electronique', label: 'Électronique', hint: 'Téléphones, ordinateurs, accessoires', icon: Smartphone },
+  // Folded into 'supermarche' (migration 076): kept only so an organization not migrated yet still shows its sector.
+  { value: 'alimentation', label: 'Supermarché & alimentation', hint: '', icon: ShoppingCart, legacy: true },
 ];
 
 interface OnboardingFormData {
@@ -63,7 +64,7 @@ export default function OnboardingWizard({ orgId, orgName, org }: { orgId: strin
     avenue: org?.contact?.address?.avenue || '',
     number: org?.contact?.address?.number || '',
 
-    sector: org?.sector || '',
+    sector: org?.sector === 'alimentation' ? 'supermarche' : org?.sector || '',
     description: org?.description || '',
     currency: org?.currency || 'CDF',
     secondary_currencies: org?.secondary_currencies || [],
@@ -199,8 +200,8 @@ export default function OnboardingWizard({ orgId, orgName, org }: { orgId: strin
             <>
               <div className="space-y-2">
                 <Label>Secteur d'activité</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {SECTORS.map((s) => (
+                <div className="grid grid-cols-2 gap-2">
+                  {SECTORS.filter((s) => !s.legacy).map((s) => (
                     <button
                       key={s.value}
                       type="button"
@@ -214,6 +215,7 @@ export default function OnboardingWizard({ orgId, orgName, org }: { orgId: strin
                     >
                       <s.icon className="w-6 h-6" />
                       {s.label}
+                      <span className="text-[11px] font-normal text-muted-foreground">{s.hint}</span>
                     </button>
                   ))}
                 </div>

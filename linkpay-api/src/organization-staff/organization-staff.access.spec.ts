@@ -1,5 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { OrganizationStaffService, assertRoleFitsSector } from './organization-staff.service';
+import { OrganizationStaffService, normalizeStaffRole } from './organization-staff.service';
 import { createFakeSupabase, RecordedQuery } from '../test-utils/fake-supabase';
 
 const STAFF = { id: 'st1', user_id: 'emp-user', organization_id: 'org1', prenom: 'Jean', nom: 'Mukendi', email: 'j@x.com', deactivated_at: null };
@@ -110,15 +110,10 @@ describe('moving an employee to another station', () => {
   });
 });
 
-describe('roles that fit the sector', () => {
-  it('a supermarket has no sales staff (the cashier sells and takes the money)', () => {
-    expect(() => assertRoleFitsSector('supermarche', 'vendeur')).toThrow(/pas de vendeurs/);
-    expect(() => assertRoleFitsSector('supermarche', 'caissier')).not.toThrow();
-  });
-
-  it('shops keep their sales staff', () => {
-    expect(() => assertRoleFitsSector('electronique', 'vendeur')).not.toThrow();
-    expect(() => assertRoleFitsSector('alimentation', 'vendeur')).not.toThrow();
-    expect(() => assertRoleFitsSector(undefined, 'vendeur')).not.toThrow();
+describe('one person sells and takes the money', () => {
+  it("'vendeur' (older app) becomes the single « Vendeur / caissier » role, in every sector", () => {
+    expect(normalizeStaffRole('vendeur')).toBe('caissier');
+    expect(normalizeStaffRole('caissier')).toBe('caissier');
+    expect(normalizeStaffRole('gerant')).toBe('gerant');
   });
 });

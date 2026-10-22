@@ -1,35 +1,14 @@
-import { LucideIcon } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import type { LucideIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
 
-interface EmptyStateProps {
-  icon?: LucideIcon;
-  title: string;
-  description?: string;
-  action?: {
-    label: string;
-    onClick: () => void;
-  };
-  className?: string;
-}
-
-export function EmptyState({ icon: Icon, title, description, action, className }: EmptyStateProps) {
+/** The one "nothing here yet" block of the app: an icon, what is missing, what to do about it. */
+export function EmptyState({ icon: Icon, title, text, action }: { icon: LucideIcon; title: string; text?: string; action?: ReactNode }) {
   return (
-    <div className={cn('flex flex-col items-center justify-center py-12 px-4 text-center', className)}>
-      {Icon && (
-        <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
-          <Icon className="w-8 h-8 text-muted-foreground" />
-        </div>
-      )}
-      <h3 className="text-lg font-semibold text-foreground mb-2">{title}</h3>
-      {description && <p className="text-sm text-muted-foreground mb-6 max-w-sm">{description}</p>}
-      {action && (
-        <button
-          onClick={action.onClick}
-          className="px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors h-11"
-        >
-          {action.label}
-        </button>
-      )}
+    <div className="flex flex-col items-center px-4 py-10 text-center">
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Icon className="h-7 w-7" /></span>
+      <p className="mt-3 font-semibold text-foreground">{title}</p>
+      {text && <p className="mt-1 max-w-sm text-sm text-muted-foreground">{text}</p>}
+      {action && <div className="mt-4">{action}</div>}
     </div>
   );
 }

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 // ── palette pour le donut chart (cohérente avec la charte) ───────────────────
-const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#64748b'];
+const CHART_COLORS = ['#1338fe', '#10b981', '#f59e0b', '#15b8fe', '#0a1270', '#ec4899', '#64748b'];
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -90,7 +90,7 @@ const ACTIVITY_CONFIG: Record<string, { label: string; Icon: any; bg: string; co
   sale:       { label: 'Vente enregistrée',     Icon: ShoppingCart,      bg: 'bg-primary/10',      color: 'text-primary'      },
   adjustment: { label: 'Ajustement de stock',   Icon: SlidersHorizontal, bg: 'bg-muted',           color: 'text-muted-foreground' },
   new_item:   { label: 'Nouvel article ajouté', Icon: PackagePlus,       bg: 'bg-emerald-500/10',  color: 'text-emerald-600'  },
-  inventory:  { label: 'Inventaire en cours',   Icon: ClipboardList,     bg: 'bg-purple-500/10',   color: 'text-purple-600'   },
+  inventory:  { label: 'Inventaire en cours',   Icon: ClipboardList,     bg: 'bg-sky-500/10',      color: 'text-sky-600'      },
 };
 
 // ── donut chart CSS conic-gradient ────────────────────────────────────────────
@@ -202,7 +202,7 @@ function MovementsBarChart({ daily }: { daily: { date: string; receptions: numbe
         return (
           <g key={day.date}>
             {/* Réceptions — primary blue */}
-            <rect x={barX} y={y(day.receptions)} width={barW} height={barH(day.receptions)} rx={2} fill="#6366f1" />
+            <rect x={barX} y={y(day.receptions)} width={barW} height={barH(day.receptions)} rx={2} fill="#1338fe" />
             {/* Sorties — emerald */}
             <rect x={barX + barW + gap} y={y(day.sorties)} width={barW} height={barH(day.sorties)} rx={2} fill="#10b981" />
             {/* Date label */}
@@ -524,7 +524,7 @@ export default function MagasinierDashboard() {
           </div>
           {/* Légende */}
           <div className="flex items-center gap-3 text-[10px] text-muted-foreground mb-2">
-            <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#6366f1]" />Réceptions</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#1338fe]" />Réceptions</span>
             <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#10b981]" />Sorties</span>
           </div>
           {daily.length > 0 ? (

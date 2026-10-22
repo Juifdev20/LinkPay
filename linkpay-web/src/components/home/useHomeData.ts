@@ -1,3 +1,4 @@
+import { isSupermarket } from '@/lib/sectors';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 
@@ -47,7 +48,7 @@ function weekRange() {
  * cache, so on launch the last figures show at once and then refresh.
  */
 export function useHomeData(org: any, merchants: any[] | undefined, currency: Currency): HomeData {
-  const usesPos = org?.sector === 'supermarche';
+  const usesPos = isSupermarket(org?.sector);
   const { from, to, keys } = weekRange();
   // Recomputed every render; the query keys use the day, not the instant,
   // so the cache stays stable within a day.

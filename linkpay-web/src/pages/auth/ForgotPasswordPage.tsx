@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { PhoneInput, isCompletePhone } from '@/components/PhoneInput';
+import { AuthShell } from '@/components/auth/AuthShell';
+import { AuthField } from '@/components/auth/AuthField';
+import { ResultView } from '@/components/ResultView';
 import { RecoveryCodePanel } from '@/components/auth/RecoveryCodePanel';
 import { toApiPhone, displayPhone } from '@/lib/mobile-money';
 import { cn } from '@/lib/utils';
-import { Loader2, KeyRound, Mail, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { Loader2, KeyRound, Mail, Lock, ArrowLeft, ArrowRight, MailCheck } from 'lucide-react';
 
 type Method = 'code' | 'email';
 
@@ -61,86 +62,80 @@ export default function ForgotPasswordPage() {
     }
   };
 
+  const shell = { headline: 'Bienvenue sur', switchPrompt: 'Vous vous en souvenez ?', switchLabel: 'Se connecter', switchTo: '/login' };
+
+  if (newCode) {
+    return (
+      <AuthShell {...shell}>
+        <p className="mb-5 rounded-xl bg-success/10 px-4 py-3 text-center text-sm font-semibold text-success">Mot de passe changé avec succès</p>
+        <RecoveryCodePanel code={newCode} phone={displayPhone(phone)} doneLabel="Se connecter" onDone={() => navigate('/login')} />
+        <p className="mt-4 text-center text-xs text-muted-foreground">Ce nouveau code remplace l'ancien, qui ne fonctionne plus.</p>
+      </AuthShell>
+    );
+  }
+
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl md:p-8">
-        {newCode ? (
-          <div className="space-y-4">
-            <p className="flex items-center justify-center gap-2 rounded-xl bg-success/10 px-4 py-3 text-sm font-medium text-success">
-              <CheckCircle2 className="h-4 w-4" /> Mot de passe changé
-            </p>
-            <RecoveryCodePanel
-              code={newCode}
-              phone={displayPhone(phone)}
-              doneLabel="Se connecter"
-              onDone={() => navigate('/login')}
-            />
-            <p className="text-center text-xs text-muted-foreground">Ce nouveau code remplace l'ancien, qui ne fonctionne plus.</p>
-          </div>
-        ) : (
-          <>
-            <Link to="/login" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-              <ArrowLeft className="h-4 w-4" /> Retour à la connexion
-            </Link>
-            <h1 className="text-2xl font-bold text-foreground">Mot de passe oublié</h1>
-            <p className="mt-1 mb-5 text-sm text-muted-foreground">Choisissez comment récupérer votre compte.</p>
-
-            <div className="mb-5 grid grid-cols-2 gap-2">
-              {([['code', 'Code de secours', KeyRound], ['email', 'Par email', Mail]] as const).map(([key, label, Icon]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => { setMethod(key); setError(''); }}
-                  className={cn('flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-3 text-sm font-semibold',
-                    method === key ? 'border-primary bg-primary/5 text-primary' : 'border-input text-muted-foreground hover:bg-accent')}
-                >
-                  <Icon className="h-4 w-4" /> {label}
-                </button>
-              ))}
-            </div>
-
-            {error && <p className="mb-4 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">{error}</p>}
-
-            {method === 'code' ? (
-              <form onSubmit={recover} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="phone" className="font-semibold">Numéro de téléphone</Label>
-                  <PhoneInput id="phone" value={phone} onChange={setPhone} autoFocus />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="code" className="font-semibold">Code de secours</Label>
-                  <Input id="code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="XXXX-XXXX-XXXX" autoCapitalize="characters" autoComplete="off" className="font-mono tracking-widest" required />
-                  <p className="text-xs text-muted-foreground">Le code donné à votre inscription (ou le dernier que vous avez reçu).</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="font-semibold">Nouveau mot de passe</Label>
-                  <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirm" className="font-semibold">Confirmer le mot de passe</Label>
-                  <Input id="confirm" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} minLength={8} required />
-                </div>
-                <Button type="submit" className="w-full py-6 text-base font-semibold" disabled={busy}>
-                  {busy && <Loader2 className="mr-2 h-5 w-5 animate-spin" />} Changer le mot de passe
-                </Button>
-                <p className="text-center text-xs text-muted-foreground">Code de secours perdu ? Utilisez l'email si vous en avez donné un, ou contactez le support ScanLinkPay.</p>
-              </form>
-            ) : emailSent ? (
-              <p className="rounded-xl bg-success/10 px-4 py-4 text-sm text-success">{emailSent} Ouvrez l'email et suivez le lien.</p>
-            ) : (
-              <form onSubmit={sendEmail} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="font-semibold">Email du compte</Label>
-                  <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="vous@gmail.com" required autoFocus />
-                </div>
-                <Button type="submit" className="w-full py-6 text-base font-semibold" disabled={busy}>
-                  {busy && <Loader2 className="mr-2 h-5 w-5 animate-spin" />} Recevoir le lien
-                </Button>
-              </form>
+    <AuthShell {...shell} title="Mot de passe oublié" subtitle="Choisissez comment récupérer votre compte ScanLinkPay.">
+      <div role="tablist" aria-label="Méthode" className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-muted p-1">
+        {([['code', 'Code de secours', KeyRound], ['email', 'Par email', Mail]] as const).map(([key, label, Icon]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={method === key}
+            onClick={() => { setMethod(key); setError(''); }}
+            className={cn(
+              'flex items-center justify-center gap-2 whitespace-nowrap rounded-xl px-2 py-2.5 text-sm font-semibold transition-all',
+              method === key ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground',
             )}
-          </>
-        )}
+          >
+            <Icon className="hidden h-4 w-4 shrink-0 min-[400px]:block" /> {label}
+          </button>
+        ))}
       </div>
-    </div>
+
+      {error && <p role="alert" className="mb-4 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">{error}</p>}
+
+      {method === 'code' ? (
+        <form onSubmit={recover}>
+          <AuthField id="phone" label="Numéro de téléphone">
+            <PhoneInput id="phone" value={phone} onChange={setPhone} className="h-12" />
+          </AuthField>
+          <AuthField
+            id="code"
+            label="Code de secours"
+            icon={KeyRound}
+            value={code}
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
+            placeholder="XXXX-XXXX-XXXX"
+            autoCapitalize="characters"
+            autoComplete="off"
+            spellCheck={false}
+            required
+            hint="Le code reçu à l'inscription (ou le dernier reçu)."
+          />
+          <AuthField id="password" label="Nouveau mot de passe" icon={Lock} password autoComplete="new-password" placeholder="8 caractères minimum" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
+          <AuthField id="confirm" label="Confirmer le mot de passe" icon={Lock} password autoComplete="new-password" placeholder="Retapez le mot de passe" value={confirm} onChange={(e) => setConfirm(e.target.value)} minLength={8} required />
+          <Button type="submit" className="mt-3 h-[52px] w-full rounded-xl text-base font-semibold" disabled={busy}>
+            {busy ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null} Changer le mot de passe
+          </Button>
+          <p className="mt-4 text-center text-xs leading-relaxed text-muted-foreground">Code de secours perdu ? Utilisez l'email si vous en avez donné un, ou contactez le support ScanLinkPay.</p>
+        </form>
+      ) : emailSent ? (
+        <ResultView tone="success" icon={MailCheck} title="Email envoyé" message={<>{emailSent} Ouvrez l'email et suivez le lien pour choisir un nouveau mot de passe.</>} />
+      ) : (
+        <form onSubmit={sendEmail}>
+          <AuthField id="email" label="Email du compte" icon={Mail} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="vous@gmail.com" required hint="Nous y enverrons un lien pour choisir un nouveau mot de passe." />
+          <Button type="submit" className="mt-3 h-[52px] w-full rounded-xl text-base font-semibold" disabled={busy}>
+            {busy ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null} Recevoir le lien
+            {!busy && <ArrowRight className="ml-2 h-5 w-5" />}
+          </Button>
+        </form>
+      )}
+
+      <Link to="/login" className="mt-5 flex items-center justify-center gap-1.5 text-sm font-semibold text-primary hover:underline">
+        <ArrowLeft className="h-4 w-4" /> Retour à la connexion
+      </Link>
+    </AuthShell>
   );
 }

@@ -67,9 +67,9 @@ describe('PaymentsService.reconcilePending', () => {
     }
   });
 
-  it('does nothing for the mock provider and for wallet payments', async () => {
+  it('does nothing for wallet payments or without a provider', async () => {
     const { service, fake, factory } = setup({}, {});
-    for (const p of ['mock', 'wallet', '']) expect(await service.reconcilePending(p)).toEqual({ checked: 0, settled: 0 });
+    for (const p of ['wallet', '']) expect(await service.reconcilePending(p)).toEqual({ checked: 0, settled: 0 });
     expect(fake.queries).toHaveLength(0);
     expect(factory.get).not.toHaveBeenCalled();
   });
@@ -86,8 +86,8 @@ describe('PendingPaymentsReconciliationService (every minute)', () => {
     expect(await svc.run()).toEqual({ checked: 2, settled: 1 });
     expect(payments.reconcilePending).toHaveBeenCalledWith('flexpaie');
   });
-  it('does nothing in mock mode, or when another instance holds the lock', async () => {
-    expect((await make('mock').svc.run()).checked).toBe(0);
+  it('does nothing without a configured provider, or when another instance holds the lock', async () => {
+    expect((await make('').svc.run()).checked).toBe(0);
     const { svc, payments } = make('flexpaie', { acquire: jest.fn(async () => false) });
     expect((await svc.run()).checked).toBe(0);
     expect(payments.reconcilePending).not.toHaveBeenCalled();
@@ -96,5 +96,30 @@ describe('PendingPaymentsReconciliationService (every minute)', () => {
     const { svc, payments } = make('flexpaie');
     payments.reconcilePending.mockRejectedValue(new Error('db down'));
     await expect(svc.run()).resolves.toEqual({ checked: 0, settled: 0 });
+  });
+});
+
+describe('Expense Pro paid by Mobile Money: one payment extends Pro once', () => {
+  function proSetup(claimWins: boolean) {
+    const fake = createFakeSupabase((q: RecordedQuery) => {
+      if (q.target === 'expense_pro_payments' && has(q, 'update') && has(q, 'in', 'status', ['PENDING', 'FAILED'])) return { data: claimWins ? { id: 'pp1' } : null };
+      if (q.target === 'expense_pro_payments') return { data: { id: 'pp1', user_id: 'u1', status: 'PENDING' } };
+      if (q.target === 'rpc:extend_expense_pro') return { data: '2026-12-01' };
+      return { data: null };
+    });
+    const service: any = new PaymentsService(fake.service, {} as any, {} as any, {} as any, {} as any, { create: jest.fn(async () => undefined) } as any, {} as any, { get: () => undefined } as any, {} as any, {} as any, { log: jest.fn() } as any, {} as any, {} as any, {} as any, { alert: jest.fn() } as any);
+    return { service, fake };
+  }
+
+  it('the confirmation that claims the payment extends Pro', async () => {
+    const { service, fake } = proSetup(true);
+    await service.tryHandleExpenseProWebhook('PRO-1', 'SUCCESS');
+    expect(fake.queries.filter((q) => q.target === 'rpc:extend_expense_pro')).toHaveLength(1);
+  });
+
+  it('a second confirmation arriving at the same time (webhook + status check) extends nothing', async () => {
+    const { service, fake } = proSetup(false);
+    await service.tryHandleExpenseProWebhook('PRO-1', 'SUCCESS');
+    expect(fake.queries.some((q) => q.target === 'rpc:extend_expense_pro')).toBe(false);
   });
 });

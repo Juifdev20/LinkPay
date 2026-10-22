@@ -159,7 +159,7 @@ export default function SetPinPage() {
   }
 
   return (
-    <FormSheet onClose={() => navigate(-1)} title="Code PIN">
+    <FormSheet fullPage onClose={() => navigate(-1)} title="Code PIN">
       {renderStep()}
     </FormSheet>
   );

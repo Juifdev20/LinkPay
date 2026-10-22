@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { isNetworkError, useOnline } from '@/lib/network';
+import { enqueue, newClientRef, useOutbox } from '@/lib/outbox';
 import { useAuthStore } from '@/lib/auth-store';
 import { STAFF_ROLES } from '@/lib/permissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -238,6 +240,8 @@ export function PosSessionPanel({ merchantId, session, onClosed }: { merchantId:
   const [closingCount, setClosingCount] = useState('');
   const [detailId, setDetailId] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
+  const online = useOnline();
+  const waitingSales = useOutbox((st) => st.ops.filter((o) => (o.kind === 'pos.offline-sale' && o.payload?.merchant_id === merchantId && o.payload?.currency === session?.currency) || (o.kind === 'cash.movement' && o.payload?.session_id === session?.id)).length);
 
   const { data: detail } = useQuery({
     queryKey: ['cash-session-detail', session?.id],
@@ -279,19 +283,34 @@ export function PosSessionPanel({ merchantId, session, onClosed }: { merchantId:
     }
   };
 
+  // Cash put in / taken out of the drawer works offline too: it waits on the device and is recorded once later.
   const addMovement = async () => {
+    const body = {
+      type: movement.type,
+      amount_cents: Math.round(parseFloat(movement.amount) * 100),
+      reason: movement.reason || undefined,
+      client_ref: newClientRef(),
+    };
+    const queue = () => {
+      enqueue(
+        'cash.movement',
+        `Caisse · ${body.type === 'cash_in' ? 'Entrée' : 'Sortie'} d'espèces ${formatCurrency(body.amount_cents, session.currency)}`,
+        { merchant_id: merchantId, session_id: session.id, body },
+        body.reason,
+        body.client_ref,
+      );
+      setMovement({ type: 'cash_out', amount: '', reason: '' });
+    };
+    if (!online) { queue(); return; }
     setBusy(true);
     setError('');
     try {
-      await api.post(`/merchants/${merchantId}/cash-register/sessions/${session.id}/movements`, {
-        type: movement.type,
-        amount_cents: Math.round(parseFloat(movement.amount) * 100),
-        reason: movement.reason || undefined,
-      });
+      await api.post(`/merchants/${merchantId}/cash-register/sessions/${session.id}/movements`, body);
       setMovement({ type: 'cash_out', amount: '', reason: '' });
       queryClient.invalidateQueries({ queryKey: ['cash-session-detail', session.id] });
     } catch (err: any) {
-      setError(posErrorMessage(err, 'Mouvement impossible'));
+      if (isNetworkError(err)) queue();
+      else setError(posErrorMessage(err, 'Mouvement impossible'));
     } finally {
       setBusy(false);
     }
@@ -381,7 +400,15 @@ export function PosSessionPanel({ merchantId, session, onClosed }: { merchantId:
             <Label htmlFor="closing">Montant compté dans le tiroir ({session.currency})</Label>
             <Input id="closing" type="number" inputMode="decimal" placeholder="0" value={closingCount} onChange={(e) => setClosingCount(e.target.value)} />
           </div>
-          <Button variant="destructive" className="w-full" disabled={closingCount === '' || busy} onClick={() => setConfirmClose(true)}>
+          {/* Cash taken offline must be on the server before the drawer is counted, or the count would not match. */}
+          {(waitingSales > 0 || !online) && (
+            <p className="rounded-xl bg-warning/10 px-3.5 py-2.5 text-sm font-medium text-warning">
+              {!online
+                ? 'La clôture se fait en ligne.'
+                : `${waitingSales} opération${waitingSales > 1 ? 's' : ''} faite${waitingSales > 1 ? 's' : ''} hors ligne pas encore envoyée${waitingSales > 1 ? 's' : ''} : attendez leur envoi (écran Synchronisation) avant de clôturer.`}
+            </p>
+          )}
+          <Button variant="destructive" className="w-full" disabled={closingCount === '' || busy || waitingSales > 0 || !online} onClick={() => setConfirmClose(true)}>
             <DoorClosed className="mr-2 w-4 h-4" /> Clôturer la session
           </Button>
         </CardContent>

@@ -27,9 +27,12 @@ export default function BusinessWalletPage() {
   useRealtimeInvalidate('transactions', undefined, keys, !!wallet);
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-2xl mx-auto">
+    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader title="Portefeuille de l'entreprise" />
 
+      {/* Computer: the balance and its actions on the left, history and subscription on the right. */}
+      <div className="space-y-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
+      <div className="space-y-6">
       <BalanceCard
         balances={wallet?.balances || { CDF: 0, USD: 0 }}
         label="Solde ScanLinkPay"
@@ -52,7 +55,9 @@ export default function BusinessWalletPage() {
           <ArrowUpFromLine className="w-5 h-5" /> Retirer
         </Link>
       </div>
+      </div>
 
+      <div className="space-y-6">
       <Card>
         <CardContent className="p-0">
           <Link to="/dashboard/wallet/transactions" className="flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-accent/50 transition-colors">
@@ -78,6 +83,8 @@ export default function BusinessWalletPage() {
         Les paiements ScanLinkPay reçus par toutes vos stations (QR, carte, en ligne) arrivent ici, frais déduits.
         Les ventes en espèces restent dans les caisses.
       </p>
+      </div>
+      </div>
     </div>
   );
 }

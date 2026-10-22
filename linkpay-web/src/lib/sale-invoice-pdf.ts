@@ -20,7 +20,7 @@ const PAGE_H = 297;
 const BAND_H = PAGE_H / 3;
 const MARGIN_X = 12;
 
-function drawInvoice(doc: jsPDF, m: InvoiceModel, saleQr: string | null, top: number) {
+function drawInvoice(doc: jsPDF, m: InvoiceModel, saleQr: string | null, top: number, sale: Pick<InvoiceSale, 'status' | 'payment_method' | 'offline'>) {
   const w = doc.internal.pageSize.getWidth();
   const left = MARGIN_X;
   const right = w - MARGIN_X;
@@ -113,15 +113,29 @@ function drawInvoice(doc: jsPDF, m: InvoiceModel, saleQr: string | null, top: nu
   doc.roundedRect(left, y, right - left, blockH, 2, 2, 'F');
   const qrSize = Math.min(18, blockH - 4);
   const qrY = y + (blockH - qrSize) / 2;
-  if (saleQr) doc.addImage(saleQr, 'PNG', left + 3, qrY, qrSize, qrSize);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6.5);
-  doc.setTextColor(...PRIMARY);
-  doc.text('PAYER CETTE FACTURE', left + qrSize + 7, qrY + 4);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.3);
-  doc.setTextColor(...TEXT_MUTED);
-  doc.text('Scannez avec ScanLinkPay', left + qrSize + 7, qrY + 8);
+  if (sale.status === 'PAID') {
+    // Already settled: say so instead of inviting to pay.
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...PRIMARY);
+    doc.text(`PAYÉE${sale.payment_method === 'cash' ? ' — ESPÈCES' : ''}`, left + 4, qrY + 5);
+    if (sale.offline) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.3);
+      doc.setTextColor(...TEXT_MUTED);
+      doc.text('Vente enregistrée hors ligne', left + 4, qrY + 9);
+    }
+  } else {
+    if (saleQr) doc.addImage(saleQr, 'PNG', left + 3, qrY, qrSize, qrSize);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...PRIMARY);
+    doc.text('PAYER CETTE FACTURE', left + qrSize + 7, qrY + 4);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.3);
+    doc.setTextColor(...TEXT_MUTED);
+    doc.text('Scannez avec ScanLinkPay', left + qrSize + 7, qrY + 8);
+  }
 
   const numX = right - 3;
   doc.setFont('helvetica', 'normal');
@@ -151,7 +165,7 @@ export async function buildSaleInvoicePdf(org: InvoiceOrg, sale: InvoiceSale): P
     ? await QRCode.toDataURL(model.salePaymentUrl, { width: 240, margin: 1, color: { dark: '#0F172A', light: '#FFFFFF' } })
     : null;
 
-  drawInvoice(doc, model, saleQr, 0);
+  drawInvoice(doc, model, saleQr, 0, sale);
 
   const w = doc.internal.pageSize.getWidth();
   doc.setDrawColor(...BORDER);

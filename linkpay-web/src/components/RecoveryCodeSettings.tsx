@@ -52,7 +52,7 @@ export function RecoveryCodeSettings() {
   return (
     <>
       <button className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border text-left" onClick={() => setOpen(true)}>
-        <LifeBuoy className={`w-5 h-5 flex-shrink-0 ${missing ? 'text-amber-600' : 'text-muted-foreground'}`} />
+        <span className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ${missing ? 'bg-warning/10 text-warning' : 'bg-destructive/10 text-destructive'}`}><LifeBuoy className="h-[18px] w-[18px]" /></span>
         <div className="flex-1">
           <p className="font-medium text-sm text-foreground">Code de secours</p>
           <p className={`text-xs ${missing ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}`}>

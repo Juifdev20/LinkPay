@@ -56,11 +56,3 @@ describe('PaymentsService — a confirmed amount that differs credits nothing', 
     expect(upd.calls.some((c) => c.method === 'eq' && c.args[0] === 'status' && c.args[1] === 'PENDING')).toBe(true);
   });
 });
-
-describe('CinetPay adapter', () => {
-  it('refuses a fractional amount instead of silently rounding it', async () => {
-    const { CinetPayAdapter } = require('./psp/providers/cinetpay.adapter');
-    const adapter = new CinetPayAdapter({ get: (_k: string, d?: any) => d ?? 'x' } as any);
-    await expect(adapter.createPaymentIntent({ amount_cents: 149, currency: 'USD', customer: {} } as any)).rejects.toBeInstanceOf(BadRequestException);
-  });
-});

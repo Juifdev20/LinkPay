@@ -14,7 +14,11 @@ import { PosReceipt } from './PosReceipt';
 import { ProductTable } from '@/components/stock/ProductTable';
 import { posErrorMessage } from './PosPage';
 import { formatCurrency } from '@/lib/utils';
-import { Search, Trash2, PauseCircle, Loader2, ShieldAlert, Minus, Plus, ScanBarcode, X, ShoppingCart } from 'lucide-react';
+import { Search, Trash2, PauseCircle, Loader2, ShieldAlert, Minus, Plus, ScanBarcode, X, ShoppingCart, WifiOff } from 'lucide-react';
+import { isNetworkError, useNetwork, useOnline } from '@/lib/network';
+import { enqueue } from '@/lib/outbox';
+import type { OfflineSalePayload } from '@/lib/outbox-handlers';
+import { PosOfflinePaymentSheet } from './PosOfflinePayment';
 import { useNavigate } from 'react-router-dom';
 import { BarcodeScannerView } from '@/components/BarcodeScannerView';
 import { beepError, beepOk, listenForScannerBursts } from '@/lib/barcode';
@@ -61,6 +65,12 @@ export function PosTill({
   const canCreateProducts = ['enterprise', 'magasinier'].includes(user?.role || '');
   const navigate = useNavigate();
   const [error, setError] = useState('');
+  // Without network and with no ticket on the server, the till sells on its own: the lines stay on the device, the
+  // sale is paid in cash and recorded on the server later (PosOfflinePayment, lib/outbox.ts).
+  const online = useOnline();
+  const sellingOffline = () => !ticketRef.current && !useNetwork.getState().online;
+  const cartKey = `pos-offline-cart:${merchantId}:${currency}`;
+  const [offlinePayOpen, setOfflinePayOpen] = useState(false);
 
   // Latest ticket for async callbacks — a queued add must never act on the
   // stale ticket captured by the render that scheduled it.
@@ -108,6 +118,11 @@ export function PosTill({
     const rate = ticket?.merchant?.pos_tva_rate_pct;
     if (rate != null) try { localStorage.setItem(tvaKey, String(rate)); } catch { /* ignore */ }
   }, [ticket?.merchant?.pos_tva_rate_pct, tvaKey]);
+  // The shop's identity printed on receipts, kept for the receipts of offline sales.
+  const shopKey = `pos-shop:${merchantId}`;
+  useEffect(() => {
+    if (ticket?.merchant) try { localStorage.setItem(shopKey, JSON.stringify(ticket.merchant)); } catch { /* ignore */ }
+  }, [ticket?.merchant, shopKey]);
 
   // ------------------------------------------------------------------
   // Product lookup: live name search, Enter = barcode (USB scanners type
@@ -151,7 +166,15 @@ export function PosTill({
   const syncQueues = useRef<Record<string, Promise<void>>>({});
   const syncScheduled = useRef<Record<string, boolean>>({});
   const [, bumpCart] = useState(0);
-  const bump = () => bumpCart((n) => n + 1);
+  const bump = () => {
+    bumpCart((n) => n + 1);
+    // Lines not on the server yet are kept on the device: a reload (or a closed app) without network loses nothing.
+    if (ticketRef.current) return;
+    try {
+      if (Object.keys(desired.current).length) localStorage.setItem(cartKey, JSON.stringify(desired.current));
+      else localStorage.removeItem(cartKey);
+    } catch { /* not kept */ }
+  };
 
   const serverLine = (stockItemId: string) =>
     (ticketRef.current?.items || []).find((i: any) => i.stock_item_id === stockItemId && i.status === 'active');
@@ -199,6 +222,8 @@ export function PosTill({
       applyServerTicket(data);
       settled();
     } catch (err: any) {
+      // The network dropped before the ticket existed: the line simply stays on the device (offline sale).
+      if (isNetworkError(err) && ticketRef.current?.status !== 'open') return;
       syncFailures.current += 1;
       setError(err?.response ? posErrorMessage(err, 'Quantité impossible') : err?.message || 'Quantité impossible');
       delete desired.current[pid];
@@ -209,6 +234,7 @@ export function PosTill({
   };
 
   const scheduleSync = (pid: string) => {
+    if (sellingOffline()) return; // kept on the device; sent with the sale
     if (syncScheduled.current[pid]) return; // a pass is already waiting — it will read the latest value
     syncScheduled.current[pid] = true;
     syncQueues.current[pid] = (syncQueues.current[pid] || Promise.resolve())
@@ -219,9 +245,37 @@ export function PosTill({
       .catch(() => {});
   };
 
+  // An offline cart left on the device (app closed, page reloaded) comes back.
+  useEffect(() => {
+    if (ticketRef.current) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem(cartKey) || 'null');
+      if (saved && typeof saved === 'object' && Object.keys(saved).length) {
+        desired.current = saved;
+        bumpCart((n) => n + 1);
+      }
+    } catch { /* nothing kept */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartKey]);
+
+  // Network back in the middle of an offline sale: the lines go to the server and the sale goes on normally.
+  useEffect(() => {
+    if (!online || ticketRef.current) return;
+    for (const pid of Object.keys(desired.current)) scheduleSync(pid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online]);
+
   /** Sets the quantity of a product in the cart — instant on screen. */
   const changeQty = (item: { id: string; name: string; unit_price_cents: number }, qty: number) => {
     setError('');
+    if (sellingOffline()) {
+      const known = (catalog || []).find((i: any) => i.id === item.id);
+      if (known && qty > known.quantity) {
+        beepError();
+        setError(`Stock insuffisant pour « ${item.name} » : ${known.quantity} unité(s) au dernier état connu.`);
+        return;
+      }
+    }
     desired.current[item.id] = { qty: Math.max(0, qty), item };
     bump();
     scheduleSync(item.id);
@@ -394,6 +448,11 @@ export function PosTill({
   // the payment on the server-confirmed ticket.
   const [preparingPayment, setPreparingPayment] = useState(false);
   const openPayment = async () => {
+    if (sellingOffline()) {
+      setTicketSheetOpen(false);
+      setOfflinePayOpen(true);
+      return;
+    }
     setPreparingPayment(true);
     try {
       const ok = await flushPending();
@@ -510,6 +569,72 @@ export function PosTill({
     : ticket?.tva_cents || 0;
   const shownHt = shownTotal - shownTva;
 
+  // ------------------------------------------------------------------
+  // Offline sale: paid in cash, kept on the device, recorded on the server
+  // once the network is back (lib/outbox.ts → pos/offline-sales). The
+  // receipt prints at once, with a provisional number.
+  // ------------------------------------------------------------------
+  const confirmOfflineSale = (receivedCents: number) => {
+    const lines = activeItems.map((i: any) => ({
+      stock_item_id: i.stock_item_id,
+      quantity: i.quantity,
+      unit_price_cents: i.unit_price_cents_snapshot,
+      name: i.product_name_snapshot,
+    }));
+    if (!lines.length) return;
+    const payload: OfflineSalePayload = {
+      merchant_id: merchantId,
+      currency: ticketCurrency as 'CDF' | 'USD',
+      sold_at: new Date().toISOString(),
+      items: lines,
+      received_cents: Math.max(receivedCents, shownTotal),
+    };
+    const count = lines.reduce((n, l) => n + l.quantity, 0);
+    const op = enqueue('pos.offline-sale', `Vente en espèces · ${formatCurrency(shownTotal, ticketCurrency)}`, payload, `${count} article${count > 1 ? 's' : ''}`);
+
+    // The stock shown on this till follows its own offline sales until the server answers.
+    queryClient.setQueryData(['pos-catalog', merchantId], (old: any) =>
+      Array.isArray(old) ? old.map((it: any) => {
+        const sold = lines.filter((l) => l.stock_item_id === it.id).reduce((n, l) => n + l.quantity, 0);
+        return sold ? { ...it, quantity: Math.max(0, it.quantity - sold) } : it;
+      }) : old,
+    );
+
+    let shop: any = null;
+    try { shop = JSON.parse(localStorage.getItem(shopKey) || 'null'); } catch { /* none kept */ }
+    const receipt = {
+      offline: true,
+      currency: ticketCurrency,
+      ticket_number: `HL-${op.id.slice(0, 6).toUpperCase()}`,
+      paid_at: payload.sold_at,
+      items: activeItems.map((i: any) => ({ ...i, status: 'active' })),
+      payments: [{ method: 'cash', amount_cents: shownTotal, received_cents: payload.received_cents }],
+      subtotal_cents: shownHt,
+      tva_cents: shownTva,
+      total_cents: shownTotal,
+      merchant: shop ?? { pos_tva_rate_pct: tvaRate },
+    };
+    resetCart();
+    setOfflinePayOpen(false);
+    setPaidTicket(receipt);
+  };
+
+  // The network dropped while a ticket was open on the server: finish it here, offline. Its lines move to the
+  // device; the server ticket is cancelled when the network comes back (never paid twice).
+  const canTakeOverOffline = !online && !!ticket && !(ticket.payments || []).length && activeItems.length > 0;
+  const takeOverOffline = () => {
+    const next: Record<string, { qty: number; item: any }> = {};
+    for (const i of activeItems) {
+      next[i.stock_item_id] = { qty: i.quantity, item: { id: i.stock_item_id, name: i.product_name_snapshot, unit_price_cents: i.unit_price_cents_snapshot } };
+    }
+    enqueue('pos.cancel-ticket', `Ticket #${ticket.ticket_number ?? '—'} repris hors ligne`, { merchant_id: merchantId, ticket_id: ticket.id }, 'Annulé sur le serveur, vendu hors ligne');
+    ticketRef.current = null;
+    clearTicket();
+    desired.current = next;
+    setError('');
+    bump();
+  };
+
   // Ticket lines + totals + Encaisser — shared by the desktop ticket column
   // and the mobile ticket sheet (opened from the cart bar).
   const renderTicketBody = () => (
@@ -601,6 +726,18 @@ export function PosTill({
 
   return (
     <div className="space-y-5">
+      {!online && !ticket && (
+        <div className="flex items-start gap-3 rounded-xl bg-slate-800 px-4 py-3 text-sm text-white dark:bg-slate-700">
+          <WifiOff className="mt-0.5 h-4 w-4 shrink-0" />
+          <p><b>Caisse hors ligne.</b> Vendez normalement : paiement en espèces, reçu imprimé, et la vente part au serveur dès le retour du réseau.</p>
+        </div>
+      )}
+      {canTakeOverOffline && (
+        <div className="flex flex-col gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm sm:flex-row sm:items-center">
+          <p className="flex-1 text-foreground"><b>Connexion perdue</b> pendant ce ticket. Vous pouvez le terminer hors ligne (espèces).</p>
+          <Button size="sm" className="shrink-0 rounded-lg" onClick={takeOverOffline}>Continuer hors ligne</Button>
+        </div>
+      )}
       {error && (
         <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
           {error}
@@ -699,7 +836,7 @@ export function PosTill({
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">
-              {ticket ? `Ticket #${ticket.ticket_number ?? '—'}` : 'Nouvelle vente'}
+              {ticket ? `Ticket #${ticket.ticket_number ?? '—'}` : online ? 'Nouvelle vente' : 'Vente hors ligne'}
             </CardTitle>
             {ticket && (
               <div className="flex items-center gap-3">
@@ -820,6 +957,14 @@ export function PosTill({
       )}
 
       {/* Paid ticket confirmation → receipt */}
+      {offlinePayOpen && (
+        <PosOfflinePaymentSheet
+          totalCents={shownTotal}
+          currency={ticketCurrency}
+          onConfirm={confirmOfflineSale}
+          onClose={() => setOfflinePayOpen(false)}
+        />
+      )}
       {paidTicket && (
         <PosReceipt ticket={paidTicket} onClose={() => setPaidTicket(null)} />
       )}

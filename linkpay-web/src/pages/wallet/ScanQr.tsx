@@ -90,7 +90,7 @@ export default function ScanQrPage() {
       },
       {
         preferredCamera: 'environment',
-        highlightScanRegion: true,
+        highlightScanRegion: false, // our own aiming frame is drawn over the video
         highlightCodeOutline: true,
       },
     );
@@ -124,6 +124,19 @@ export default function ScanQrPage() {
       <div className="relative flex-1 overflow-hidden">
         <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" muted playsInline />
 
+        {/* The aiming frame */}
+        {!error && (
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center" aria-hidden>
+            <div className="relative h-64 w-64 max-w-[72vw] max-h-[72vw]">
+              {['left-0 top-0 border-l-4 border-t-4 rounded-tl-3xl', 'right-0 top-0 border-r-4 border-t-4 rounded-tr-3xl', 'left-0 bottom-0 border-l-4 border-b-4 rounded-bl-3xl', 'right-0 bottom-0 border-r-4 border-b-4 rounded-br-3xl'].map((c) => (
+                <span key={c} className={`absolute h-12 w-12 border-white ${c}`} />
+              ))}
+              <span className="absolute inset-x-6 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-sky-300/80 shadow-[0_0_12px_2px_rgba(125,211,252,0.6)] animate-pulse" />
+            </div>
+            <p className="mt-6 rounded-full bg-black/45 px-4 py-2 text-sm font-medium text-white backdrop-blur">Placez le QR code dans le cadre</p>
+          </div>
+        )}
+
         {error && (
           <div className="absolute inset-0 flex items-center justify-center p-6 bg-black/70">
             <div className="max-w-xs text-center">
@@ -150,8 +163,7 @@ export default function ScanQrPage() {
       <div className="p-6 safe-area-bottom">
         <Button
           variant="outline"
-          className="w-full border-white/30 text-white hover:bg-white/10 hover:text-white"
-          size="lg"
+          className="h-[52px] w-full rounded-xl border-white/25 bg-white/10 text-base font-semibold text-white backdrop-blur hover:bg-white/20 hover:text-white"
           onClick={() => navigate('/dashboard/wallet/pay')}
         >
           <Keyboard className="mr-2 w-4 h-4" />

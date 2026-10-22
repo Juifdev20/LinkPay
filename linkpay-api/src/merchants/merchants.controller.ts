@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { MerchantsService } from './merchants.service';
+import { MerchantInvitationsService } from './merchant-invitations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -8,10 +9,18 @@ import { IsString, IsOptional, MaxLength, IsEmail, IsIn, IsUUID, ValidateNested,
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+/** Who to invite as cashier: their phone number or their email (one of the two). */
 class AddMerchantUserDto {
-  @ApiProperty({ example: 'caissier@example.com' })
+  @ApiPropertyOptional({ example: 'caissier@example.com' })
+  @IsOptional()
   @IsEmail()
-  email!: string;
+  email?: string;
+
+  @ApiPropertyOptional({ example: '0812345678' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phone?: string;
 }
 
 export class CreateMerchantDto {
@@ -142,7 +151,10 @@ export class UpdateMerchantDto {
 @ApiBearerAuth()
 @Controller('merchants')
 export class MerchantsController {
-  constructor(private merchantsService: MerchantsService) {}
+  constructor(
+    private merchantsService: MerchantsService,
+    private invitations: MerchantInvitationsService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a merchant account' })
@@ -249,7 +261,7 @@ export class MerchantsController {
   @Post(':id/users')
   @Roles('merchant')
   @UseGuards(RolesGuard)
-  @ApiOperation({ summary: 'Invite an existing ScanLinkPay user as cashier (owner only)' })
+  @ApiOperation({ summary: 'Invite an existing ScanLinkPay user as cashier, by phone or email (owner only) — they accept in their app' })
   async addMerchantUser(
     @Param('id') id: string,
     @CurrentUser('id') callerId: string,
@@ -257,7 +269,29 @@ export class MerchantsController {
     @Body() dto: AddMerchantUserDto,
   ) {
     this.assertOwnMerchant(id, callerMerchantId);
-    return this.merchantsService.addMerchantUser(id, callerId, { email: dto.email });
+    return this.invitations.invite(id, callerId, { email: dto.email, phone: dto.phone });
+  }
+
+  @Get(':id/invitations')
+  @Roles('merchant')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'Cashier invitations waiting for an answer (owner only)' })
+  async listInvitations(@Param('id') id: string, @CurrentUser('merchant_id') callerMerchantId: string) {
+    this.assertOwnMerchant(id, callerMerchantId);
+    return this.invitations.listForMerchant(id);
+  }
+
+  @Delete(':id/invitations/:invitationId')
+  @Roles('merchant')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'Cancel a cashier invitation not answered yet (owner only)' })
+  async cancelInvitation(
+    @Param('id') id: string,
+    @Param('invitationId') invitationId: string,
+    @CurrentUser('merchant_id') callerMerchantId: string,
+  ) {
+    this.assertOwnMerchant(id, callerMerchantId);
+    return this.invitations.cancel(id, invitationId);
   }
 
   @Delete(':id/users/:userId')

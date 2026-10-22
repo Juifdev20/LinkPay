@@ -18,16 +18,24 @@ function setup(creditResult: boolean) {
   const commissions = { calculateFees: async () => ({ psp_fee_cents: 15000, platform_fee_cents: 30000, net_cents: 955000, commission_rule_id: null }) };
   const ledger = { writePaymentEntries: jest.fn(async () => { order.push('ledger'); }) };
   const requests = { markPaid: jest.fn(async () => { order.push('markPaid'); }) };
+  const sales = { markPaidByPaymentRequest: jest.fn(async () => undefined) };
   const service = new PaymentsService(
     fake.service, {} as any, commissions as any, ledger as any, {} as any, notifications as any, requests as any,
-    { get: () => undefined } as any, {} as any, {} as any, {} as any, {} as any, {} as any, { credit } as any, { alert: jest.fn() } as any,
+    { get: () => undefined } as any, {} as any, {} as any, {} as any, {} as any, sales as any, { credit } as any, { alert: jest.fn() } as any,
   );
   jest.spyOn(service as any, 'generateReceipt').mockImplementation(async () => { order.push('receipt'); throw new Error('receipt printer down'); });
   jest.spyOn(service as any, 'getMerchantOwnerId').mockResolvedValue('owner-1');
-  return { service, credit, notifications, order };
+  return { service, credit, notifications, order, sales };
 }
 
 describe('PaymentsService.handleSuccessfulPayment — paying the merchant', () => {
+  it('a Ventes sale paid by Mobile Money / card through its QR is marked paid (its stock leaves the shelf)', async () => {
+    const { service, sales } = setup(true);
+    jest.spyOn(service as any, 'generateReceipt').mockResolvedValue(undefined);
+    await (service as any).handleSuccessfulPayment(INTENT, { psp_intent_id: 'SLP-1' });
+    expect(sales.markPaidByPaymentRequest).toHaveBeenCalledWith('pr1', 'tx1');
+  });
+
   it("credits the merchant's wallet as soon as the transaction exists, before receipt and notifications", async () => {
     const { service, credit, order } = setup(true);
     await (service as any).handleSuccessfulPayment(INTENT, { psp_intent_id: 'SLP-1' }).catch(() => undefined);

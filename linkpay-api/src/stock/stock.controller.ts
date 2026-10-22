@@ -2,7 +2,7 @@ import { Controller, Get, Post, Put, Delete, Body, Param, Query, Headers, UseInt
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiConsumes, ApiBody } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, IsIn, IsObject, IsBoolean, MaxLength, Min, MinLength } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsIn, IsObject, IsBoolean, MaxLength, Min, MinLength, IsUUID } from 'class-validator';
 import { StockService } from './stock.service';
 import { StockPasswordService } from './stock-password.service';
 import { OrganizationsService } from '../organizations/organizations.service';
@@ -145,6 +145,11 @@ class CreateMovementDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+
+  @ApiPropertyOptional({ description: "Id créé sur l'appareil pour un mouvement fait hors ligne : envoyé deux fois, il est gardé une fois" })
+  @IsOptional()
+  @IsUUID()
+  client_ref?: string;
 }
 
 class SetStockPasswordDto {

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { forgetOfflineCode } from './offline-code';
 import api from './api';
 import { supabase } from './supabase';
 import { getDeviceId } from './device';
@@ -78,6 +79,8 @@ interface AuthState {
   // Token arguments are undefined in cookie mode (the session is in HttpOnly cookies, not in the response).
   applyMerchantUpgrade: (merchant: { id: string }, accessToken?: string) => void;
   applyEnterpriseUpgrade: (accessToken?: string) => void;
+  /** Accepted a shop's invitation: this account is now a cashier of that shop. */
+  applyCashierUpgrade: (merchantId: string, accessToken?: string) => void;
   enterStore: (merchant: { id: string }, accessToken: string | undefined, refreshToken: string | undefined, organizationId: string) => void;
   exitStore: () => Promise<void>;
   clearMustChangePassword: () => void;
@@ -102,7 +105,7 @@ function clearSupabaseSession() {
 
 const hasSession = hasStoredSession();
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   // Last known profile: screens render at once on launch while
   // fetchProfile() refreshes it in the background (App.tsx).
   user: hasSession ? getCachedUser<User>() : null,
@@ -141,6 +144,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     setAccessToken(accessToken);
     set((state) => ({
       user: state.user ? { ...state.user, role: 'merchant', merchant_id: merchant.id } : state.user,
+    }));
+  },
+
+  applyCashierUpgrade: (merchantId, accessToken) => {
+    setAccessToken(accessToken);
+    set((state) => ({
+      user: state.user ? { ...state.user, role: 'cashier', merchant_id: merchantId } : state.user,
     }));
   },
 
@@ -191,6 +201,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
+    // The offline unlock fingerprint belongs to this session on this device.
+    forgetOfflineCode(get().user?.id);
     try {
       await api.post('/auth/logout');
     } catch {

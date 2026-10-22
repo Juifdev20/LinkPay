@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -8,13 +7,17 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { PageHeader } from '@/components/PageHeader';
+import { SpendingOverview } from '@/components/SpendingOverview';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { DualCurrencyStat } from '@/components/DualCurrencyStat';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, countLabel } from '@/lib/utils';
 import { downloadExpenseDayPdf } from '@/lib/expense-pdf';
 import { ExpenseProUpgrade } from './ExpenseProUpgrade';
 import { ExpensePlanSelection } from './ExpensePlanSelection';
-import { Loader2, ArrowLeft, Plus, Lock, Download, Receipt, AlertTriangle } from 'lucide-react';
+import { Loader2, Plus, Lock, Download, Receipt, AlertTriangle, CloudUpload } from 'lucide-react';
+import { enqueue, newClientRef, useOutbox } from '@/lib/outbox';
+import { isNetworkError, useNetwork, useOnline } from '@/lib/network';
+import type { ExpenseEntryPayload } from '@/lib/outbox-handlers';
 
 interface ExpenseEntry {
   id: string;
@@ -45,7 +48,6 @@ interface ExpenseStatus {
 }
 
 export default function ExpenseTrackerPage() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [currency, setCurrency] = useState<'CDF' | 'USD'>('CDF');
@@ -90,20 +92,44 @@ export default function ExpenseTrackerPage() {
     },
   });
 
+  // Offline (or the network drops while sending): the note waits on the phone with its own id and goes out by
+  // itself later (lib/outbox.ts); the server keeps it once whatever happens.
   const addEntryMutation = useMutation({
+    // React Query would hold the mutation until the network is back; here offline is handled by the outbox.
+    networkMode: 'always',
     mutationFn: async () => {
       const report = current!.report!;
-      const amountCents = Math.round(parseFloat(amount) * 100);
-      return (await api.post(`/expense-tracker/reports/${report.id}/entries`, { amount_cents: amountCents, currency, description: description || undefined })).data;
+      const payload: ExpenseEntryPayload = {
+        report_id: report.id,
+        amount_cents: Math.round(parseFloat(amount) * 100),
+        currency,
+        description: description || undefined,
+        noted_at: new Date().toISOString(),
+      };
+      const clientRef = newClientRef();
+      const queue = () => { enqueue('expense.entry', `Dépense : ${payload.description || 'sans description'}`, payload, formatCurrency(payload.amount_cents, payload.currency), clientRef); return 'queued' as const; };
+      if (!useNetwork.getState().online) return queue();
+      try {
+        await api.post(`/expense-tracker/reports/${report.id}/entries`, { ...payload, client_ref: clientRef, report_id: undefined });
+        return 'sent' as const;
+      } catch (err) {
+        if (isNetworkError(err)) return queue();
+        throw err;
+      }
     },
-    onSuccess: () => {
+    onSuccess: (how) => {
       setAmount('');
       setDescription('');
       setAddError('');
-      queryClient.invalidateQueries({ queryKey: ['expense-report-current'] });
+      if (how === 'sent') queryClient.invalidateQueries({ queryKey: ['expense-report-current'] });
     },
     onError: (err: any) => setAddError(err.response?.data?.message || "Échec de l'ajout"),
   });
+  const online = useOnline();
+  const waitingOps = useOutbox((s) => s.ops);
+  const waitingEntries = current?.report
+    ? waitingOps.filter((o) => o.kind === 'expense.entry' && (o.payload as ExpenseEntryPayload).report_id === current.report!.id)
+    : [];
 
   const closeReportMutation = useMutation({
     mutationFn: async () => (await api.post(`/expense-tracker/reports/${current!.report!.id}/close`)).data,
@@ -136,12 +162,22 @@ export default function ExpenseTrackerPage() {
   }
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-2xl mx-auto">
-      <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="w-4 h-4" /> Retour
-      </button>
-
+    <div className="px-4 pt-2 pb-28 md:p-6 space-y-5 max-w-2xl lg:max-w-6xl mx-auto">
       <PageHeader title="Mes dépenses" />
+
+      {/* Computer: the automatic breakdown on the left (stays in view), the notebook on the right. */}
+      <div className="space-y-5 lg:grid lg:grid-cols-5 lg:items-start lg:gap-6 lg:space-y-0">
+      <div className="lg:sticky lg:top-24 lg:col-span-2">
+      {/* Automatic: what left the wallet, by category (as in the design). */}
+      <SpendingOverview />
+      </div>
+
+      <div className="space-y-5 lg:col-span-3">
+      {/* The personal notebook (expenses written by hand, Pro plan), below. */}
+      <div className="pt-2 lg:pt-0">
+        <p className="text-[15px] font-bold text-foreground">Mon carnet de dépenses</p>
+        <p className="text-xs text-muted-foreground">Notez vos dépenses du quotidien, même celles payées en espèces.</p>
+      </div>
 
       {status.needs_plan_selection ? (
         <ExpensePlanSelection status={status} />
@@ -157,7 +193,7 @@ export default function ExpenseTrackerPage() {
               <p className="text-sm font-semibold text-destructive">
                 {status.read_only
                   ? "Limite d'essai atteinte — passez en illimité pour continuer"
-                  : `Il vous reste ${Math.max(0, (status.trial_report_limit || 0) - (status.trial_reports_used || 0))} dépense(s) sur ${status.trial_report_limit} (essai gratuit)`}
+                  : `Il vous reste ${countLabel(Math.max(0, (status.trial_report_limit || 0) - (status.trial_reports_used || 0)), 'dépense')} sur ${status.trial_report_limit} (essai gratuit)`}
               </p>
             </div>
           )}
@@ -214,13 +250,27 @@ export default function ExpenseTrackerPage() {
                 </CardContent>
               </Card>
 
-              {current.report.entries.length > 0 && (
+              {(current.report.entries.length > 0 || waitingEntries.length > 0) && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base">Dépenses de ce rapport</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
+                      {waitingEntries.map((o) => {
+                        const p = o.payload as ExpenseEntryPayload;
+                        return (
+                          <div key={o.id} className="flex items-center justify-between gap-3 py-1.5 text-sm border-b border-border last:border-0">
+                            <div className="min-w-0">
+                              <p className="text-foreground truncate">{p.description || '—'}</p>
+                              <p className={`flex items-center gap-1 text-xs ${o.status === 'error' ? 'text-destructive' : 'text-primary'}`}>
+                                <CloudUpload className="h-3 w-3" /> {o.status === 'error' ? 'Refusée — voir Synchronisation' : 'En attente d\'envoi'}
+                              </p>
+                            </div>
+                            <span className="font-semibold text-foreground flex-shrink-0">{formatCurrency(p.amount_cents, p.currency)}</span>
+                          </div>
+                        );
+                      })}
                       {current.report.entries.map((e) => (
                         <div key={e.id} className="flex items-center justify-between py-1.5 text-sm border-b border-border last:border-0">
                           <div className="min-w-0">
@@ -235,10 +285,15 @@ export default function ExpenseTrackerPage() {
                 </Card>
               )}
 
-              <Button variant="outline" className="w-full" onClick={() => setShowCloseConfirm(true)} disabled={current.report.entries.length === 0}>
+              <Button variant="outline" className="w-full" onClick={() => setShowCloseConfirm(true)} disabled={current.report.entries.length === 0 || !online || waitingEntries.length > 0}>
                 <Lock className="mr-2 w-4 h-4" />
                 Clôturer cette dépense
               </Button>
+              {(!online || waitingEntries.length > 0) && (
+                <p className="-mt-3 text-center text-xs text-muted-foreground">
+                  {!online ? 'La clôture se fait en ligne.' : 'Clôture possible quand les dépenses en attente seront envoyées.'}
+                </p>
+              )}
             </>
           ) : status.read_only ? (
             <ExpenseProUpgrade status={status} />
@@ -249,7 +304,8 @@ export default function ExpenseTrackerPage() {
                   {createError}
                 </div>
               )}
-              <Button className="w-full" size="lg" onClick={() => createReportMutation.mutate()} disabled={createReportMutation.isPending}>
+              {!online && <p className="text-center text-xs text-muted-foreground">Ouvrir une nouvelle page du carnet demande Internet. Ensuite, vous pourrez y noter vos dépenses même sans réseau.</p>}
+              <Button className="w-full" size="lg" onClick={() => createReportMutation.mutate()} disabled={createReportMutation.isPending || !online}>
                 {createReportMutation.isPending ? <Loader2 className="mr-2 w-4 h-4 animate-spin" /> : <Plus className="mr-2 w-4 h-4" />}
                 Nouvelle dépense
               </Button>
@@ -301,6 +357,8 @@ export default function ExpenseTrackerPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
+      </div>
     </div>
   );
 }

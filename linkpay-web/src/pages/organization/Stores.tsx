@@ -1,3 +1,4 @@
+import { EmptyState } from '@/components/EmptyState';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -82,7 +83,7 @@ export default function StoresPage() {
   });
 
   return (
-    <div className="p-6 space-y-6 max-w-3xl mx-auto">
+    <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader title="Stations" />
 
       <Card>
@@ -151,13 +152,14 @@ export default function StoresPage() {
               <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
             </div>
           ) : merchants?.length ? (
-            <div>
+            // Computer: one tile per station, two per row.
+            <div className="lg:grid lg:grid-cols-2 lg:gap-4">
               {merchants.map((m: any) => {
                 const summary = summaryOf(m.id);
                 const today = summary?.today_pos_sales || {};
                 const editing = renaming?.id === m.id ? renaming : null;
                 return (
-                  <div key={m.id} className="py-3 border-b border-border last:border-0">
+                  <div key={m.id} className="py-3 border-b border-border last:border-0 lg:rounded-2xl lg:border lg:p-4 lg:last:border">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
                         <Store className="w-5 h-5 text-primary" />
@@ -189,9 +191,11 @@ export default function StoresPage() {
                           {[m.city, summary ? `${summary.staff_count} employé${summary.staff_count > 1 ? 's' : ''}` : null].filter(Boolean).join(' · ') || m.default_currency}
                         </p>
                       </div>
-                      <Badge variant={m.status === 'active' ? 'success' : m.status === 'rejected' || m.status === 'suspended' ? 'error' : 'warning'} className="capitalize flex-shrink-0">
-                        {m.status}
-                      </Badge>
+                      {m.status && (
+                        <Badge variant={m.status === 'active' ? 'success' : m.status === 'rejected' || m.status === 'suspended' ? 'error' : 'warning'} className="flex-shrink-0">
+                          {({ active: 'Ouverte', pending: 'En attente', suspended: 'Suspendue', rejected: 'Refusée' } as Record<string, string>)[m.status] ?? m.status}
+                        </Badge>
+                      )}
                     </div>
                     <div className="mt-2 ml-[3.25rem] text-sm">
                       <span className="text-muted-foreground">Recette du jour : </span>
@@ -223,7 +227,7 @@ export default function StoresPage() {
               })}
             </div>
           ) : (
-            !showCreate && <p className="text-muted-foreground text-center py-6">Aucune station pour le moment</p>
+            !showCreate && <EmptyState icon={Store} title="Aucune station pour le moment" text="Une station = un point de vente (caisse, stock, employés). Créez la première avec le bouton ci-dessus." />
           )}
         </CardContent>
       </Card>

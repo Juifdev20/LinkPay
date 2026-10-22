@@ -3,9 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { usePaymentStatusPoll } from '@/hooks/usePaymentStatusPoll';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { ResultView, ResultCard } from '@/components/ResultView';
+import { Crown } from 'lucide-react';
 
 interface ExpenseProPayment {
   id: string;
@@ -14,7 +14,7 @@ interface ExpenseProPayment {
 }
 
 /**
- * Lands here after a real CinetPay redirect for a Pro-activation payment
+ * Lands here after the payment provider's redirect for a Pro-activation payment
  * (expense-tracker.service.ts sets redirect_url to .../pro/result?ref=...).
  * Same polling pattern as wallet/TopupResult.tsx — the webhook may still be
  * catching up when the user is redirected back.
@@ -41,47 +41,36 @@ export default function ProActivationResultPage() {
 
   if (!ref || isLoading || !data) {
     return (
-      <div className="p-6 max-w-lg mx-auto">
-        <Card>
-          <CardContent className="pt-6 text-center py-16">
-            <Loader2 className="w-10 h-10 text-primary animate-spin mx-auto mb-4" />
-            <p className="text-foreground font-semibold">Vérification du paiement...</p>
-          </CardContent>
-        </Card>
-      </div>
+      <ResultCard>
+        <ResultView tone="pending" title="Vérification du paiement" message="Nous confirmons votre paiement auprès du prestataire…" />
+      </ResultCard>
     );
   }
 
   const status = timedOut ? 'PENDING' : data.status;
+  const until = data.extended_to ? new Date(data.extended_to).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : undefined;
 
   return (
-    <div className="p-6 max-w-lg mx-auto">
-      <Card>
-        <CardContent className="pt-6 text-center py-10">
-          {status === 'SUCCESS' ? (
-            <>
-              <CheckCircle2 className="w-14 h-14 text-success mx-auto mb-4" />
-              <h2 className="text-lg font-bold text-foreground mb-1">Mode Pro activé</h2>
-              <p className="text-sm text-muted-foreground">Vous pouvez de nouveau ajouter des dépenses.</p>
-            </>
-          ) : status === 'FAILED' ? (
-            <>
-              <XCircle className="w-14 h-14 text-destructive mx-auto mb-4" />
-              <h2 className="text-lg font-bold text-foreground mb-1">Paiement échoué</h2>
-              <p className="text-sm text-muted-foreground">Veuillez réessayer.</p>
-            </>
-          ) : (
-            <>
-              <Loader2 className="w-14 h-14 text-primary animate-spin mx-auto mb-4" />
-              <h2 className="text-lg font-bold text-foreground mb-1">Paiement en cours</h2>
-              <p className="text-sm text-muted-foreground">Le résultat sera confirmé sous peu.</p>
-            </>
-          )}
-          <Button className="w-full mt-6" onClick={() => navigate('/dashboard/expenses')}>
-            Retour
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
+    <ResultCard>
+      {status === 'SUCCESS' ? (
+        <ResultView
+          tone="success"
+          icon={Crown}
+          title="Mode Pro activé"
+          message="Vous pouvez de nouveau ajouter vos dépenses, sans limite."
+          rows={until ? [{ label: 'Valable jusqu\'au', value: until }] : []}
+        >
+          <Button className="h-[52px] w-full rounded-xl text-base font-semibold" onClick={() => navigate('/dashboard/expenses')}>Aller à Mes dépenses</Button>
+        </ResultView>
+      ) : status === 'FAILED' ? (
+        <ResultView tone="error" title="Paiement non abouti" message="Aucun montant n'a été débité. Vous pouvez réessayer.">
+          <Button className="h-[52px] w-full rounded-xl text-base font-semibold" onClick={() => navigate('/dashboard/expenses')}>Retour à Mes dépenses</Button>
+        </ResultView>
+      ) : (
+        <ResultView tone="waiting" title="Paiement en cours" message="Le résultat sera confirmé dans quelques instants. Le mode Pro s'activera tout seul.">
+          <Button className="h-[52px] w-full rounded-xl text-base font-semibold" onClick={() => navigate('/dashboard/expenses')}>Retour à Mes dépenses</Button>
+        </ResultView>
+      )}
+    </ResultCard>
   );
 }

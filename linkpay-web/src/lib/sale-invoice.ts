@@ -22,6 +22,11 @@ export interface InvoiceOrg {
 
 export interface InvoiceSale {
   reference: string;
+  /** PAID: the invoice says it is settled instead of inviting to pay. */
+  status?: string;
+  payment_method?: string;
+  /** Made without network: recorded on the server later. */
+  offline?: boolean;
   currency: string;
   total_cents: number;
   created_at?: string;

@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Eye, EyeOff, Loader2, RefreshCcw, ShieldAlert, Snowflake, Play, CreditCard } from 'lucide-react';
+import { Eye, EyeOff, Loader2, RefreshCcw, ShieldAlert, Snowflake, Play, CreditCard, Wallet } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
-import { formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import { cardFaceData, groupDigits, STATUS_LABEL, type MyCardResponse } from '@/lib/cards';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -70,61 +69,71 @@ export default function MyCardPage() {
     );
 
   return (
-    <div className="p-4 max-w-lg mx-auto space-y-5 pb-28">
+    <div className="mx-auto max-w-lg space-y-4 px-4 py-5 pb-28 md:p-6 lg:max-w-6xl">
       <PageHeader title="Ma carte" />
 
+      {/* Computer: the card on the left, what it draws on and its settings on the right. */}
+      <div className="space-y-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-8 lg:space-y-0">
+      <div className="space-y-4 lg:sticky lg:top-24">
       <div>
         <ScaledCard flipped={flipped} front={<CardFront data={face} />} back={<CardBack data={face} />} />
-        <div className="flex items-center justify-between mt-3">
-          <div className="flex items-center gap-2">
-            {status && <Badge variant={status === 'active' ? 'success' : status === 'blocked' || status === 'expired' ? 'error' : 'warning'}>{STATUS_LABEL[status]}</Badge>}
-          </div>
-          <div className="flex gap-1">
+        <div className="mt-3 flex items-center justify-between gap-2">
+          {status ? (
+            <span className={cn('inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold', status === 'active' ? 'bg-success/10 text-success' : status === 'blocked' || status === 'expired' ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning')}>
+              <span className="h-1.5 w-1.5 rounded-full bg-current" /> {STATUS_LABEL[status]}
+            </span>
+          ) : <span />}
+          <div className="flex gap-1.5">
             {shown && (
-              <Button variant="ghost" size="sm" onClick={() => setRevealed((v) => !v)} aria-label={revealed ? 'Masquer le numéro' : 'Afficher le numéro'}>
-                {revealed ? <EyeOff className="w-4 h-4 mr-1" /> : <Eye className="w-4 h-4 mr-1" />}
+              <button type="button" onClick={() => setRevealed((v) => !v)} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-accent" aria-label={revealed ? 'Masquer le numéro' : 'Afficher le numéro'}>
+                {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                 {revealed ? 'Masquer' : 'Afficher'}
-              </Button>
+              </button>
             )}
-            <Button variant="ghost" size="sm" onClick={() => setFlipped((v) => !v)}>
-              <RefreshCcw className="w-4 h-4 mr-1" /> {flipped ? 'Recto' : 'Verso'}
-            </Button>
+            <button type="button" onClick={() => setFlipped((v) => !v)} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-accent">
+              <RefreshCcw className="h-3.5 w-3.5" /> {flipped ? 'Recto' : 'Verso'}
+            </button>
           </div>
         </div>
       </div>
-
-      {/* The card holds no money: this is the wallet it draws on. */}
-      <div className="rounded-2xl border border-border bg-card p-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Solde de votre portefeuille</p>
-        <div className="grid grid-cols-2 gap-3">
-          <div><p className="text-xs text-muted-foreground">Francs congolais</p><p className="text-lg font-bold">{formatCurrency(data.balances.CDF, 'CDF')}</p></div>
-          <div><p className="text-xs text-muted-foreground">Dollars</p><p className="text-lg font-bold">{formatCurrency(data.balances.USD, 'USD')}</p></div>
-        </div>
       </div>
+      <div className="space-y-4">
+      {/* The card holds no money: this is the wallet it draws on. */}
+      <section className="rounded-3xl border border-border bg-card p-4 shadow-soft">
+        <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground"><Wallet className="h-4 w-4 text-primary" /> Solde utilisé par la carte</p>
+        <div className="grid grid-cols-2 gap-2.5">
+          {(['CDF', 'USD'] as const).map((c) => (
+            <div key={c} className="rounded-2xl bg-muted/60 px-3.5 py-3">
+              <p className="text-xs text-muted-foreground">{c === 'CDF' ? 'Francs congolais' : 'Dollars américains'}</p>
+              <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground">{formatCurrency(data.balances[c], c)}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
-      {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+      {error && <p role="alert" className="rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">{error}</p>}
 
       {!card && (
-        <div className="rounded-2xl border border-border bg-card p-5 text-center space-y-3">
-          <CreditCard className="w-8 h-8 text-primary mx-auto" />
-          <p className="font-semibold">Vous n'avez pas encore de carte ScanLinkPay</p>
-          <p className="text-sm text-muted-foreground">Elle sert à payer vos factures, partout où ScanLinkPay est accepté, avec votre PIN.</p>
-          <Button className="w-full" disabled={busy} onClick={() => run(() => api.post('/cards/me/request'))}>
+        <div className="space-y-3 rounded-3xl border border-border bg-card p-6 text-center shadow-soft">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-gradient text-white shadow-brand"><CreditCard className="h-7 w-7" /></span>
+          <p className="text-lg font-bold">Obtenez votre carte ScanLinkPay</p>
+          <p className="text-sm text-muted-foreground">Payez partout où ScanLinkPay est accepté : le commerçant scanne votre carte, vous confirmez avec votre PIN.</p>
+          <Button className="h-[52px] w-full rounded-xl text-base font-semibold" disabled={busy} onClick={() => run(() => api.post('/cards/me/request'))}>
             {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Demander ma carte
           </Button>
         </div>
       )}
 
       {status === 'requested' && (
-        <div className="rounded-2xl border border-border bg-card p-5 text-sm">
-          <p className="font-semibold mb-1">Demande envoyée</p>
+        <div className="rounded-3xl border border-border bg-card p-5 text-sm shadow-soft">
+          <p className="mb-1 font-semibold">Demande envoyée</p>
           <p className="text-muted-foreground">Votre carte est en préparation. Vous serez prévenu dès qu'elle est prête à être retirée.</p>
         </div>
       )}
 
       {status === 'issued' && (
         <form
-          className="rounded-2xl border border-border bg-card p-5 space-y-3"
+          className="space-y-3 rounded-3xl border border-border bg-card p-5 shadow-soft"
           onSubmit={(e) => { e.preventDefault(); void run(() => api.post('/cards/me/activate', { card_number: number, pin }), () => { setNumber(''); setPin(''); }); }}
         >
           <p className="font-semibold">Activez votre carte</p>
@@ -135,7 +144,7 @@ export default function MyCardPage() {
           </div>
           <div>
             <Label>Votre PIN</Label>
-            <PinInput value={pin} onChange={setPin} length={4} title="Entrer votre code PIN" hint="Pour activer votre carte" />
+            <PinInput value={pin} onChange={setPin} length={4} title="Entrez votre code PIN" hint="Pour activer votre carte" />
           </div>
           <Button type="submit" className="w-full" disabled={busy || number.replace(/\D/g, '').length !== 16 || pin.length < 4}>
             {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Activer la carte
@@ -144,19 +153,21 @@ export default function MyCardPage() {
       )}
 
       {status === 'active' && (
-        <div className="grid grid-cols-2 gap-3">
-          <Button variant="outline" disabled={busy} onClick={() => run(() => api.post('/cards/me/freeze'))}>
-            <Snowflake className="w-4 h-4 mr-2" /> Mettre en pause
-          </Button>
-          <Button variant="outline" className="text-destructive" onClick={() => { setPin(''); setError(''); setPinAction('lost'); }}>
-            <ShieldAlert className="w-4 h-4 mr-2" /> Déclarer perdue
-          </Button>
+        <div className="grid grid-cols-2 gap-2.5">
+          <button type="button" disabled={busy} onClick={() => run(() => api.post('/cards/me/freeze'))} className="flex flex-col items-start gap-2.5 rounded-3xl border border-border bg-card p-4 text-left shadow-soft transition-colors hover:bg-accent/60 disabled:opacity-60">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-500"><Snowflake className="h-5 w-5" /></span>
+            <span><span className="block text-sm font-semibold text-foreground">Mettre en pause</span><span className="block text-xs text-muted-foreground">Bloque les paiements, réversible</span></span>
+          </button>
+          <button type="button" onClick={() => { setPin(''); setError(''); setPinAction('lost'); }} className="flex flex-col items-start gap-2.5 rounded-3xl border border-border bg-card p-4 text-left shadow-soft transition-colors hover:bg-destructive/5">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10 text-destructive"><ShieldAlert className="h-5 w-5" /></span>
+            <span><span className="block text-sm font-semibold text-foreground">Déclarer perdue</span><span className="block text-xs text-muted-foreground">Bloque la carte pour toujours</span></span>
+          </button>
         </div>
       )}
 
       {status === 'frozen' && (
-        <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
-          <p className="text-sm text-muted-foreground">Votre carte est en pause : aucun paiement n'est possible.</p>
+        <div className="space-y-3 rounded-3xl border border-border bg-card p-5 shadow-soft">
+          <p className="flex items-center gap-2 text-sm text-muted-foreground"><Snowflake className="h-4 w-4 text-sky-500" /> Votre carte est en pause : aucun paiement n'est possible.</p>
           <div className="grid grid-cols-2 gap-3">
             <Button onClick={() => { setPin(''); setError(''); setPinAction('unfreeze'); }}><Play className="w-4 h-4 mr-2" /> Réactiver</Button>
             <Button variant="outline" className="text-destructive" onClick={() => { setPin(''); setError(''); setPinAction('lost'); }}>Déclarer perdue</Button>
@@ -165,7 +176,7 @@ export default function MyCardPage() {
       )}
 
       {status === 'blocked' && (
-        <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5 space-y-3">
+        <div className="space-y-3 rounded-3xl border border-destructive/30 bg-destructive/5 p-5">
           <p className="font-semibold text-destructive">Cette carte est bloquée</p>
           <p className="text-sm text-muted-foreground">{card?.blocked_reason === 'lost' ? 'Vous l\'avez déclarée perdue.' : 'Elle a été bloquée par ScanLinkPay.'} Elle ne peut plus être utilisée.</p>
           {data.can_request && (
@@ -175,7 +186,7 @@ export default function MyCardPage() {
       )}
 
       {status === 'expired' && (
-        <div className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
+        <div className="rounded-3xl border border-border bg-card p-5 text-sm text-muted-foreground shadow-soft">
           Votre carte a expiré. Rendez-vous auprès de ScanLinkPay pour recevoir une nouvelle carte.
         </div>
       )}
@@ -197,6 +208,8 @@ export default function MyCardPage() {
           </Button>
         </DialogContent>
       </Dialog>
+      </div>
+      </div>
     </div>
   );
 }

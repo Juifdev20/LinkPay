@@ -2,12 +2,11 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent } from '@/components/ui/card';
-import { Logo } from '@/components/Logo';
-import { CurrencySelector } from '@/components/CurrencySelector';
-import { Loader2, AlertCircle, Building2, Store, Lock } from 'lucide-react';
+import { PublicShell, PublicCard } from '@/components/public/PublicShell';
+import { ResultView } from '@/components/ResultView';
+import { AmountEntry } from '@/components/payment/AmountEntry';
+import { cn } from '@/lib/utils';
+import { Loader2, AlertCircle, Building2, Store, ArrowRight, Check, SearchX } from 'lucide-react';
 
 interface OrgLookup {
   id: string;
@@ -38,7 +37,8 @@ export default function PayByNumber() {
       .finally(() => setLoading(false));
   }, [number]);
 
-  const amountCents = Math.round((parseFloat(amount) || 0) * 100);
+  // Whole units: the payment providers do not take cents.
+  const amountCents = (Number(amount) || 0) * 100;
   const canPay = amountCents >= 100 && !!merchantId && !paying;
 
   const handlePay = async () => {
@@ -60,106 +60,88 @@ export default function PayByNumber() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
+      <PublicShell>
+        <PublicCard className="flex flex-col items-center py-14">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="mt-3 text-sm text-muted-foreground">Recherche du commerçant…</p>
+        </PublicCard>
+      </PublicShell>
     );
   }
 
   if (error && !org) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 bg-background">
-        <div className="w-full max-w-md">
-          <div className="flex justify-center mb-8">
-            <Logo size="lg" />
-          </div>
-          <Card className="text-center">
-            <CardContent className="pt-6">
-              <div className="w-16 h-16 rounded-2xl bg-destructive/10 flex items-center justify-center mx-auto mb-4">
-                <AlertCircle className="w-8 h-8 text-destructive" />
-              </div>
-              <p className="text-muted-foreground">{error}</p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <PublicShell>
+        <PublicCard className="py-8">
+          <ResultView tone="error" icon={SearchX} title="Numéro introuvable" message={`Aucun commerçant ScanLinkPay ne porte le numéro ${number ?? ''}. Vérifiez-le auprès du commerçant.`} />
+        </PublicCard>
+      </PublicShell>
     );
   }
 
+  const o = org!;
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8 bg-background">
-      <div className="w-full max-w-md">
-        <div className="flex justify-center mb-8">
-          <Logo size="lg" />
+    <PublicShell>
+      <PublicCard>
+        <div className="flex items-center gap-3">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-gradient text-white shadow-brand">
+            <Building2 className="h-6 w-6" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-muted-foreground">Payer à</p>
+            <p className="truncate text-base font-bold text-foreground">{o.name}</p>
+          </div>
+          <span className="ml-auto shrink-0 rounded-full bg-muted px-2.5 py-1 font-mono text-[11px] font-semibold text-muted-foreground">{o.scanlinkpay_number}</span>
         </div>
-        <Card>
-          <CardContent className="pt-6 space-y-4">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <Building2 className="w-6 h-6 text-primary" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-lg font-bold text-foreground truncate">{org!.name}</h2>
-                <p className="text-xs text-muted-foreground font-mono">{org!.scanlinkpay_number}</p>
-              </div>
+
+        {o.merchants.length > 1 && (
+          <div className="mt-5">
+            <p className="mb-2 text-sm font-semibold text-foreground">Choisissez la boutique</p>
+            <div role="radiogroup" aria-label="Boutique" className="space-y-2">
+              {o.merchants.map((m) => {
+                const selected = merchantId === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setMerchantId(m.id)}
+                    className={cn(
+                      'flex w-full items-center gap-3 rounded-2xl border-2 px-3.5 py-3 text-left transition-colors',
+                      selected ? 'border-primary bg-primary/[0.06]' : 'border-border hover:border-primary/40',
+                    )}
+                  >
+                    <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', selected ? 'bg-brand-gradient text-white' : 'bg-muted text-muted-foreground')}>
+                      <Store className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{m.name}</span>
+                    <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2', selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border')}>
+                      {selected && <Check className="h-3 w-3" strokeWidth={3} />}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
+          </div>
+        )}
 
-            {org!.merchants.length > 1 && (
-              <div className="space-y-2">
-                <Label className="font-semibold">Boutique</Label>
-                <div className="space-y-2">
-                  {org!.merchants.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setMerchantId(m.id)}
-                      className={`w-full flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-colors ${
-                        merchantId === m.id ? 'border-primary bg-primary/5' : 'border-input hover:bg-accent'
-                      }`}
-                    >
-                      <Store className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                      <span className="text-sm font-medium text-foreground truncate">{m.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+        {o.merchants.length === 0 && (
+          <p className="mt-5 flex items-start gap-2 rounded-xl bg-warning/10 px-3.5 py-3 text-sm font-medium text-warning">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> Cette entreprise n'a pas encore de boutique pouvant recevoir un paiement.
+          </p>
+        )}
+      </PublicCard>
 
-            {org!.merchants.length === 0 && (
-              <p className="text-sm text-warning">Cette entreprise n'a pas encore de boutique pouvant recevoir un paiement.</p>
-            )}
-
-            <div className="space-y-2">
-              <Label>Devise</Label>
-              <CurrencySelector value={currency} onChange={setCurrency} />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="amount" className="font-semibold">Montant ({currency})</Label>
-              <Input
-                id="amount"
-                type="number"
-                inputMode="decimal"
-                placeholder="0"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-              />
-            </div>
-
-            {error && (
-              <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
-                {error}
-              </div>
-            )}
-
-            <Button className="w-full" size="lg" disabled={!canPay} onClick={handlePay}>
-              {paying && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
-              <Lock className="mr-2 w-4 h-4" />
-              Continuer
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+      <PublicCard>
+        <AmountEntry value={amount} onChange={setAmount} currency={currency} onCurrencyChange={setCurrency} label="Montant à payer" error={error || undefined} />
+        <Button className="mt-5 h-[52px] w-full rounded-xl text-base font-semibold" disabled={!canPay} onClick={handlePay}>
+          {paying ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
+          Continuer
+          {!paying && <ArrowRight className="ml-2 h-5 w-5" />}
+        </Button>
+        <p className="mt-3 text-center text-xs text-muted-foreground">Vous choisirez ensuite comment payer : Mobile Money ou votre solde ScanLinkPay.</p>
+      </PublicCard>
+    </PublicShell>
   );
 }

@@ -40,33 +40,49 @@ export function BalanceCard({
   return (
     <div
       className={cn(
-        'rounded-2xl bg-gradient-to-br from-primary to-indigo-600 p-6 text-primary-foreground shadow-lg shadow-primary/20',
+        'relative overflow-hidden rounded-3xl bg-brand-gradient p-5 text-primary-foreground shadow-brand',
         className,
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-primary-foreground/80">{label}</p>
-          {subtitle && <p className="text-xs text-primary-foreground/60 mt-0.5 truncate">{subtitle}</p>}
+      {/* Light shapes mixed into the gradient, as in the design. */}
+      <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 400 240" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="bc-wave" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#ffffff" stopOpacity="0.18" />
+            <stop offset="1" stopColor="#7cc8ff" stopOpacity="0.05" />
+          </linearGradient>
+        </defs>
+        <circle cx="360" cy="-10" r="120" fill="#ffffff" fillOpacity="0.08" />
+        <circle cx="395" cy="40" r="70" fill="#7cc8ff" fillOpacity="0.16" />
+        <path d="M0 175 C 90 135, 170 215, 260 170 S 380 120, 400 145 L 400 240 L 0 240 Z" fill="url(#bc-wave)" />
+        <path d="M0 205 C 110 170, 200 240, 300 200 S 380 175, 400 190 L 400 240 L 0 240 Z" fill="#ffffff" fillOpacity="0.06" />
+      </svg>
+
+      <div className="relative">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-primary-foreground/90">{label}</p>
+            {subtitle && <p className="text-[11px] text-primary-foreground/70 mt-0.5 truncate tracking-wide">{subtitle}</p>}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <CurrencySelector value={activeCurrency} onChange={handleCurrencyChange} variant="pill" />
+            {maskable && (
+              <button
+                type="button"
+                onClick={() => setHidden((h) => !h)}
+                aria-label={hidden ? 'Afficher le solde' : 'Masquer le solde'}
+                className="text-primary-foreground/80 hover:text-primary-foreground transition-colors"
+              >
+                {hidden ? <EyeOff className="w-[18px] h-[18px]" /> : <Eye className="w-[18px] h-[18px]" />}
+              </button>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <CurrencySelector value={activeCurrency} onChange={handleCurrencyChange} variant="pill" />
-          {maskable && (
-            <button
-              type="button"
-              onClick={() => setHidden((h) => !h)}
-              aria-label={hidden ? 'Afficher le solde' : 'Masquer le solde'}
-              className="text-primary-foreground/80 hover:text-primary-foreground transition-colors"
-            >
-              {hidden ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-            </button>
-          )}
-        </div>
+        <p className="text-[30px] leading-tight font-extrabold mt-3 tracking-tight">
+          {hidden ? `•••••• ${activeCurrency}` : formatCurrency(balances[activeCurrency], activeCurrency)}
+        </p>
+        {actions && <div className="mt-5 flex gap-3">{actions}</div>}
       </div>
-      <p className="text-3xl md:text-4xl font-bold mt-2 tracking-tight">
-        {hidden ? `•••••• ${activeCurrency}` : formatCurrency(balances[activeCurrency], activeCurrency)}
-      </p>
-      {actions && <div className="mt-4 flex gap-3">{actions}</div>}
     </div>
   );
 }

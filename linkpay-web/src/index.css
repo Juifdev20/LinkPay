@@ -4,65 +4,85 @@
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    /* Charte ScanLinkPay : le bleu électrique du logo #1230F8 (distinct du bleu de HotelSaver), du bleu nuit #0A1270,
+       avec le bleu ciel du « Pay » du logo en accent. */
+    --brand-navy: 235 84% 24%;
+    --brand-blue: 232 94% 52%;
+    /* The light blue of « Pay » in the logo (#15B8FE). */
+    --brand-sky: 199 99% 54%;
+    --background: 230 100% 98%;
+    --foreground: 224 39% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 224 39% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 243 75% 59%;
+    --popover-foreground: 224 39% 11%;
+    --primary: 232 94% 52%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 210 40% 94%;
-    --accent-foreground: 222 47% 11%;
+    --secondary: 230 60% 96%;
+    --secondary-foreground: 224 39% 11%;
+    --muted: 230 50% 96%;
+    --muted-foreground: 225 14% 46%;
+    --accent: 232 100% 97%;
+    --accent-foreground: 224 39% 11%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --success: 160 84% 39%;
+    --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
+    --warning: 25 95% 53%;
     --warning-foreground: 0 0% 100%;
-    --info: 221 83% 53%;
+    --info: 202 100% 45%;
     --info-foreground: 0 0% 100%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 243 75% 59%;
-    --radius: 0.75rem;
+    --border: 230 35% 92%;
+    --input: 230 35% 90%;
+    --ring: 232 94% 52%;
+    --radius: 0.875rem;
     --gradient-orange: linear-gradient(135deg, #f97316 0%, #ef4444 100%);
+    --gradient-brand: linear-gradient(120deg, #0a1270 0%, #0f24c9 50%, #1230f8 100%);
+    --gradient-brand-text: linear-gradient(90deg, #1338fe 0%, #15b8fe 100%);
   }
 
   .dark {
-    --background: 222 47% 8%;
-    --foreground: 210 40% 96%;
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 96%;
-    --popover: 222 47% 11%;
-    --popover-foreground: 210 40% 96%;
-    --primary: 243 75% 59%;
+    --background: 228 42% 8%;
+    --foreground: 228 40% 97%;
+    --card: 228 34% 13%;
+    --card-foreground: 228 40% 97%;
+    --popover: 228 34% 13%;
+    --popover-foreground: 228 40% 97%;
+    --primary: 224 100% 64%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 96%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 96%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 96%;
-    --success: 160 84% 39%;
+    --secondary: 228 28% 18%;
+    --secondary-foreground: 228 40% 97%;
+    --muted: 228 28% 17%;
+    --muted-foreground: 226 20% 68%;
+    --accent: 232 45% 20%;
+    --accent-foreground: 228 40% 97%;
+    --destructive: 0 78% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 65% 48%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
+    --warning: 25 95% 56%;
     --warning-foreground: 0 0% 100%;
-    --info: 221 83% 53%;
+    --info: 202 100% 55%;
     --info-foreground: 0 0% 100%;
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 243 75% 59%;
+    --border: 228 26% 21%;
+    --input: 228 26% 23%;
+    --ring: 224 100% 64%;
+    --gradient-brand-text: linear-gradient(90deg, #4f7dff 0%, #4ed2fd 100%);
   }
+
 
   * {
     @apply border-border;
+  }
+
+  /* Amounts: no browser spin arrows (an app, not a desktop form). */
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
   }
 
   /* No bounce or scroll chaining at the ends of a page (an app, not a web page). */
@@ -72,7 +92,7 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Poppins', system-ui, -apple-system, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     font-feature-settings: 'rlig' 1, 'calt' 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -80,6 +100,24 @@
 }
 
 @layer utilities {
+  /* The brand gradient (balance card, main buttons, active tab): night blue to the logo's electric blue. */
+  .bg-brand-gradient {
+    background-image: var(--gradient-brand);
+  }
+  /* Code screens on a phone (maquette PIN): night blue to the logo's electric blue, deeper in dark mode. */
+  .bg-pin-gradient {
+    background-image: linear-gradient(165deg, #0a1270 0%, #0f24c9 50%, #1230f8 85%, #3150ff 100%);
+  }
+  /* Dark mode keeps this gradient on a computer too, behind the curves (maquette « Version web (dark mode) »). */
+  .dark .bg-pin-gradient {
+    background-image: linear-gradient(165deg, #141a8f 0%, #0f1d7a 45%, #0a1250 100%);
+  }
+  .text-brand-gradient {
+    background-image: var(--gradient-brand-text);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
@@ -117,6 +155,19 @@
   }
   .safe-area-top {
     padding-top: env(safe-area-inset-top);
+  }
+  /* Offset to clear the fixed mobile TopBar:
+     68 px of visual content + safe-area-inset-top (status bar on edge-to-edge Android/iOS).
+     On desktop (md:) the TopBar is hidden and the in-flow header takes its role, so reset to 0. */
+  .topbar-offset {
+    padding-top: calc(68px + env(safe-area-inset-top, 0px));
+  }
+  .topbar-sticky {
+    top: calc(68px + env(safe-area-inset-top, 0px));
+  }
+  @media (min-width: 768px) {
+    .topbar-offset { padding-top: 0; }
+    .topbar-sticky { top: 69px; }
   }
 }
 

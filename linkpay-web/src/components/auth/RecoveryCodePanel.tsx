@@ -2,9 +2,8 @@ import { useState } from 'react';
 import { jsPDF } from 'jspdf';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import { deliverPdf } from '@/lib/report-pdf';
-import { Copy, Check, FileDown, KeyRound } from 'lucide-react';
+import { Copy, Check, FileDown, KeyRound, ShieldAlert, ArrowRight } from 'lucide-react';
 
 /** The recovery code on a sheet to print or keep: what it is for, and the code itself. */
 function recoveryPdf(code: string, phone?: string) {
@@ -41,35 +40,34 @@ export function RecoveryCodePanel({ code, phone, onDone, doneLabel = 'Continuer'
   };
 
   return (
-    <div className="space-y-5 text-center">
-      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
-        <KeyRound className="h-7 w-7 text-primary" />
-      </div>
-      <div>
-        <h2 className="text-xl font-bold text-foreground">Votre code de secours</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Si vous oubliez votre mot de passe, ce code vous permettra d'en choisir un nouveau. Notez-le ou enregistrez-le : il ne sera plus affiché.
-        </p>
-      </div>
-      <p className="select-all rounded-2xl border-2 border-dashed border-primary/40 bg-primary/5 px-4 py-5 font-mono text-2xl font-bold tracking-[0.2em] text-foreground">
+    <div className="text-center">
+      <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-gradient text-white shadow-brand">
+        <KeyRound className="h-7 w-7" />
+      </span>
+      <h2 className="mt-4 text-xl font-bold tracking-tight text-foreground">Votre code de secours</h2>
+      <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+        Si vous oubliez votre mot de passe, ce code vous permettra d'en choisir un nouveau. Notez-le ou enregistrez-le : <span className="font-semibold text-foreground">il ne sera plus affiché.</span>
+      </p>
+      <p className="mt-5 select-all rounded-2xl border-2 border-dashed border-primary/40 bg-primary/[0.06] px-4 py-5 font-mono text-[1.4rem] font-bold tracking-[0.18em] text-foreground">
         {code}
       </p>
-      <div className="grid grid-cols-2 gap-2">
-        <Button type="button" variant="outline" onClick={copy}>
-          {copied ? <Check className="mr-2 h-4 w-4 text-success" /> : <Copy className="mr-2 h-4 w-4" />} Copier
+      <div className="mt-3 grid grid-cols-2 gap-2.5">
+        <Button type="button" variant="outline" className="h-12 rounded-xl" onClick={copy}>
+          {copied ? <Check className="mr-2 h-4 w-4 text-success" /> : <Copy className="mr-2 h-4 w-4" />} {copied ? 'Copié' : 'Copier'}
         </Button>
-        <Button type="button" variant="outline" onClick={() => deliverPdf(recoveryPdf(code, phone), 'code-de-secours-scanlinkpay.pdf', 'Enregistrer le code de secours').catch(() => undefined)}>
-          <FileDown className="mr-2 h-4 w-4" /> Enregistrer (PDF)
+        <Button type="button" variant="outline" className="h-12 rounded-xl" onClick={() => deliverPdf(recoveryPdf(code, phone), 'code-de-secours-scanlinkpay.pdf', 'Enregistrer le code de secours').catch(() => undefined)}>
+          <FileDown className="mr-2 h-4 w-4" /> PDF
         </Button>
       </div>
-      <div className="flex items-start gap-2 text-left">
-        <Checkbox id="kept" checked={kept} onCheckedChange={(c) => setKept(c === true)} className="mt-0.5" />
-        <Label htmlFor="kept" className="cursor-pointer text-sm font-normal text-muted-foreground">
-          J'ai noté ou enregistré mon code de secours.
-        </Label>
-      </div>
-      <Button type="button" className="w-full py-6 text-base font-semibold" disabled={!kept} onClick={onDone}>
-        {doneLabel}
+      <p className="mt-4 flex items-start gap-2 rounded-xl bg-warning/10 px-3.5 py-2.5 text-left text-xs leading-relaxed text-warning">
+        <ShieldAlert className="mt-px h-4 w-4 shrink-0" /> Ne le donnez à personne : ScanLinkPay ne vous le demandera jamais.
+      </p>
+      <label htmlFor="kept" className="mt-4 flex cursor-pointer items-start gap-2.5 text-left text-sm text-muted-foreground">
+        <Checkbox id="kept" checked={kept} onCheckedChange={(c) => setKept(c === true)} className="mt-px" />
+        J'ai noté ou enregistré mon code de secours.
+      </label>
+      <Button type="button" className="mt-5 h-[52px] w-full rounded-xl text-base font-semibold" disabled={!kept} onClick={onDone}>
+        {doneLabel} <ArrowRight className="ml-2 h-5 w-5" />
       </Button>
     </div>
   );

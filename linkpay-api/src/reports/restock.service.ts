@@ -30,8 +30,18 @@ export class RestockService {
     return this.supabaseService.getClient();
   }
 
-  async create(merchantId: string, caller: Caller, input: { items: { stock_item_id: string; wanted_qty: number }[]; note?: string }) {
+  private async byClientRef(merchantId: string, clientRef: string) {
+    const { data, error } = await this.db.from('restock_requests').select('*').eq('merchant_id', merchantId).eq('client_ref', clientRef).maybeSingle();
+    return error ? null : data;
+  }
+
+  async create(merchantId: string, caller: Caller, input: { items: { stock_item_id: string; wanted_qty: number }[]; note?: string; client_ref?: string }) {
     const merchant = await this.stockService.resolveMerchantAccess(merchantId, caller.id, caller.role, caller.organization_id, RESTOCK_ROLES);
+    // Written offline and already received (answer lost): give back the first one, never a second request.
+    if (input.client_ref) {
+      const existing = await this.byClientRef(merchantId, input.client_ref);
+      if (existing) return existing;
+    }
     if (!merchant.organization_id) throw new BadRequestException("Cette station ne fait partie d'aucune entreprise");
 
     const wanted = (input.items || []).filter((i) => i?.stock_item_id && Number.isInteger(i.wanted_qty) && i.wanted_qty > 0);
@@ -50,12 +60,19 @@ export class RestockService {
       .map((i) => ({ stock_item_id: i.stock_item_id, name: byId.get(i.stock_item_id)!.name, current_qty: byId.get(i.stock_item_id)!.quantity, wanted_qty: Math.min(i.wanted_qty, 1_000_000) }));
     if (!items.length) throw new BadRequestException("Ces produits n'appartiennent pas à cette station.");
 
-    const { data: request, error } = await this.db
-      .from('restock_requests')
-      .insert({ organization_id: merchant.organization_id, merchant_id: merchantId, requested_by: caller.id, items, note: input.note?.trim().slice(0, 500) || null })
-      .select()
-      .single();
-    if (error) throw new Error(`Failed to create restock request: ${error.message}`);
+    const row: Record<string, unknown> = { organization_id: merchant.organization_id, merchant_id: merchantId, requested_by: caller.id, items, note: input.note?.trim().slice(0, 500) || null };
+    if (input.client_ref) row.client_ref = input.client_ref;
+    let { data: request, error } = await this.db.from('restock_requests').insert(row).select().single();
+    if (error && input.client_ref && (error as any).code === '23505') {
+      const existing = await this.byClientRef(merchantId, input.client_ref);
+      if (existing) return existing;
+    }
+    if (error && input.client_ref && /client_ref/.test(error.message)) {
+      // Migration 075 not run yet: still record the request (without the duplicate protection).
+      delete row.client_ref;
+      ({ data: request, error } = await this.db.from('restock_requests').insert(row).select().single());
+    }
+    if (error || !request) throw new Error(`Failed to create restock request: ${error?.message}`);
 
     const org = await this.organizationsService.getOrganizationById(merchant.organization_id);
     if (org.owner_id !== caller.id) {

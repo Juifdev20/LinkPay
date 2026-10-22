@@ -1,3 +1,5 @@
+import { Users as UsersIcon } from 'lucide-react';
+import { EmptyState } from '@/components/EmptyState';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -13,20 +15,19 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PhoneInput } from '@/components/PhoneInput';
 import { toApiPhone } from '@/lib/mobile-money';
 import { downloadStaffCredentialPdf } from '@/lib/staff-credential-pdf';
-import { Loader2, Plus, X, Printer, KeyRound, Warehouse, ShoppingBag, Wallet, Calculator, UserX, UserCheck, BadgeCheck } from 'lucide-react';
+import { Loader2, Plus, X, Printer, KeyRound, Warehouse, ShoppingBag, Calculator, UserX, UserCheck, BadgeCheck } from 'lucide-react';
 
+// One person sells AND takes the money, in every sector (our shops don't split seller and cashier): a single
+// « Vendeur / caissier » role (slug 'caissier'). A vendeur from before migration 077 is shown as one.
 const ROLES = [
+  { slug: 'caissier', label: 'Vendeur / caissier', icon: ShoppingBag },
   { slug: 'gerant', label: 'Gérant', icon: BadgeCheck },
   { slug: 'magasinier', label: 'Magasinier', icon: Warehouse },
-  { slug: 'vendeur', label: 'Vendeur', icon: ShoppingBag },
-  { slug: 'caissier', label: 'Caissier', icon: Wallet },
   { slug: 'comptable', label: 'Comptable', icon: Calculator },
 ];
+const roleOf = (member: any) => (member.role === 'vendeur' ? 'caissier' : member.role);
 
 const EMPTY_FORM = { nom: '', postnom: '', prenom: '', telephone: '', email: '', role_slug: 'caissier', merchant_id: '' };
-
-/** A supermarket has no sales staff: the cashier sells and takes the money (the API refuses it too). */
-const rolesForSector = (sector?: string) => (sector === 'supermarche' ? ROLES.filter((r) => r.slug !== 'vendeur') : ROLES);
 
 /** "ABC · Station Gombe" on the credentials sheet, so the person knows where they work. */
 function stationLabel(orgName: string, station?: string | null) {
@@ -55,9 +56,8 @@ export default function StaffPage() {
     queryFn: async () => (await api.get('/organizations/me')).data,
   });
 
-  // The roles of this kind of business; a manager can't name managers.
-  const sectorRoles = rolesForSector(org?.sector);
-  const assignableRoles = isOwner ? sectorRoles : sectorRoles.filter((r) => r.slug !== 'gerant');
+  // A manager can't name managers.
+  const assignableRoles = isOwner ? ROLES : ROLES.filter((r) => r.slug !== 'gerant');
 
   const { data: stations } = useQuery({
     queryKey: ['org-merchants', org?.id],
@@ -148,7 +148,7 @@ export default function StaffPage() {
   });
 
   const printCredential = async (data: any, member: any) => {
-    const role = ROLES.find((r) => r.slug === member.role);
+    const role = ROLES.find((r) => r.slug === roleOf(member));
     try {
       await downloadStaffCredentialPdf({
         nom: data.nom,
@@ -188,10 +188,10 @@ export default function StaffPage() {
 
   const inStation = stationFilter ? (staff || []).filter((s: any) => s.merchant_id === stationFilter) : (staff || []);
   const counts = ROLES.reduce((acc: Record<string, number>, r) => {
-    acc[r.slug] = inStation.filter((s: any) => s.role === r.slug).length;
+    acc[r.slug] = inStation.filter((s: any) => roleOf(s) === r.slug).length;
     return acc;
   }, {});
-  const visibleStaff = roleFilter ? inStation.filter((s: any) => s.role === roleFilter) : inStation;
+  const visibleStaff = roleFilter ? inStation.filter((s: any) => roleOf(s) === roleFilter) : inStation;
   const unassigned = (staff || []).filter((s: any) => !s.merchant_id && s.active !== false).length;
   const canActOn = (member: any) => isOwner || member.role !== 'gerant';
 
@@ -267,11 +267,11 @@ export default function StaffPage() {
       {s.active !== false && canActOn(s) && (
         <div className="mt-2 ml-12 flex items-center gap-2 flex-wrap">
           <Select
-            value={s.role || ''}
-            onChange={(e) => e.target.value !== s.role && setRoleChange({ member: s, role_slug: e.target.value })}
-            className="h-8 text-xs w-36"
+            value={roleOf(s) || ''}
+            onChange={(e) => e.target.value !== roleOf(s) && setRoleChange({ member: s, role_slug: e.target.value })}
+            className="h-8 text-xs w-40"
           >
-            {ROLES.filter((r) => assignableRoles.includes(r) || r.slug === s.role).map((r) => (
+            {ROLES.filter((r) => assignableRoles.includes(r) || r.slug === roleOf(s)).map((r) => (
               <option key={r.slug} value={r.slug} disabled={!assignableRoles.includes(r)}>{r.label}</option>
             ))}
           </Select>
@@ -448,7 +448,7 @@ export default function StaffPage() {
               }
             </div>
           ) : (
-            !showAdd && <p className="text-muted-foreground text-center py-6 text-sm">Aucun utilisateur pour le moment</p>
+            !showAdd && <EmptyState icon={UsersIcon} title="Aucun utilisateur pour le moment" text="Ajoutez vos vendeurs / caissiers, gérants, magasiniers et comptables : chacun reçoit son propre accès." />
           )}
         </CardContent>
       </Card>

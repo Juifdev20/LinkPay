@@ -30,6 +30,15 @@ export interface SaleLineInput {
 
 type Money = Record<string, number>;
 
+/**
+ * How long the payment QR of a sale stays payable. A sale's QR is a "dynamic" QR (one sale, one amount): like every
+ * payment app, it expires — short, since the customer stands at the counter. Past it, the QR is refused when the
+ * client tries to pay (PaymentsService checks expires_at) and the unpaid sale is cancelled (nothing to put back on the
+ * shelf: the stock only moves once paid). The seller relaunches the sale in one tap if the customer is still there.
+ * The merchant's fixed QR (Encaisser) never expires.
+ */
+export const SALE_QR_TTL_MS = 15 * 60 * 1000;
+
 function addTo(map: Money, currency: string, amount: number) {
   map[currency] = (map[currency] || 0) + amount;
 }
@@ -87,6 +96,23 @@ export class SalesService {
     return data;
   }
 
+  /**
+   * The station an owner's sale belongs to. The owner sells from the catalog of every station, so it is the station
+   * that holds the articles — one sale, one station (its stock and its cash); never simply the first station.
+   */
+  private async ownerSaleStation(orgId: string, itemIds: string[]) {
+    const { data: items } = await this.db().from('stock_items').select('merchant_id').in('id', itemIds);
+    const stations = [...new Set((items || []).map((i: any) => i.merchant_id))];
+    if (stations.length > 1) {
+      throw new BadRequestException('Une vente ne peut contenir que des articles d\'une même station.');
+    }
+    if (!stations.length) return this.getOrgMerchant(orgId);
+    const { data: merchant } = await this.db()
+      .from('merchants').select('id, name').eq('id', stations[0]).eq('organization_id', orgId).maybeSingle();
+    if (!merchant) throw new BadRequestException('Un article du panier n\'appartient pas à cette entreprise');
+    return merchant;
+  }
+
   async createSale(orgId: string, callerId: string, callerOrgId: string | undefined, lines: SaleLineInput[], callerRole?: string) {
     const station = await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SELLER_ROLES);
 
@@ -99,8 +125,8 @@ export class SalesService {
       }
     }
 
-    const merchant = station ? { id: station } : await this.getOrgMerchant(orgId);
     const ids = lines.map((l) => l.stock_item_id);
+    const merchant = station ? { id: station } : await this.ownerSaleStation(orgId, ids);
     const { data: items, error: itemsError } = await this.db()
       .from('stock_items')
       .select('id, name, category, brand, model, condition, serial_number, warranty_months, attributes, quantity, unit_price_cents, cost_price_cents, currency, merchant_id')
@@ -163,8 +189,9 @@ export class SalesService {
         description: `Vente ${reference} — ${description}`,
         link_token: randomBytes(32).toString('hex'),
         status: 'CREATED',
+        expires_at: new Date(Date.now() + SALE_QR_TTL_MS).toISOString(),
       })
-      .select('id, link_token')
+      .select('id, link_token, expires_at')
       .single();
     if (requestError || !request) throw new Error(`Failed to create payment request: ${requestError?.message}`);
 
@@ -190,7 +217,61 @@ export class SalesService {
       .insert(snapshot.map((s) => ({ ...s, sale_id: sale.id })));
     if (linesError) throw new Error(`Failed to create sale items: ${linesError.message}`);
 
-    return { sale, link_token: request.link_token, items: withoutCost(snapshot as any[], callerRole) };
+    return { sale, link_token: request.link_token, qr_expires_at: request.expires_at, items: withoutCost(snapshot as any[], callerRole) };
+  }
+
+  /**
+   * A sale made without network in the "Ventes" module, sent when the network came back (migration 075). Paid in
+   * cash on the spot. record_offline_org_sale() writes sale, lines (product sheet frozen) and stock exit in one
+   * transaction, once per client_ref; a price changed meanwhile or a stock already sold elsewhere comes back as
+   * `conflicts` and goes to the journal, never refused.
+   */
+  async recordOfflineSale(
+    orgId: string,
+    callerId: string,
+    callerOrgId: string | undefined,
+    dto: { client_ref: string; sold_at: string; items: { stock_item_id: string; quantity: number; unit_price_cents: number }[] },
+    callerRole?: string,
+  ) {
+    const station = await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SELLER_ROLES);
+    const merchant = station ? { id: station } : await this.ownerSaleStation(orgId, dto.items.map((l) => l.stock_item_id));
+
+    const lines = new Map<string, { stock_item_id: string; quantity: number; unit_price_cents: number }>();
+    for (const l of dto.items) {
+      const key = `${l.stock_item_id}:${l.unit_price_cents}`;
+      const prev = lines.get(key);
+      lines.set(key, prev ? { ...prev, quantity: prev.quantity + l.quantity } : { ...l });
+    }
+
+    const { data, error } = await this.db().rpc('record_offline_org_sale', {
+      p_org_id: orgId,
+      p_merchant_id: merchant.id,
+      p_seller_id: callerId,
+      p_client_ref: dto.client_ref,
+      p_sold_at: dto.sold_at,
+      p_items: [...lines.values()],
+    });
+    if (error || !data) {
+      const m = error?.message ?? '';
+      if (m.includes('SALE_OFFLINE_ITEM_NOT_FOUND')) throw new BadRequestException("Un article de cette vente n'existe plus dans la boutique (supprimé entre-temps).");
+      if (m.includes('SALE_OFFLINE_MIXED_CURRENCY')) throw new BadRequestException('Une vente ne peut contenir que des articles dans la même devise.');
+      if (m.includes('SALE_OFFLINE_')) throw new BadRequestException('Vente hors ligne invalide.');
+      if (m.includes('record_offline_org_sale') && m.includes('does not exist')) this.logger.error('record_offline_org_sale() missing — run migration 075');
+      throw new Error(`Failed to record offline sale: ${m}`);
+    }
+
+    const result = data as { sale_id: string; created: boolean; conflicts: any[] };
+    if (result.created) {
+      await this.auditService.log({
+        user_id: callerId,
+        action: result.conflicts?.length ? 'offline_sale_with_conflicts' : 'offline_sale_recorded',
+        entity_type: 'sale',
+        entity_id: result.sale_id,
+        changes: { client_ref: dto.client_ref, sold_at: dto.sold_at, conflicts: result.conflicts ?? [] },
+      });
+    }
+    const sale = await this.getSale(orgId, result.sale_id, callerId, callerOrgId, callerRole);
+    return { ...sale, conflicts: result.conflicts ?? [], created: result.created };
   }
 
   async getSale(orgId: string, saleId: string, callerId: string, callerOrgId: string | undefined, callerRole?: string) {
@@ -204,15 +285,76 @@ export class SalesService {
     if (error || !sale) throw new NotFoundException('Vente introuvable');
 
     let link_token: string | null = null;
+    let qr_expires_at: string | null = null;
     if (sale.payment_request_id) {
       const { data: request } = await this.db()
         .from('payment_requests')
-        .select('link_token')
+        .select('link_token, expires_at, status')
         .eq('id', sale.payment_request_id)
         .single();
       link_token = request?.link_token ?? null;
+      qr_expires_at = request?.expires_at ?? null;
+      // Its QR was paid but the sale was not updated (a step that failed after the payment): settled now.
+      if (sale.status === 'PENDING' && request?.status === 'PAID') {
+        await this.markPaidByPaymentRequest(sale.payment_request_id, undefined);
+        const { data: fresh } = await this.db().from('sales').select('status, payment_method, paid_at').eq('id', sale.id).maybeSingle();
+        if (fresh) Object.assign(sale, fresh);
+      }
     }
-    return { ...sale, sale_items: withoutCost(sale.sale_items as any[], callerRole), link_token };
+    // Its QR expired unpaid: cancelled now, without waiting for the minute job (the seller's screen shows it at once).
+    if (sale.status === 'PENDING' && qr_expires_at && new Date(qr_expires_at).getTime() <= Date.now()) {
+      if (await this.expireSale(sale.id, sale.payment_request_id)) sale.status = 'CANCELLED';
+    }
+    return { ...sale, sale_items: withoutCost(sale.sale_items as any[], callerRole), link_token, qr_expires_at };
+  }
+
+  /**
+   * Cancels a pending sale whose QR expired. Only while nobody is paying it: the QR is closed first, and only if it is
+   * still unclaimed (CREATED) and past its expiry — a client who confirmed with their PIN just before keeps their
+   * payment. True when the sale was cancelled.
+   */
+  private async expireSale(saleId: string, paymentRequestId: string | null): Promise<boolean> {
+    if (!paymentRequestId) return false;
+    const { data: closed } = await this.db()
+      .from('payment_requests')
+      .update({ status: 'CANCELLED' })
+      .eq('id', paymentRequestId)
+      // EXPIRED: the payment page marks an expired link so when someone opens it. PENDING (being paid) is never touched.
+      .in('status', ['CREATED', 'EXPIRED'])
+      .lte('expires_at', new Date().toISOString())
+      .select('id')
+      .maybeSingle();
+    if (!closed) return false;
+    const { data: cancelled } = await this.db()
+      .from('sales')
+      .update({ status: 'CANCELLED' })
+      .eq('id', saleId)
+      .eq('status', 'PENDING')
+      .select('id')
+      .maybeSingle();
+    return !!cancelled;
+  }
+
+  /** Every minute (SalesExpiryService): the sales whose QR expired unpaid are cancelled. Returns how many. */
+  async expireOverdueSales(): Promise<number> {
+    const { data: requests, error } = await this.db()
+      .from('payment_requests')
+      .select('id')
+      .in('status', ['CREATED', 'EXPIRED'])
+      .like('reference', 'REQ-SALE-%')
+      .lte('expires_at', new Date().toISOString())
+      .limit(200);
+    if (error || !requests?.length) return 0;
+    const { data: sales } = await this.db()
+      .from('sales')
+      .select('id, payment_request_id')
+      .eq('status', 'PENDING')
+      .in('payment_request_id', requests.map((r: any) => r.id));
+    let count = 0;
+    for (const sale of sales || []) {
+      if (await this.expireSale(sale.id, sale.payment_request_id)) count++;
+    }
+    return count;
   }
 
   /** Records stock leaving the shelf for a paid sale. Writes stock_movements
@@ -221,21 +363,44 @@ export class SalesService {
   private async releaseStock(sale: { id: string; reference: string; merchant_id: string; created_by: string | null }) {
     const { data: items, error } = await this.db()
       .from('sale_items')
-      .select('stock_item_id, quantity')
+      .select('stock_item_id, quantity, name')
       .eq('sale_id', sale.id);
     if (error) throw new Error(`Failed to load sale items: ${error.message}`);
 
+    // The sale is paid: the money wins, as for offline sales (migration 075). An article already sold by another sale
+    // meanwhile cannot go below zero (stock_items_quantity_nonnegative): what is missing is logged for the
+    // inventory instead of failing a payment that already happened.
     for (const item of items || []) {
       if (!item.stock_item_id) continue;
+      const { data: stock } = await this.db().from('stock_items').select('quantity').eq('id', item.stock_item_id).maybeSingle();
+      const take = Math.min(item.quantity, Math.max(0, stock?.quantity ?? 0));
+      if (take < item.quantity) {
+        this.logger.error(`Sale ${sale.reference} paid but "${item.name}" short in stock: ${item.quantity} sold, ${take} left on the shelf — check the inventory`);
+      }
+      if (take <= 0) continue;
       const { error: movementError } = await this.db().from('stock_movements').insert({
         stock_item_id: item.stock_item_id,
         merchant_id: sale.merchant_id,
         type: 'out',
-        quantity_delta: -item.quantity,
+        quantity_delta: -take,
         reason: `Vente ${sale.reference}`,
         created_by: sale.created_by,
       });
-      if (movementError) throw new Error(`Failed to record stock movement: ${movementError.message}`);
+      if (movementError) this.logger.error(`Sale ${sale.reference}: stock movement failed for ${item.stock_item_id}: ${movementError.message}`);
+    }
+  }
+
+  /** Cash is only taken while every article of the sale is still on the shelf (another sale may have sold it). */
+  private async assertStillInStock(saleId: string) {
+    const { data: lines } = await this.db().from('sale_items').select('stock_item_id, quantity, name').eq('sale_id', saleId);
+    const ids = (lines || []).map((l: any) => l.stock_item_id).filter(Boolean);
+    if (!ids.length) return;
+    const { data: stock } = await this.db().from('stock_items').select('id, quantity').in('id', ids);
+    const left = new Map((stock || []).map((s: any) => [s.id, s.quantity]));
+    for (const l of lines || []) {
+      if (l.stock_item_id && (left.get(l.stock_item_id) ?? 0) < l.quantity) {
+        throw new BadRequestException(`« ${l.name} » n'est plus en stock (vendu entre-temps) : annulez cette vente et refaites-la.`);
+      }
     }
   }
 
@@ -259,6 +424,44 @@ export class SalesService {
     await this.releaseStock(sale);
   }
 
+  /**
+   * The customer leaves without paying: the pending sale is cancelled and its payment QR closed, so nobody can pay
+   * it later. Nothing to give back to the stock: a sale only takes its articles off the shelf once paid. Refused when
+   * the client is paying by ScanLinkPay right now (the QR is already claimed).
+   */
+  async cancelSale(orgId: string, saleId: string, callerId: string, callerOrgId: string | undefined, callerRole?: string) {
+    const station = await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SELLER_ROLES);
+    const { data: sale, error } = await this.db()
+      .from('sales')
+      .select('id, status, payment_request_id, merchant_id')
+      .eq('id', saleId)
+      .eq('organization_id', orgId)
+      .maybeSingle();
+    if (error || !sale || (station && sale.merchant_id !== station)) throw new NotFoundException('Vente introuvable');
+    if (sale.status !== 'PENDING') throw new BadRequestException('Cette vente a déjà été traitée');
+
+    if (sale.payment_request_id) {
+      const { data: closed } = await this.db()
+        .from('payment_requests')
+        .update({ status: 'CANCELLED' })
+        .eq('id', sale.payment_request_id)
+        .in('status', ['CREATED', 'EXPIRED'])
+        .select('id')
+        .maybeSingle();
+      if (!closed) throw new BadRequestException('Le client est en train de payer par ScanLinkPay : attendez la confirmation.');
+    }
+
+    const { data: cancelled } = await this.db()
+      .from('sales')
+      .update({ status: 'CANCELLED' })
+      .eq('id', sale.id)
+      .eq('status', 'PENDING')
+      .select('id, status')
+      .maybeSingle();
+    if (!cancelled) throw new BadRequestException('Cette vente a déjà été traitée');
+    return cancelled;
+  }
+
   async payCash(orgId: string, saleId: string, callerId: string, callerOrgId: string | undefined, callerRole?: string) {
     const station = await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SELLER_ROLES);
     const { data: sale, error } = await this.db()
@@ -270,6 +473,27 @@ export class SalesService {
     if (station && sale && sale.merchant_id !== station) throw new NotFoundException('Vente introuvable');
     if (error || !sale) throw new NotFoundException('Vente introuvable');
     if (sale.status !== 'PENDING') throw new BadRequestException('Cette vente a déjà été traitée');
+    if (await this.expireSale(sale.id, sale.payment_request_id)) {
+      throw new BadRequestException('Cette vente a expiré (15 minutes sans paiement) : relancez-la.');
+    }
+    await this.assertStillInStock(sale.id);
+
+    // Close the payment QR FIRST, and only if nobody is paying it: a client confirming with their PIN at the same
+    // moment has already claimed it (CREATED -> PENDING) and will be debited — taking the cash too would make them
+    // pay twice. Whoever claims the request first wins.
+    if (sale.payment_request_id) {
+      const { data: closed, error: closeError } = await this.db()
+        .from('payment_requests')
+        .update({ status: 'CANCELLED' })
+        .eq('id', sale.payment_request_id)
+        .eq('status', 'CREATED')
+        .select('id')
+        .maybeSingle();
+      if (closeError) throw new Error(`Failed to close payment request: ${closeError.message}`);
+      if (!closed) {
+        throw new BadRequestException('Le client est en train de payer (ou a payé) par ScanLinkPay : ne prenez pas les espèces, attendez la confirmation.');
+      }
+    }
 
     const { data: updated, error: updateError } = await this.db()
       .from('sales')
@@ -279,15 +503,6 @@ export class SalesService {
       .select()
       .maybeSingle();
     if (updateError || !updated) throw new BadRequestException('Cette vente a déjà été traitée');
-
-    // Close the payment request so the same QR can't be paid later by wallet.
-    if (sale.payment_request_id) {
-      await this.db()
-        .from('payment_requests')
-        .update({ status: 'CANCELLED' })
-        .eq('id', sale.payment_request_id)
-        .eq('status', 'CREATED');
-    }
 
     await this.releaseStock(sale);
     return updated;

@@ -20,38 +20,52 @@ export class PlatformSettingsService {
   }
 
   /** Full row, for the super admin screen (who changed it, when). */
-  async getSettings() {
-    const { data, error } = await this.db
+  async getSettings(): Promise<{ screenshot_protection: boolean; cdf_per_usd: number | null; updated_at: string | null; updated_by: string | null }> {
+    let { data, error } = await this.db
       .from('platform_settings')
-      .select('screenshot_protection, updated_at, updated_by')
+      .select('screenshot_protection, cdf_per_usd, updated_at, updated_by')
       .eq('id', 1)
       .maybeSingle();
+    if (error && /cdf_per_usd/.test(error.message)) {
+      // Migration 072 not applied yet: the rest still works, without a rate.
+      ({ data, error } = await this.db.from('platform_settings').select('screenshot_protection, updated_at, updated_by').eq('id', 1).maybeSingle() as any);
+    }
     if (error) {
       // Table not migrated yet → behave as "everything off" rather than
       // breaking every app launch.
       this.logger.warn(`platform_settings unreadable: ${error.message}`);
-      return { screenshot_protection: false, updated_at: null, updated_by: null };
+      return { screenshot_protection: false, cdf_per_usd: null, updated_at: null, updated_by: null };
     }
-    return data || { screenshot_protection: false, updated_at: null, updated_by: null };
+    const row: any = data || {};
+    return {
+      screenshot_protection: !!row.screenshot_protection,
+      cdf_per_usd: row.cdf_per_usd != null ? Number(row.cdf_per_usd) : null,
+      updated_at: row.updated_at ?? null,
+      updated_by: row.updated_by ?? null,
+    };
   }
 
   /** What every app needs at launch — public, nothing sensitive in it. */
   async getPublicSettings() {
-    const { screenshot_protection } = await this.getSettings();
-    return { screenshot_protection: !!screenshot_protection };
+    const { screenshot_protection, cdf_per_usd } = await this.getSettings();
+    return { screenshot_protection: !!screenshot_protection, cdf_per_usd };
   }
 
-  async update(callerId: string, changes: { screenshot_protection: boolean }) {
+  async update(callerId: string, changes: { screenshot_protection?: boolean; cdf_per_usd?: number | null }) {
     const before = await this.getSettings();
+    const next = {
+      screenshot_protection: changes.screenshot_protection ?? before.screenshot_protection,
+      ...(changes.cdf_per_usd !== undefined ? { cdf_per_usd: changes.cdf_per_usd } : {}),
+    };
     const { data, error } = await this.db
       .from('platform_settings')
       .upsert({
         id: 1,
-        screenshot_protection: changes.screenshot_protection,
+        ...next,
         updated_at: new Date().toISOString(),
         updated_by: callerId,
       })
-      .select('screenshot_protection, updated_at, updated_by')
+      .select('*')
       .single();
     if (error) {
       if (/platform_settings/.test(error.message) && /schema cache|does not exist/.test(error.message)) {
@@ -59,16 +73,28 @@ export class PlatformSettingsService {
           "La table platform_settings n'existe pas encore — appliquez la migration 039_platform_settings.sql dans l'éditeur SQL de Supabase.",
         );
       }
+      if (/cdf_per_usd/.test(error.message)) {
+        throw new ServiceUnavailableException("Le taux indicatif n'existe pas encore — appliquez la migration 072_indicative_exchange_rate.sql.");
+      }
       throw new Error(`Failed to update platform settings: ${error.message}`);
     }
 
-    if (before.screenshot_protection !== changes.screenshot_protection) {
+    if (before.screenshot_protection !== next.screenshot_protection) {
       await this.auditService.log({
         user_id: callerId,
         action: 'screenshot_protection_changed',
         entity_type: 'platform_settings',
         entity_id: '1',
-        changes: { from: !!before.screenshot_protection, to: changes.screenshot_protection },
+        changes: { from: !!before.screenshot_protection, to: next.screenshot_protection },
+      });
+    }
+    if (changes.cdf_per_usd !== undefined && changes.cdf_per_usd !== before.cdf_per_usd) {
+      await this.auditService.log({
+        user_id: callerId,
+        action: 'indicative_rate_changed',
+        entity_type: 'platform_settings',
+        entity_id: '1',
+        changes: { from: before.cdf_per_usd, to: changes.cdf_per_usd },
       });
     }
     return data;

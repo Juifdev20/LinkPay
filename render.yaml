@@ -90,8 +90,8 @@ services:
         value: 12h
       - key: ADMIN_ALLOWED_IPS
         sync: false
-      # Chosen in the Render dashboard (mock | flexpaie | cinetpay), NOT forced here: switching to flexpaie before its
-      # credentials exist would break every payment. See docs/FLEXPAIE.md.
+      # Chosen in the Render dashboard (flexpaie). REQUIRED: there is no simulated provider any more, and
+      # without a real one every payment is refused. See docs/FLEXPAIE.md; test money: docs/RECHARGE_TEST.md.
       - key: PSP_PROVIDER
         sync: false
       # FlexPaie (docs/FLEXPAIE.md): the address, merchant code and token come from FlexPaie with the account.
@@ -107,12 +107,21 @@ services:
         sync: false
       - key: FLEXPAIE_TOKEN
         sync: false
+      # Automatic withdrawals (FlexPaie PayoutService, docs/FLEXPAIE.md). Off until FLEXPAIE_PAYOUTS_ENABLED=true.
+      - key: FLEXPAIE_PAYOUT_AUTH_URL
+        sync: false
+      - key: FLEXPAIE_PAYOUT_URL
+        sync: false
+      - key: FLEXPAIE_PAYOUT_CHECK_URL
+        sync: false
+      - key: FLEXPAIE_PAYOUT_USERNAME
+        sync: false
+      - key: FLEXPAIE_PAYOUT_PASSWORD
+        sync: false
+      - key: FLEXPAIE_PAYOUTS_ENABLED
+        sync: false
       # Bank card top-ups: put "true" only after a real card test (docs/FLEXPAIE.md). Closed by default.
       - key: CARD_PAYMENTS_ENABLED
-        sync: false
-      - key: CINETPAY_API_KEY_CD
-        sync: false
-      - key: CINETPAY_API_PASSWORD_CD
         sync: false
       - key: PROXY_URL
         sync: false

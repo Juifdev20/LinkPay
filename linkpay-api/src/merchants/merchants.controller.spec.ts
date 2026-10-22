@@ -3,7 +3,7 @@ import { MerchantsController } from './merchants.controller';
 
 describe('MerchantsController.updateMerchant', () => {
   const merchantsService = { updateMerchant: jest.fn(async (_id: string, u: any) => u) };
-  const controller = new MerchantsController(merchantsService as any);
+  const controller = new MerchantsController(merchantsService as any, {} as any);
   beforeEach(() => merchantsService.updateMerchant.mockClear());
 
   it("refuses a cashier, even with their store's merchant_id", async () => {

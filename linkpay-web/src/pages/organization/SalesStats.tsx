@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/PageHeader';
-import { formatCurrency, formatShortDate } from '@/lib/utils';
+import { formatCurrency, formatShortDate, countLabel } from '@/lib/utils';
 import {
   TrendingUp, Receipt, ShoppingBasket, Percent, Loader2,
   Store, Banknote, QrCode, Trophy, PackageX, FileDown, FileText,
@@ -288,7 +288,7 @@ export default function SalesStatsPage() {
                     <span className="w-6 h-6 rounded-full bg-secondary text-xs font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-foreground truncate">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">{p.qty} vendu(s) · marge {formatCurrency(p.margin_cents, currency)}</p>
+                      <p className="text-xs text-muted-foreground">{countLabel(p.qty, 'vendu')} · marge {formatCurrency(p.margin_cents, currency)}</p>
                     </div>
                     <p className="text-sm font-semibold text-foreground flex-shrink-0">{formatCurrency(p.revenue_cents, currency)}</p>
                   </div>

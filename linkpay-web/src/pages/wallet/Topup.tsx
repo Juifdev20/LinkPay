@@ -109,7 +109,7 @@ export default function TopupPage() {
         return;
       }
 
-      // Mock provider (and an idempotent replay) settle synchronously.
+      // An idempotent replay settles synchronously.
       setResult(data.topup);
       if (data.topup?.status === 'PENDING') {
         setStep('pending');
@@ -265,7 +265,7 @@ export default function TopupPage() {
 
     return (
       <PaymentStep
-        title="Recharger mon compte"
+        title="Montant de la recharge"
         subtitle={wallet?.wallet_number ? `Compte ${wallet.wallet_number}` : 'Ajoutez des fonds à votre solde ScanLinkPay'}
         error={error}
         footer={
@@ -287,7 +287,7 @@ export default function TopupPage() {
   }
 
   return (
-    <FormSheet onClose={() => navigate(-1)} title="Recharger mon compte">
+    <FormSheet fullPage onClose={() => navigate(-1)} title="Recharger mon compte">
       {renderStep()}
     </FormSheet>
   );

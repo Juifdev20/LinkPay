@@ -1,3 +1,5 @@
+import { CreditCard as CreditCardIcon } from 'lucide-react';
+import { EmptyState } from '@/components/EmptyState';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -187,7 +189,7 @@ export default function AdminCardsPage() {
   });
 
   return (
-    <div className="p-4 max-w-4xl mx-auto space-y-5 pb-28">
+    <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-5 pb-28">
       <PageHeader title="Cartes ScanLinkPay" />
 
       <Card>
@@ -233,7 +235,7 @@ export default function AdminCardsPage() {
         {isLoading ? (
           <div className="py-10"><Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" /></div>
         ) : rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-8">Aucune carte.</p>
+          <EmptyState icon={CreditCardIcon} title="Aucune carte" text="Les cartes ScanLinkPay commandées apparaîtront ici." />
         ) : (
           <div className="rounded-2xl border border-border bg-card divide-y divide-border">
             {rows.map((c) => (

@@ -295,6 +295,7 @@ export class PaymentRequestsService {
       .eq('id', requestId);
   }
 
+  /** Only a request nobody is paying: a paid one stays PAID, one being paid (PENDING) finishes its payment. */
   private async markExpired(requestId: string) {
     await this.supabaseService.getClient()
       .from('payment_requests')
@@ -302,7 +303,8 @@ export class PaymentRequestsService {
         status: 'EXPIRED',
         updated_at: new Date().toISOString(),
       })
-      .eq('id', requestId);
+      .eq('id', requestId)
+      .eq('status', 'CREATED');
   }
 
   private async getMerchantDefaultCurrency(merchantId: string): Promise<string> {

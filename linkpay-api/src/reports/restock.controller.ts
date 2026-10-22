@@ -21,6 +21,9 @@ class CreateRestockDto {
   items!: RestockLineDto[];
 
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) note?: string;
+
+  @ApiPropertyOptional({ description: "Id créé sur l'appareil pour une demande écrite hors ligne : envoyée deux fois, gardée une fois" })
+  @IsOptional() @IsUUID() client_ref?: string;
 }
 
 class UpdateRestockDto {

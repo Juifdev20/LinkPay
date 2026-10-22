@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { formatCurrency } from '@/lib/utils';
 import { Loader2, Pencil } from 'lucide-react';
+import { IndicativeRateCard } from '@/components/admin/IndicativeRateCard';
 
 const OPERATIONS: Record<string, { title: string; hint: string }> = {
   TRANSFER: {
@@ -96,8 +97,9 @@ export default function AdminWalletLimitsPage() {
     form.min.trim() !== '' && centsOf(form.min) >= 1;
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-4xl mx-auto">
+    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader title="Frais et limites du portefeuille" />
+      <IndicativeRateCard />
 
       {isLoading && <Loader2 className="w-5 h-5 animate-spin mx-auto text-muted-foreground" />}
 

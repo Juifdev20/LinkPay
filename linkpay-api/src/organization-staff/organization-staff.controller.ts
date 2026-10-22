@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put, Body, Param, ForbiddenException, BadRequestException, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, IsEmail, IsIn, IsUUID, MaxLength } from 'class-validator';
-import { OrganizationStaffService, STAFF_ROLE_SLUGS, StaffManagerScope, assertRoleFitsSector } from './organization-staff.service';
+import { OrganizationStaffService, STAFF_ROLE_SLUGS, StaffManagerScope, normalizeStaffRole } from './organization-staff.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AppCodeConfirmGuard, RequireAppCode } from '../common/guards/app-code-confirm.guard';
@@ -77,7 +77,7 @@ export class OrganizationStaffController {
     @CurrentUser() caller: Caller,
   ) {
     const scope = await this.managerScope(id, caller);
-    assertRoleFitsSector((await this.orgsService.getOrganizationById(id)).sector, dto.role_slug);
+    dto.role_slug = normalizeStaffRole(dto.role_slug);
     if (scope.station) {
       if (dto.role_slug === 'gerant') throw new ForbiddenException("Seul le responsable de l'entreprise nomme les gérants");
       dto.merchant_id = scope.station;
@@ -128,7 +128,7 @@ export class OrganizationStaffController {
     @CurrentUser() caller: Caller,
   ) {
     const scope = await this.assertCanManage(id, staffId, caller);
-    assertRoleFitsSector((await this.orgsService.getOrganizationById(id)).sector, dto.role_slug);
+    dto.role_slug = normalizeStaffRole(dto.role_slug);
     if (scope.station && dto.role_slug === 'gerant') throw new ForbiddenException("Seul le responsable de l'entreprise nomme les gérants");
     return this.staffService.changeStaffRole(id, staffId, caller.id, dto.role_slug);
   }

@@ -1,6 +1,6 @@
 /**
  * Credits a wallet top-up exactly once, whoever confirms it (PSP webhook, delivered once or twice; the status
- * check the app makes when the user returns from the payment page; the mock provider).
+ * check the app makes when the user returns from the payment page).
  *
  * Preferred path: the complete_topup() SQL function (migration 056) — claim, credit and status change in ONE
  * transaction. If the function is not there yet (migration not applied), the same guarantee is rebuilt from
