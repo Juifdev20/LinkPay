@@ -10,7 +10,9 @@ function setup(row: any, opts: { missingRateColumn?: boolean } = {}) {
     return { data: row };
   });
   const audit = { log: jest.fn(async () => undefined) };
-  return { service: new PlatformSettingsService(fake.service, audit as any), fake, audit };
+  const twoFactor = { forgetAdminPause: jest.fn() };
+  const alerts = { alert: jest.fn(async () => undefined) };
+  return { service: new PlatformSettingsService(fake.service, audit as any, twoFactor as any, alerts as any), fake, audit, twoFactor, alerts };
 }
 
 describe('indicative CDF/USD rate (display only)', () => {
@@ -54,5 +56,37 @@ describe('support contacts (set by the super admin, migration 080)', () => {
       action: 'support_contacts_changed',
       changes: { support_phone: { from: '0812345678', to: '+243 812 345 678' }, support_email: { from: 'old@exemple.cd', to: null } },
     }));
+  });
+});
+
+describe("suspending the administrators' second factor (migration 081)", () => {
+  const upsertOf = (fake: any) => fake.queries.find((q: RecordedQuery) => q.calls.some((c) => c.method === 'upsert'))!.calls.find((c: any) => c.method === 'upsert')!.args[0];
+
+  it('for a while: until the date, by whom, audited, every super admin alerted, this server sees it at once', async () => {
+    const { service, fake, audit, twoFactor, alerts } = setup({ screenshot_protection: false });
+    const before = Date.now();
+    await service.setAdminTwoFactorPause('sa-1', 24);
+    const upsert = upsertOf(fake);
+    const until = new Date(upsert.admin_2fa_paused_until).getTime();
+    expect(until).toBeGreaterThanOrEqual(before + 24 * 3600_000);
+    expect(until).toBeLessThan(before + 24 * 3600_000 + 60_000);
+    expect(upsert.admin_2fa_paused_by).toBe('sa-1');
+    expect(upsert).not.toHaveProperty('screenshot_protection');
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'admin_2fa_paused' }));
+    expect(alerts.alert).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warning', title: expect.stringContaining('suspendue') }));
+    expect(twoFactor.forgetAdminPause).toHaveBeenCalled();
+  });
+
+  it('back on: the date is cleared', async () => {
+    const { service, fake, audit, alerts } = setup({ admin_2fa_paused_until: new Date(Date.now() + 3600_000).toISOString() });
+    await service.setAdminTwoFactorPause('sa-1', 0);
+    expect(upsertOf(fake)).toMatchObject({ admin_2fa_paused_until: null, admin_2fa_paused_by: null });
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'admin_2fa_resumed' }));
+    expect(alerts.alert).toHaveBeenCalledWith(expect.objectContaining({ title: expect.stringContaining('réactivée') }));
+  });
+
+  it('a date already passed reads as "required"', async () => {
+    const { service } = setup({ admin_2fa_paused_until: new Date(Date.now() - 1000).toISOString() });
+    expect((await service.getSettings()).admin_2fa_paused_until).toBeNull();
   });
 });

@@ -6,10 +6,11 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { ALLOW_WITHOUT_MFA_KEY } from '../decorators/allow-without-mfa.decorator';
 import { MFA_REQUIRED_ROLES } from '../../auth/constants';
 import { isAdminIpAllowed } from '../../security/admin-ip';
+import { TwoFactorService } from '../../security/two-factor.service';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
-  constructor(private reflector: Reflector, private config: ConfigService) {
+  constructor(private reflector: Reflector, private config: ConfigService, private twoFactor: TwoFactorService) {
     super();
   }
 
@@ -52,7 +53,8 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         context.getHandler(),
         context.getClass(),
       ]);
-      if (!user.mfa && !allowed) {
+      // Unless the super admin suspended the second factor for a while (migration 081): the password is enough then.
+      if (!user.mfa && !allowed && !(await this.twoFactor.isAdminRequirementPaused())) {
         throw new ForbiddenException({
           statusCode: 403,
           code: 'MFA_REQUIRED',

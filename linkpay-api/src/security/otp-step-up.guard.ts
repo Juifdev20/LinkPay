@@ -29,6 +29,8 @@ export class OtpStepUpGuard implements CanActivate {
     if (!user) throw new ForbiddenException();
 
     if (user.mfa_at && Date.now() / 1000 - user.mfa_at < FRESH_MFA_WINDOW_S) return true;
+    // The super admin suspended the second factor for a while (migration 081).
+    if (await this.twoFactor.isAdminRequirementPaused()) return true;
 
     const code = req.headers['x-otp-code'];
     if (!code || Array.isArray(code)) {

@@ -146,6 +146,22 @@ Fonctionnement :
 - Un champ vide n'est pas affiché. Si rien n'est saisi : « Les contacts du support seront bientôt disponibles ».
 - Avant la migration 080, rien ne casse : aucun contact n'est affiché.
 
+### 13. Double authentification des administrateurs : suspendre pour un temps, réactiver (migration 081)
+- Demandé pour le développement : le code à chaque connexion et avant chaque action sensible ralentit l'équipe.
+- Où : **Sécurité → Sécurité de l'application**, super admin seulement.
+  - Suspendre pendant 1 heure, 24 heures, 7 jours ou 30 jours. Jamais « pour toujours » : une suspension oubliée
+    avant l'ouverture au public resterait.
+  - Elle revient toute seule à la fin, ou dès que le super admin clique « Réactiver maintenant ».
+- Pour suspendre, le code est demandé une dernière fois : quelqu'un qui n'a que le mot de passe ne peut pas la couper.
+- Pendant la suspension, le mot de passe suffit pour se connecter et pour les actions sensibles. Un administrateur
+  sans application d'authentification n'est plus envoyé vers sa configuration.
+- Restent actifs : le mot de passe, la liste des réseaux autorisés (`ADMIN_ALLOWED_IPS`) et l'audit.
+- Tous les super admins reçoivent une alerte à chaque suspension et réactivation.
+- Un bandeau sur toutes les pages des administrateurs rappelle jusqu'à quand elle est suspendue.
+- À la réactivation, les sessions ouvertes sans code doivent se reconnecter avec le code.
+- Chaque serveur relit le réglage toutes les 15 secondes.
+- Si le réglage est illisible (migration absente), le code reste demandé : jamais d'ouverture par erreur.
+
 ### Reste à décider (non corrigé)
 - Le stock n'est pas réservé pendant l'attente : voulu, le stock bouge au paiement (si l'article est parti
   entre-temps, les espèces sont refusées).

@@ -1,6 +1,6 @@
 import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsNumber, IsOptional, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsNumber, IsOptional, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 
 /** "+243 812 345 678", "0812345678"… — digits and spaces, an optional + in front. */
 const SUPPORT_PHONE = /^\+?[\d ]{6,19}$/;
@@ -48,6 +48,15 @@ class UpdatePlatformSettingsDto {
   support_email?: string | null;
 }
 
+/** The durations offered; never "for ever": a suspension forgotten before the launch would stay. 0 = turn it back on. */
+export const ADMIN_2FA_PAUSE_HOURS = [0, 1, 24, 24 * 7, 24 * 30];
+
+class AdminTwoFactorPauseDto {
+  @ApiProperty({ enum: ADMIN_2FA_PAUSE_HOURS, description: 'Suspendre pendant ce nombre d\'heures (1, 24, 168 ou 720) ; 0 = réactiver maintenant' })
+  @IsIn(ADMIN_2FA_PAUSE_HOURS, { message: 'Durée invalide.' })
+  pause_hours!: number;
+}
+
 @ApiTags('Platform settings')
 @Controller()
 export class PlatformSettingsController {
@@ -78,5 +87,15 @@ export class PlatformSettingsController {
   @ApiOperation({ summary: 'Modifier les réglages globaux (super admin)' })
   update(@Body() dto: UpdatePlatformSettingsDto, @CurrentUser('id') callerId: string) {
     return this.platformSettingsService.update(callerId, dto);
+  }
+
+  @ApiBearerAuth()
+  @Put('admin/platform-settings/admin-2fa')
+  @Roles('super_admin')
+  @UseGuards(RolesGuard, OtpStepUpGuard)
+  @RequireOtp()
+  @ApiOperation({ summary: 'Suspendre pour un temps, ou réactiver, la double authentification des administrateurs (super admin)' })
+  setAdminTwoFactorPause(@Body() dto: AdminTwoFactorPauseDto, @CurrentUser('id') callerId: string) {
+    return this.platformSettingsService.setAdminTwoFactorPause(callerId, dto.pause_hours);
   }
 }

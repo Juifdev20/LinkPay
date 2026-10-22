@@ -1,6 +1,8 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { AuditService } from '../audit/audit.service';
+import { TwoFactorService } from '../security/two-factor.service';
+import { SecurityAlertsService } from '../security/security-alerts.service';
 
 const SUPPORT_KEYS = ['support_phone', 'support_whatsapp', 'support_email'] as const;
 type SupportKey = (typeof SUPPORT_KEYS)[number];
@@ -9,6 +11,9 @@ const NO_SUPPORT: Record<SupportKey, null> = { support_phone: null, support_what
 export type PlatformSettings = {
   screenshot_protection: boolean;
   cdf_per_usd: number | null;
+  /** Until when the administrators' second factor is suspended (null = required) — migration 081. */
+  admin_2fa_paused_until: string | null;
+  admin_2fa_paused_by: string | null;
   updated_at: string | null;
   updated_by: string | null;
 } & Record<SupportKey, string | null>;
@@ -27,6 +32,8 @@ export class PlatformSettingsService {
   constructor(
     private supabaseService: SupabaseService,
     private auditService: AuditService,
+    private twoFactor: TwoFactorService,
+    private securityAlerts: SecurityAlertsService,
   ) {}
 
   private get db() {
@@ -41,7 +48,7 @@ export class PlatformSettingsService {
       // Table not migrated yet → behave as "everything off" rather than
       // breaking every app launch.
       this.logger.warn(`platform_settings unreadable: ${error.message}`);
-      return { screenshot_protection: false, cdf_per_usd: null, ...NO_SUPPORT, updated_at: null, updated_by: null };
+      return { screenshot_protection: false, cdf_per_usd: null, ...NO_SUPPORT, admin_2fa_paused_until: null, admin_2fa_paused_by: null, updated_at: null, updated_by: null };
     }
     const row: any = data || {};
     return {
@@ -50,6 +57,9 @@ export class PlatformSettingsService {
       support_phone: row.support_phone ?? null,
       support_whatsapp: row.support_whatsapp ?? null,
       support_email: row.support_email ?? null,
+      // A date already passed means "required again": shown as such.
+      admin_2fa_paused_until: row.admin_2fa_paused_until && new Date(row.admin_2fa_paused_until).getTime() > Date.now() ? row.admin_2fa_paused_until : null,
+      admin_2fa_paused_by: row.admin_2fa_paused_by ?? null,
       updated_at: row.updated_at ?? null,
       updated_by: row.updated_by ?? null,
     };
@@ -126,5 +136,41 @@ export class PlatformSettingsService {
       });
     }
     return data;
+  }
+
+  /**
+   * Suspends the administrators' second factor for `hours` (it comes back by itself then), or turns it back on now
+   * (`hours` = 0). Every super admin is alerted either way: a suspension nobody expected is an attack sign.
+   */
+  async setAdminTwoFactorPause(callerId: string, hours: number) {
+    const until = hours > 0 ? new Date(Date.now() + hours * 3600_000).toISOString() : null;
+    const { error } = await this.db
+      .from('platform_settings')
+      .upsert({ id: 1, admin_2fa_paused_until: until, admin_2fa_paused_by: until ? callerId : null, updated_at: new Date().toISOString(), updated_by: callerId });
+    if (error) {
+      if (/admin_2fa_paused/.test(error.message)) {
+        throw new ServiceUnavailableException("La suspension de la double authentification n'existe pas encore — appliquez la migration 081_admin_2fa_pause.sql.");
+      }
+      throw new Error(`Failed to change the admin 2FA requirement: ${error.message}`);
+    }
+    this.twoFactor.forgetAdminPause();
+
+    await this.auditService.log({
+      user_id: callerId,
+      action: until ? 'admin_2fa_paused' : 'admin_2fa_resumed',
+      entity_type: 'platform_settings',
+      entity_id: '1',
+      changes: { paused_until: until },
+    });
+    const { data: who } = await this.db.from('profiles').select('full_name, email').eq('id', callerId).maybeSingle();
+    const name = (who as any)?.full_name || (who as any)?.email || 'Un super admin';
+    void this.securityAlerts.alert({
+      severity: until ? 'warning' : 'info',
+      title: until ? 'Double authentification des administrateurs suspendue' : 'Double authentification des administrateurs réactivée',
+      body: until
+        ? `${name} l'a suspendue jusqu'au ${new Date(until).toLocaleString('fr-FR', { timeZone: 'Africa/Kinshasa' })} : le mot de passe suffit pour entrer dans l'administration. Si ce n'est pas voulu, réactivez-la dans Sécurité de l'application.`
+        : `${name} l'a réactivée : le code de l'application d'authentification est de nouveau demandé.`,
+    });
+    return this.getSettings();
   }
 }

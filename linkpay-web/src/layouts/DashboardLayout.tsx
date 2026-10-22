@@ -16,8 +16,8 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { useTheme } from '@/hooks/useTheme';
 import { usePaymentReceivedAlert } from '@/hooks/usePaymentReceivedAlert';
-import { LogOut, Building2, Sun, Moon, Menu, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { LogOut, Building2, Sun, Moon, Menu, X, KeyRound } from 'lucide-react';
+import { cn, formatDate } from '@/lib/utils';
 import { SECTORS } from '@/pages/organization/OnboardingWizard';
 import { groupNavItems, hubOf, menuFor, navItemsFor, SYNC_NAV_ITEM, type NavItem } from '@/lib/nav-items';
 import { HubTabs } from '@/components/HubTabs';
@@ -238,6 +238,16 @@ export default function DashboardLayout() {
                   <Building2 className="w-4 h-4" />
                   Retour à l'organisation
                 </button>
+              </div>
+            )}
+            {/* A reminder on every page while the super admin suspended the administrators' second factor (migration 081). */}
+            {user?.admin_2fa_paused_until && (
+              <div className="mx-4 mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-warning/40 bg-warning/10 px-4 py-2.5 text-sm text-foreground md:mx-6">
+                <KeyRound className="h-4 w-4 shrink-0 text-warning" />
+                <span className="flex-1">Double authentification suspendue jusqu'au {formatDate(user.admin_2fa_paused_until)} : le mot de passe suffit.</span>
+                {user.role === 'super_admin' && (
+                  <Link to="/dashboard/admin/app-security" className="font-semibold text-primary hover:underline">Réactiver</Link>
+                )}
               </div>
             )}
             {/* The pages of the group on screen, as tabs (administrators' Argent, Comptes, Tarifs…). */}

@@ -1,3 +1,5 @@
+import { TwoFactorService } from '../security/two-factor.service';
+import { MFA_REQUIRED_ROLES } from '../auth/constants';
 import { AllowWithoutMfa } from '../common/decorators/allow-without-mfa.decorator';
 import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -29,7 +31,7 @@ class UpdateProfileDto {
 @ApiBearerAuth()
 @Controller('users')
 export class UsersController {
-  constructor(private usersService: UsersService) {}
+  constructor(private usersService: UsersService, private twoFactor: TwoFactorService) {}
 
   @AllowWithoutMfa()
   @Get('me')
@@ -43,8 +45,11 @@ export class UsersController {
     @CurrentUser('mfa') mfa?: boolean,
   ) {
     const profile = await this.usersService.getProfile(userId, role, merchantId, actingAsOrgId, organizationId);
-    // Lets the app send an admin who hasn't set up 2FA yet to the setup screen.
-    return { ...profile, mfa_verified: !!mfa };
+    // Lets the app send an admin who hasn't set up 2FA yet to the setup screen — not while the super admin suspended
+    // it (migration 081); admins then see until when, as a reminder.
+    if (!MFA_REQUIRED_ROLES.includes(role)) return { ...profile, mfa_verified: !!mfa };
+    const pausedUntil = await this.twoFactor.adminRequirementPausedUntil();
+    return { ...profile, mfa_verified: !!mfa || !!pausedUntil, admin_2fa_paused_until: pausedUntil };
   }
 
   @Put('me')

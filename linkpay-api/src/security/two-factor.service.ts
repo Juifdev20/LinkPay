@@ -9,6 +9,9 @@ import { generateSecret, otpauthUrl, verifyCode } from './totp';
 
 const RECOVERY_CODE_COUNT = 8;
 
+/** How long a read of the super admin's "2FA suspended" switch is reused (every admin request asks). */
+const PAUSE_CACHE_MS = 15_000;
+
 export const hashRecoveryCode = (code: string) =>
   createHash('sha256').update(code.replace(/[\s-]/g, '').toUpperCase()).digest('hex');
 
@@ -27,6 +30,7 @@ export const hashRecoveryCode = (code: string) =>
 @Injectable()
 export class TwoFactorService {
   private readonly key: Buffer;
+  private pauseCache: { until: string | null; readAt: number } | null = null;
 
   constructor(
     private supabaseService: SupabaseService,
@@ -135,6 +139,28 @@ export class TwoFactorService {
     if (!code || !(await this.verify(userId, code))) {
       throw new ForbiddenException({ statusCode: 403, code: 'OTP_STEP_UP_INVALID', message: 'Code de double authentification incorrect' });
     }
+  }
+
+  /**
+   * Until when the super admin suspended the administrators' second factor (migration 081), or null when it is
+   * required — the normal state, also when the setting can't be read (never fails open).
+   */
+  async adminRequirementPausedUntil(): Promise<string | null> {
+    if (!this.pauseCache || Date.now() - this.pauseCache.readAt > PAUSE_CACHE_MS) {
+      const { data, error } = await this.supabaseService.getClient().from('platform_settings').select('*').eq('id', 1).maybeSingle();
+      this.pauseCache = { until: error ? null : ((data as any)?.admin_2fa_paused_until ?? null), readAt: Date.now() };
+    }
+    const until = this.pauseCache.until;
+    return until && new Date(until).getTime() > Date.now() ? until : null;
+  }
+
+  async isAdminRequirementPaused(): Promise<boolean> {
+    return !!(await this.adminRequirementPausedUntil());
+  }
+
+  /** After the switch changed: this server sees it at once (the others within PAUSE_CACHE_MS). */
+  forgetAdminPause() {
+    this.pauseCache = null;
   }
 
   /** Super-admin recovery path for a colleague who lost both phone and recovery codes. */
