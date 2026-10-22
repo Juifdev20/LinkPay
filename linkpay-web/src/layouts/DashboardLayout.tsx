@@ -19,7 +19,8 @@ import { usePaymentReceivedAlert } from '@/hooks/usePaymentReceivedAlert';
 import { LogOut, Building2, Sun, Moon, Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SECTORS } from '@/pages/organization/OnboardingWizard';
-import { groupNavItems, navItemsFor, SYNC_NAV_ITEM, type NavItem } from '@/lib/nav-items';
+import { groupNavItems, hubOf, menuFor, navItemsFor, SYNC_NAV_ITEM, type NavItem } from '@/lib/nav-items';
+import { HubTabs } from '@/components/HubTabs';
 import { usePendingCount } from '@/lib/outbox';
 import { ROLE_LABELS } from '@/lib/permissions';
 
@@ -72,9 +73,16 @@ export default function DashboardLayout() {
   const roleItems = user && navRole ? navItemsFor(navRole, org?.sector) : [];
   // Synchronisation lives in Paramètres; it joins the sidebar only while operations made offline wait to be sent.
   const pendingOps = usePendingCount();
-  const navGroups = groupNavItems(pendingOps && roleItems.length ? [...roleItems, SYNC_NAV_ITEM] : roleItems);
-  const badgeFor = (item: NavItem) =>
-    item.to === '/dashboard/admin/withdrawals' ? openWithdrawals?.open || 0 : item.to === SYNC_NAV_ITEM.to ? pendingOps : 0;
+  // Administrators see their pages grouped (Argent, Comptes, Tarifs…, lib/nav-items.ts menuFor); the search still
+  // finds every single page.
+  const menu = [...(navRole ? menuFor(navRole, roleItems) : []), ...(pendingOps && roleItems.length ? [SYNC_NAV_ITEM] : [])];
+  const navGroups = groupNavItems(menu);
+  // The one entry lit: the one holding the page on screen (a group is lit on any of its pages).
+  const activeEntry = hubOf(location.pathname, menu);
+  const pageBadge = (to: string) =>
+    to === '/dashboard/admin/withdrawals' ? openWithdrawals?.open || 0 : to === SYNC_NAV_ITEM.to ? pendingOps : 0;
+  // A group shows the sum of its pages' counters.
+  const badgeFor = (item: NavItem) => (item.children ?? [item]).reduce((n, page) => n + pageBadge(page.to), 0);
 
   return (
     <div className="h-[100dvh] bg-background">
@@ -131,13 +139,12 @@ export default function DashboardLayout() {
                         <NavLink
                           key={item.to}
                           to={item.to}
-                          // Exact match when another entry lives under it (Administration / Retraits à traiter,
-                          // Ventes / Historique des ventes, Ma carte / Encaisser par carte): only one entry lit at a time.
-                          end={roleItems.some((o) => o.to !== item.to && o.to.startsWith(`${item.to}/`))}
-                          className={({ isActive }) =>
+                          // One entry lit at a time: the one holding the page on screen (hubOf: Ventes vs
+                          // Historique des ventes, Ma carte vs Encaisser par carte, a group and its pages).
+                          className={() =>
                             cn(
                               'relative flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all',
-                              isActive
+                              item === activeEntry
                                 ? 'bg-primary text-primary-foreground shadow-sm'
                                 : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                             )
@@ -233,6 +240,8 @@ export default function DashboardLayout() {
                 </button>
               </div>
             )}
+            {/* The pages of the group on screen, as tabs (administrators' Argent, Comptes, Tarifs…). */}
+            {activeEntry?.children && <HubTabs hub={activeEntry} badgeFor={badgeFor} />}
             {/* Only the page area waits for a split page — header and nav stay. */}
             <Suspense fallback={<PageFallback />}>
               <Outlet />

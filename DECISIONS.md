@@ -120,6 +120,23 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 - Recettes depuis le début, pour information : abonnements, commissions, frais de retrait et de transfert, mode Pro.
 - L'ancien argent fictif d'avant FlexPaie, s'il en reste, est compté comme dû : le chiffre est prudent.
 
+### 11. Menu des administrateurs regroupé : 8 entrées au lieu d'une vingtaine
+- **Tableau de bord** : l'ancien « Administration » ; le doublon qui redirigeait est supprimé.
+- **Argent** : Trésorerie, Retraits à traiter, Règlements.
+- **Comptes** : Utilisateurs, Commerçants, Entreprises, Cartes.
+- **Tarifs** : Commissions, Frais et limites, Abonnements, Mes dépenses (Pro).
+- **Sécurité** : Alertes, Sécurité de l'application.
+- **Mon compte** : Mes paiements, Ma carte, Mes dépenses.
+- Puis Notifications et Paramètres.
+
+Fonctionnement :
+- Les pages d'un groupe sont des onglets en haut de chacune (`HubTabs`).
+- Chaque page garde son adresse : anciens liens et notifications intacts. La recherche Ctrl+K trouve chaque page.
+- Le compteur d'une page (retraits à envoyer) s'additionne sur son groupe.
+- Un administrateur simple ne voit que les pages permises ; un groupe réduit à une page n'a pas d'onglets.
+- Sur téléphone, la barre du bas des administrateurs devient : Accueil, Retraits, Alertes, Plus.
+- Les autres comptes (clients, marchands, entreprises, employés) ne changent pas.
+
 ### Reste à décider (non corrigé)
 - Le stock n'est pas réservé pendant l'attente : voulu, le stock bouge au paiement (si l'article est parti
   entre-temps, les espèces sont refusées).
