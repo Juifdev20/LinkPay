@@ -15,8 +15,7 @@ CDF/USD indicatif réglé par le super admin** ; **avatar = silhouette** (pas de
 - **Charte** (`linkpay-web/src/index.css`, `tailwind.config.js`) : **le bleu électrique du logo `#1230F8`** (22/10, demande du propriétaire,
   à la place du violet ; choisi pour ne pas ressembler au marine `#0F2742` / bleu `#1769E0` de HotelSaver) : dégradé
   `bg-brand-gradient` du bleu nuit `#0A1270` au bleu du logo (carte de solde, boutons, onglet actif), bleu ciel `#0EA5E9`
-  en accent (titres en dégradé) ; **seule la page
-  d'accueil (Welcome) garde le violet** (classe `theme-violet`) ; police **Inter** ;
+  en accent (titres en dégradé), partout y compris la page d'accueil (plus aucun violet) ; police **Inter** ;
   montants écrits « 2 950,00 CDF » / « 5,12 $US » (`formatCurrency`).
 - **Thème** appliqué dès la première image, même avant la connexion : `public/theme-init.js` (fichier séparé : la CSP
   Android interdit les scripts en ligne).

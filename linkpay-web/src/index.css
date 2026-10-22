@@ -68,19 +68,6 @@
     --gradient-brand-text: linear-gradient(90deg, #7c8dff 0%, #7dd3fc 100%);
   }
 
-  /* The welcome page keeps the first charter (violet to blue), at the owner's request. */
-  .theme-violet {
-    --primary: 255 100% 62%;
-    --ring: 255 100% 62%;
-    --accent: 252 100% 97%;
-    --gradient-brand: linear-gradient(120deg, #6c3cff 0%, #4f46e5 55%, #2f7bff 100%);
-    --gradient-brand-text: linear-gradient(90deg, #6c3cff 0%, #2f7bff 100%);
-  }
-  .dark .theme-violet {
-    --primary: 255 100% 66%;
-    --ring: 255 100% 66%;
-    --accent: 250 35% 20%;
-  }
 
   * {
     @apply border-border;
