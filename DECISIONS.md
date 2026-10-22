@@ -58,6 +58,18 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 - Le stock ne bouge **qu'au paiement**, dans les deux secteurs : à l'encaissement du ticket de caisse, au paiement
   (espèces ou ScanLinkPay) d'une vente électronique, et pour une vente hors ligne quand elle est encaissée.
 
+### 7. Paiement ScanLinkPay d'une vente électronique : trois failles corrigées
+- **Payée par Mobile Money / carte via le QR, la vente restait « en attente »** : seul le paiement par solde ScanLinkPay
+  la marquait payée. Le stock ne bougeait pas, les espèces étaient refusées et le vendeur ne voyait rien.
+  - Tout paiement réussi du QR marque maintenant la vente payée (`handleSuccessfulPayment`).
+  - En filet de sécurité, une vente dont le QR est payé est réglée dès que l'écran la relit. (La caisse du supermarché
+    lisait déjà l'état du QR : elle n'avait pas ce problème.)
+- **La page de paiement marquait « EXPIRED » un QR déjà payé** (ou en cours de paiement) quand on l'ouvrait après sa
+  date. Elle ne marque plus que ceux que personne ne paie (`CREATED`). L'expiration et l'annulation des ventes
+  acceptent aussi un QR marqué « EXPIRED » ; sans cela, la vente ne passait jamais en « Annulée ».
+- **Fenêtre d'encaissement fermée pendant que le client paie** : la vente reste dans un bandeau au-dessus du catalogue,
+  avec « Reprendre ». Si le client paie entre-temps, le bandeau passe au vert, avec « Voir le ticket ».
+
 ### Reste à décider (non corrigé)
 - Le stock n'est pas réservé pendant l'attente : voulu, le stock bouge au paiement (si l'article est parti
   entre-temps, les espèces sont refusées).

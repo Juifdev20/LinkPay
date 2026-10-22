@@ -698,6 +698,9 @@ export class PaymentsService {
     // claim at the top of this method.)
 
     await this.paymentRequestsService.markPaid(request.id);
+    // A Ventes sale paid by Mobile Money / card through its QR: paid, its stock leaves the shelf (as for a wallet payment).
+    await this.salesService.markPaidByPaymentRequest(request.id, transaction.id)
+      .catch((err: any) => this.logger.error(`Payment ${intent.id} is paid but its sale could not be marked paid: ${err.message}`));
 
     await this.generateReceipt(transaction, request.merchant);
 

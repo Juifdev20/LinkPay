@@ -287,11 +287,17 @@ export class SalesService {
     if (sale.payment_request_id) {
       const { data: request } = await this.db()
         .from('payment_requests')
-        .select('link_token, expires_at')
+        .select('link_token, expires_at, status')
         .eq('id', sale.payment_request_id)
         .single();
       link_token = request?.link_token ?? null;
       qr_expires_at = request?.expires_at ?? null;
+      // Its QR was paid but the sale was not updated (a step that failed after the payment): settled now.
+      if (sale.status === 'PENDING' && request?.status === 'PAID') {
+        await this.markPaidByPaymentRequest(sale.payment_request_id, undefined);
+        const { data: fresh } = await this.db().from('sales').select('status, payment_method, paid_at').eq('id', sale.id).maybeSingle();
+        if (fresh) Object.assign(sale, fresh);
+      }
     }
     // Its QR expired unpaid: cancelled now, without waiting for the minute job (the seller's screen shows it at once).
     if (sale.status === 'PENDING' && qr_expires_at && new Date(qr_expires_at).getTime() <= Date.now()) {
@@ -311,7 +317,8 @@ export class SalesService {
       .from('payment_requests')
       .update({ status: 'CANCELLED' })
       .eq('id', paymentRequestId)
-      .eq('status', 'CREATED')
+      // EXPIRED: the payment page marks an expired link so when someone opens it. PENDING (being paid) is never touched.
+      .in('status', ['CREATED', 'EXPIRED'])
       .lte('expires_at', new Date().toISOString())
       .select('id')
       .maybeSingle();
@@ -331,7 +338,7 @@ export class SalesService {
     const { data: requests, error } = await this.db()
       .from('payment_requests')
       .select('id')
-      .eq('status', 'CREATED')
+      .in('status', ['CREATED', 'EXPIRED'])
       .like('reference', 'REQ-SALE-%')
       .lte('expires_at', new Date().toISOString())
       .limit(200);
@@ -436,7 +443,7 @@ export class SalesService {
         .from('payment_requests')
         .update({ status: 'CANCELLED' })
         .eq('id', sale.payment_request_id)
-        .eq('status', 'CREATED')
+        .in('status', ['CREATED', 'EXPIRED'])
         .select('id')
         .maybeSingle();
       if (!closed) throw new BadRequestException('Le client est en train de payer par ScanLinkPay : attendez la confirmation.');

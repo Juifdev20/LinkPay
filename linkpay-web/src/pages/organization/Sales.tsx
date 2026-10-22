@@ -94,6 +94,20 @@ export default function SalesPage() {
     }
   }, [sale?.id, sale?.status, activeSaleId]);
 
+  // The payment window closed while the customer was still paying (or about to): the sale is kept in a strip above the
+  // catalog — « Reprendre » reopens it, and if the customer pays meanwhile the strip says so and shows the ticket.
+  const [parkedSaleId, setParkedSaleId] = useState<string | null>(null);
+  const { data: parkedSale } = useQuery({
+    queryKey: ['org-sale', org?.id, parkedSaleId],
+    queryFn: async () => (await api.get(`/organizations/${org.id}/sales/${parkedSaleId}`)).data,
+    enabled: !!org?.id && !!parkedSaleId,
+    refetchInterval: 5000,
+  });
+  useEffect(() => {
+    if (parkedSale?.id === parkedSaleId && parkedSale?.status === 'CANCELLED') setParkedSaleId(null);
+    if (parkedSale?.id === parkedSaleId && parkedSale?.status === 'PAID') refreshAfterSale();
+  }, [parkedSale?.status]);
+
   /** The same articles back on a new sale (new QR, new 15 minutes); the stock is checked again by the server. */
   const relaunchSale = () => {
     const again: Record<string, number> = {};
@@ -364,6 +378,18 @@ export default function SalesPage() {
           <p><b>Ventes hors ligne.</b> Vendez normalement : paiement en espèces, ticket imprimé, et la vente part au serveur dès le retour du réseau.</p>
         </div>
       )}
+      {parkedSaleId && parkedSale?.id === parkedSaleId && (parkedSale.status === 'PAID' ? (
+        <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm">
+          <p className="flex-1 text-foreground"><b>Vente {parkedSale.reference} payée</b> · {formatCurrency(parkedSale.total_cents, parkedSale.currency)}</p>
+          <Button size="sm" className="shrink-0 rounded-lg" onClick={() => { setReceiptSale(parkedSale); setParkedSaleId(null); }}>Voir le ticket</Button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
+          <Clock className="h-4 w-4 shrink-0 text-warning" />
+          <p className="flex-1 text-foreground"><b>Vente {parkedSale.reference} en attente de paiement</b> · {formatCurrency(parkedSale.total_cents, parkedSale.currency)}</p>
+          <Button size="sm" variant="outline" className="shrink-0 rounded-lg" onClick={() => { setActiveSaleId(parkedSaleId); setParkedSaleId(null); }}>Reprendre</Button>
+        </div>
+      ))}
       {error && (
         <div className="flex items-start gap-3 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
           <p className="flex-1">{error}</p>
@@ -528,8 +554,8 @@ export default function SalesPage() {
           error={payError}
           onCash={payCash}
           onCancelSale={cancelSale}
-          // Closed without paying: the sale stays "en attente" in Toutes les ventes, its QR still payable.
-          onClose={() => setActiveSaleId(null)}
+          // Closed without paying: the sale stays « en attente » (strip above the catalog), its QR still payable.
+          onClose={() => { setParkedSaleId(activeSaleId); setActiveSaleId(null); }}
         />
       ) : (
         <FormSheet onClose={() => setActiveSaleId(null)} title="Encaissement">

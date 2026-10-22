@@ -27,7 +27,7 @@ describe('Ventes — cash and ScanLinkPay on the same sale', () => {
     expect(r).toMatchObject({ status: 'PAID', payment_method: 'cash' });
     const targets = fake.queries.map((q) => q.target);
     expect(targets.indexOf('payment_requests')).toBeLessThan(targets.lastIndexOf('sales'));
-    expect(has(fake.queries.find((q) => q.target === 'payment_requests')!, 'eq', 'status', 'CREATED')).toBe(true);
+    expect(has(fake.queries.find((q) => q.target === 'payment_requests' && !has(q, 'lte'))!, 'eq', 'status', 'CREATED')).toBe(true);
   });
 
   it('refuses the cash when the client is already paying by ScanLinkPay', async () => {
@@ -161,7 +161,8 @@ describe('Ventes — the QR of a sale expires after 15 minutes', () => {
     const sale = await service.getSale('o1', 's1', 'owner', undefined, 'enterprise');
     expect(sale.status).toBe('CANCELLED');
     const close = fake.queries.find((q) => q.target === 'payment_requests' && has(q, 'update'))!;
-    expect(has(close, 'eq', 'status', 'CREATED')).toBe(true);
+    // Only a QR nobody is paying: CREATED, or EXPIRED (marked so by the payment page) — never PENDING.
+    expect(has(close, 'in', 'status', ['CREATED', 'EXPIRED'])).toBe(true);
     expect(close.calls.some((c) => c.method === 'lte' && c.args[0] === 'expires_at')).toBe(true);
   });
 
@@ -181,5 +182,24 @@ describe('Ventes — the QR of a sale expires after 15 minutes', () => {
   it('the minute job cancels the expired sales', async () => {
     const { service } = expirySetup(true);
     expect(await service.expireOverdueSales()).toBe(1);
+  });
+});
+
+describe('Ventes — a QR paid but the sale not updated (safety net)', () => {
+  it('the seller\'s screen reading the sale settles it as paid', async () => {
+    let status = 'PENDING';
+    const fake = createFakeSupabase((q: RecordedQuery) => {
+      if (q.target === 'payment_requests') return { data: { link_token: 'tok', expires_at: new Date(Date.now() + 60_000).toISOString(), status: 'PAID' } };
+      if (q.target === 'sales' && has(q, 'select', 'status, payment_method, paid_at')) return { data: { status, payment_method: 'wallet' } };
+      if (q.target === 'sales') return { data: { id: 's1', status: 'PENDING', payment_request_id: 'pr1', sale_items: [] } };
+      return { data: null };
+    });
+    const service: any = Object.create(SalesService.prototype);
+    service.db = () => fake.service.getClient();
+    jest.spyOn(service, 'assertOrgAccess').mockResolvedValue(null);
+    const markPaid = jest.spyOn(service, 'markPaidByPaymentRequest').mockImplementation(async () => { status = 'PAID'; });
+    const sale = await service.getSale('o1', 's1', 'owner', undefined, 'enterprise');
+    expect(markPaid).toHaveBeenCalledWith('pr1', undefined);
+    expect(sale.status).toBe('PAID');
   });
 });
