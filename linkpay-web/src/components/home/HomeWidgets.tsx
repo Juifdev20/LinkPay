@@ -50,10 +50,10 @@ export function HomeHero({
   const noSaleYet = !loading && today.revenue === 0;
 
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-indigo-600 to-violet-700 p-6 text-white shadow-xl shadow-primary/25">
+    <div className="relative overflow-hidden rounded-3xl bg-brand-gradient p-6 text-white shadow-xl shadow-primary/25">
       {/* Soft light blobs for depth */}
       <div className="pointer-events-none absolute -top-16 -right-10 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
-      <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-violet-300/20 blur-2xl" />
+      <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-sky-300/20 blur-2xl" />
 
       <div className="relative">
         <div className="flex items-start justify-between gap-3">
@@ -188,7 +188,7 @@ export function SalesChart({
             <button key={d.date} onClick={() => setPicked(i)} className="flex h-full flex-1 flex-col items-center justify-end gap-1">
               <div
                 style={{ height: `${h}%` }}
-                className={`w-full rounded-md transition-all ${loading ? 'animate-pulse bg-muted' : isToday ? 'bg-gradient-to-t from-primary to-violet-500' : i === safePicked ? 'bg-primary/40' : 'bg-primary/15'}`}
+                className={`w-full rounded-md transition-all ${loading ? 'animate-pulse bg-muted' : isToday ? 'bg-gradient-to-t from-primary to-sky-500' : i === safePicked ? 'bg-primary/40' : 'bg-primary/15'}`}
               />
               <span className={`text-[10px] capitalize leading-none ${isToday ? 'font-semibold text-foreground' : 'text-muted-foreground'} ${!showLabel ? 'invisible' : ''}`}>
                 {isToday ? 'Auj.' : label(d.date)}

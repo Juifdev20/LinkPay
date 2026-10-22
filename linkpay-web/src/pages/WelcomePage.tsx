@@ -9,7 +9,7 @@ import { Logo } from '@/components/Logo';
  */
 export default function WelcomePage() {
   return (
-    <div className="min-h-[100dvh] flex flex-col relative overflow-hidden bg-background safe-area-top safe-area-bottom">
+    <div className="theme-violet min-h-[100dvh] flex flex-col relative overflow-hidden bg-background safe-area-top safe-area-bottom">
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-8 pt-12 gap-6">
         <div className="flex flex-col items-center gap-3">
           <Logo size="xl" showText={false} imgClassName="w-20 h-20 rounded-[22px] shadow-brand" />

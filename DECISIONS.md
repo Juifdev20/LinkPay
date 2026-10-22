@@ -12,8 +12,10 @@ Choix faits avec lui : **client et marchand d'abord** (la charte s'applique part
 admin seront peaufinés ensuite) ; **« Mes dépenses » = camembert automatique + carnet manuel en dessous** ; **taux
 CDF/USD indicatif réglé par le super admin** ; **avatar = silhouette** (pas de photo de profil pour l'instant).
 
-- **Charte** (`linkpay-web/src/index.css`, `tailwind.config.js`) : violet `#6C3CFF`, bleu `#0EA5FF`, fond `#F5F7FF`,
-  nuit `#111827` ; dégradé `bg-brand-gradient` (carte de solde, boutons principaux, onglet actif) ; police **Inter** ;
+- **Charte** (`linkpay-web/src/index.css`, `tailwind.config.js`) : **le bleu du logo** (22/10, demande du propriétaire,
+  à la place du violet de la première maquette) : dégradé `bg-brand-gradient` du bleu nuit `#0B1A5C` au bleu roi
+  `#2563EB` (carte de solde, boutons principaux, onglet actif), couleur principale `hsl(224 85% 50%)` ; **seule la page
+  d'accueil (Welcome) garde le violet** (classe `theme-violet`) ; police **Inter** ;
   montants écrits « 2 950,00 CDF » / « 5,12 $US » (`formatCurrency`).
 - **Thème** appliqué dès la première image, même avant la connexion : `public/theme-init.js` (fichier séparé : la CSP
   Android interdit les scripts en ligne).

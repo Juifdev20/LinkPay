@@ -8,9 +8,9 @@ const KINDS: Record<string, { icon: LucideIcon; tone: string; in: string; out: s
   TRANSFER_OUT: { icon: Send, tone: 'bg-rose-500', in: "Envoi d'argent", out: "Envoi d'argent" },
   PAYMENT: { icon: ShoppingCart, tone: 'bg-sky-500', in: 'Vente encaissée', out: 'Paiement marchand' },
   WITHDRAWAL: { icon: ArrowUpFromLine, tone: 'bg-orange-500', in: 'Retrait', out: 'Retrait' },
-  REFUND: { icon: Undo2, tone: 'bg-violet-500', in: 'Remboursement reçu', out: 'Remboursement' },
-  SUBSCRIPTION: { icon: Sparkles, tone: 'bg-violet-500', in: 'Abonnement', out: 'Abonnement' },
-  CARD: { icon: CreditCard, tone: 'bg-indigo-500', in: 'Carte', out: 'Carte' },
+  REFUND: { icon: Undo2, tone: 'bg-teal-500', in: 'Remboursement reçu', out: 'Remboursement' },
+  SUBSCRIPTION: { icon: Sparkles, tone: 'bg-blue-700', in: 'Abonnement', out: 'Abonnement' },
+  CARD: { icon: CreditCard, tone: 'bg-blue-900', in: 'Carte', out: 'Carte' },
   SETTLEMENT: { icon: Store, tone: 'bg-sky-500', in: 'Règlement', out: 'Règlement' },
 };
 const OTHER = { icon: SlidersHorizontal, tone: 'bg-slate-500', in: 'Ajustement', out: 'Ajustement' };

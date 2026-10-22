@@ -84,7 +84,7 @@ export function SaleInvoice({
             </div>
 
             <div className="px-4 pt-1.5">
-              <div className="grid grid-cols-[1fr_28px_70px_70px] gap-2 bg-indigo-50 px-2 py-0.5 text-[8px] font-bold text-indigo-600 rounded">
+              <div className="grid grid-cols-[1fr_28px_70px_70px] gap-2 bg-blue-50 px-2 py-0.5 text-[8px] font-bold text-blue-700 rounded">
                 <span>ARTICLE ET CARACTÉRISTIQUES</span>
                 <span className="text-right">QTÉ</span>
                 <span className="text-right">PRIX UNIT.</span>
@@ -107,14 +107,14 @@ export function SaleInvoice({
               ))}
               <div className="flex justify-end gap-5 px-2 pt-1 text-[9px]">
                 <span className="font-bold">Total à payer</span>
-                <span className="font-bold text-indigo-600">{model.total}</span>
+                <span className="font-bold text-blue-700">{model.total}</span>
               </div>
             </div>
 
-            <div className="mx-4 mt-1.5 flex items-center gap-3 rounded-lg bg-indigo-50 p-1.5">
+            <div className="mx-4 mt-1.5 flex items-center gap-3 rounded-lg bg-blue-50 p-1.5">
               {saleQr && <img src={saleQr} alt="" className="w-14 h-14 rounded bg-white" />}
               <div className="text-[7px] leading-tight">
-                <p className="font-bold text-indigo-600">PAYER CETTE FACTURE</p>
+                <p className="font-bold text-blue-700">PAYER CETTE FACTURE</p>
                 <p className="text-slate-500">Scannez avec ScanLinkPay</p>
               </div>
               <div className="ml-auto text-right text-[7px] leading-tight">
@@ -133,7 +133,7 @@ export function SaleInvoice({
       <style>{`
         .invoice-sheet { font-family: Helvetica, Arial, sans-serif; }
         .invoice-band { height: 99mm; display: flex; flex-direction: column; gap: 3px; overflow: hidden; padding-top: 0; }
-        .invoice-header { background: #4f46e5; color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 5px 16px; margin-bottom: 2px; }
+        .invoice-header { background: #1534b8; color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 5px 16px; margin-bottom: 2px; }
         @media print {
           @page { size: A4; margin: 0; }
           body * { visibility: hidden; }

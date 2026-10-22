@@ -19,7 +19,7 @@ export default {
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
         brand: {
-          violet: 'hsl(var(--brand-violet))',
+          navy: 'hsl(var(--brand-navy))',
           blue: 'hsl(var(--brand-blue))',
         },
         primary: {
@@ -76,7 +76,7 @@ export default {
         'card-hover': '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
         nav: '0 -1px 10px 0 rgb(0 0 0 / 0.06)',
         soft: '0 8px 24px -12px rgb(76 50 200 / 0.25)',
-        brand: '0 12px 30px -10px rgb(108 60 255 / 0.55)',
+        brand: '0 12px 30px -10px hsl(var(--primary) / 0.55)',
       },
       keyframes: {
         'accordion-down': {

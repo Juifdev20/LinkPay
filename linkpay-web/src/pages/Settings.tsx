@@ -131,7 +131,7 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="p-0">
           <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
-            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-500"><Moon className="h-[18px] w-[18px]" /></span>
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-slate-500/10 text-slate-500 dark:text-slate-300"><Moon className="h-[18px] w-[18px]" /></span>
             <div className="flex-1">
               <p className="font-medium text-sm text-foreground">Thème sombre</p>
               <p className="text-xs text-muted-foreground">Réduit la luminosité de l'interface.</p>

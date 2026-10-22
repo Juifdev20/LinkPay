@@ -177,7 +177,7 @@ export function BottomNav() {
               {({ isActive: navActive }) => {
                 const isActive = navActive || forceActive;
                 // Same look for every tab (the design has no raised central button): the active one gets its
-                // icon on the brand gradient and a violet label.
+                // icon on the brand gradient and a blue label.
                 return (
                   <>
                     <div

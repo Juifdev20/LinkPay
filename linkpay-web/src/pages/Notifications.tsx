@@ -13,8 +13,8 @@ function notificationLook(type?: string): { icon: LucideIcon; tone: string } {
   if (/withdrawal/.test(t)) return { icon: ArrowUpFromLine, tone: 'bg-orange-500' };
   if (/payment|sale|invoice/.test(t)) return { icon: ShoppingCart, tone: 'bg-sky-500' };
   if (/transfer|topup|received|credit/.test(t)) return { icon: ArrowDownLeft, tone: 'bg-emerald-500' };
-  if (/subscription|pro/.test(t)) return { icon: Sparkles, tone: 'bg-violet-500' };
-  return { icon: Bell, tone: 'bg-indigo-500' };
+  if (/subscription|pro/.test(t)) return { icon: Sparkles, tone: 'bg-blue-700' };
+  return { icon: Bell, tone: 'bg-blue-900' };
 }
 import { NotificationDetailDialog } from '@/components/NotificationDetailDialog';
 

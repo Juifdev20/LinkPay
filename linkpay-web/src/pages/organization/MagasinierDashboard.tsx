@@ -90,7 +90,7 @@ const ACTIVITY_CONFIG: Record<string, { label: string; Icon: any; bg: string; co
   sale:       { label: 'Vente enregistrée',     Icon: ShoppingCart,      bg: 'bg-primary/10',      color: 'text-primary'      },
   adjustment: { label: 'Ajustement de stock',   Icon: SlidersHorizontal, bg: 'bg-muted',           color: 'text-muted-foreground' },
   new_item:   { label: 'Nouvel article ajouté', Icon: PackagePlus,       bg: 'bg-emerald-500/10',  color: 'text-emerald-600'  },
-  inventory:  { label: 'Inventaire en cours',   Icon: ClipboardList,     bg: 'bg-purple-500/10',   color: 'text-purple-600'   },
+  inventory:  { label: 'Inventaire en cours',   Icon: ClipboardList,     bg: 'bg-sky-500/10',      color: 'text-sky-600'      },
 };
 
 // ── donut chart CSS conic-gradient ────────────────────────────────────────────
