@@ -14,9 +14,9 @@ interface StaffCredentialData {
   orgName: string;
 }
 
-// Same royal blue as expense-pdf.ts (matches --primary in index.css).
-const PRIMARY: [number, number, number] = [19, 77, 236];
-const PRIMARY_LIGHT: [number, number, number] = [232, 238, 253];
+// Same electric blue as expense-pdf.ts (matches --primary in index.css).
+const PRIMARY: [number, number, number] = [18, 48, 248];
+const PRIMARY_LIGHT: [number, number, number] = [231, 235, 255];
 const TEXT_DARK: [number, number, number] = [30, 30, 40];
 const TEXT_MUTED: [number, number, number] = [110, 110, 130];
 const BORDER: [number, number, number] = [225, 224, 245];

@@ -133,7 +133,7 @@ export function SaleInvoice({
       <style>{`
         .invoice-sheet { font-family: Helvetica, Arial, sans-serif; }
         .invoice-band { height: 99mm; display: flex; flex-direction: column; gap: 3px; overflow: hidden; padding-top: 0; }
-        .invoice-header { background: #1534b8; color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 5px 16px; margin-bottom: 2px; }
+        .invoice-header { background: #1230f8; color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 5px 16px; margin-bottom: 2px; }
         @media print {
           @page { size: A4; margin: 0; }
           body * { visibility: hidden; }

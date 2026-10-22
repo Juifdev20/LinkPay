@@ -4,22 +4,23 @@
 
 @layer base {
   :root {
-    /* Charte ScanLinkPay : le bleu du logo, du bleu nuit #0B1A5C au bleu roi #2563EB (maquette du code PIN). */
-    --brand-navy: 229 79% 20%;
-    --brand-blue: 221 83% 53%;
-    --background: 222 100% 98%;
+    /* Charte ScanLinkPay : le bleu électrique du logo #1230F8 (distinct du bleu de HotelSaver), du bleu nuit #0A1270,
+       avec le bleu ciel du « Pay » du logo en accent. */
+    --brand-navy: 235 84% 24%;
+    --brand-blue: 232 94% 52%;
+    --background: 230 100% 98%;
     --foreground: 224 39% 11%;
     --card: 0 0% 100%;
     --card-foreground: 224 39% 11%;
     --popover: 0 0% 100%;
     --popover-foreground: 224 39% 11%;
-    --primary: 224 85% 50%;
+    --primary: 232 94% 52%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 222 60% 96%;
+    --secondary: 230 60% 96%;
     --secondary-foreground: 224 39% 11%;
-    --muted: 222 50% 96%;
+    --muted: 230 50% 96%;
     --muted-foreground: 225 14% 46%;
-    --accent: 222 100% 97%;
+    --accent: 232 100% 97%;
     --accent-foreground: 224 39% 11%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
@@ -29,13 +30,13 @@
     --warning-foreground: 0 0% 100%;
     --info: 202 100% 45%;
     --info-foreground: 0 0% 100%;
-    --border: 222 35% 92%;
-    --input: 222 35% 90%;
-    --ring: 224 85% 50%;
+    --border: 230 35% 92%;
+    --input: 230 35% 90%;
+    --ring: 232 94% 52%;
     --radius: 0.875rem;
     --gradient-orange: linear-gradient(135deg, #f97316 0%, #ef4444 100%);
-    --gradient-brand: linear-gradient(120deg, #0b1a5c 0%, #1534b8 50%, #2563eb 100%);
-    --gradient-brand-text: linear-gradient(90deg, #1534b8 0%, #2f6bf5 100%);
+    --gradient-brand: linear-gradient(120deg, #0a1270 0%, #0f24c9 50%, #1230f8 100%);
+    --gradient-brand-text: linear-gradient(90deg, #1230f8 0%, #0ea5e9 100%);
   }
 
   .dark {
@@ -45,13 +46,13 @@
     --card-foreground: 228 40% 97%;
     --popover: 228 34% 13%;
     --popover-foreground: 228 40% 97%;
-    --primary: 221 95% 64%;
+    --primary: 231 100% 69%;
     --primary-foreground: 0 0% 100%;
     --secondary: 228 28% 18%;
     --secondary-foreground: 228 40% 97%;
     --muted: 228 28% 17%;
     --muted-foreground: 226 20% 68%;
-    --accent: 224 45% 20%;
+    --accent: 232 45% 20%;
     --accent-foreground: 228 40% 97%;
     --destructive: 0 78% 60%;
     --destructive-foreground: 0 0% 100%;
@@ -63,8 +64,8 @@
     --info-foreground: 0 0% 100%;
     --border: 228 26% 21%;
     --input: 228 26% 23%;
-    --ring: 221 95% 64%;
-    --gradient-brand-text: linear-gradient(90deg, #6d9bff 0%, #a5c4ff 100%);
+    --ring: 231 100% 69%;
+    --gradient-brand-text: linear-gradient(90deg, #7c8dff 0%, #7dd3fc 100%);
   }
 
   /* The welcome page keeps the first charter (violet to blue), at the owner's request. */
@@ -110,17 +111,17 @@
 }
 
 @layer utilities {
-  /* The brand gradient (balance card, main buttons, active tab): night blue to royal blue, the logo's blues. */
+  /* The brand gradient (balance card, main buttons, active tab): night blue to the logo's electric blue. */
   .bg-brand-gradient {
     background-image: var(--gradient-brand);
   }
-  /* Code screens on a phone (maquette PIN): night blue to royal blue, deeper in dark mode. */
+  /* Code screens on a phone (maquette PIN): night blue to the logo's electric blue, deeper in dark mode. */
   .bg-pin-gradient {
-    background-image: linear-gradient(165deg, #0b1a5c 0%, #1534b8 45%, #2563eb 80%, #3b82f6 100%);
+    background-image: linear-gradient(165deg, #0a1270 0%, #0f24c9 50%, #1230f8 85%, #3150ff 100%);
   }
   /* Dark mode keeps this gradient on a computer too, behind the curves (maquette « Version web (dark mode) »). */
   .dark .bg-pin-gradient {
-    background-image: linear-gradient(165deg, #23208a 0%, #182a86 45%, #0d1a5c 100%);
+    background-image: linear-gradient(165deg, #141a8f 0%, #0f1d7a 45%, #0a1250 100%);
   }
   .text-brand-gradient {
     background-image: var(--gradient-brand-text);

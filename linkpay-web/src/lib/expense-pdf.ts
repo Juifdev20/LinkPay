@@ -18,10 +18,10 @@ interface ExpenseDayPdfData {
   totals: { CDF: number; USD: number };
 }
 
-// Same royal blue as --primary in index.css (hsl(224 85% 50%)), as plain RGB —
+// Same electric blue as --primary in index.css (hsl(232 94% 52%)), as plain RGB —
 // jsPDF's standard fonts/fills work in RGB, not CSS custom properties.
-const PRIMARY: [number, number, number] = [19, 77, 236];
-const PRIMARY_LIGHT: [number, number, number] = [232, 238, 253];
+const PRIMARY: [number, number, number] = [18, 48, 248];
+const PRIMARY_LIGHT: [number, number, number] = [231, 235, 255];
 const TEXT_DARK: [number, number, number] = [30, 30, 40];
 const TEXT_MUTED: [number, number, number] = [110, 110, 130];
 const BORDER: [number, number, number] = [225, 224, 245];

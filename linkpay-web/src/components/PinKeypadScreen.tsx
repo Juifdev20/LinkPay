@@ -38,12 +38,12 @@ function DesktopBackdrop() {
     <svg className="pointer-events-none fixed inset-0 hidden h-full w-full md:block" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden>
       <defs>
         <linearGradient id="pin-curve-a" x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0" stopColor="#1534b8" stopOpacity="0.28" />
-          <stop offset="1" stopColor="#2f7bff" stopOpacity="0.04" />
+          <stop offset="0" stopColor="#1230f8" stopOpacity="0.28" />
+          <stop offset="1" stopColor="#0ea5e9" stopOpacity="0.04" />
         </linearGradient>
         <linearGradient id="pin-curve-b" x1="1" y1="1" x2="0" y2="0">
-          <stop offset="0" stopColor="#2f7bff" stopOpacity="0.3" />
-          <stop offset="1" stopColor="#1534b8" stopOpacity="0.03" />
+          <stop offset="0" stopColor="#0ea5e9" stopOpacity="0.3" />
+          <stop offset="1" stopColor="#1230f8" stopOpacity="0.03" />
         </linearGradient>
       </defs>
       <path d="M0 900 L0 520 C180 560 360 700 470 900 Z" fill="url(#pin-curve-a)" className="dark:opacity-80" />
@@ -80,7 +80,7 @@ function PinFrame({ card, bottom }: { card: React.ReactNode; bottom?: React.Reac
       </header>
 
       <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col md:justify-center md:px-4 md:pb-16">
-        <div className="flex flex-1 flex-col md:mx-auto md:w-full md:max-w-[380px] md:flex-none md:rounded-[28px] md:border md:border-border md:bg-card md:px-7 md:py-7 md:shadow-[0_24px_60px_-20px_rgba(21,52,184,0.35)] md:dark:border-white/10 md:dark:bg-[#111a55]/80 md:dark:backdrop-blur-xl">
+        <div className="flex flex-1 flex-col md:mx-auto md:w-full md:max-w-[380px] md:flex-none md:rounded-[28px] md:border md:border-border md:bg-card md:px-7 md:py-7 md:shadow-[0_24px_60px_-20px_rgba(18,48,248,0.3)] md:dark:border-white/10 md:dark:bg-[#111a55]/80 md:dark:backdrop-blur-xl">
           <div className="flex flex-col items-center pb-5 pt-[clamp(20px,6vh,56px)] md:pb-4 md:pt-0">
             <div style={{ height: 'env(safe-area-inset-top)' }} className="md:hidden" />
             <img src={logoSrc} alt="ScanLinkPay" className="h-14 w-14 rounded-2xl object-cover shadow-lg ring-2 ring-white/25 md:h-12 md:w-12 md:ring-0" />
