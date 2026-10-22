@@ -27,6 +27,16 @@ describe('SalesService.createSale', () => {
     expect(request.calls.find((c) => c.method === 'insert')!.args[0].amount_cents).toBe(200000);
   });
 
+  it('its payment QR expires 15 minutes later', async () => {
+    const { service, fake } = setup();
+    const before = Date.now();
+    await service.createSale('o1', 'u1', 'o1', [{ stock_item_id: 'i1', quantity: 1 }]);
+    const request = fake.queries.find((q) => q.target === 'payment_requests' && has(q, 'insert'))!;
+    const expiresAt = new Date(request.calls.find((c) => c.method === 'insert')!.args[0].expires_at).getTime();
+    expect(expiresAt - before).toBeGreaterThanOrEqual(15 * 60 * 1000);
+    expect(expiresAt - before).toBeLessThan(15 * 60 * 1000 + 5000);
+  });
+
   it('refuses more than is in stock', async () => {
     const { service } = setup();
     await expect(service.createSale('o1', 'u1', 'o1', [{ stock_item_id: 'i1', quantity: 6 }])).rejects.toBeInstanceOf(BadRequestException);

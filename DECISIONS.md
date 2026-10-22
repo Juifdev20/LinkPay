@@ -59,9 +59,24 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
   (espèces ou ScanLinkPay) d'une vente électronique, et pour une vente hors ligne quand elle est encaissée.
 
 ### Reste à décider (non corrigé)
-- Le QR d'une vente électronique en attente reste payable tant qu'elle n'est pas annulée (pas d'expiration). Le stock
-  n'est pas réservé pendant l'attente : voulu, le stock bouge au paiement (si l'article est parti entre-temps, les
-  espèces sont refusées).
+- Le stock n'est pas réservé pendant l'attente : voulu, le stock bouge au paiement (si l'article est parti
+  entre-temps, les espèces sont refusées).
+
+### 6. Le QR d'une vente expire après 15 minutes (pratique standard des QR « dynamiques »)
+- Deux sortes de QR, comme dans les applications de paiement : le **QR fixe** du commerçant (« Encaisser ») n'expire
+  jamais ; le **QR d'une vente** (un montant, une vente) expire. Exemples relevés :
+  - PhonePe : durée réglée à chaque vente, en secondes ;
+  - Stripe Checkout : 30 min à 24 h ;
+  - Xendit : 48 h par défaut.
+  En boutique, le client est devant le vendeur, d'où une durée courte : **15 minutes** (`SALE_QR_TTL_MS`).
+- La date d'expiration est enregistrée sur le QR de la vente (`payment_requests.expires_at`, sans nouvelle migration).
+  Le paiement par ScanLinkPay la vérifiait déjà (« Cette facture a expiré »).
+- À l'expiration, la vente non payée passe en « Annulée » : chaque minute (`SalesExpiryService`, avec verrou), et tout
+  de suite quand l'écran du vendeur la relit. Le QR n'est fermé que si personne n'est en train de le payer : un client
+  qui a confirmé son PIN juste avant garde son paiement. Le stock n'a jamais bougé.
+- Les espèces sur une vente expirée sont refusées.
+- Le vendeur voit le temps restant et, à l'expiration, **« Relancer la vente »** : mêmes articles, nouveau QR,
+  nouvelles 15 minutes (le stock est revérifié).
 
 ---
 

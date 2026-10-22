@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatCurrency } from '@/lib/utils';
-import { Search, ShoppingCart, Plus, Minus, Trash2, Loader2, BarChart3, ListOrdered, ScanBarcode, X, WifiOff } from 'lucide-react';
+import { Search, ShoppingCart, Plus, Minus, Trash2, Loader2, BarChart3, ListOrdered, ScanBarcode, X, WifiOff, Clock } from 'lucide-react';
 import { beepError, beepOk, listenForScannerBursts } from '@/lib/barcode';
 import { isNetworkError, useNetwork, useOnline } from '@/lib/network';
 import { enqueue, newClientRef } from '@/lib/outbox';
@@ -80,15 +80,30 @@ export default function SalesPage() {
     queryClient.invalidateQueries({ queryKey: ['org-sales-stats', org?.id] });
   };
 
-  // Paid by ScanLinkPay (or by cash on another screen): straight to the ticket.
+  // Paid by ScanLinkPay (or by cash on another screen): straight to the ticket. Its QR expired unpaid (15 minutes,
+  // cancelled by the server): say so, and offer to relaunch the same sale in one tap.
+  const [expiredSale, setExpiredSale] = useState<any>(null);
   useEffect(() => {
     if (!activeSaleId || sale?.id !== activeSaleId || sale.status === 'PENDING') return;
     setActiveSaleId(null);
     if (sale.status === 'PAID') {
       setReceiptSale(sale);
       refreshAfterSale();
+    } else if (sale.status === 'CANCELLED' && sale.qr_expires_at && new Date(sale.qr_expires_at).getTime() <= Date.now()) {
+      setExpiredSale(sale);
     }
   }, [sale?.id, sale?.status, activeSaleId]);
+
+  /** The same articles back on a new sale (new QR, new 15 minutes); the stock is checked again by the server. */
+  const relaunchSale = () => {
+    const again: Record<string, number> = {};
+    for (const line of expiredSale?.sale_items || []) {
+      if (line.stock_item_id) again[line.stock_item_id] = (again[line.stock_item_id] || 0) + line.quantity;
+    }
+    setExpiredSale(null);
+    setCart(again);
+    createSale.mutate(Object.entries(again).map(([stock_item_id, quantity]) => ({ stock_item_id, quantity })));
+  };
 
   // ------------------------------------------------------------------ cart
   const lines = Object.entries(cart)
@@ -190,11 +205,11 @@ export default function SalesPage() {
 
   const createSale = useMutation({
     networkMode: 'always',
-    mutationFn: async () => {
+    mutationFn: async (items?: { stock_item_id: string; quantity: number }[]) => {
       if (!useNetwork.getState().online) return 'offline' as const;
       try {
         return (await api.post(`/organizations/${org.id}/sales`, {
-          items: lines.map(({ item, qty }) => ({ stock_item_id: item.id, quantity: qty })),
+          items: items ?? lines.map(({ item, qty }) => ({ stock_item_id: item.id, quantity: qty })),
         })).data;
       } catch (err) {
         if (isNetworkError(err)) return 'offline' as const;
@@ -213,7 +228,7 @@ export default function SalesPage() {
   const openPayment = () => {
     setError('');
     if (!lines.length || createSale.isPending) return;
-    createSale.mutate();
+    createSale.mutate(undefined);
   };
 
   const [busy, setBusy] = useState<'cash' | 'cancel' | null>(null);
@@ -238,6 +253,7 @@ export default function SalesPage() {
         paidHere(true);
       } else {
         setPayError(errorMessage(err));
+        // Expired meanwhile: the refreshed sale (cancelled) opens the "relaunch" sheet.
         queryClient.invalidateQueries({ queryKey: ['org-sale', org.id, sale.id] });
       }
     } finally {
@@ -520,6 +536,29 @@ export default function SalesPage() {
           <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
         </FormSheet>
       ))}
+
+      {expiredSale && (
+        <FormSheet onClose={() => setExpiredSale(null)} title="Vente expirée">
+          <div className="p-6 max-w-lg mx-auto space-y-5 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-warning/15">
+              <Clock className="h-7 w-7 text-warning" />
+            </div>
+            <div>
+              <p className="text-lg font-bold text-foreground">15 minutes sans paiement</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                La vente {expiredSale.reference} ({formatCurrency(expiredSale.total_cents, expiredSale.currency)}) a été annulée et son QR ne peut plus être payé. Le stock n'a pas bougé.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Button size="lg" onClick={relaunchSale} disabled={createSale.isPending}>
+                {createSale.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
+                Relancer la vente
+              </Button>
+              <Button variant="outline" onClick={() => setExpiredSale(null)}>Fermer</Button>
+            </div>
+          </div>
+        </FormSheet>
+      )}
 
       {offlinePayOpen && (
         <PosOfflinePaymentSheet

@@ -28,6 +28,15 @@ export interface SaleLineInput {
 
 type Money = Record<string, number>;
 
+/**
+ * How long the payment QR of a sale stays payable. A sale's QR is a "dynamic" QR (one sale, one amount): like every
+ * payment app, it expires — short, since the customer stands at the counter. Past it, the QR is refused when the
+ * client tries to pay (PaymentsService checks expires_at) and the unpaid sale is cancelled (nothing to put back on the
+ * shelf: the stock only moves once paid). The seller relaunches the sale in one tap if the customer is still there.
+ * The merchant's fixed QR (Encaisser) never expires.
+ */
+export const SALE_QR_TTL_MS = 15 * 60 * 1000;
+
 function addTo(map: Money, currency: string, amount: number) {
   map[currency] = (map[currency] || 0) + amount;
 }
@@ -178,8 +187,9 @@ export class SalesService {
         description: `Vente ${reference} — ${description}`,
         link_token: randomBytes(32).toString('hex'),
         status: 'CREATED',
+        expires_at: new Date(Date.now() + SALE_QR_TTL_MS).toISOString(),
       })
-      .select('id, link_token')
+      .select('id, link_token, expires_at')
       .single();
     if (requestError || !request) throw new Error(`Failed to create payment request: ${requestError?.message}`);
 
@@ -205,7 +215,7 @@ export class SalesService {
       .insert(snapshot.map((s) => ({ ...s, sale_id: sale.id })));
     if (linesError) throw new Error(`Failed to create sale items: ${linesError.message}`);
 
-    return { sale, link_token: request.link_token, items: withoutCost(snapshot as any[], callerRole) };
+    return { sale, link_token: request.link_token, qr_expires_at: request.expires_at, items: withoutCost(snapshot as any[], callerRole) };
   }
 
   /**
@@ -273,15 +283,69 @@ export class SalesService {
     if (error || !sale) throw new NotFoundException('Vente introuvable');
 
     let link_token: string | null = null;
+    let qr_expires_at: string | null = null;
     if (sale.payment_request_id) {
       const { data: request } = await this.db()
         .from('payment_requests')
-        .select('link_token')
+        .select('link_token, expires_at')
         .eq('id', sale.payment_request_id)
         .single();
       link_token = request?.link_token ?? null;
+      qr_expires_at = request?.expires_at ?? null;
     }
-    return { ...sale, sale_items: withoutCost(sale.sale_items as any[], callerRole), link_token };
+    // Its QR expired unpaid: cancelled now, without waiting for the minute job (the seller's screen shows it at once).
+    if (sale.status === 'PENDING' && qr_expires_at && new Date(qr_expires_at).getTime() <= Date.now()) {
+      if (await this.expireSale(sale.id, sale.payment_request_id)) sale.status = 'CANCELLED';
+    }
+    return { ...sale, sale_items: withoutCost(sale.sale_items as any[], callerRole), link_token, qr_expires_at };
+  }
+
+  /**
+   * Cancels a pending sale whose QR expired. Only while nobody is paying it: the QR is closed first, and only if it is
+   * still unclaimed (CREATED) and past its expiry — a client who confirmed with their PIN just before keeps their
+   * payment. True when the sale was cancelled.
+   */
+  private async expireSale(saleId: string, paymentRequestId: string | null): Promise<boolean> {
+    if (!paymentRequestId) return false;
+    const { data: closed } = await this.db()
+      .from('payment_requests')
+      .update({ status: 'CANCELLED' })
+      .eq('id', paymentRequestId)
+      .eq('status', 'CREATED')
+      .lte('expires_at', new Date().toISOString())
+      .select('id')
+      .maybeSingle();
+    if (!closed) return false;
+    const { data: cancelled } = await this.db()
+      .from('sales')
+      .update({ status: 'CANCELLED' })
+      .eq('id', saleId)
+      .eq('status', 'PENDING')
+      .select('id')
+      .maybeSingle();
+    return !!cancelled;
+  }
+
+  /** Every minute (SalesExpiryService): the sales whose QR expired unpaid are cancelled. Returns how many. */
+  async expireOverdueSales(): Promise<number> {
+    const { data: requests, error } = await this.db()
+      .from('payment_requests')
+      .select('id')
+      .eq('status', 'CREATED')
+      .like('reference', 'REQ-SALE-%')
+      .lte('expires_at', new Date().toISOString())
+      .limit(200);
+    if (error || !requests?.length) return 0;
+    const { data: sales } = await this.db()
+      .from('sales')
+      .select('id, payment_request_id')
+      .eq('status', 'PENDING')
+      .in('payment_request_id', requests.map((r: any) => r.id));
+    let count = 0;
+    for (const sale of sales || []) {
+      if (await this.expireSale(sale.id, sale.payment_request_id)) count++;
+    }
+    return count;
   }
 
   /** Records stock leaving the shelf for a paid sale. Writes stock_movements
@@ -400,6 +464,9 @@ export class SalesService {
     if (station && sale && sale.merchant_id !== station) throw new NotFoundException('Vente introuvable');
     if (error || !sale) throw new NotFoundException('Vente introuvable');
     if (sale.status !== 'PENDING') throw new BadRequestException('Cette vente a déjà été traitée');
+    if (await this.expireSale(sale.id, sale.payment_request_id)) {
+      throw new BadRequestException('Cette vente a expiré (15 minutes sans paiement) : relancez-la.');
+    }
     await this.assertStillInStock(sale.id);
 
     // Close the payment QR FIRST, and only if nobody is paying it: a client confirming with their PIN at the same

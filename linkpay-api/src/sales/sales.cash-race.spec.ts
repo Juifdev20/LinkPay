@@ -1,11 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
-import { SalesService } from './sales.service';
+import { SalesService, SALE_QR_TTL_MS } from './sales.service';
 import { createFakeSupabase, has, RecordedQuery } from '../test-utils/fake-supabase';
 
 /** Cash taken for a sale whose QR a client is paying at the same moment: the client must never pay twice. */
 function setup(requestStillOpen: boolean) {
   const sale = { id: 's1', reference: 'SALE-1', merchant_id: 'st1', created_by: 'u1', status: 'PENDING', payment_request_id: 'pr1' };
   const fake = createFakeSupabase((q: RecordedQuery) => {
+    if (q.target === 'payment_requests' && has(q, 'lte')) return { data: null };
     if (q.target === 'payment_requests') return { data: requestStillOpen ? { id: 'pr1' } : null };
     if (q.target === 'sales' && has(q, 'update')) return { data: { ...sale, status: 'PAID', payment_method: 'cash' } };
     if (q.target === 'sales') return { data: sale };
@@ -101,6 +102,7 @@ describe('Ventes — the last unit sold by another sale meanwhile', () => {
       if (q.target === 'sale_items') return { data: [{ stock_item_id: 'phone', quantity: 1, name: 'Galaxy A15' }] };
       if (q.target === 'stock_items' && has(q, 'in')) return { data: [{ id: 'phone', quantity: left }] };
       if (q.target === 'stock_items') return { data: { quantity: left } };
+      if (q.target === 'payment_requests' && has(q, 'lte')) return { data: null };
       if (q.target === 'payment_requests') return { data: { id: 'pr1' } };
       return { data: null };
     });
@@ -114,7 +116,8 @@ describe('Ventes — the last unit sold by another sale meanwhile', () => {
   it('refuses the cash: the phone is no longer on the shelf', async () => {
     const { service, fake } = stockSetup(0);
     await expect(service.payCash('o1', 's1', 'u1', 'o1', 'vendeur')).rejects.toThrow(/plus en stock/);
-    expect(fake.queries.some((q) => q.target === 'payment_requests')).toBe(false);
+    // The QR stays open (only the expiry check, which found nothing to expire, touched it).
+    expect(fake.queries.some((q) => q.target === 'payment_requests' && !has(q, 'lte'))).toBe(false);
   });
 
   it('a payment already made never fails on the stock: nothing below zero, logged for the inventory', async () => {
@@ -129,5 +132,54 @@ describe('Ventes — the last unit sold by another sale meanwhile', () => {
     await service.payCash('o1', 's1', 'u1', 'o1', 'vendeur');
     const movement = fake.queries.find((q) => q.target === 'stock_movements')!;
     expect(has(movement, 'insert', { stock_item_id: 'phone', merchant_id: 'st1', type: 'out', quantity_delta: -1, reason: 'Vente SALE-1', created_by: 'u1' })).toBe(true);
+  });
+});
+
+describe('Ventes — the QR of a sale expires after 15 minutes', () => {
+  function expirySetup(expired: boolean) {
+    const fake = createFakeSupabase((q: RecordedQuery) => {
+      if (q.target === 'payment_requests' && has(q, 'update')) return { data: expired ? { id: 'pr1' } : null };
+      if (q.target === 'payment_requests' && has(q, 'like')) return { data: expired ? [{ id: 'pr1' }] : [] };
+      if (q.target === 'payment_requests') return { data: { link_token: 'tok', expires_at: new Date(Date.now() + (expired ? -1 : 1) * 60_000).toISOString() } };
+      if (q.target === 'sales' && has(q, 'update')) return { data: { id: 's1' } };
+      if (q.target === 'sales' && has(q, 'in')) return { data: [{ id: 's1', payment_request_id: 'pr1' }] };
+      if (q.target === 'sales') return { data: { id: 's1', reference: 'SALE-1', merchant_id: 'st1', created_by: 'u1', status: 'PENDING', payment_request_id: 'pr1', sale_items: [] } };
+      return { data: null };
+    });
+    const service: any = Object.create(SalesService.prototype);
+    service.db = () => fake.service.getClient();
+    jest.spyOn(service, 'assertOrgAccess').mockResolvedValue(null);
+    return { service, fake };
+  }
+
+  it('a new sale gets a QR valid 15 minutes', () => {
+    expect(SALE_QR_TTL_MS).toBe(15 * 60 * 1000);
+  });
+
+  it('expired unpaid: the sale shows cancelled, its QR closed only if nobody claimed it', async () => {
+    const { service, fake } = expirySetup(true);
+    const sale = await service.getSale('o1', 's1', 'owner', undefined, 'enterprise');
+    expect(sale.status).toBe('CANCELLED');
+    const close = fake.queries.find((q) => q.target === 'payment_requests' && has(q, 'update'))!;
+    expect(has(close, 'eq', 'status', 'CREATED')).toBe(true);
+    expect(close.calls.some((c) => c.method === 'lte' && c.args[0] === 'expires_at')).toBe(true);
+  });
+
+  it('still valid: nothing changes', async () => {
+    const { service, fake } = expirySetup(false);
+    const sale = await service.getSale('o1', 's1', 'owner', undefined, 'enterprise');
+    expect(sale.status).toBe('PENDING');
+    expect(sale.qr_expires_at).toBeTruthy();
+    expect(fake.queries.some((q) => q.target === 'payment_requests' && has(q, 'update'))).toBe(false);
+  });
+
+  it('cash on an expired sale is refused: relaunch it', async () => {
+    const { service } = expirySetup(true);
+    await expect(service.payCash('o1', 's1', 'owner', undefined, 'enterprise')).rejects.toThrow(/expiré/);
+  });
+
+  it('the minute job cancels the expired sales', async () => {
+    const { service } = expirySetup(true);
+    expect(await service.expireOverdueSales()).toBe(1);
   });
 });

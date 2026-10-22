@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { Banknote, Loader2, QrCode, WifiOff } from 'lucide-react';
+import { Banknote, Clock, Loader2, QrCode, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -42,6 +42,15 @@ export function SalePaymentSheet({
   const change = Math.max(0, receivedCents - total);
   const payUrl = sale.link_token ? `${publicOrigin()}/p/${sale.link_token}` : '';
 
+  // The sale's QR is valid 15 minutes (SALE_QR_TTL_MS on the server): the seller sees what is left.
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+  const leftMs = sale.qr_expires_at ? new Date(sale.qr_expires_at).getTime() - now : null;
+  const left = leftMs == null ? '' : `${Math.floor(Math.max(0, leftMs) / 60000)}:${String(Math.floor((Math.max(0, leftMs) % 60000) / 1000)).padStart(2, '0')}`;
+
   useEffect(() => {
     if (!showQr || !payUrl) return;
     QRCode.toDataURL(payUrl, { width: 320, margin: 2, color: { dark: '#0F172A', light: '#FFFFFF' } })
@@ -58,6 +67,12 @@ export function SalePaymentSheet({
           </p>
           <p className="text-3xl font-bold text-foreground">{formatCurrency(total, currency)}</p>
           <p className="text-xs text-muted-foreground">à payer</p>
+          {leftMs != null && (
+            <p className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${leftMs <= 120_000 ? 'bg-warning/15 text-warning' : 'bg-muted text-muted-foreground'}`}>
+              <Clock className="h-3.5 w-3.5" />
+              {leftMs > 0 ? `Vente valable encore ${left}` : 'Délai dépassé…'}
+            </p>
+          )}
         </div>
 
         {!online && (
