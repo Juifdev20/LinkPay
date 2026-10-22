@@ -66,7 +66,7 @@ export default function RestockPage() {
   const canRequest = !isOwner || (stations?.length ?? 0) > 0;
 
   return (
-    <div className="p-4 md:p-6 pb-28 md:pb-6 space-y-5 max-w-3xl mx-auto">
+    <div className="p-4 md:p-6 pb-28 md:pb-6 space-y-5 max-w-6xl mx-auto">
       <PageHeader title="Demandes d'achat" />
 
       <div className="flex flex-wrap items-center gap-2">
@@ -87,7 +87,7 @@ export default function RestockPage() {
       ) : !requests?.length ? (
         <EmptyState icon={TruckIcon} title="Aucune demande pour le moment" text="Quand un produit passe sous son seuil, créez une demande d'achat : le responsable la valide, puis vous la réceptionnez." />
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
           {requests.map((r) => (
             <Card key={r.id}>
               <CardContent className="space-y-3 pt-5">

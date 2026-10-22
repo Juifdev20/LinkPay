@@ -20,7 +20,7 @@ export default function SyncPage() {
   const waiting = ops.filter((o) => o.status !== 'error');
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 px-4 py-5 pb-28 md:p-6">
+    <div className="mx-auto max-w-6xl space-y-4 px-4 py-5 pb-28 md:p-6">
       <PageHeader title="Synchronisation" />
 
       <section className="flex items-center gap-4 rounded-3xl border border-border bg-card p-5 shadow-soft">

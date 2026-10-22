@@ -27,9 +27,11 @@ export default function StaffWalletPage() {
   const withdrawPath = `/dashboard/wallet/withdraw?currency=${currency}`;
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-2xl mx-auto">
+    <div className="p-4 pb-28 md:p-6 md:pb-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader title="Mon portefeuille (personnel)" hideBack />
 
+      <div className="space-y-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
+      <div className="space-y-6">
       <BalanceCard
         balances={wallet?.balances || { CDF: 0, USD: 0 }}
         label="Mon solde ScanLinkPay"
@@ -45,7 +47,9 @@ export default function StaffWalletPage() {
         <ArrowUpFromLine className="w-5 h-5" />
         Retirer mon salaire
       </Link>
+      </div>
 
+      <div className="space-y-6">
       <Card>
         <CardContent className="p-0">
           <Link to="/dashboard/wallet/receive" className="flex items-center gap-3 px-5 py-4 border-b border-border hover:bg-accent/50 transition-colors">
@@ -70,6 +74,8 @@ export default function StaffWalletPage() {
       <p className="text-xs text-muted-foreground text-center">
         Le retrait demande votre code PIN de transaction. Si vous n'en avez pas encore, l'application vous aide à le créer.
       </p>
+      </div>
+      </div>
     </div>
   );
 }

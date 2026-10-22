@@ -37,9 +37,10 @@ export default function AppSecurityPage() {
   const enabled = !!data?.screenshot_protection;
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl mx-auto">
+    <div className="p-4 pb-28 md:p-6 md:pb-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader title="Sécurité de l'application" />
 
+      <div className="space-y-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
       <AdminTwoFactorPauseCard />
 
       <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
@@ -95,6 +96,7 @@ export default function AppSecurityPage() {
             {(mutation.error as any)?.response?.data?.message || 'Échec de la modification — réessayez.'}
           </p>
         )}
+      </div>
       </div>
 
       <ConfirmDialog

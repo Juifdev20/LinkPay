@@ -125,7 +125,7 @@ export default function ChargeCardPage() {
   const stepIndex = step === 'card' ? 0 : step === 'amount' ? 1 : 2;
 
   return (
-    <div className="mx-auto max-w-md space-y-4 px-4 py-5 pb-28 md:p-6">
+    <div className="mx-auto max-w-md space-y-4 px-4 py-5 pb-28 md:max-w-2xl md:p-6">
       <PageHeader title="Encaisser par carte" />
 
       {/* Where we are in the three steps */}

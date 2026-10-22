@@ -162,6 +162,23 @@ Fonctionnement :
 - Chaque serveur relit le réglage toutes les 15 secondes.
 - Si le réglage est illisible (migration absente), le code reste demandé : jamais d'ouverture par erreur.
 
+### 14. Ordinateur : les dernières pages encore étroites au centre
+- Passées à la largeur commune (`max-w-6xl`), avec 2 colonnes sur grand écran :
+  - Sécurité de l'application, Profil, Synchronisation ;
+  - Abonnements, Mes dépenses (Pro) côté admin ;
+  - Impression de carte (recto et verso côte à côte) ;
+  - Tontine (détail et réglages), Épargne par arrondi ;
+  - Transactions de l'entreprise (filtres sur une ligne), Mes ventes (4 chiffres sur une ligne) ;
+  - Portefeuille de l'employé, Demandes d'achat (2 par ligne), Abonnement de l'entreprise, Inventaires.
+- Le Profil affiche le rôle en français (« Super administrateur »), plus « super_admin ».
+- Restent volontairement étroits, comme dans les applications de paiement :
+  - les écrans d'argent (envoyer, retirer, payer, recharger, code PIN, demander un paiement), qui s'ouvrent dans la
+    grande fenêtre élargie ;
+  - l'assistant de création d'entreprise ;
+  - les écrans de connexion.
+- Encaisser par carte passe de 448 à 672 px.
+- Rien ne change sur téléphone.
+
 ### Reste à décider (non corrigé)
 - Le stock n'est pas réservé pendant l'attente : voulu, le stock bouge au paiement (si l'article est parti
   entre-temps, les espèces sont refusées).

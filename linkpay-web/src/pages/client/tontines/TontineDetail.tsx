@@ -111,7 +111,7 @@ export default function TontineDetailPage() {
     : [];
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-2xl mx-auto">
+    <div className="p-4 pb-28 md:p-6 md:pb-6 space-y-6 max-w-6xl mx-auto">
       <button onClick={() => navigate('/dashboard/tontines')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="w-4 h-4" /> Retour
       </button>
@@ -156,6 +156,8 @@ export default function TontineDetailPage() {
         </Card>
       )}
 
+      {/* Computer: the cards side by side. */}
+      <div className="space-y-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
       {group.status === 'active' && cycle && (
         <Card>
           <CardHeader>
@@ -345,6 +347,7 @@ export default function TontineDetailPage() {
           </CardContent>
         </Card>
       )}
+      </div>
     </div>
   );
 }
