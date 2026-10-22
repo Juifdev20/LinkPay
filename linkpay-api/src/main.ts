@@ -8,6 +8,7 @@ import * as express from 'express';
 import { AppModule } from './app.module';
 import { createCsrfMiddleware } from './auth/csrf.middleware';
 import { configureTrustProxy, resolveTrustProxyHops } from './common/utils/trust-proxy';
+import { startTrustedClock } from './common/utils/trusted-clock';
 
 // CinetPay's SDK talks to exactly these hosts (sandbox + production) — see
 // cinetpay.adapter.ts. Only requests to these get routed through the proxy;
@@ -135,6 +136,9 @@ async function bootstrap() {
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('api/v1/docs', app, document);
   }
+
+  // Dating (paid_at, "today" on the dashboards) follows the cloud's clock, not a possibly wrong host clock.
+  await startTrustedClock(configService.get<string>('SUPABASE_URL'), configService.get<string>('SUPABASE_SERVICE_ROLE_KEY'));
 
   const port = configService.get<number>('PORT', 3000);
   await app.listen(port);

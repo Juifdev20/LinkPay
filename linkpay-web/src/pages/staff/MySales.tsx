@@ -1,7 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { useAuthStore } from '@/lib/auth-store';
 import { PageHeader } from '@/components/PageHeader';
 import { formatCurrency, cn } from '@/lib/utils';
 import { Loader2, ChevronLeft, ChevronRight, Banknote, CreditCard, Smartphone, Shuffle } from 'lucide-react';
@@ -24,25 +23,24 @@ const METHOD_BADGE: Record<string, { label: string; cls: string }> = {
   mixed: { label: 'Mixte', cls: 'bg-slate-500/10 text-slate-600 dark:text-slate-400' },
 };
 
-/** All the cashier's paid tickets for [from, to) — the API returns their own tickets only. */
-async function fetchMine(stationId: string, from: string, to: string): Promise<any[]> {
-  const all: any[] = [];
-  for (let page = 1; page <= 30; page++) {
-    const { data } = await api.get(`/merchants/${stationId}/pos/tickets`, { params: { status: 'paid', from, to, page, limit: 100 } });
-    all.push(...(data.data || []));
-    if (all.length >= (data.total || 0) || !(data.data || []).length) break;
-  }
-  return all;
+/** Toutes les ventes payées de l'organisation pour la période [from, to). */
+async function fetchMySales(orgId: string, from: string, to: string): Promise<any[]> {
+  // L'API renvoie d'un coup toutes les ventes de la période (pas de pagination).
+  const { data } = await api.get(`/organizations/${orgId}/sales/history`, { params: { from, to } });
+  const items: any[] = Array.isArray(data) ? data : (data.data ?? []);
+  // Le module Ventes enregistre ses statuts en majuscules ('PAID', 'CANCELLED'…).
+  return items
+    .filter((s: any) => String(s.status).toUpperCase() === 'PAID')
+    .map((s: any) => ({ ...s, payment_method: s.payment_method === 'wallet' ? 'scanlinkpay' : s.payment_method }));
 }
 
 /**
- * "Mes ventes" — the cashier's own monthly sales as a professional table:
- * header stats (total, espèces, ScanLinkPay, tickets), method filter chips,
- * and a list of individual tickets sorted newest-first.
+ * "Mes ventes" — tableau professionnel des ventes du vendeur :
+ * navigation mensuelle, toggle CDF/USD, 4 cartes KPI,
+ * filtres par méthode de paiement, tableau individuel de chaque vente.
  */
 export default function MySalesPage() {
-  const user = useAuthStore((s) => s.user);
-  const [offset, setOffset] = useState(0); // 0 = this month, -1 = last month…
+  const [offset, setOffset] = useState(0); // 0 = ce mois, -1 = mois précédent…
   const [currency, setCurrency] = useState<'CDF' | 'USD'>('CDF');
   const [method, setMethod] = useState<MethodFilter>('');
 
@@ -57,40 +55,59 @@ export default function MySalesPage() {
     };
   }, [offset]);
 
-  const { data: org } = useQuery({ queryKey: ['my-organization'], queryFn: async () => (await api.get('/organizations/me')).data });
-  const { data: stations } = useQuery({
-    queryKey: ['org-merchants', org?.id],
-    queryFn: async () => (await api.get(`/organizations/${org.id}/merchants`)).data as { id: string; name: string }[],
+  const { data: org } = useQuery({
+    queryKey: ['my-organization'],
+    queryFn: async () => (await api.get('/organizations/me')).data,
+  });
+
+  const { data: sales, isLoading } = useQuery({
+    queryKey: ['my-sales', org?.id, from],
+    queryFn: () => fetchMySales(org!.id, from, to),
     enabled: !!org?.id,
   });
-  const stationId = user?.station_id || stations?.[0]?.id;
 
-  const { data: tickets, isLoading } = useQuery({
-    queryKey: ['my-sales', stationId, from],
-    queryFn: () => fetchMine(stationId!, from, to),
-    enabled: !!stationId,
-  });
+  // Si le mois n'a aucune vente dans la devise choisie mais en a dans l'autre, basculer dessus.
+  useEffect(() => {
+    if (!sales?.length) return;
+    if (!sales.some((t) => t.currency === currency)) {
+      const other = sales.find((t) => t.currency === 'CDF' || t.currency === 'USD')?.currency;
+      if (other) setCurrency(other);
+    }
+  }, [sales]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Base: all paid tickets in selected currency for this month
-  const base = (tickets || []).filter((t) => t.currency === currency && t.paid_at);
+  // Base : toutes les ventes payées dans la devise sélectionnée
+  const base = (sales || []).filter((t) => t.currency === currency);
 
-  // Stats (always over the full month, not affected by method filter)
+  // KPI (calculés sur tout le mois, indépendamment du filtre méthode)
   const monthTotal = base.reduce((s, t) => s + (t.total_cents || 0), 0);
   const cashTotal = base.filter((t) => t.payment_method === 'cash').reduce((s, t) => s + (t.total_cents || 0), 0);
   const slpTotal = base.filter((t) => t.payment_method === 'scanlinkpay').reduce((s, t) => s + (t.total_cents || 0), 0);
   const monthCount = base.length;
-  const activeDays = new Set(base.map((t) => dayKey(new Date(t.paid_at)))).size;
+  const activeDays = new Set(base.map((t) => {
+    const d = t.paid_at || t.created_at;
+    return d ? dayKey(new Date(d)) : null;
+  }).filter(Boolean)).size;
 
-  // Table rows: filtered by method, sorted newest first
+  // Lignes du tableau : filtrées par méthode, triées du plus récent au plus ancien
   const rows = [...base]
     .filter((t) => !method || t.payment_method === method)
-    .sort((a, b) => (b.paid_at > a.paid_at ? 1 : -1));
+    .sort((a, b) => {
+      const da = a.paid_at || a.created_at || '';
+      const db = b.paid_at || b.created_at || '';
+      return db > da ? 1 : -1;
+    });
+
+  const saleLabel = (t: any) => {
+    if (t.reference) return t.reference;
+    if (t.ticket_number) return `Ticket #${t.ticket_number}`;
+    return 'Vente';
+  };
 
   return (
     <div className="p-4 md:p-6 pb-28 md:pb-6 space-y-5 max-w-2xl mx-auto">
       <PageHeader title="Mes ventes" />
 
-      {/* Month navigation + currency toggle */}
+      {/* Navigation mensuelle + toggle devise */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
           <button
@@ -117,7 +134,9 @@ export default function MySalesPage() {
               onClick={() => setCurrency(c)}
               className={cn(
                 'rounded-full border px-3 py-1 text-sm font-medium transition-colors',
-                currency === c ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-foreground/30'
+                currency === c
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-border text-muted-foreground hover:border-foreground/30'
               )}
             >
               {c}
@@ -126,31 +145,37 @@ export default function MySalesPage() {
         </div>
       </div>
 
-      {/* 4 KPI cards */}
+      {/* 4 cartes KPI */}
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-2xl border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground">Total du mois</p>
-          <p className="mt-1 text-lg font-bold text-foreground [overflow-wrap:anywhere]">{formatCurrency(monthTotal, currency)}</p>
+          <p className="mt-1 text-lg font-bold text-foreground [overflow-wrap:anywhere]">
+            {formatCurrency(monthTotal, currency)}
+          </p>
         </div>
         <div className="rounded-2xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Tickets · Jours travaillés</p>
+          <p className="text-xs text-muted-foreground">Ventes · Jours travaillés</p>
           <p className="mt-1 text-lg font-bold text-foreground">{monthCount} · {activeDays}</p>
         </div>
         <div className="rounded-2xl border border-border bg-card p-4">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Banknote className="h-3.5 w-3.5" /> Espèces
           </div>
-          <p className="mt-1 text-base font-bold text-emerald-600 dark:text-emerald-400 [overflow-wrap:anywhere]">{formatCurrency(cashTotal, currency)}</p>
+          <p className="mt-1 text-base font-bold text-emerald-600 dark:text-emerald-400 [overflow-wrap:anywhere]">
+            {formatCurrency(cashTotal, currency)}
+          </p>
         </div>
         <div className="rounded-2xl border border-border bg-card p-4">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <CreditCard className="h-3.5 w-3.5" /> ScanLinkPay
           </div>
-          <p className="mt-1 text-base font-bold text-primary [overflow-wrap:anywhere]">{formatCurrency(slpTotal, currency)}</p>
+          <p className="mt-1 text-base font-bold text-primary [overflow-wrap:anywhere]">
+            {formatCurrency(slpTotal, currency)}
+          </p>
         </div>
       </div>
 
-      {/* Method filter chips */}
+      {/* Filtres par méthode de paiement */}
       <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
         {METHODS.map((m) => (
           <button
@@ -169,40 +194,43 @@ export default function MySalesPage() {
         ))}
       </div>
 
-      {/* Ticket table */}
+      {/* Tableau des ventes */}
       <div className="rounded-2xl border border-border bg-card overflow-hidden">
-        {isLoading || !stationId ? (
+        {isLoading || !org?.id ? (
           <div className="flex justify-center py-10">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
         ) : !rows.length ? (
           <p className="py-10 text-center text-sm text-muted-foreground">
-            Aucune vente{method ? ` (${METHODS.find(m => m.value === method)?.label})` : ''} en {currency} ce mois-ci.
+            Aucune vente{method ? ` (${METHODS.find((m) => m.value === method)?.label})` : ''} en {currency} ce mois-ci.
           </p>
         ) : (
           <>
-            {/* Table header */}
+            {/* En-tête */}
             <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2 bg-secondary text-xs font-medium text-muted-foreground border-b border-border">
-              <span>Ticket · Date</span>
+              <span>Référence · Date</span>
               <span className="text-center">Mode</span>
               <span className="text-right">Montant</span>
             </div>
-            {/* Table rows */}
+            {/* Lignes */}
             <div className="divide-y divide-border">
               {rows.map((t) => {
                 const badge = METHOD_BADGE[t.payment_method as keyof typeof METHOD_BADGE];
+                const dateStr = t.paid_at || t.created_at;
                 return (
                   <div key={t.id} className="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-4 py-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-foreground">Ticket #{t.ticket_number ?? '—'}</p>
+                      <p className="text-sm font-semibold text-foreground truncate">{saleLabel(t)}</p>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(t.paid_at).toLocaleString('fr-FR', {
-                          weekday: 'short',
-                          day: '2-digit',
-                          month: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                        {dateStr
+                          ? new Date(dateStr).toLocaleString('fr-FR', {
+                              weekday: 'short',
+                              day: '2-digit',
+                              month: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : '—'}
                       </p>
                     </div>
                     {badge ? (
@@ -219,9 +247,9 @@ export default function MySalesPage() {
                 );
               })}
             </div>
-            {/* Footer summary */}
+            {/* Pied de tableau */}
             <div className="flex items-center justify-between px-4 py-3 bg-secondary/50 border-t border-border text-xs text-muted-foreground">
-              <span>{rows.length} ticket{rows.length > 1 ? 's' : ''}</span>
+              <span>{rows.length} vente{rows.length > 1 ? 's' : ''}</span>
               <span className="font-semibold text-foreground">
                 {formatCurrency(rows.reduce((s, t) => s + (t.total_cents || 0), 0), currency)}
               </span>

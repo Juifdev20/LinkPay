@@ -14,6 +14,15 @@ const METHOD_LABELS: Record<string, string> = {
 /** Whole units, no cents — big hero figures read better ("48 500 CDF"). */
 const money = (cents: number, currency: string) => formatCurrency(cents, currency).replace(/[,.]00(?=\D*$)/, '');
 
+/** Short amount (cents in) for a bar label: 180 · 1,3k · 2,5M. */
+const compactAmount = (cents: number) => {
+  const v = cents / 100;
+  const trim = (n: number) => n.toFixed(1).replace(/\.0$/, '').replace('.', ',');
+  if (v >= 1_000_000) return `${trim(v / 1_000_000)}M`;
+  if (v >= 1_000) return `${trim(v / 1_000)}k`;
+  return String(Math.round(v));
+};
+
 export function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`animate-pulse rounded-xl bg-muted ${className}`} />;
 }
@@ -181,14 +190,18 @@ export function SalesChart({
       <div className="mt-4 flex h-32 items-end gap-1">
         {days.map((d, i) => {
           const isToday = i === days.length - 1;
-          const h = loading ? 20 + ((i * 37) % 60) : Math.max(4, Math.round((d.revenue / max) * 100));
+          // Bars use at most 75% of the height: the amount is written above each one.
+          const h = loading ? 20 + ((i * 37) % 55) : Math.max(4, Math.round((d.revenue / max) * 75));
           // For many bars: only show label for today and every 7th bar
           const showLabel = !manyBars || isToday || i % 7 === 0;
           return (
             <button key={d.date} onClick={() => setPicked(i)} className="flex h-full flex-1 flex-col items-center justify-end gap-1">
+              {!loading && !manyBars && d.revenue > 0 && (
+                <span className="text-[10px] font-semibold leading-none text-foreground/80">{compactAmount(d.revenue)}</span>
+              )}
               <div
                 style={{ height: `${h}%` }}
-                className={`w-full rounded-md transition-all ${loading ? 'animate-pulse bg-muted' : isToday ? 'bg-gradient-to-t from-primary to-violet-500' : i === safePicked ? 'bg-primary/40' : 'bg-primary/15'}`}
+                className={`w-full rounded-md transition-all ${loading ? 'animate-pulse bg-muted' : isToday ? 'bg-gradient-to-t from-primary to-violet-500' : i === safePicked ? 'bg-primary/70' : 'bg-primary/40'}`}
               />
               <span className={`text-[10px] capitalize leading-none ${isToday ? 'font-semibold text-foreground' : 'text-muted-foreground'} ${!showLabel ? 'invisible' : ''}`}>
                 {isToday ? 'Auj.' : label(d.date)}

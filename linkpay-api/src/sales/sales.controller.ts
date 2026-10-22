@@ -61,8 +61,9 @@ export class SalesController {
     @Query('from') from?: string,
     @Query('to') to?: string,
     @CurrentUser('role') callerRole?: string,
+    @Query('days') days?: string,
   ) {
-    return this.salesService.getStats(orgId, callerId, callerOrgId, from, to, callerRole);
+    return this.salesService.getStats(orgId, callerId, callerOrgId, from, to, callerRole, days ? Number(days) : undefined);
   }
 
   // Declared before ':saleId' so "history" is not read as a sale id.
