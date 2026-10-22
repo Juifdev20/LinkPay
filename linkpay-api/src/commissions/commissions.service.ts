@@ -27,43 +27,27 @@ export class CommissionsService {
     const rule = await this.getActiveRule(merchantId, currency);
 
     const pspFeeCents = this.estimatePspFee(amountCents);
-    let platformFeeCents = this.calculateCommission(amountCents, rule);
-    // SHARED: the merchant's half is fixed on the fee BEFORE any rounding below.
-    const sharedMerchantShare = Math.floor(platformFeeCents / 2);
+    const platformFeeCents = this.calculateCommission(amountCents, rule);
 
-    // Mobile Money / card providers (FlexPaie) only take whole currency
-    // units (see psp/amount-check.ts). When the payer covers the fee (CUSTOMER_PAID,
-    // or their half of SHARED) on a whole amount, the payer's total almost always
-    // ended up with cents — 59 USD + 1.47 = 60.47 — and the payment was refused.
-    // Round the payer's share UP to the next whole unit; the few extra cents go to
-    // the platform fee, so the merchant's net is exactly what it would have been.
-    if ((commissionModel === 'CUSTOMER_PAID' || commissionModel === 'SHARED') && amountCents % 100 === 0) {
-      const merchantShare = commissionModel === 'SHARED' ? sharedMerchantShare : 0;
-      const payerShare = platformFeeCents - merchantShare;
-      const roundedPayerShare = Math.ceil(payerShare / 100) * 100;
-      platformFeeCents = merchantShare + roundedPayerShare;
+    // Who bears the ScanLinkPay commission. SHARED: the merchant's half is fixed on the fee before any rounding below.
+    let payerFeeCents =
+      commissionModel === 'CUSTOMER_PAID' ? platformFeeCents
+      : commissionModel === 'SHARED' ? platformFeeCents - Math.floor(platformFeeCents / 2)
+      : 0;
+    let merchantFeeCents = platformFeeCents - payerFeeCents;
+
+    // Mobile Money / card providers (FlexPaie) only take whole currency units (see psp/amount-check.ts), so on a whole amount
+    // the payer's share must be whole too. It is rounded DOWN and the few cents left go to the merchant: the payer never pays
+    // more than the real commission. Rounding it UP (until 23/10/2026) turned a 0.05 USD commission into 1 USD — a 1 USD
+    // subscription cost the payer 2 USD before FlexPaie's own fee. ScanLinkPay's commission does not change either way.
+    if (payerFeeCents > 0 && amountCents % 100 === 0) {
+      const wholePayerFee = Math.floor(payerFeeCents / 100) * 100;
+      merchantFeeCents += payerFeeCents - wholePayerFee;
+      payerFeeCents = wholePayerFee;
     }
 
-    let netCents: number;
-    let totalCents: number;
-
-    switch (commissionModel) {
-      case 'MERCHANT_PAID':
-        netCents = amountCents - pspFeeCents - platformFeeCents;
-        totalCents = amountCents;
-        break;
-      case 'CUSTOMER_PAID':
-        netCents = amountCents - pspFeeCents;
-        totalCents = amountCents + platformFeeCents;
-        break;
-      case 'SHARED':
-        netCents = amountCents - pspFeeCents - sharedMerchantShare;
-        totalCents = amountCents + (platformFeeCents - sharedMerchantShare);
-        break;
-      default:
-        netCents = amountCents - pspFeeCents - platformFeeCents;
-        totalCents = amountCents;
-    }
+    const netCents = amountCents - pspFeeCents - merchantFeeCents;
+    const totalCents = amountCents + payerFeeCents;
 
     return {
       gross_cents: amountCents,
@@ -103,8 +87,14 @@ export class CommissionsService {
     return commission;
   }
 
-  private estimatePspFee(amountCents: number): number {
-    return Math.floor(amountCents * 0.015);
+  /**
+   * What the payment provider costs the merchant. Zero with FlexPaie (and for wallet payments, which use no provider): FlexPaie
+   * adds its own fee (about 2 %, 3 % by card) on top of what the PAYER is charged — 2.00 USD requested, 2.04 USD debited — and
+   * credits the requested amount. Holding back an estimated 1.5 % from the merchant as well made that fee paid twice (23/10/2026).
+   * The parameter stays for a provider that would bill the merchant instead.
+   */
+  private estimatePspFee(_amountCents: number): number {
+    return 0;
   }
 
   private async getActiveRule(merchantId: string, currency: string): Promise<any> {

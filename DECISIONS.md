@@ -193,6 +193,25 @@ Fonctionnement :
   avec le motif. Les cases ne sont rouges que tant que rien n'a été retapé.
 - Fait une seule fois dans `PinKeypadScreen` et `PinInput` : tous les écrans en profitent.
 
+### 18. Alléger ce que paie le client (23/10/2026)
+- **Constat** : abonnement de 1 USD, commission payée par le client.
+  - La vraie commission (2,5 %, minimum 0,05 USD) était **arrondie au dollar supérieur**, parce que Mobile Money n'accepte que des
+    unités entières : 1 USD de commission.
+  - FlexPaie ajoutait ses ~2 % : 2,04 USD débités pour 1 USD.
+  - Et 1,5 % « frais du fournisseur » étaient en plus retenus au marchand, alors que FlexPaie les fait déjà payer au client.
+- **Désormais** :
+  - la part du client est arrondie **vers le bas** à l'unité entière ; les centimes restants sont retenus au marchand ;
+  - le client ne paie jamais plus que la vraie commission, et la commission de ScanLinkPay ne change pas ;
+  - plus de retenue « frais du fournisseur » (`estimatePspFee` = 0) : FlexPaie facture ses frais au payeur et crédite le montant
+    demandé ;
+  - le grand livre n'écrit plus de ligne de frais à zéro.
+- **Exemples** (commission payée par le client) :
+
+  | Paiement | Débité avant | Débité désormais | Le marchand reçoit |
+  |---|---|---|---|
+  | 1 USD | 2,04 USD | 1,02 USD | 0,95 USD |
+  | 59 USD | 61 USD + frais FlexPaie | 60 USD + frais FlexPaie | 58,53 USD |
+
 ### 17. Paiement avec commission à la charge du payeur : débité, jamais crédité (corrigé)
 - **Constat** : abonnement HotelSaver de 1 USD, commission payée par le client.
   - FlexPaie a débité 2,04 USD, le total demandé.
