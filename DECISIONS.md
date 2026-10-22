@@ -70,6 +70,25 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 - **Fenêtre d'encaissement fermée pendant que le client paie** : la vente reste dans un bandeau au-dessus du catalogue,
   avec « Reprendre ». Si le client paie entre-temps, le bandeau passe au vert, avec « Voir le ticket ».
 
+### 8. Audit de toute l'application : trois familles de failles cherchées
+1. **Un paiement réussi par un chemin, mais l'objet lié n'écoute qu'un autre chemin.**
+   - Caisse et cartes : elles lisent l'état du QR, donc correctes quel que soit le moyen de paiement.
+   - Les confirmations de l'opérateur, la vérification d'état et la tâche de rattrapage passent toutes par la même
+     fonction pour les paiements marchands, et par leur propre traitement pour les recharges, Pro et transferts.
+   - Abonnements : une seule opération atomique en base.
+   - Seule faille trouvée : les Ventes (corrigé, § 7).
+2. **États finaux écrasés** (passages sans condition sur l'état actuel, relevés par un script sur toute l'API) :
+   - « EXPIRED » sur un QR payé (corrigé, § 7) ;
+   - mode Pro des dépenses prolongé deux fois quand l'opérateur et la vérification confirment en même temps :
+     maintenant réservé d'abord, puis prolongé une seule fois ;
+   - tontine payée remise « en retard » par la tâche du jour (module désactivé, corrigé quand même).
+3. **Deux façons de payer la même chose en même temps** :
+   - **Caisse supermarché** : « Retirer le ScanLinkPay en attente » laissait le QR payable 30 minutes ; le client
+     pouvait payer le QR puis donner des espèces (payer deux fois). Le QR est maintenant fermé d'abord, et le retrait
+     refusé si le client est en train de le payer.
+   - Ventes : corrigé (§ 3).
+   - Cartes, paiement par portefeuille, espèces en double à la caisse, ventes hors ligne : déjà protégés.
+
 ### Reste à décider (non corrigé)
 - Le stock n'est pas réservé pendant l'attente : voulu, le stock bouge au paiement (si l'article est parti
   entre-temps, les espèces sont refusées).

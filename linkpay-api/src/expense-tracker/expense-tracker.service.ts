@@ -421,10 +421,17 @@ export class ExpenseTrackerService {
       const adapter = this.pspFactory.get(payment.psp_provider);
       const live = await adapter.getTransactionStatus(payment.psp_intent_id);
       if (live.status === 'SUCCESS') {
-        const { data: newExpiry } = await this.db.rpc('extend_expense_pro', { p_user_id: userId });
-        await this.db.from('expense_pro_payments').update({ status: 'SUCCESS', extended_to: newExpiry, updated_at: new Date().toISOString() }).eq('id', payment.id);
+        // Claimed first (same rule as the webhook): one payment extends Pro once, even if both confirm at once.
+        const { data: claimed } = await this.db.from('expense_pro_payments')
+          .update({ status: 'SUCCESS', updated_at: new Date().toISOString() })
+          .eq('id', payment.id).eq('status', 'PENDING').select('id').maybeSingle();
+        if (claimed) {
+          const { data: newExpiry, error } = await this.db.rpc('extend_expense_pro', { p_user_id: userId });
+          if (error) await this.db.from('expense_pro_payments').update({ status: 'PENDING' }).eq('id', payment.id).eq('status', 'SUCCESS');
+          else await this.db.from('expense_pro_payments').update({ extended_to: newExpiry }).eq('id', payment.id);
+        }
       } else if (live.status === 'FAILED') {
-        await this.db.from('expense_pro_payments').update({ status: 'FAILED', updated_at: new Date().toISOString() }).eq('id', payment.id);
+        await this.db.from('expense_pro_payments').update({ status: 'FAILED', updated_at: new Date().toISOString() }).eq('id', payment.id).eq('status', 'PENDING');
       }
     }
 

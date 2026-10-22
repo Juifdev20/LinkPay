@@ -130,7 +130,8 @@ export class TontinesCronService {
           ? await this.db.from('profiles').select('full_name').eq('id', member.user_id).maybeSingle()
           : { data: null };
 
-        await this.db.from('tontine_contributions').update({ status: 'overdue' }).eq('id', contribution.id);
+        // Never over a contribution paid in the meantime (it would look unpaid and be payable twice).
+        await this.db.from('tontine_contributions').update({ status: 'overdue' }).eq('id', contribution.id).neq('status', 'paid');
 
         await this.notificationsService.create({
           user_id: group.creator_id,

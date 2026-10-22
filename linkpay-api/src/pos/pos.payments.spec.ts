@@ -62,3 +62,33 @@ describe('POS payments go through the atomic add_pos_payment function', () => {
     expect(cancel.calls.find((c) => c.method === 'update')!.args[0].status).toBe('CANCELLED');
   });
 });
+
+describe('POS — withdrawing a pending ScanLinkPay part to pay otherwise', () => {
+  function voidSetup(requestStillOpen: boolean) {
+    const PENDING = { id: 'p9', method: 'scanlinkpay', status: 'pending', amount_cents: 100000, payment_request_id: 'pr9' };
+    const fake = createFakeSupabase((q: RecordedQuery) => {
+      if (q.target === 'payment_requests') return { data: requestStillOpen ? { id: 'pr9' } : null };
+      return { data: null };
+    });
+    const service: any = Object.create(PosService.prototype);
+    Object.defineProperty(service, 'db', { get: () => fake.service.getClient() });
+    service.auditService = { log: jest.fn(async () => undefined) };
+    service.logger = { error: jest.fn() };
+    jest.spyOn(service, 'loadOpenTicket').mockResolvedValue({ ticket: { ...TICKET, payment_request_id: 'pr9' }, items: [], payments: [PENDING], merchant: {} });
+    return { service, fake };
+  }
+
+  it('closes the QR first, so the customer cannot pay it after handing over cash', async () => {
+    const { service, fake } = voidSetup(true);
+    await service.voidPayment('m1', 't1', 'p9', 'u1', 'caissier', 'o1');
+    const targets = fake.queries.map((q) => q.target);
+    expect(targets.indexOf('payment_requests')).toBeLessThan(targets.indexOf('pos_ticket_payments'));
+    expect(has(fake.queries.find((q) => q.target === 'payment_requests')!, 'in', 'status', ['CREATED', 'EXPIRED'])).toBe(true);
+  });
+
+  it('refused while the customer is paying it: the part stays, the cashier waits', async () => {
+    const { service, fake } = voidSetup(false);
+    await expect(service.voidPayment('m1', 't1', 'p9', 'u1', 'caissier', 'o1')).rejects.toThrow(/en train de payer/);
+    expect(fake.queries.some((q) => q.target === 'pos_ticket_payments')).toBe(false);
+  });
+});

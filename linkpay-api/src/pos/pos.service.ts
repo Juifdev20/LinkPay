@@ -847,8 +847,8 @@ export class PosService {
       p_created_by: callerId,
     }).single();
     if (error || !payment) {
-      // The ticket was paid in the meantime: don't leave a live QR for it.
-      await this.db.from('payment_requests').update({ status: 'CANCELLED', updated_at }).eq('id', request.id);
+      // The ticket was paid in the meantime: don't leave a live QR for it (nobody has it yet: just created).
+      await this.db.from('payment_requests').update({ status: 'CANCELLED', updated_at }).eq('id', request.id).eq('status', 'CREATED');
       throw this.toPosPaymentError(error?.message, ticket.currency);
     }
     await this.db.from('pos_tickets').update({ payment_request_id: request.id, updated_at }).eq('id', ticketId);
@@ -859,16 +859,28 @@ export class PosService {
     };
   }
 
-  /** Drop a pending ScanLinkPay part — the minted QR can't be un-minted,
-   * but removing the payment row frees the amount for another method (the
-   * linked payment_request just expires unpaid). Only 'pending' rows can
-   * go: a confirmed payment is real money already in. */
+  /** Drop a pending ScanLinkPay part, freeing the amount for another method. Its QR is closed FIRST, and only while
+   * nobody is paying it: left open, the customer could still pay it after handing over cash — paying twice. A QR
+   * already claimed (the customer confirmed their PIN) or paid keeps its row: the cashier waits for it. Only 'pending'
+   * rows can go: a confirmed payment is real money already in. */
   async voidPayment(merchantId: string, ticketId: string, paymentId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
     const { ticket, items, payments, merchant } = await this.loadOpenTicket(merchantId, ticketId, callerId, callerRole, callerOrgId);
     const payment = payments.find((p) => p.id === paymentId);
     if (!payment) throw new NotFoundException('Paiement introuvable sur ce ticket');
     if (payment.status !== 'pending') {
       throw new BadRequestException('Seul un paiement ScanLinkPay en attente peut être retiré.');
+    }
+    if (payment.payment_request_id) {
+      const { data: closed } = await this.db
+        .from('payment_requests')
+        .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
+        .eq('id', payment.payment_request_id)
+        .in('status', ['CREATED', 'EXPIRED'])
+        .select('id')
+        .maybeSingle();
+      if (!closed) {
+        throw new BadRequestException('Le client est en train de payer (ou a payé) par ScanLinkPay : attendez la confirmation avant de faire payer autrement.');
+      }
     }
 
     const clearsMirror = ticket.payment_request_id === payment.payment_request_id;

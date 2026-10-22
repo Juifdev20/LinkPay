@@ -838,19 +838,30 @@ export class PaymentsService {
     }
 
     if (status === 'SUCCESS') {
-      if (payment.status !== 'SUCCESS') {
+      // Claimed first: the webhook, the payer's status check and the reconciliation job can confirm the same payment
+      // at the same moment — only one may extend Pro (one payment, one month).
+      const { data: claimed } = payment.status === 'SUCCESS' ? { data: null } : await this.supabaseService.getClient()
+        .from('expense_pro_payments')
+        .update({ status: 'SUCCESS', updated_at: new Date().toISOString() })
+        .eq('id', payment.id)
+        .in('status', ['PENDING', 'FAILED'])
+        .select('id')
+        .maybeSingle();
+      if (claimed) {
         const { data: newExpiry, error: rpcError } = await this.supabaseService.getClient().rpc('extend_expense_pro', {
           p_user_id: payment.user_id,
         });
 
         if (rpcError) {
+          // Given back: the payment is real, the next confirmation extends it.
+          await this.supabaseService.getClient().from('expense_pro_payments').update({ status: 'PENDING' }).eq('id', payment.id).eq('status', 'SUCCESS');
           this.logger.error(`Failed to extend expense Pro for payment ${payment.id}: ${rpcError.message}`);
           return true;
         }
 
         await this.supabaseService.getClient()
           .from('expense_pro_payments')
-          .update({ status: 'SUCCESS', extended_to: newExpiry, updated_at: new Date().toISOString() })
+          .update({ extended_to: newExpiry, updated_at: new Date().toISOString() })
           .eq('id', payment.id);
 
         await this.notificationsService.create({
