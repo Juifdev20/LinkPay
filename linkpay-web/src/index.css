@@ -8,6 +8,8 @@
        avec le bleu ciel du « Pay » du logo en accent. */
     --brand-navy: 235 84% 24%;
     --brand-blue: 232 94% 52%;
+    /* The light blue of « Pay » in the logo (#15B8FE). */
+    --brand-sky: 199 99% 54%;
     --background: 230 100% 98%;
     --foreground: 224 39% 11%;
     --card: 0 0% 100%;
@@ -36,7 +38,7 @@
     --radius: 0.875rem;
     --gradient-orange: linear-gradient(135deg, #f97316 0%, #ef4444 100%);
     --gradient-brand: linear-gradient(120deg, #0a1270 0%, #0f24c9 50%, #1230f8 100%);
-    --gradient-brand-text: linear-gradient(90deg, #1230f8 0%, #0ea5e9 100%);
+    --gradient-brand-text: linear-gradient(90deg, #1338fe 0%, #15b8fe 100%);
   }
 
   .dark {
@@ -46,7 +48,7 @@
     --card-foreground: 228 40% 97%;
     --popover: 228 34% 13%;
     --popover-foreground: 228 40% 97%;
-    --primary: 231 100% 69%;
+    --primary: 224 100% 64%;
     --primary-foreground: 0 0% 100%;
     --secondary: 228 28% 18%;
     --secondary-foreground: 228 40% 97%;
@@ -64,8 +66,8 @@
     --info-foreground: 0 0% 100%;
     --border: 228 26% 21%;
     --input: 228 26% 23%;
-    --ring: 231 100% 69%;
-    --gradient-brand-text: linear-gradient(90deg, #7c8dff 0%, #7dd3fc 100%);
+    --ring: 224 100% 64%;
+    --gradient-brand-text: linear-gradient(90deg, #4f7dff 0%, #4ed2fd 100%);
   }
 
 

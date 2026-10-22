@@ -124,7 +124,7 @@ function PhoneIllustration() {
         <div className="mt-8 flex flex-col items-center">
           <img src={logoSrc} alt="" className="h-11 w-11 rounded-xl object-cover shadow-md" />
           <p className="mt-2 text-xs font-extrabold tracking-tight text-foreground">
-            ScanLink<span className="text-primary">Pay</span>
+            ScanLink<span className="text-brand-sky">Pay</span>
           </p>
           <div className="mt-6 h-1.5 w-16 rounded-full bg-primary/20" />
           <div className="mt-2 h-1.5 w-10 rounded-full bg-primary/10" />

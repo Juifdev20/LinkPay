@@ -14,7 +14,7 @@ export default function WelcomePage() {
         <div className="flex flex-col items-center gap-3">
           <Logo size="xl" showText={false} imgClassName="w-20 h-20 rounded-[22px] shadow-brand" />
           <p className="text-3xl font-extrabold tracking-tight text-foreground">
-            ScanLink<span className="text-primary">Pay</span>
+            ScanLink<span className="text-brand-sky">Pay</span>
           </p>
         </div>
         <div className="space-y-3">

@@ -27,7 +27,7 @@ export function identityNote(user?: { phone?: string | null; email?: string | nu
 function Wordmark({ className }: { className?: string }) {
   return (
     <p className={cn('font-extrabold tracking-tight text-white md:text-foreground', className)}>
-      ScanLink<span className="text-sky-300 md:text-primary">Pay</span>
+      ScanLink<span className="text-sky-300 md:text-brand-sky">Pay</span>
     </p>
   );
 }

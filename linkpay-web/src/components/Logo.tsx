@@ -35,7 +35,7 @@ export function Logo({ size = 'md', showText = true, className, imgClassName }: 
       />
       {showText && (
         <span className={cn('font-extrabold tracking-tight text-foreground', s.title)}>
-          ScanLink<span className="text-primary">Pay</span>
+          ScanLink<span className="text-brand-sky">Pay</span>
         </span>
       )}
     </div>

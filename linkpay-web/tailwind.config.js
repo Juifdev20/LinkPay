@@ -20,6 +20,7 @@ export default {
         foreground: 'hsl(var(--foreground))',
         brand: {
           navy: 'hsl(var(--brand-navy))',
+          sky: 'hsl(var(--brand-sky))',
           blue: 'hsl(var(--brand-blue))',
         },
         primary: {
