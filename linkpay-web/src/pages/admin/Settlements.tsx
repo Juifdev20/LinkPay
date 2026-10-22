@@ -1,3 +1,5 @@
+import { EmptyState } from '@/components/EmptyState';
+import { Wallet } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -5,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, countLabel } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
 
 const NEXT_STATUS: Record<string, string> = {
@@ -48,7 +50,7 @@ export default function AdminSettlementsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-bold">{data?.total || 0} règlement(s)</CardTitle>
+          <CardTitle className="text-base font-bold">{countLabel(data?.total || 0, 'règlement')}</CardTitle>
         </CardHeader>
         <CardContent>
           {statusMutation.isError && (
@@ -80,7 +82,7 @@ export default function AdminSettlementsPage() {
                           s.status === 'COMPLETED' ? 'success' : s.status === 'FAILED' ? 'error' : 'warning'
                         }
                       >
-                        {s.status}
+                        {({ PENDING: 'En attente', PROCESSING: 'En cours', COMPLETED: 'Réglé', FAILED: 'Échoué' } as Record<string, string>)[s.status] ?? s.status}
                       </Badge>
                       {nextStatus && (
                         <Button
@@ -112,7 +114,7 @@ export default function AdminSettlementsPage() {
               })}
             </div>
           ) : (
-            <p className="text-muted-foreground text-center py-6">Aucun règlement</p>
+            <EmptyState icon={Wallet} title="Aucun règlement" />
           )}
         </CardContent>
       </Card>

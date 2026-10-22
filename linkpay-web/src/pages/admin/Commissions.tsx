@@ -1,3 +1,6 @@
+import { EmptyState } from '@/components/EmptyState';
+import { Percent } from 'lucide-react';
+import { countLabel } from '@/lib/utils';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -69,7 +72,7 @@ export default function AdminCommissionsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-bold">{data?.length || 0} règle(s)</CardTitle>
+          <CardTitle className="text-base font-bold">{countLabel(data?.length || 0, 'règle')}</CardTitle>
         </CardHeader>
         <CardContent>
           {data?.length ? (
@@ -105,7 +108,7 @@ export default function AdminCommissionsPage() {
               ))}
             </div>
           ) : (
-            <p className="text-muted-foreground text-center py-6">Aucune règle</p>
+            <EmptyState icon={Percent} title="Aucune règle de commission" text="Sans règle, la commission par défaut s'applique. Ajoutez une règle pour un commerçant ou un montant particulier." />
           )}
         </CardContent>
       </Card>

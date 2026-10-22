@@ -1,3 +1,5 @@
+import { ArrowLeftRight as ArrowLeftRightIcon } from 'lucide-react';
+import { EmptyState } from '@/components/EmptyState';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, SlidersHorizontal } from 'lucide-react';
@@ -105,7 +107,7 @@ export default function WalletTransactionsPage() {
         ) : entries.length ? (
           entries.map((e: any) => <LedgerItem key={e.id} entry={e} />)
         ) : (
-          <p className="py-10 text-center text-sm text-muted-foreground">Aucune transaction{search || kind || tab !== 'all' ? ' pour ce filtre' : ' pour le moment'}</p>
+          <EmptyState icon={ArrowLeftRightIcon} title={search || kind || tab !== 'all' ? 'Aucune transaction pour ce filtre' : 'Aucune transaction pour le moment'} text={search || kind || tab !== 'all' ? 'Changez la recherche ou le filtre.' : 'Vos recharges, envois, paiements et retraits apparaîtront ici.'} />
         )}
       </div>
     </div>

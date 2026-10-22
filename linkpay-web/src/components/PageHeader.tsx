@@ -1,4 +1,5 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { navItems } from '@/lib/nav-items';
 import type { LucideIcon } from 'lucide-react';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -33,6 +34,10 @@ interface PageHeaderProps {
 export function PageHeader({ title, action, hideBack }: PageHeaderProps) {
   const Icon = action?.icon;
   const navigate = useNavigate();
+  // A page of the menu has nothing to go back to on a computer: the menu is always beside it. The phone keeps the
+  // arrow (no sidebar there); sub-pages keep it everywhere.
+  const { pathname } = useLocation();
+  const inMenu = navItems.some((i) => i.to === pathname);
 
   return (
     <div className="flex items-center justify-between gap-3">
@@ -41,7 +46,7 @@ export function PageHeader({ title, action, hideBack }: PageHeaderProps) {
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm transition-colors hover:bg-accent"
+            className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm transition-colors hover:bg-accent${inMenu ? ' md:hidden' : ''}`}
             aria-label="Retour"
           >
             <ArrowLeft className="h-5 w-5" />

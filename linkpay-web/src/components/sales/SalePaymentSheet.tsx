@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { FormSheet } from '@/components/FormSheet';
 import { publicOrigin } from '@/lib/share';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, countLabel } from '@/lib/utils';
 import { useOnline } from '@/lib/network';
 
 /**
@@ -63,7 +63,7 @@ export function SalePaymentSheet({
       <div className="p-6 max-w-lg mx-auto space-y-5">
         <div className="text-center">
           <p className="text-sm text-muted-foreground">
-            {sale.reference} · {(sale.sale_items || []).reduce((n: number, l: any) => n + l.quantity, 0)} article(s)
+            {sale.reference} · {countLabel((sale.sale_items || []).reduce((n: number, l: any) => n + l.quantity, 0), 'article')}
           </p>
           <p className="text-3xl font-bold text-foreground">{formatCurrency(total, currency)}</p>
           <p className="text-xs text-muted-foreground">à payer</p>

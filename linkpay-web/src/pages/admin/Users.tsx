@@ -6,10 +6,15 @@ import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { formatDate } from '@/lib/utils';
-import { Loader2, KeyRound, ShieldOff, ChevronLeft, ChevronRight } from 'lucide-react';
+import { formatDate, countLabel } from '@/lib/utils';
+import { Loader2, KeyRound, ShieldOff, ChevronLeft, ChevronRight, Users } from 'lucide-react';
+import { ROLE_LABELS } from '@/lib/permissions';
+import { EmptyState } from '@/components/EmptyState';
+import { Select } from '@/components/ui/select';
 
 const ROLES = ['client', 'cashier', 'merchant', 'enterprise', 'admin', 'super_admin'];
+/** « Marchand », « Super administrateur »… (the role names of the database stay out of the screen). */
+const roleName = (r: string) => (r === 'enterprise' ? 'Entreprise (responsable)' : ROLE_LABELS[r] || r);
 const PAGE_SIZE = 20;
 
 export default function AdminUsersPage() {
@@ -54,70 +59,85 @@ export default function AdminUsersPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-bold">{data?.total || 0} utilisateur(s)</CardTitle>
+          <CardTitle className="text-base font-bold">{countLabel(data?.total || 0, 'utilisateur')}</CardTitle>
         </CardHeader>
         <CardContent>
           {data?.data?.length ? (
-            <div>
-              {data.data.map((u: any) => {
-                const pendingRole = selectedRole[u.id] ?? u.role;
-                const isPending = assignMutation.isPending && assignMutation.variables?.userId === u.id;
-                return (
-                  <div key={u.id} className="flex items-center justify-between gap-3 py-3 border-b border-border last:border-0">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-sm text-foreground truncate">{u.full_name || u.email}</p>
-                      <p className="text-xs text-muted-foreground truncate">{u.email} · {formatDate(u.created_at)}</p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <Badge variant="secondary" className="capitalize">{u.role}</Badge>
-                      <select
-                        className="rounded-lg border border-input bg-background px-2 py-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        value={pendingRole}
-                        onChange={(e) => setSelectedRole({ ...selectedRole, [u.id]: e.target.value })}
-                      >
-                        {ROLES.map((r) => (
-                          <option key={r} value={r}>{r}</option>
-                        ))}
-                      </select>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={pendingRole === u.role || isPending}
-                        onClick={() => assignMutation.mutate({ userId: u.id, role: pendingRole })}
-                      >
-                        {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Assigner'}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        title="Réinitialiser la session (libère l'appareil connecté)"
-                        disabled={resetSessionMutation.isPending && resetSessionMutation.variables === u.id}
-                        onClick={() => setResetTarget(u)}
-                      >
-                        {resetSessionMutation.isPending && resetSessionMutation.variables === u.id ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <KeyRound className="w-4 h-4" />
-                        )}
-                      </Button>
-                      {['admin', 'super_admin'].includes(u.role) && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          title="Réinitialiser la double authentification (téléphone perdu)"
-                          disabled={reset2faMutation.isPending && reset2faMutation.variables === u.id}
-                          onClick={() => setReset2faTarget(u)}
-                        >
-                          <ShieldOff className="w-4 h-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="-mx-6 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-secondary text-xs text-muted-foreground">
+                  <tr>
+                    <th className="px-6 py-2.5 text-left font-medium">Utilisateur</th>
+                    <th className="px-3 py-2.5 text-left font-medium">Inscrit le</th>
+                    <th className="px-3 py-2.5 text-left font-medium">Rôle</th>
+                    <th className="px-3 py-2.5 text-left font-medium">Changer le rôle</th>
+                    <th className="px-6 py-2.5 text-right font-medium">Sécurité</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {data.data.map((u: any) => {
+                    const pendingRole = selectedRole[u.id] ?? u.role;
+                    const isPending = assignMutation.isPending && assignMutation.variables?.userId === u.id;
+                    return (
+                      <tr key={u.id} className="hover:bg-accent/40">
+                        <td className="max-w-[280px] px-6 py-3">
+                          <p className="truncate font-semibold text-foreground">{u.full_name || u.email}</p>
+                          <p className="truncate text-xs text-muted-foreground">{u.email}</p>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 text-muted-foreground">{formatDate(u.created_at)}</td>
+                        <td className="px-3 py-3"><Badge variant="secondary">{roleName(u.role)}</Badge></td>
+                        <td className="px-3 py-3">
+                          <div className="flex items-center gap-2">
+                            <Select
+                              className="h-9 w-48 text-xs"
+                              aria-label="Nouveau rôle"
+                              value={pendingRole}
+                              onChange={(e) => setSelectedRole({ ...selectedRole, [u.id]: e.target.value })}
+                            >
+                              {ROLES.map((r) => <option key={r} value={r}>{roleName(r)}</option>)}
+                            </Select>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={pendingRole === u.role || isPending}
+                              onClick={() => assignMutation.mutate({ userId: u.id, role: pendingRole })}
+                            >
+                              {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Appliquer'}
+                            </Button>
+                          </div>
+                        </td>
+                        <td className="px-6 py-3">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              title="Réinitialiser la session (libère l'appareil connecté)"
+                              disabled={resetSessionMutation.isPending && resetSessionMutation.variables === u.id}
+                              onClick={() => setResetTarget(u)}
+                            >
+                              {resetSessionMutation.isPending && resetSessionMutation.variables === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+                            </Button>
+                            {['admin', 'super_admin'].includes(u.role) && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                title="Réinitialiser la double authentification (téléphone perdu)"
+                                disabled={reset2faMutation.isPending && reset2faMutation.variables === u.id}
+                                onClick={() => setReset2faTarget(u)}
+                              >
+                                <ShieldOff className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           ) : (
-            <p className="text-muted-foreground text-center py-6">Aucun utilisateur</p>
+            <EmptyState icon={Users} title="Aucun utilisateur" />
           )}
 
           {totalPages > 1 && (

@@ -1,3 +1,5 @@
+import { Truck as TruckIcon } from 'lucide-react';
+import { EmptyState } from '@/components/EmptyState';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -11,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { FormSheet } from '@/components/FormSheet';
-import { formatDate, cn } from '@/lib/utils';
+import { formatDate, cn, countLabel } from '@/lib/utils';
 import { Loader2, Plus, Check, X, PackageCheck } from 'lucide-react';
 
 const STATUS: Record<string, { label: string; variant: 'warning' | 'success' | 'error' | 'secondary' }> = {
@@ -83,7 +85,7 @@ export default function RestockPage() {
       {isLoading ? (
         <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
       ) : !requests?.length ? (
-        <p className="py-16 text-center text-sm text-muted-foreground">Aucune demande pour le moment.</p>
+        <EmptyState icon={TruckIcon} title="Aucune demande pour le moment" text="Quand un produit passe sous son seuil, créez une demande d'achat : le responsable la valide, puis vous la réceptionnez." />
       ) : (
         <div className="space-y-3">
           {requests.map((r) => (
@@ -204,7 +206,7 @@ function NewRequestSheet({ stations, isOwner, onClose, onCreated }: { stations: 
           </select>
         )}
         <p className="text-sm text-muted-foreground">
-          {low.length ? `${low.length} produit(s) en stock bas proposés — ajustez les quantités (0 pour retirer).` : 'Aucun produit en stock bas.'}
+          {low.length ? `${countLabel(low.length, 'produit')} en stock bas proposé${low.length > 1 ? 's' : ''} — ajustez les quantités (0 pour retirer).` : 'Aucun produit en stock bas.'}
         </p>
         {isLoading ? (
           <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>

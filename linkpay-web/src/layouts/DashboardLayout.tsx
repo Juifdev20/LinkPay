@@ -13,9 +13,10 @@ import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
 import { UserAvatar } from '@/components/UserAvatar';
 import { CardChargePrompt } from '@/components/card/CardChargePrompt';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { GlobalSearch } from '@/components/GlobalSearch';
 import { useTheme } from '@/hooks/useTheme';
 import { usePaymentReceivedAlert } from '@/hooks/usePaymentReceivedAlert';
-import { LogOut, Building2, Sun, Moon, Menu, Search, X } from 'lucide-react';
+import { LogOut, Building2, Sun, Moon, Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SECTORS } from '@/pages/organization/OnboardingWizard';
 import { groupNavItems, navItemsFor, SYNC_NAV_ITEM, type NavItem } from '@/lib/nav-items';
@@ -30,7 +31,6 @@ export default function DashboardLayout() {
   const location = useLocation();
   const { toggleTheme, effectiveTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   usePaymentReceivedAlert(user?.id);
 
   // Same query key as OrganizationProfile.tsx's `my-organization` — react-query
@@ -183,22 +183,13 @@ export default function DashboardLayout() {
 
         {/* Main content */}
         <main className="flex-1 overflow-y-auto overscroll-contain">
-          {/* Desktop header — search (not yet wired to real search),
+          {/* Desktop header — page search (Ctrl+K),
               theme toggle, notifications, profile avatar. Mirrors what
               TopBar gives mobile users below. NotificationsBell lives here
               now instead of the sidebar header. */}
           <div className="hidden md:flex items-center justify-between p-4 border-b border-border bg-card sticky top-0 z-40">
             <div className="flex items-center gap-4 flex-1">
-              <div className="relative max-w-md w-full">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Rechercher..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
+              <GlobalSearch items={roleItems} />
             </div>
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="icon" onClick={toggleTheme} className="h-9 w-9">

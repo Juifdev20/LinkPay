@@ -231,7 +231,7 @@ export default function SendPage() {
             </div>
             <h2 className="text-xl font-bold text-foreground mb-1">Transfert envoyé !</h2>
             <p className="text-sm text-muted-foreground mb-6">
-              {formatCurrency(amountCents, currency)} envoyé(s) à {recipient?.display_name}
+              {formatCurrency(amountCents, currency)} envoyés à {recipient?.display_name}
             </p>
             <div className="rounded-xl bg-secondary p-4 text-left space-y-2">
               <div className="flex justify-between text-sm">

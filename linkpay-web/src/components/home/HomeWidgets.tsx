@@ -125,13 +125,14 @@ export type QuickAction = { label: string; icon: LucideIcon; onClick: () => void
 
 export function QuickActions({ actions }: { actions: QuickAction[] }) {
   return (
-    <div className="grid grid-cols-4 gap-2">
+    // Phone: round icons with their label under. Computer: compact cards side by side, icon and label on one line.
+    <div className="grid grid-cols-4 gap-2 md:gap-3">
       {actions.map((a) => (
-        <button key={a.label} onClick={a.onClick} className="group flex flex-col items-center gap-1.5 rounded-2xl py-2 active:scale-95 transition-transform">
-          <span className={`flex h-14 w-14 items-center justify-center rounded-2xl shadow-sm ${a.tone}`}>
-            <a.icon className="h-6 w-6" />
+        <button key={a.label} onClick={a.onClick} className="group flex flex-col items-center gap-1.5 rounded-2xl py-2 active:scale-95 transition-all md:flex-row md:gap-3 md:border md:border-border md:bg-card md:px-4 md:py-3 md:shadow-soft md:hover:-translate-y-0.5 md:hover:shadow-md">
+          <span className={`flex h-14 w-14 items-center justify-center rounded-2xl shadow-sm md:h-11 md:w-11 md:rounded-xl ${a.tone}`}>
+            <a.icon className="h-6 w-6 md:h-5 md:w-5" />
           </span>
-          <span className="text-xs font-medium text-foreground">{a.label}</span>
+          <span className="text-xs font-medium text-foreground md:text-sm md:font-semibold">{a.label}</span>
         </button>
       ))}
     </div>

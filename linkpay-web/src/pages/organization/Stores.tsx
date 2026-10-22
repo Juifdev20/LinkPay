@@ -1,3 +1,4 @@
+import { EmptyState } from '@/components/EmptyState';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -190,9 +191,11 @@ export default function StoresPage() {
                           {[m.city, summary ? `${summary.staff_count} employé${summary.staff_count > 1 ? 's' : ''}` : null].filter(Boolean).join(' · ') || m.default_currency}
                         </p>
                       </div>
-                      <Badge variant={m.status === 'active' ? 'success' : m.status === 'rejected' || m.status === 'suspended' ? 'error' : 'warning'} className="capitalize flex-shrink-0">
-                        {m.status}
-                      </Badge>
+                      {m.status && (
+                        <Badge variant={m.status === 'active' ? 'success' : m.status === 'rejected' || m.status === 'suspended' ? 'error' : 'warning'} className="flex-shrink-0">
+                          {({ active: 'Ouverte', pending: 'En attente', suspended: 'Suspendue', rejected: 'Refusée' } as Record<string, string>)[m.status] ?? m.status}
+                        </Badge>
+                      )}
                     </div>
                     <div className="mt-2 ml-[3.25rem] text-sm">
                       <span className="text-muted-foreground">Recette du jour : </span>
@@ -224,7 +227,7 @@ export default function StoresPage() {
               })}
             </div>
           ) : (
-            !showCreate && <p className="text-muted-foreground text-center py-6">Aucune station pour le moment</p>
+            !showCreate && <EmptyState icon={Store} title="Aucune station pour le moment" text="Une station = un point de vente (caisse, stock, employés). Créez la première avec le bouton ci-dessus." />
           )}
         </CardContent>
       </Card>

@@ -126,7 +126,11 @@ export const SYNC_NAV_ITEM: NavItem = { to: '/dashboard/sync', label: 'Synchroni
 
 /** The entries grouped by section, in NAV_SECTIONS order; empty sections left out. */
 export function groupNavItems(items: NavItem[]) {
-  return NAV_SECTIONS
+  // The ScanLinkPay team works in Administration: it comes right after the dashboard, before their own account.
+  const order = items.some((i) => i.section === 'admin')
+    ? [NAV_SECTIONS[0], NAV_SECTIONS.find((s) => s.id === 'admin')!, ...NAV_SECTIONS.slice(1).filter((s) => s.id !== 'admin')]
+    : NAV_SECTIONS;
+  return order
     .map((section) => ({ ...section, items: items.filter((i) => i.section === section.id) }))
     .filter((section) => section.items.length > 0);
 }

@@ -10,7 +10,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { SpendingOverview } from '@/components/SpendingOverview';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { DualCurrencyStat } from '@/components/DualCurrencyStat';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, countLabel } from '@/lib/utils';
 import { downloadExpenseDayPdf } from '@/lib/expense-pdf';
 import { ExpenseProUpgrade } from './ExpenseProUpgrade';
 import { ExpensePlanSelection } from './ExpensePlanSelection';
@@ -193,7 +193,7 @@ export default function ExpenseTrackerPage() {
               <p className="text-sm font-semibold text-destructive">
                 {status.read_only
                   ? "Limite d'essai atteinte — passez en illimité pour continuer"
-                  : `Il vous reste ${Math.max(0, (status.trial_report_limit || 0) - (status.trial_reports_used || 0))} dépense(s) sur ${status.trial_report_limit} (essai gratuit)`}
+                  : `Il vous reste ${countLabel(Math.max(0, (status.trial_report_limit || 0) - (status.trial_reports_used || 0)), 'dépense')} sur ${status.trial_report_limit} (essai gratuit)`}
               </p>
             </div>
           )}

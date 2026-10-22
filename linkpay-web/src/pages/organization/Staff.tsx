@@ -1,3 +1,5 @@
+import { Users as UsersIcon } from 'lucide-react';
+import { EmptyState } from '@/components/EmptyState';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -446,7 +448,7 @@ export default function StaffPage() {
               }
             </div>
           ) : (
-            !showAdd && <p className="text-muted-foreground text-center py-6 text-sm">Aucun utilisateur pour le moment</p>
+            !showAdd && <EmptyState icon={UsersIcon} title="Aucun utilisateur pour le moment" text="Ajoutez vos vendeurs / caissiers, gérants, magasiniers et comptables : chacun reçoit son propre accès." />
           )}
         </CardContent>
       </Card>

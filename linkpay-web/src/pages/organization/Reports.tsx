@@ -1,3 +1,5 @@
+import { Store as StoreIcon } from 'lucide-react';
+import { EmptyState } from '@/components/EmptyState';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -352,7 +354,7 @@ export default function ReportsPage() {
           </div>
         </>
       ) : (
-        <p className="py-16 text-center text-sm text-muted-foreground">Aucune station disponible.</p>
+        <EmptyState icon={StoreIcon} title="Aucune station disponible" text="Créez d'abord une station pour voir ses rapports." />
       )}
     </div>
   );

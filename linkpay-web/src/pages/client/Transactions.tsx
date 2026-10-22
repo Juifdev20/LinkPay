@@ -1,4 +1,7 @@
+import { Receipt as ReceiptIcon } from 'lucide-react';
+import { EmptyState } from '@/components/EmptyState';
 import { useState } from 'react';
+import { countLabel } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,7 +41,7 @@ export default function ClientTransactionsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-bold">{data?.total || 0} paiement(s)</CardTitle>
+          <CardTitle className="text-base font-bold">{countLabel(data?.total || 0, 'paiement')}</CardTitle>
         </CardHeader>
         <CardContent>
           {data?.data?.length ? (
@@ -67,7 +70,7 @@ export default function ClientTransactionsPage() {
               </div>
             </>
           ) : (
-            <p className="text-muted-foreground text-center py-6">Aucun paiement</p>
+            <EmptyState icon={ReceiptIcon} title="Aucun paiement" text="Les paiements que vous faites chez les commerçants apparaîtront ici." />
           )}
         </CardContent>
       </Card>

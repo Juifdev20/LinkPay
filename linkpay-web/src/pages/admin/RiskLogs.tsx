@@ -1,3 +1,5 @@
+import { EmptyState } from '@/components/EmptyState';
+import { ShieldCheck as ShieldCheckIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -5,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/PageHeader';
-import { formatDate } from '@/lib/utils';
+import { formatDate, countLabel } from '@/lib/utils';
 import { Loader2, ShieldAlert } from 'lucide-react';
 
 const FLAG_LABELS: Record<string, string> = {
@@ -52,7 +54,7 @@ export default function AdminRiskLogsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-bold flex items-center gap-2"><ShieldAlert className="w-4 h-4" />{data?.length ?? 0} entrée(s)</CardTitle>
+          <CardTitle className="text-base font-bold flex items-center gap-2"><ShieldAlert className="w-4 h-4" />{countLabel(data?.length ?? 0, 'entrée')}</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -97,7 +99,7 @@ export default function AdminRiskLogsPage() {
               );
             })
           ) : (
-            <p className="text-muted-foreground text-center py-6">Rien à signaler</p>
+            <EmptyState icon={ShieldCheckIcon} title="Rien à signaler" text="Les opérations bloquées ou signalées automatiquement apparaîtront ici." />
           )}
         </CardContent>
       </Card>
