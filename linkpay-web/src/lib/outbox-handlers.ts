@@ -85,3 +85,47 @@ registerOutboxHandler('stock.movement', {
   },
   invalidate: (op) => [['org-stock-items', op.payload.org_id], ['org-stock-summary', op.payload.org_id], ['pos-catalog', op.payload.merchant_id]],
 });
+
+export interface OrgOfflineSalePayload {
+  org_id: string;
+  sold_at: string;
+  items: { stock_item_id: string; quantity: number; unit_price_cents: number; name: string }[];
+}
+
+/** A sale of the "Ventes" module made without network (cash), recorded once on the server. */
+registerOutboxHandler('sales.offline', {
+  send: (op) => {
+    const p = op.payload as OrgOfflineSalePayload;
+    return api.post(`/organizations/${p.org_id}/sales/offline`, {
+      client_ref: op.id,
+      sold_at: p.sold_at,
+      items: p.items.map(({ stock_item_id, quantity, unit_price_cents }) => ({ stock_item_id, quantity, unit_price_cents })),
+    });
+  },
+  invalidate: (op) => [['org-stock-items', op.payload.org_id], ['org-sales-stats', op.payload.org_id], ['org-sales-history', op.payload.org_id]],
+});
+
+/** "Encaissé en espèces" tapped without network on a sale already on the server. A refusal (paid meanwhile by
+ * ScanLinkPay…) stays in Synchronisation for a person to check: cash may have been taken twice. */
+registerOutboxHandler('sales.cash', {
+  send: (op) => api.post(`/organizations/${op.payload.org_id}/sales/${op.payload.sale_id}/cash`),
+  invalidate: (op) => [['org-sale', op.payload.org_id, op.payload.sale_id], ['org-stock-items', op.payload.org_id], ['org-sales-stats', op.payload.org_id]],
+});
+
+/** Quantities counted during an inventory without network. Setting a counted quantity is idempotent. */
+registerOutboxHandler('inventory.lines', {
+  send: (op) => api.patch(`/merchants/${op.payload.merchant_id}/inventory-counts/${op.payload.count_id}/lines`, { lines: op.payload.lines }),
+  invalidate: (op) => [['inventory-count', op.payload.count_id]],
+});
+
+/** A restock request written without network, created once on the server. */
+registerOutboxHandler('restock.request', {
+  send: (op) => api.post(`/merchants/${op.payload.merchant_id}/restock-requests`, { ...op.payload.body, client_ref: op.id }),
+  invalidate: () => [['restock-requests']],
+});
+
+/** Cash put in / taken out of the till drawer without network, recorded once. */
+registerOutboxHandler('cash.movement', {
+  send: (op) => api.post(`/merchants/${op.payload.merchant_id}/cash-register/sessions/${op.payload.session_id}/movements`, { ...op.payload.body, client_ref: op.id }),
+  invalidate: (op) => [['cash-session-detail', op.payload.session_id]],
+});

@@ -191,6 +191,60 @@ export class SalesService {
     return { sale, link_token: request.link_token, items: withoutCost(snapshot as any[], callerRole) };
   }
 
+  /**
+   * A sale made without network in the "Ventes" module, sent when the network came back (migration 075). Paid in
+   * cash on the spot. record_offline_org_sale() writes sale, lines (product sheet frozen) and stock exit in one
+   * transaction, once per client_ref; a price changed meanwhile or a stock already sold elsewhere comes back as
+   * `conflicts` and goes to the journal, never refused.
+   */
+  async recordOfflineSale(
+    orgId: string,
+    callerId: string,
+    callerOrgId: string | undefined,
+    dto: { client_ref: string; sold_at: string; items: { stock_item_id: string; quantity: number; unit_price_cents: number }[] },
+    callerRole?: string,
+  ) {
+    const station = await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SELLER_ROLES);
+    const merchant = station ? { id: station } : await this.getOrgMerchant(orgId);
+
+    const lines = new Map<string, { stock_item_id: string; quantity: number; unit_price_cents: number }>();
+    for (const l of dto.items) {
+      const key = `${l.stock_item_id}:${l.unit_price_cents}`;
+      const prev = lines.get(key);
+      lines.set(key, prev ? { ...prev, quantity: prev.quantity + l.quantity } : { ...l });
+    }
+
+    const { data, error } = await this.db().rpc('record_offline_org_sale', {
+      p_org_id: orgId,
+      p_merchant_id: merchant.id,
+      p_seller_id: callerId,
+      p_client_ref: dto.client_ref,
+      p_sold_at: dto.sold_at,
+      p_items: [...lines.values()],
+    });
+    if (error || !data) {
+      const m = error?.message ?? '';
+      if (m.includes('SALE_OFFLINE_ITEM_NOT_FOUND')) throw new BadRequestException("Un article de cette vente n'existe plus dans la boutique (supprimé entre-temps).");
+      if (m.includes('SALE_OFFLINE_MIXED_CURRENCY')) throw new BadRequestException('Une vente ne peut contenir que des articles dans la même devise.');
+      if (m.includes('SALE_OFFLINE_')) throw new BadRequestException('Vente hors ligne invalide.');
+      if (m.includes('record_offline_org_sale') && m.includes('does not exist')) this.logger.error('record_offline_org_sale() missing — run migration 075');
+      throw new Error(`Failed to record offline sale: ${m}`);
+    }
+
+    const result = data as { sale_id: string; created: boolean; conflicts: any[] };
+    if (result.created) {
+      await this.auditService.log({
+        user_id: callerId,
+        action: result.conflicts?.length ? 'offline_sale_with_conflicts' : 'offline_sale_recorded',
+        entity_type: 'sale',
+        entity_id: result.sale_id,
+        changes: { client_ref: dto.client_ref, sold_at: dto.sold_at, conflicts: result.conflicts ?? [] },
+      });
+    }
+    const sale = await this.getSale(orgId, result.sale_id, callerId, callerOrgId, callerRole);
+    return { ...sale, conflicts: result.conflicts ?? [], created: result.created };
+  }
+
   async getSale(orgId: string, saleId: string, callerId: string, callerOrgId: string | undefined, callerRole?: string) {
     const station = await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SALES_VIEW_ROLES);
     const { data: sale, error } = await this.inStation(this.db()

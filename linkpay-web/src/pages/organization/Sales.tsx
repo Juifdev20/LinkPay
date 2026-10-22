@@ -14,6 +14,9 @@ import { formatCurrency, cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
 import { Search, ShoppingCart, Plus, Minus, Trash2, Package, CheckCircle2, Loader2, Banknote, BarChart3, Printer, ListOrdered } from 'lucide-react';
 import { getSectorConfig, getCategoryIcon } from '@/lib/stock-categories';
+import { isNetworkError, useNetwork, useOnline } from '@/lib/network';
+import { enqueue, newClientRef } from '@/lib/outbox';
+import type { OrgOfflineSalePayload } from '@/lib/outbox-handlers';
 
 type Currency = 'CDF' | 'USD';
 
@@ -26,6 +29,10 @@ export default function SalesPage() {
   const [activeSaleId, setActiveSaleId] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [invoiceOpen, setInvoiceOpen] = useState(false);
+  // Without network the sale is made on the device, paid in cash, and recorded on the server later (lib/outbox.ts).
+  const online = useOnline();
+  const [offlineSale, setOfflineSale] = useState<any>(null);
+  const [cashQueued, setCashQueued] = useState(false);
 
   const { data: org } = useQuery({
     queryKey: ['my-organization'],
@@ -116,14 +123,60 @@ export default function SalesPage() {
 
   const clearCart = () => setCart({});
 
+  const mixedCurrencies = totals.CDF > 0 && totals.USD > 0;
+
+  /** Offline: the sale is paid in cash now, its invoice prints at once, and it reaches the server when it can. */
+  const sellOffline = () => {
+    const clientRef = newClientRef();
+    const currency: Currency = totals.USD > 0 ? 'USD' : 'CDF';
+    const payload: OrgOfflineSalePayload = {
+      org_id: org.id,
+      sold_at: new Date().toISOString(),
+      items: cartLines.map(({ item, qty }) => ({ stock_item_id: item.id, quantity: qty, unit_price_cents: item.unit_price_cents, name: item.name })),
+    };
+    enqueue('sales.offline', `Vente en espèces · ${formatCurrency(totals[currency], currency)}`, payload, `${count} article${count > 1 ? 's' : ''}`, clientRef);
+    // The stock shown on this device follows its own offline sales until the server answers.
+    queryClient.setQueryData(['org-stock-items', org.id], (old: any) =>
+      Array.isArray(old) ? old.map((it: any) => (cart[it.id] ? { ...it, quantity: Math.max(0, it.quantity - cart[it.id]) } : it)) : old,
+    );
+    setOfflineSale({
+      offline: true,
+      reference: `SALE-HL-${clientRef.replace(/-/g, '').slice(0, 16).toUpperCase()}`,
+      status: 'PAID',
+      payment_method: 'cash',
+      currency,
+      total_cents: totals[currency],
+      created_at: payload.sold_at,
+      sale_items: cartLines.map(({ item, qty }) => ({
+        name: item.name,
+        category: item.category,
+        quantity: qty,
+        unit_price_cents: item.unit_price_cents,
+        details: { brand: item.brand, model: item.model, condition: item.condition, serial_number: item.serial_number, warranty_months: item.warranty_months, attributes: item.attributes },
+      })),
+    });
+    clearCart();
+    setCartOpen(false);
+    setInvoiceOpen(true);
+  };
+
   const createSaleMutation = useMutation({
-    mutationFn: async () =>
-      (
-        await api.post(`/organizations/${org.id}/sales`, {
-          items: cartLines.map(({ item, qty }) => ({ stock_item_id: item.id, quantity: qty })),
-        })
-      ).data,
+    networkMode: 'always',
+    mutationFn: async () => {
+      if (!useNetwork.getState().online) return 'offline' as const;
+      try {
+        return (
+          await api.post(`/organizations/${org.id}/sales`, {
+            items: cartLines.map(({ item, qty }) => ({ stock_item_id: item.id, quantity: qty })),
+          })
+        ).data;
+      } catch (err) {
+        if (isNetworkError(err)) return 'offline' as const;
+        throw err;
+      }
+    },
     onSuccess: (data) => {
+      if (data === 'offline') { sellOffline(); return; }
       setActiveSaleId(data.sale.id);
       // The invoice opens straight away on the seller's screen, ready to print.
       setInvoiceOpen(true);
@@ -134,7 +187,21 @@ export default function SalesPage() {
   });
 
   const cashMutation = useMutation({
-    mutationFn: async () => (await api.post(`/organizations/${org.id}/sales/${activeSaleId}/cash`)).data,
+    networkMode: 'always',
+    mutationFn: async () => {
+      const queue = () => {
+        enqueue('sales.cash', `Encaissement espèces · ${sale?.reference ?? ''}`, { org_id: org.id, sale_id: activeSaleId }, sale ? formatCurrency(sale.total_cents, sale.currency) : undefined);
+        setCashQueued(true);
+        return 'queued' as const;
+      };
+      if (!useNetwork.getState().online) return queue();
+      try {
+        return (await api.post(`/organizations/${org.id}/sales/${activeSaleId}/cash`)).data;
+      } catch (err) {
+        if (isNetworkError(err)) return queue();
+        throw err;
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org-sale', org.id, activeSaleId] });
       queryClient.invalidateQueries({ queryKey: ['org-stock-items', org.id] });
@@ -202,24 +269,35 @@ export default function SalesPage() {
           <p className="text-sm text-destructive">{errorMessage(createSaleMutation.error)}</p>
         )}
 
+        {!online && count > 0 && (
+          <p className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-medium text-white dark:bg-slate-700">
+            Hors ligne : la vente est encaissée en espèces et envoyée au serveur au retour du réseau.
+          </p>
+        )}
+        {!online && mixedCurrencies && (
+          <p className="text-sm text-destructive">Une vente ne peut contenir qu'une seule devise : séparez les articles CDF et USD.</p>
+        )}
+
         <Button
           className="w-full py-6 text-base font-semibold rounded-xl"
-          disabled={count === 0 || createSaleMutation.isPending}
+          disabled={count === 0 || createSaleMutation.isPending || (!online && mixedCurrencies)}
           onClick={() => createSaleMutation.mutate()}
         >
-          {createSaleMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
-          Valider la vente
+          {createSaleMutation.isPending ? <Loader2 className="mr-2 w-4 h-4 animate-spin" /> : !online ? <Banknote className="mr-2 w-4 h-4" /> : null}
+          {online ? 'Valider la vente' : 'Encaisser en espèces'}
         </Button>
       </div>
     </div>
   );
 
-  const saleIsPaid = sale?.status === 'PAID';
-  const saleCurrency = (sale?.currency === 'USD' ? 'USD' : 'CDF') as Currency;
+  const shownSale = offlineSale ?? (sale && cashQueued ? { ...sale, status: 'PAID', payment_method: 'cash' } : sale);
+  const saleIsPaid = shownSale?.status === 'PAID';
+  const saleCurrency = (shownSale?.currency === 'USD' ? 'USD' : 'CDF') as Currency;
+  const closeSale = () => { setActiveSaleId(null); setOfflineSale(null); setCashQueued(false); };
 
-  const SaleStatus = activeSaleId && (
+  const SaleStatus = (activeSaleId || offlineSale) && (
     <div className="rounded-2xl border border-border bg-card p-5 md:p-6 mb-6 text-center">
-      {!sale ? (
+      {!shownSale ? (
         <div className="py-10">
           {saleError ? (
             <p className="text-sm text-destructive">Impossible de charger la vente.</p>
@@ -234,14 +312,19 @@ export default function SalesPage() {
           </div>
           <h2 className="text-xl font-bold text-foreground">Vente encaissée</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            {sale.payment_method === 'cash' ? 'Paiement en espèces' : 'Paiement ScanLinkPay reçu'} · {sale.reference}
+            {shownSale.payment_method === 'cash' ? 'Paiement en espèces' : 'Paiement ScanLinkPay reçu'} · {shownSale.reference}
           </p>
-          <p className="text-2xl font-bold text-foreground mt-4">{formatCurrency(sale.total_cents, saleCurrency)}</p>
+          <p className="text-2xl font-bold text-foreground mt-4">{formatCurrency(shownSale.total_cents, saleCurrency)}</p>
+          {(shownSale.offline || cashQueued) && (
+            <p className="mt-3 rounded-xl bg-slate-800 px-3 py-2 text-xs font-medium text-white dark:bg-slate-700">
+              Enregistrée sur cet appareil : elle part au serveur dès le retour du réseau (écran Synchronisation).
+            </p>
+          )}
           <Button variant="outline" className="mt-6 w-full" onClick={() => setInvoiceOpen(true)}>
             <Printer className="mr-2 w-4 h-4" />
             Imprimer la facture
           </Button>
-          <Button className="mt-3 w-full" onClick={() => setActiveSaleId(null)}>
+          <Button className="mt-3 w-full" onClick={closeSale}>
             Nouvelle vente
           </Button>
         </div>
@@ -251,7 +334,12 @@ export default function SalesPage() {
           <p className="text-2xl font-bold text-foreground">{formatCurrency(sale.total_cents, saleCurrency)}</p>
           <p className="text-xs text-muted-foreground mt-1">{sale.reference}</p>
 
-          {qrDataUrl && (
+          {!online && (
+            <p className="my-4 rounded-xl bg-slate-800 px-3 py-2 text-xs font-medium text-white dark:bg-slate-700">
+              Hors ligne : le paiement ScanLinkPay attend le réseau. En espèces, l'encaissement est gardé et envoyé au retour du réseau.
+            </p>
+          )}
+          {qrDataUrl && online && (
             <div className="flex justify-center my-5">
               <img src={qrDataUrl} alt="QR de paiement" className="w-56 h-56 rounded-2xl border border-border" />
             </div>
@@ -271,7 +359,7 @@ export default function SalesPage() {
               <Printer className="mr-2 w-4 h-4" />
               Imprimer la facture
             </Button>
-            <Button variant="outline" className="w-full" onClick={() => setActiveSaleId(null)}>
+            <Button variant="outline" className="w-full" onClick={closeSale}>
               Retour aux ventes
             </Button>
           </div>
@@ -282,8 +370,8 @@ export default function SalesPage() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      {invoiceOpen && org && sale?.sale_items && (
-        <SaleInvoice org={org} sale={sale} onClose={() => setInvoiceOpen(false)} />
+      {invoiceOpen && org && shownSale?.sale_items && (
+        <SaleInvoice org={org} sale={shownSale} onClose={() => setInvoiceOpen(false)} />
       )}
 
       {/* Title, search and category filters stay fixed while the product

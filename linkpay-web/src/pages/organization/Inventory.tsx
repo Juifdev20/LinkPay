@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { isNetworkError, useNetwork, useOnline } from '@/lib/network';
+import { enqueue, useOutbox } from '@/lib/outbox';
 import { useAuthStore } from '@/lib/auth-store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -229,18 +231,35 @@ function CountingView({ merchantId, countId }: { merchantId: string; countId: st
     ? lines.filter((l) => l.product_name_snapshot.toLowerCase().includes(search.toLowerCase()))
     : lines;
 
+  // Counting is often done in a storeroom without network: the counted quantities are kept on the device and sent
+  // when the network is back (setting a counted quantity twice gives the same result, so a resend is harmless).
+  const online = useOnline();
+  const waitingCounts = useOutbox((st) => st.ops.filter((o) => o.kind === 'inventory.lines' && o.payload?.count_id === countId).length);
+  const keepOffline = (counted: { line_id: string; counted_qty: number }[]) => {
+    enqueue('inventory.lines', `Inventaire · ${counted.length} produit${counted.length > 1 ? 's' : ''} compté${counted.length > 1 ? 's' : ''}`, { merchant_id: merchantId, count_id: countId, lines: counted });
+    queryClient.setQueryData(['inventory-count', countId], (old: any) => {
+      if (!old?.lines) return old;
+      const byId = new Map(counted.map((c) => [c.line_id, c.counted_qty]));
+      const nextLines = old.lines.map((l: any) => (byId.has(l.id) ? { ...l, counted_qty: byId.get(l.id), variance: byId.get(l.id)! - (l.expected_qty ?? 0) } : l));
+      const countedLines = nextLines.filter((l: any) => l.counted_qty !== null && l.counted_qty !== undefined).length;
+      return { ...old, lines: nextLines, report: old.report ? { ...old.report, counted_lines: countedLines } : old.report };
+    });
+    setDraft({});
+  };
+
   const save = async () => {
     if (!dirtyLines.length) return;
+    const counted = dirtyLines.map((l) => ({ line_id: l.id, counted_qty: Math.max(0, Math.floor(Number(draft[l.id]))) }));
+    if (!useNetwork.getState().online) { keepOffline(counted); return; }
     setBusy(true);
     setError('');
     try {
-      await api.patch(`/merchants/${merchantId}/inventory-counts/${countId}/lines`, {
-        lines: dirtyLines.map((l) => ({ line_id: l.id, counted_qty: Math.max(0, Math.floor(Number(draft[l.id]))) })),
-      });
+      await api.patch(`/merchants/${merchantId}/inventory-counts/${countId}/lines`, { lines: counted });
       setDraft({});
       queryClient.invalidateQueries({ queryKey: ['inventory-count', countId] });
     } catch (err: any) {
-      setError(errMsg(err, 'Sauvegarde impossible'));
+      if (isNetworkError(err)) keepOffline(counted);
+      else setError(errMsg(err, 'Sauvegarde impossible'));
     } finally {
       setBusy(false);
     }
@@ -393,12 +412,19 @@ function CountingView({ merchantId, countId }: { merchantId: string; countId: st
         </CardContent>
       </Card>
 
+      {(!online || waitingCounts > 0) && (
+        <p className="rounded-xl bg-slate-800 px-4 py-2.5 text-sm text-white dark:bg-slate-700">
+          {!online
+            ? 'Hors ligne : comptez et sauvegardez normalement, les quantités partent au retour du réseau. La validation finale se fait en ligne.'
+            : 'Des quantités comptées hors ligne sont en cours d\'envoi : la validation sera possible juste après.'}
+        </p>
+      )}
       <div className="sticky bottom-20 md:bottom-6 grid grid-cols-2 gap-3">
         <Button variant="outline" onClick={save} disabled={busy || !dirtyLines.length}>
           {busy && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
           Sauvegarder{dirtyLines.length ? ` (${dirtyLines.length})` : ''}
         </Button>
-        <Button onClick={() => setConfirmComplete(true)} disabled={busy || !(report?.counted_lines || dirtyLines.length)}>
+        <Button onClick={() => setConfirmComplete(true)} disabled={busy || !online || waitingCounts > 0 || !(report?.counted_lines || dirtyLines.length)}>
           <CheckCircle className="mr-2 w-4 h-4" /> Valider
         </Button>
       </div>

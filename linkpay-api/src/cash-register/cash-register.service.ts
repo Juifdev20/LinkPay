@@ -212,31 +212,48 @@ export class CashRegisterService {
     return data;
   }
 
+  private async movementByClientRef(sessionId: string, clientRef: string) {
+    const { data, error } = await this.db.from('cash_movements').select('*').eq('session_id', sessionId).eq('client_ref', clientRef).maybeSingle();
+    return error ? null : data;
+  }
+
   async addMovement(
     merchantId: string,
     sessionId: string,
     callerId: string,
     callerRole: string,
     callerOrgId: string | undefined,
-    data: { type: 'cash_in' | 'cash_out'; amount_cents: number; reason?: string },
+    data: { type: 'cash_in' | 'cash_out'; amount_cents: number; reason?: string; client_ref?: string },
   ) {
     await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
     const session = await this.getOwnSession(merchantId, sessionId);
+    // Made offline and already received (answer lost): give back the first one.
+    if (data.client_ref) {
+      const existing = await this.movementByClientRef(sessionId, data.client_ref);
+      if (existing) return existing;
+    }
     if (session.status !== 'open') {
       throw new BadRequestException('Cette session de caisse est déjà clôturée.');
     }
 
-    const { data: movement, error } = await this.db
-      .from('cash_movements')
-      .insert({
-        session_id: sessionId,
-        type: data.type,
-        amount_cents: data.amount_cents,
-        reason: data.reason || null,
-        created_by: callerId,
-      })
-      .select()
-      .single();
+    const row: Record<string, unknown> = {
+      session_id: sessionId,
+      type: data.type,
+      amount_cents: data.amount_cents,
+      reason: data.reason || null,
+      created_by: callerId,
+    };
+    if (data.client_ref) row.client_ref = data.client_ref;
+    let { data: movement, error } = await this.db.from('cash_movements').insert(row).select().single();
+    if (error && data.client_ref && (error as any).code === '23505') {
+      const existing = await this.movementByClientRef(sessionId, data.client_ref);
+      if (existing) return existing;
+    }
+    if (error && data.client_ref && /client_ref/.test(error.message)) {
+      this.logger.warn('cash_movements.client_ref missing — run migration 075');
+      delete row.client_ref;
+      ({ data: movement, error } = await this.db.from('cash_movements').insert(row).select().single());
+    }
 
     if (error) throw new Error(`Failed to record cash movement: ${error.message}`);
     return movement;

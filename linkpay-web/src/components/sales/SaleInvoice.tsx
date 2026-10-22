@@ -111,6 +111,12 @@ export function SaleInvoice({
               </div>
             </div>
 
+            {sale.status === 'PAID' ? (
+              <div className="mx-4 mt-1.5 rounded-lg bg-emerald-50 p-1.5 text-center text-[8px] leading-tight">
+                <p className="font-bold text-emerald-700">PAYÉE{sale.payment_method === 'cash' ? ' — ESPÈCES' : ''}</p>
+                {sale.offline && <p className="text-slate-500">Vente enregistrée hors ligne</p>}
+              </div>
+            ) : (
             <div className="mx-4 mt-1.5 flex items-center gap-3 rounded-lg bg-blue-50 p-1.5">
               {saleQr && <img src={saleQr} alt="" className="w-14 h-14 rounded bg-white" />}
               <div className="text-[7px] leading-tight">
@@ -122,6 +128,7 @@ export function SaleInvoice({
                 <p className="text-[11px] font-bold">{model.scanlinkpayNumber || '—'}</p>
               </div>
             </div>
+            )}
 
             {model.footerMessage && (
               <p className="px-4 pt-1 text-center text-[7.5px] italic text-slate-500">{model.footerMessage}</p>

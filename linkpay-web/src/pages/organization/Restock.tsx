@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { isNetworkError, useNetwork } from '@/lib/network';
+import { enqueue, newClientRef } from '@/lib/outbox';
 import { useAuthStore } from '@/lib/auth-store';
 import { PageHeader } from '@/components/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
@@ -169,12 +171,23 @@ function NewRequestSheet({ stations, isOwner, onClose, onCreated }: { stations: 
     setQty(next);
   }, [stationId, items?.length]);
 
+  // Without network the request waits on the device and is sent (once) when the network is back.
   const send = useMutation({
+    networkMode: 'always',
     mutationFn: async () => {
       const lines = Object.entries(qty)
         .map(([stock_item_id, v]) => ({ stock_item_id, wanted_qty: parseInt(v, 10) }))
         .filter((l) => l.wanted_qty > 0);
-      return (await api.post(`/merchants/${stationId}/restock-requests`, { items: lines, note: note || undefined })).data;
+      const clientRef = newClientRef();
+      const body = { items: lines, note: note || undefined, client_ref: clientRef };
+      const queue = () => enqueue('restock.request', `Demande d'achat · ${lines.length} produit${lines.length > 1 ? 's' : ''}`, { merchant_id: stationId, body }, undefined, clientRef);
+      if (!useNetwork.getState().online) return queue();
+      try {
+        return (await api.post(`/merchants/${stationId}/restock-requests`, body)).data;
+      } catch (err) {
+        if (isNetworkError(err)) return queue();
+        throw err;
+      }
     },
     onSuccess: onCreated,
     onError: (err: any) => setError(err?.response?.data?.message || "La demande n'a pas pu être envoyée."),

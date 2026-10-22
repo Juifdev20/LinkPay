@@ -62,7 +62,24 @@ dépenser deux fois le même argent). Ce qui est fait :
 - Risque accepté : hors ligne, la caisse ne peut pas vérifier le prix auprès du serveur ; un prix modifié sur
   l'appareil est enregistré mais tracé (conflit `price_changed` dans le Journal).
 
-À faire : migrations 073 et 074 (Test puis production), puis Manual Deploy de l'API et du site, et nouvelle APK.
+### Point 3 — tous les autres gestes du quotidien des entreprises (22/10, demande du propriétaire)
+Vérification module par module : le module **« Ventes »** (vendeur → facture → encaissement, utilisé par les boutiques,
+l'électronique…) n'était pas encore hors ligne. Fait (migration **075**) :
+- **Ventes** (`pages/organization/Sales.tsx`) : hors ligne, « Encaisser en espèces » enregistre la vente sur l'appareil,
+  la facture s'imprime aussitôt (référence `SALE-HL-…`, mention « PAYÉE — ESPÈCES » et « Vente enregistrée hors ligne »,
+  à l'écran et en PDF ; une facture déjà payée n'invite plus à payer). Serveur : `POST /organizations/:id/sales/offline`
+  → `record_offline_org_sale()`, mêmes règles que la caisse (une fois, l'argent gagne, conflits au Journal). Une vente
+  déjà créée en ligne puis encaissée en espèces sans réseau : l'encaissement attend et part au retour (`sales.cash`) ;
+  s'il est refusé (payée entre-temps par ScanLinkPay), il reste dans Synchronisation pour vérification humaine.
+- **Inventaire** : les quantités comptées se sauvegardent hors ligne (renvoyer une quantité comptée donne le même
+  résultat). Démarrer et valider un inventaire restent en ligne (la validation attend l'envoi des comptages).
+- **Demandes d'achat** (réapprovisionnement) : écrites hors ligne, créées une seule fois (`restock_requests.client_ref`).
+- **Entrées / sorties d'espèces du tiroir** (petite dépense, dépôt) : hors ligne, une seule fois
+  (`cash_movements.client_ref`) ; la clôture attend leur envoi.
+Restent en ligne : créer ou modifier un produit, ouvrir / clôturer une caisse, mettre un ticket de caisse en attente,
+tout ce qui déplace de l'argent ScanLinkPay (paiement par QR / portefeuille, carte, envoi, retrait, recharge).
+
+À faire : migrations 073, 074 et 075 (Test puis production), puis Manual Deploy de l'API et du site, et nouvelle APK.
 
 ---
 

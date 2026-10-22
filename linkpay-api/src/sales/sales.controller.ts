@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, ArrayMinSize, ValidateNested, IsInt, IsOptional, IsString, Min, IsUUID } from 'class-validator';
+import { IsArray, ArrayMinSize, ArrayMaxSize, ValidateNested, IsInt, IsOptional, IsString, Min, Max, IsUUID, IsISO8601 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SalesService } from './sales.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -24,6 +24,41 @@ class CreateSaleDto {
   @ValidateNested({ each: true })
   @Type(() => SaleLineDto)
   items!: SaleLineDto[];
+}
+
+class OfflineSaleLineDto {
+  @ApiProperty()
+  @IsUUID()
+  stock_item_id!: string;
+
+  @ApiProperty({ example: 1 })
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  quantity!: number;
+
+  @ApiProperty({ description: "Prix unitaire vu par l'appareil au moment de la vente (centimes)" })
+  @IsInt()
+  @Min(0)
+  unit_price_cents!: number;
+}
+
+class OfflineSaleDto {
+  @ApiProperty({ description: "Id créé sur l'appareil : la même vente envoyée deux fois est gardée une fois" })
+  @IsUUID()
+  client_ref!: string;
+
+  @ApiProperty({ description: 'Heure de la vente (7 jours au plus, jamais dans le futur)' })
+  @IsISO8601()
+  sold_at!: string;
+
+  @ApiProperty({ type: [OfflineSaleLineDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => OfflineSaleLineDto)
+  items!: OfflineSaleLineDto[];
 }
 
 class ArchiveSaleDto {
@@ -50,6 +85,18 @@ export class SalesController {
     @CurrentUser('role') callerRole?: string,
   ) {
     return this.salesService.createSale(orgId, callerId, callerOrgId, dto.items, callerRole);
+  }
+
+  @Post(':id/sales/offline')
+  @ApiOperation({ summary: 'Record a sale made without network (paid in cash), in one piece and only once' })
+  async recordOfflineSale(
+    @Param('id') orgId: string,
+    @Body() dto: OfflineSaleDto,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+    @CurrentUser('role') callerRole?: string,
+  ) {
+    return this.salesService.recordOfflineSale(orgId, callerId, callerOrgId, dto, callerRole);
   }
 
   @Get(':id/sales/stats')
