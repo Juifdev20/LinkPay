@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException, HttpException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, HttpException, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
 import { OrganizationsService } from '../organizations/organizations.service';
@@ -29,6 +29,8 @@ const LOW_STOCK_ALERT_ROLES = ['gerant', 'magasinier', 'vendeur', 'caissier'];
 
 @Injectable()
 export class StockService {
+  private readonly logger = new Logger(StockService.name);
+
   constructor(
     private supabaseService: SupabaseService,
     private organizationsService: OrganizationsService,
@@ -398,13 +400,23 @@ export class StockService {
    * stock_items.quantity atomically. If the resulting quantity drops to or
    * below the item's low_stock_threshold, the organization's owner is
    * notified (best-effort — never blocks the movement itself). */
+  private async movementByClientRef(merchantId: string, clientRef: string) {
+    const { data, error } = await this.supabaseService.getClient()
+      .from('stock_movements')
+      .select('*')
+      .eq('merchant_id', merchantId)
+      .eq('client_ref', clientRef)
+      .maybeSingle();
+    return error ? null : data;
+  }
+
   async createMovement(
     merchantId: string,
     itemId: string,
     callerId: string,
     callerRole: string,
     callerOrgId: string | undefined,
-    data: { type: 'in' | 'out' | 'adjustment' | 'sale'; quantity_delta: number; reason?: string },
+    data: { type: 'in' | 'out' | 'adjustment' | 'sale'; quantity_delta: number; reason?: string; client_ref?: string },
   ) {
     // A 'sale' movement is how the POS till deducts stock — caissier/vendeur
     // need it (POS_SALE_ROLES), while manual 'in'/'out'/'adjustment' still
@@ -422,24 +434,39 @@ export class StockService {
       .single();
 
     if (itemError || !currentItem) throw new NotFoundException('Stock item not found');
+
+    // A movement made offline and already received (answer lost): give back the first one, never apply it twice.
+    if (data.client_ref) {
+      const existing = await this.movementByClientRef(merchantId, data.client_ref);
+      if (existing) return existing;
+    }
     if (currentItem.quantity + data.quantity_delta < 0) {
       throw new BadRequestException(
         `Quantité insuffisante : il ne reste que ${currentItem.quantity} unité(s) en stock`,
       );
     }
 
-    const { data: movement, error } = await this.supabaseService.getClient()
-      .from('stock_movements')
-      .insert({
-        stock_item_id: itemId,
-        merchant_id: merchantId,
-        type: data.type,
-        quantity_delta: data.quantity_delta,
-        reason: data.reason || null,
-        created_by: callerId,
-      })
-      .select()
-      .single();
+    const row: Record<string, unknown> = {
+      stock_item_id: itemId,
+      merchant_id: merchantId,
+      type: data.type,
+      quantity_delta: data.quantity_delta,
+      reason: data.reason || null,
+      created_by: callerId,
+    };
+    if (data.client_ref) row.client_ref = data.client_ref;
+    let { data: movement, error } = await this.supabaseService.getClient().from('stock_movements').insert(row).select().single();
+
+    if (error && data.client_ref && (error as any).code === '23505') {
+      const existing = await this.movementByClientRef(merchantId, data.client_ref);
+      if (existing) return existing;
+    }
+    // Migration 074 not run yet: still record the movement (without the duplicate protection).
+    if (error && data.client_ref && /client_ref/.test(error.message)) {
+      this.logger.warn('stock_movements.client_ref missing — run migration 074');
+      delete row.client_ref;
+      ({ data: movement, error } = await this.supabaseService.getClient().from('stock_movements').insert(row).select().single());
+    }
 
     if (error) {
       // 23514 = check_violation: stock_items_quantity_nonnegative refused it —

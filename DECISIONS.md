@@ -5,7 +5,7 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
-## 22/10/2026 — Mode hors ligne, point 1 (consulter, noter ses dépenses ; jamais d'argent)
+## 22/10/2026 — Mode hors ligne : consulter, noter ses dépenses, vendre en espèces, gérer le stock ; jamais de transfert d'argent
 
 Demande du propriétaire : un mode hors ligne « comme HotelSaver », mobile (Android) et bureau (Windows, le site).
 Règle de fond : **aucun mouvement d'argent sans le serveur** (seul lui connaît le vrai solde ; hors ligne, on pourrait
@@ -33,7 +33,34 @@ dépenser deux fois le même argent). Ce qui est fait :
 - Le site et l'application Windows (qui charge le site) s'ouvrent hors ligne grâce au service worker (tous les écrans
   sont mis en cache) ; l'APK Android embarque l'application.
 
-À faire : migration 073 (Test puis production). Point 2 (caisse, ventes, stock hors ligne) : en cours.
+### Point 2 — la caisse et le stock hors ligne (mobile et bureau)
+- **Vendre sans réseau** (`pages/pos/PosTill.tsx`, `PosOfflinePayment.tsx`) : sans réseau et sans ticket ouvert sur le
+  serveur, la caisse vend seule : articles ajoutés sur l'appareil (stock vérifié contre le dernier état connu), panier
+  gardé sur l'appareil (fermeture de l'appli, rechargement), **paiement en espèces uniquement** (ScanLinkPay demande le
+  serveur), monnaie calculée, reçu imprimé avec un numéro provisoire « HL-… » et la mention « Vente enregistrée hors
+  ligne ». Le stock affiché baisse tout de suite sur cette caisse. Réseau revenu en pleine vente : la vente continue
+  normalement en ligne.
+- **Coupure pendant un ticket déjà sur le serveur** : bouton « Continuer hors ligne » (si aucun paiement n'y est
+  encore) ; les lignes passent sur l'appareil, le ticket du serveur est annulé au retour du réseau (jamais payé deux
+  fois). Le ticket ouvert est gardé entier sur l'appareil pour s'afficher même hors ligne.
+- **Serveur** : `POST /merchants/:id/pos/offline-sales` → fonction SQL `record_offline_pos_sale()` (**migration 074**)
+  qui écrit ticket, lignes, paiement espèces et sortie de stock **en une seule transaction, une seule fois par
+  `client_ref`**, à l'heure réelle de la vente (7 jours max). **L'argent encaissé gagne toujours** : ce que la caisse
+  ne pouvait pas savoir est signalé, jamais refusé — prix changé entre-temps (vendu au prix payé), stock déjà vendu
+  par une autre caisse (la sortie s'arrête à zéro et les unités manquantes sont listées pour l'inventaire), session de
+  caisse fermée entre-temps (rattachée à la dernière session). Ces cas vont dans `pos_tickets.offline_conflicts` et
+  au **Journal** (`offline_sale_with_conflicts`). Refus (4xx, mis de côté dans Synchronisation) seulement si un
+  article a été supprimé ou a changé de devise. Vérifié sur une vraie base PostgreSQL (vente, double envoi, stock
+  insuffisant, prix changé, session fermée, article inconnu sans rien laisser à moitié).
+- **Clôture de caisse** bloquée tant que des ventes hors ligne de cette caisse ne sont pas parties (sinon le comptage
+  ne correspondrait pas) et hors ligne.
+- **Stock** : entrée / sortie / ajustement d'un article (`StockItemDetailDialog`) se font aussi hors ligne
+  (`stock_movements.client_ref`, appliqué une fois). Une sortie plus grande que le stock réel est refusée au retour
+  (visible dans Synchronisation). Créer ou modifier un produit reste en ligne.
+- Risque accepté : hors ligne, la caisse ne peut pas vérifier le prix auprès du serveur ; un prix modifié sur
+  l'appareil est enregistré mais tracé (conflit `price_changed` dans le Journal).
+
+À faire : migrations 073 et 074 (Test puis production), puis Manual Deploy de l'API et du site, et nouvelle APK.
 
 ---
 

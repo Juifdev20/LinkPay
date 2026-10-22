@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import api from '@/lib/api';
+import { isNetworkError } from '@/lib/network';
 import { useAuthStore } from '@/lib/auth-store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -163,19 +164,39 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
   // refresh doesn't silently orphan the sale.
   // ------------------------------------------------------------------
   const ticketKey = merchantId ? `pos_ticket:${merchantId}:${currency}` : '';
-  const [ticket, setTicket] = useState<any>(null);
+  const [ticket, setTicketState] = useState<any>(null);
+  // The open ticket is also kept whole on the device: reopened without network, the till still shows it (and can
+  // finish it offline, see PosTill).
+  const setTicket = (t: any) => {
+    setTicketState(t);
+    if (!ticketKey) return;
+    try {
+      if (t) localStorage.setItem(`${ticketKey}:data`, JSON.stringify(t));
+      else localStorage.removeItem(`${ticketKey}:data`);
+    } catch { /* not kept */ }
+  };
 
   useEffect(() => {
-    setTicket(null);
+    setTicketState(null);
     if (!ticketKey) return;
     const id = localStorage.getItem(ticketKey);
     if (!id) return;
     api.get(`/merchants/${merchantId}/pos/tickets/${id}`)
       .then(({ data }) => {
         if (data.status === 'open') setTicket(data);
-        else localStorage.removeItem(ticketKey);
+        else { localStorage.removeItem(ticketKey); setTicket(null); }
       })
-      .catch(() => localStorage.removeItem(ticketKey));
+      .catch((err) => {
+        if (isNetworkError(err)) {
+          try {
+            const cached = JSON.parse(localStorage.getItem(`${ticketKey}:data`) || 'null');
+            if (cached?.id === id) setTicketState(cached);
+          } catch { /* nothing kept */ }
+          return;
+        }
+        localStorage.removeItem(ticketKey);
+        setTicket(null);
+      });
   }, [ticketKey]);
 
   const clearTicket = () => {

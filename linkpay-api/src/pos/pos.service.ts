@@ -239,6 +239,74 @@ export class PosService {
     return { ...ticket, items, payments, merchant };
   }
 
+  /**
+   * A sale made without network, sent when the network came back (see migration 074). Cash only — the customer paid
+   * and left with the goods. record_offline_pos_sale() writes everything in one transaction, once per client_ref; what
+   * the till could not know (price changed, stock already sold elsewhere, session closed meanwhile) comes back as
+   * `conflicts` and is written to the journal, never refused.
+   */
+  async recordOfflineSale(
+    merchantId: string,
+    callerId: string,
+    callerRole: string,
+    callerOrgId: string | undefined,
+    dto: { client_ref: string; currency: string; sold_at: string; items: { stock_item_id: string; quantity: number; unit_price_cents: number }[]; received_cents?: number },
+  ) {
+    await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
+
+    // The same product on several lines (two taps offline) is one line.
+    const lines = new Map<string, { stock_item_id: string; quantity: number; unit_price_cents: number }>();
+    for (const l of dto.items) {
+      const key = `${l.stock_item_id}:${l.unit_price_cents}`;
+      const prev = lines.get(key);
+      lines.set(key, prev ? { ...prev, quantity: prev.quantity + l.quantity } : { ...l });
+    }
+
+    const { data, error } = await this.db.rpc('record_offline_pos_sale', {
+      p_merchant_id: merchantId,
+      p_cashier_id: callerId,
+      p_client_ref: dto.client_ref,
+      p_currency: dto.currency,
+      p_sold_at: dto.sold_at,
+      p_items: [...lines.values()],
+      p_received_cents: dto.received_cents ?? null,
+    });
+    if (error || !data) throw this.toOfflineSaleError(error?.message);
+
+    const result = data as { ticket_id: string; created: boolean; conflicts: any[] };
+    const ticket = await this.getOwnTicket(merchantId, result.ticket_id);
+
+    if (result.created) {
+      await this.auditService.log({
+        user_id: callerId,
+        action: result.conflicts?.length ? 'offline_sale_with_conflicts' : 'offline_sale_recorded',
+        entity_type: 'pos_ticket',
+        entity_id: result.ticket_id,
+        changes: { client_ref: dto.client_ref, sold_at: dto.sold_at, total_cents: ticket.total_cents, conflicts: result.conflicts ?? [] },
+      });
+    }
+    return { ...(await this.withDetails(ticket)), conflicts: result.conflicts ?? [], created: result.created };
+  }
+
+  private toOfflineSaleError(message?: string) {
+    const m = message ?? '';
+    if (m.includes('POS_OFFLINE_NO_SESSION')) {
+      return new BadRequestException("Aucune caisse n'a jamais été ouverte dans cette devise pour cette boutique.");
+    }
+    if (m.includes('POS_OFFLINE_ITEM_NOT_FOUND')) {
+      return new BadRequestException("Un article de cette vente n'existe plus dans la boutique (supprimé entre-temps).");
+    }
+    if (m.includes('POS_OFFLINE_ITEM_CURRENCY')) {
+      return new BadRequestException(`L'article « ${m.split(':').pop()} » n'est plus vendu dans cette devise.`);
+    }
+    if (m.includes('POS_OFFLINE_')) return new BadRequestException('Vente hors ligne invalide.');
+    if (m.includes('record_offline_pos_sale') && m.includes('does not exist')) {
+      // Migration 074 not run yet: a server error, so the till keeps the sale and retries later.
+      this.logger.error('record_offline_pos_sale() missing — run migration 074');
+    }
+    return new Error(`Failed to record offline sale: ${m}`);
+  }
+
   async createTicket(
     merchantId: string,
     callerId: string,

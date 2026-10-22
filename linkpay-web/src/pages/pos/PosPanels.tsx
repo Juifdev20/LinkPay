@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { useOnline } from '@/lib/network';
+import { useOutbox } from '@/lib/outbox';
 import { useAuthStore } from '@/lib/auth-store';
 import { STAFF_ROLES } from '@/lib/permissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -238,6 +240,8 @@ export function PosSessionPanel({ merchantId, session, onClosed }: { merchantId:
   const [closingCount, setClosingCount] = useState('');
   const [detailId, setDetailId] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
+  const online = useOnline();
+  const waitingSales = useOutbox((st) => st.ops.filter((o) => o.kind === 'pos.offline-sale' && o.payload?.merchant_id === merchantId && o.payload?.currency === session?.currency).length);
 
   const { data: detail } = useQuery({
     queryKey: ['cash-session-detail', session?.id],
@@ -381,7 +385,15 @@ export function PosSessionPanel({ merchantId, session, onClosed }: { merchantId:
             <Label htmlFor="closing">Montant compté dans le tiroir ({session.currency})</Label>
             <Input id="closing" type="number" inputMode="decimal" placeholder="0" value={closingCount} onChange={(e) => setClosingCount(e.target.value)} />
           </div>
-          <Button variant="destructive" className="w-full" disabled={closingCount === '' || busy} onClick={() => setConfirmClose(true)}>
+          {/* Cash taken offline must be on the server before the drawer is counted, or the count would not match. */}
+          {(waitingSales > 0 || !online) && (
+            <p className="rounded-xl bg-warning/10 px-3.5 py-2.5 text-sm font-medium text-warning">
+              {!online
+                ? 'La clôture se fait en ligne.'
+                : `${waitingSales} vente${waitingSales > 1 ? 's' : ''} hors ligne pas encore envoyée${waitingSales > 1 ? 's' : ''} : attendez leur envoi (écran Synchronisation) avant de clôturer.`}
+            </p>
+          )}
+          <Button variant="destructive" className="w-full" disabled={closingCount === '' || busy || waitingSales > 0 || !online} onClick={() => setConfirmClose(true)}>
             <DoorClosed className="mr-2 w-4 h-4" /> Clôturer la session
           </Button>
         </CardContent>

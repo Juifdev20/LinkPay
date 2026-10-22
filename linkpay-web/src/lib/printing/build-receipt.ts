@@ -85,6 +85,10 @@ export function buildPosReceipt(ticket: any): ReceiptLine[] {
   }
   if (change > 0) lines.push({ type: 'amount', label: 'Monnaie rendue', value: money(change) });
 
+  // A sale made without network: its final number comes when it reaches the server.
+  if (ticket.offline || ticket.recorded_offline) {
+    lines.push({ type: 'separator' }, { type: 'text', text: 'Vente enregistrée hors ligne', align: 'center', small: true });
+  }
   lines.push(
     { type: 'separator' },
     { type: 'text', text: 'Merci de votre visite', align: 'center' },
