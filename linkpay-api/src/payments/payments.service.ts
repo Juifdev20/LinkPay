@@ -610,7 +610,10 @@ export class PaymentsService {
   }
 
   private async handleSuccessfulPayment(intent: any, event: any): Promise<any> {
-    if (!this.amountAccepted('paiement', intent.id, intent.amount_cents, event?.amount_cents)) return undefined;
+    // The provider was asked for total_cents (the amount plus the commission when the payer bears it, see createPayment): that is
+    // what it confirms. Comparing with amount_cents alone refused every payer-paid payment — money taken, nothing credited, the
+    // payer's screen waiting for ever (HotelSaver subscription, 22/10/2026: 1 USD + commission = 2.04 USD debited).
+    if (!this.amountAccepted('paiement', intent.id, Number(intent.total_cents ?? intent.amount_cents), event?.amount_cents)) return undefined;
 
     // Atomically claim the PENDING -> SUCCEEDED transition before doing any
     // work: a webhook delivery and a concurrent status-check poll (GET

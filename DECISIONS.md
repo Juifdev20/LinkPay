@@ -193,6 +193,17 @@ Fonctionnement :
   avec le motif. Les cases ne sont rouges que tant que rien n'a été retapé.
 - Fait une seule fois dans `PinKeypadScreen` et `PinInput` : tous les écrans en profitent.
 
+### 17. Paiement avec commission à la charge du payeur : débité, jamais crédité (corrigé)
+- **Constat** : abonnement HotelSaver de 1 USD, commission payée par le client.
+  - FlexPaie a débité 2,04 USD, le total demandé.
+  - Mais `handleSuccessfulPayment` comparait la confirmation au montant SANS commission (`amount_cents`).
+  - Résultat : « montant différent », rien de crédité, le paiement resté en attente et l'écran du payeur figé.
+- **Correction** : la confirmation se compare à `total_cents`, ce qui a été demandé au fournisseur, comme les transferts le faisaient
+  déjà avec montant + frais.
+- **Le paiement déjà bloqué se rattrape tout seul** après le déploiement :
+  - ScanLinkPay relit ses paiements en attente pendant 72 h ;
+  - HotelSaver attend 24 h avant d'abandonner.
+
 ### 16. Supprimer son compte : sur le site, avec la raison du départ (migration 082, exigence Google Play)
 - Dans Paramètres, le bouton « Supprimer mon compte » ouvre la page `/supprimer-mon-compte` du site (le navigateur du téléphone dans
   l'application Android). Pas besoin d'un autre site : la version navigateur sur Render sert de site.
