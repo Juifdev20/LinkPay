@@ -193,6 +193,29 @@ Fonctionnement :
   avec le motif. Les cases ne sont rouges que tant que rien n'a été retapé.
 - Fait une seule fois dans `PinKeypadScreen` et `PinInput` : tous les écrans en profitent.
 
+### 16. Supprimer son compte : sur le site, avec la raison du départ (migration 082, exigence Google Play)
+- Dans Paramètres, le bouton « Supprimer mon compte » ouvre la page `/supprimer-mon-compte` du site (le navigateur du téléphone dans
+  l'application Android). Pas besoin d'un autre site : la version navigateur sur Render sert de site.
+- **Qui peut** : un client, un marchand (sa boutique ferme) et le patron d'une entreprise (l'entreprise ferme).
+  **Ne peuvent pas** : les employés (vendeur/caissier, gérant, magasinier, comptable…) et les administrateurs. Leur compte est retiré
+  par le patron.
+- **Avant** : solde à zéro (CDF et USD), épargne vide, aucun retrait en cours, aucune tontine en cours, et l'équipe retirée.
+  La suppression ne touche jamais à l'argent.
+- **Étapes** : la raison du départ (6 choix et un commentaire libre), le mot de passe et une case « définitif ».
+  - Les raisons vont dans `account_deletions`, sans nom ni téléphone.
+- **Effet** :
+  - la connexion est bloquée ;
+  - nom, téléphone, email, photo et codes sont effacés ;
+  - cartes bloquées, portefeuille fermé, appareils oubliés ;
+  - les opérations financières restent, sans le nom, comme la loi l'exige ;
+  - le numéro et l'email peuvent rouvrir un compte plus tard.
+- La page publique `/confidentialite` a été rédigée d'après ce que l'application collecte vraiment.
+- `docs/PLAY_STORE.md` contient :
+  - les réponses au formulaire « Sécurité des données » ;
+  - la construction de l'AAB signé (clé hors du dépôt, `android/keystore.properties` ou variables `SLP_UPLOAD_*`) ;
+  - la liste des captures ;
+  - le point de vigilance sur les abonnements payés dans l'application.
+
 ### Reste à décider (non corrigé)
 - Le stock n'est pas réservé pendant l'attente : voulu, le stock bouge au paiement (si l'article est parti
   entre-temps, les espèces sont refusées).
