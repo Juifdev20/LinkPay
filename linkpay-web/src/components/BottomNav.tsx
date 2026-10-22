@@ -1,6 +1,6 @@
 import { isSupermarket } from '@/lib/sectors';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Receipt, QrCode, Settings, ShoppingCart, BarChart3, Menu, History, ClipboardList, Wallet } from 'lucide-react';
+import { Home, Receipt, QrCode, Settings, ShoppingCart, BarChart3, Menu, History, ClipboardList, Wallet, Package } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -42,13 +42,14 @@ const walletTab: Tab = { to: '/dashboard/wallet', label: 'Portefeuille', icon: W
 // 3 business destinations (see computeVisibleTabs below), rather than
 // fighting Stock for the 4th fixed slot.
 const venteTab: Tab = { to: '/dashboard/pos', label: 'Vente', icon: ShoppingCart, end: false, central: true };
+const stockTab: Tab = { to: '/dashboard/organization/stock', label: 'Stock', icon: Package, end: false };
 
 const staffTabsFor = (role: string, orgSector?: string): Tab[] | undefined => {
   const caissierSale = isSupermarket(orgSector) ? venteTab : salesTab;
   const map: Record<string, Tab[]> = {
     vendeur: [homeTab, historyTab, salesTab, settingsTab],
-    // The station manager: their station's dashboard, its payments and the till (the rest is under Plus).
-    gerant: [homeTab, orgTransactionsTab, caissierSale, settingsTab],
+    // The manager: home dashboard · sales · stock · (Plus for the rest).
+    gerant: [homeTab, salesTab, stockTab, settingsTab],
     caissier: [homeTab, orgTransactionsTab, caissierSale, settingsTab],
     comptable: [homeTab, orgTransactionsTab, financeTab, settingsTab],
     // Accueil IS the stock page for the stock keeper, so the second tab is the inventory (no duplicate).

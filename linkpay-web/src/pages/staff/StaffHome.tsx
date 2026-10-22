@@ -4,8 +4,8 @@ import { useAuthStore } from '@/lib/auth-store';
 import { isSupermarket } from '@/lib/sectors';
 import MagasinierDashboard from '@/pages/organization/MagasinierDashboard';
 import CashierHome from '@/pages/staff/CashierHome';
+import GerantHome from '@/pages/staff/GerantHome';
 import SalesDashboardPage from '@/pages/organization/SalesDashboard';
-import OrganizationProfilePage from '@/pages/OrganizationProfile';
 
 /**
  * Landing screen for enterprise-internal staff (organization-staff module).
@@ -29,7 +29,7 @@ export default function StaffHome() {
   });
 
   if (user?.role === 'gerant') {
-    return <OrganizationProfilePage />;
+    return <GerantHome />;
   }
   if (user?.role === 'magasinier') {
     return <MagasinierDashboard />;

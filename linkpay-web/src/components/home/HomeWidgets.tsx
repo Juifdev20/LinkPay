@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDownRight, ArrowUpRight, ChevronRight, ShoppingCart, type LucideIcon } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, ChevronRight, ShoppingCart, Store, type LucideIcon } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import type { Currency, HomeDay, HomeSale, HomeTop } from './useHomeData';
 
@@ -35,6 +35,8 @@ export function HomeHero({
   yesterday,
   loading,
   onOpenTill,
+  heroLabel,
+  storeIcon,
 }: {
   firstName?: string;
   orgName?: string;
@@ -44,6 +46,10 @@ export function HomeHero({
   yesterday: { revenue: number };
   loading: boolean;
   onOpenTill: () => void;
+  /** Label above the revenue figure. Default: "Ventes du jour". */
+  heroLabel?: string;
+  /** Show a store icon badge before the org name (Gérant dashboard). */
+  storeIcon?: boolean;
 }) {
   const date = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
   const trend = yesterday.revenue > 0 ? Math.round(((today.revenue - yesterday.revenue) / yesterday.revenue) * 100) : null;
@@ -57,12 +63,19 @@ export function HomeHero({
 
       <div className="relative">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm text-white/80">
-              {greeting()}{firstName ? ` ${firstName}` : ''} 👋
-            </p>
-            <h1 className="mt-0.5 text-xl font-bold leading-tight break-words">{orgName}</h1>
-            <p className="mt-0.5 text-xs capitalize text-white/70">{date}</p>
+          <div className="min-w-0 flex items-start gap-3">
+            {storeIcon && (
+              <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-white/20">
+                <Store className="h-6 w-6 text-white" />
+              </span>
+            )}
+            <div className="min-w-0">
+              <p className="text-sm text-white/80">
+                {greeting()}{firstName ? `, ${firstName}` : ''} 👑
+              </p>
+              <h1 className="mt-0.5 text-xl font-bold leading-tight break-words">{orgName}</h1>
+              <p className="mt-0.5 text-xs capitalize text-white/70">{date}</p>
+            </div>
           </div>
           <div className="flex flex-shrink-0 rounded-full bg-white/15 p-0.5 text-xs font-semibold">
             {(['CDF', 'USD'] as const).map((c) => (
@@ -78,7 +91,7 @@ export function HomeHero({
         </div>
 
         <div className="mt-6">
-          <p className="text-sm text-white/80">Ventes du jour</p>
+          <p className="text-sm text-white/80">{heroLabel ?? 'Ventes du jour'}</p>
           {loading ? (
             <div className="mt-2 h-10 w-48 animate-pulse rounded-lg bg-white/20" />
           ) : noSaleYet ? (
@@ -276,14 +289,16 @@ export function RecentSales({
   currency,
   loading,
   moreTo,
+  title,
 }: {
   sales: HomeSale[];
   currency: Currency;
   loading: boolean;
   moreTo?: string;
+  title?: string;
 }) {
   return (
-    <ListCard title="Dernières ventes" action={moreTo ? { label: 'Tout voir', to: moreTo } : undefined}>
+    <ListCard title={title ?? 'Dernières ventes'} action={moreTo ? { label: 'Tout voir', to: moreTo } : undefined}>
       {loading ? (
         <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10" />)}</div>
       ) : !sales.length ? (
