@@ -27,6 +27,8 @@ const PaymentLinkPage = lazyPage(() => import('@/pages/public/PaymentLinkPage'))
 const PaymentResultPage = lazyPage(() => import('@/pages/public/PaymentResultPage'));
 const PayByNumber = lazyPage(() => import('@/pages/public/PayByNumber'));
 const CardLandingPage = lazyPage(() => import('@/pages/public/CardLanding'));
+const PrivacyPolicyPage = lazyPage(() => import('@/pages/public/PrivacyPolicy'));
+const DeleteAccountPage = lazyPage(() => import('@/pages/public/DeleteAccount'));
 
 import DashboardLayout from '@/layouts/DashboardLayout';
 import MerchantDashboard from '@/pages/merchant/Dashboard';
@@ -223,6 +225,9 @@ export default function App() {
       <Route path="/p/:token" element={<PaymentLinkPage />} />
       <Route path="/pay/:number" element={<PayByNumber />} />
       <Route path="/c/:token" element={<CardLandingPage />} />
+      {/* Public pages given to Google Play: privacy policy, account deletion. */}
+      <Route path="/confidentialite" element={<PrivacyPolicyPage />} />
+      <Route path="/supprimer-mon-compte" element={<DeleteAccountPage />} />
       <Route
         path="/admin/cards/:id/print"
         element={
