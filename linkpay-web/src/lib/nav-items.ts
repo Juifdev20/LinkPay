@@ -6,11 +6,25 @@ import { ALL_ROLES, STAFF_ROLES, PERSONAL_ROLES, rolesFor } from '@/lib/permissi
 
 export { ALL_ROLES, STAFF_ROLES };
 
+/** The sidebar (computer) and the « Plus » page (phone) group the entries by what they are for, in this order. */
+export type NavSection = 'home' | 'sell' | 'follow' | 'stock' | 'business' | 'account' | 'admin' | 'system';
+export const NAV_SECTIONS: { id: NavSection; title: string }[] = [
+  { id: 'home', title: '' },
+  { id: 'sell', title: 'Vendre' },
+  { id: 'follow', title: 'Suivi' },
+  { id: 'stock', title: 'Stock' },
+  { id: 'business', title: 'Entreprise' },
+  { id: 'account', title: 'Mon compte' },
+  { id: 'admin', title: 'Administration' },
+  { id: 'system', title: '' },
+];
+
 export interface NavItem {
   to: string;
   label: string;
   icon: LucideIcon;
   roles: string[];
+  section: NavSection;
   /** The same screen named for a given role (e.g. the manager's « Mes employés »). */
   labelFor?: Record<string, string>;
 }
@@ -25,10 +39,8 @@ export interface NavItem {
 //   patron     — everything, every station
 // Single source of truth for "where can this role go" — consumed by both
 // the desktop sidebar (DashboardLayout.tsx) and its mobile equivalent
-// (pages/More.tsx, the "Plus" tab), so the two never drift out of sync. Settings.tsx
-// keeps its own, separate secondaryLinks list for genuine account
-// configuration (e.g. "Profil entreprise") — only full modules belong
-// here.
+// (pages/More.tsx, the "Plus" tab), so the two never drift out of sync.
+// Within a section, the most used entry comes first: selling before anything else, right after the dashboard.
 //
 // Merchant-scoped pages (payment-requests, transactions) need
 // the JWT's merchant_id claim — an enterprise account only gets one while
@@ -37,90 +49,102 @@ export interface NavItem {
 // deliberately isn't listed on these — org-level enterprise instead gets
 // its own entries further down.
 export const navItems: NavItem[] = [
-  { to: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: [...ALL_ROLES, ...STAFF_ROLES] },
-  // The wallet's history (the "Transactions" tab of the phone's bottom bar); on a computer, this sidebar entry.
-  { to: '/dashboard/wallet/transactions', label: 'Transactions', icon: ArrowLeftRight, roles: ['client', 'merchant'] },
-  { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: QrCode, roles: ['merchant', 'cashier'] },
-  // The merchant's fixed payment QR + ScanLinkPay number — on mobile it is
-  // the bottom bar's central tab (so More.tsx's already-visible filter keeps
-  // it out of Plus); on desktop this sidebar entry is the only way to reach it.
-  { to: '/dashboard/wallet/receive', label: 'Encaisser', icon: QrCode, roles: ['merchant', 'cashier'] },
+  { to: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: [...ALL_ROLES, ...STAFF_ROLES], section: 'home' },
+
+  // ---- Vendre: the day-to-day action of the account.
+  // Supermarket till (hidden for electronics); plain 'merchant' isn't in the POS controller's @Roles list.
+  { to: '/dashboard/pos', label: 'Caisse', icon: Store, roles: rolesFor('/dashboard/pos'), section: 'sell' },
+  // Electronics shops' sales (hidden for supermarkets).
+  { to: '/dashboard/organization/sales', label: 'Ventes', icon: ShoppingCart, roles: rolesFor('/dashboard/organization/sales'), section: 'sell' },
+  // The merchant's fixed payment QR + ScanLinkPay number — on mobile it is the bottom bar's central tab.
+  { to: '/dashboard/wallet/receive', label: 'Encaisser', icon: QrCode, roles: ['merchant', 'cashier'], section: 'sell' },
+  { to: '/dashboard/payment-requests', label: 'Demandes de paiement', icon: QrCode, roles: ['merchant', 'cashier'], section: 'sell' },
+  { to: '/dashboard/card/charge', label: 'Encaisser par carte', icon: ScanLine, roles: rolesFor('/dashboard/card/charge'), section: 'sell' },
+  { to: '/dashboard/organization/receive', label: 'Recevoir', icon: QrCode, roles: rolesFor('/dashboard/organization/receive').filter((r) => r !== 'enterprise'), section: 'sell' },
+
+  // ---- Suivi: what was sold and paid.
+  { to: '/dashboard/organization/sales/history', label: 'Historique des ventes', icon: History, roles: rolesFor('/dashboard/organization/sales/history'), section: 'follow' },
+  { to: '/dashboard/organization/my-sales', label: 'Mes ventes', icon: History, roles: rolesFor('/dashboard/organization/my-sales'), section: 'follow' },
+  // Staff-only (the enterprise owner reaches it from its own home), so it isn't duplicated for enterprise.
+  { to: '/dashboard/organization/sales/dashboard', label: 'Tableau de bord ventes', icon: BarChart3, roles: rolesFor('/dashboard/organization/sales/dashboard').filter((r) => r !== 'enterprise'), section: 'follow' },
+  { to: '/dashboard/organization/transactions', label: 'Transactions', icon: Receipt, roles: rolesFor('/dashboard/organization/transactions'), section: 'follow' },
   // For a merchant, "Transactions" (bottom bar) is the wallet's history; this list is the customers' payments (with refunds).
-  { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, roles: ['merchant', 'cashier'], labelFor: { merchant: 'Paiements reçus' } },
-  { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'] },
-  // Deliberately excludes 'enterprise' — wallet/tontine/savings features are
-  // personal-account concepts; an organization has its own separate stock,
-  // expenses, etc. modules instead (see OrganizationProfile.tsx).
-  { to: '/dashboard/client/transactions', label: 'Mes paiements', icon: Receipt, roles: PERSONAL_ROLES },
-  ...(FEATURES.tontines ? [{ to: '/dashboard/tontines', label: 'Tontines', icon: RefreshCcw, roles: PERSONAL_ROLES }] : []),
-  ...(FEATURES.savings ? [{ to: '/dashboard/savings', label: 'Épargne', icon: PiggyBank, roles: PERSONAL_ROLES }] : []),
-  // Deliberately excludes 'enterprise' — organizations have their own,
-  // separate expense feature (see OrganizationProfile.tsx's expense tile),
-  // unlike tontines/savings above which enterprise can currently also see.
-  { to: '/dashboard/expenses', label: 'Mes dépenses', icon: Receipt, roles: ['client', 'merchant', 'cashier', 'admin', 'super_admin'] },
-  // The personal ScanLinkPay card — not on a work (staff) account; the sellers charge customers' cards at the till.
-  { to: '/dashboard/card', label: 'Ma carte', icon: CreditCard, roles: rolesFor('/dashboard/card') },
-  { to: '/dashboard/card/charge', label: 'Encaisser par carte', icon: ScanLine, roles: rolesFor('/dashboard/card/charge') },
-  { to: '/dashboard/admin', label: 'Administration', icon: ShieldCheck, roles: ['admin', 'super_admin'] },
-  { to: '/dashboard/admin/cards', label: 'Cartes', icon: CreditCard, roles: ['admin', 'super_admin'] },
-  { to: '/dashboard/admin/withdrawals', label: 'Retraits à traiter', icon: ArrowUpFromLine, roles: ['admin', 'super_admin'] },
-  { to: '/dashboard/admin/merchants', label: 'Commerçants', icon: Users, roles: ['admin', 'super_admin'] },
-  { to: '/dashboard/admin/organizations', label: 'Entreprises', icon: Building2, roles: ['admin', 'super_admin'] },
-  { to: '/dashboard/admin/settlements', label: 'Règlements (admin)', icon: Wallet, roles: ['admin', 'super_admin'] },
-  { to: '/dashboard/admin/security-alerts', label: 'Alertes de sécurité', icon: ShieldAlert, roles: ['admin', 'super_admin'] },
-  { to: '/dashboard/admin/users', label: 'Utilisateurs', icon: UserCog, roles: ['super_admin'] },
-  { to: '/dashboard/admin/commissions', label: 'Commissions', icon: Percent, roles: ['super_admin'] },
-  { to: '/dashboard/admin/wallet-limits', label: 'Frais et limites', icon: SlidersHorizontal, roles: ['super_admin'] },
-  { to: '/dashboard/admin/expense-tracker-settings', label: 'Dépenses — Config.', icon: Receipt, roles: ['super_admin'] },
-  { to: '/dashboard/admin/subscriptions', label: 'Abonnements', icon: Sparkles, roles: ['super_admin'] },
-  { to: '/dashboard/admin/app-security', label: "Sécurité de l'application", icon: ShieldCheck, roles: ['super_admin'] },
-  // The one enterprise module kept at this top level — Transactions and
-  // Utilisateurs internes moved to Settings.tsx's secondaryLinks instead
-  // per product decision (only Stock & Approvisionnement stays a
-  // first-level module in the sidebar/drawer).
-  { to: '/dashboard/organization/sales', label: 'Ventes', icon: ShoppingCart, roles: rolesFor('/dashboard/organization/sales') },
-  { to: '/dashboard/organization/sales/history', label: 'Historique', icon: History, roles: rolesFor('/dashboard/organization/sales/history') },
-  { to: '/dashboard/organization/stock', label: 'Stock', icon: Boxes, roles: rolesFor('/dashboard/organization/stock') },
-  // Supermarket module — the till is the staff's day-to-day screen.
-  // Plain 'merchant' isn't in the POS controller's @Roles list (backend
-  // resolves the store via merchant.owner_id for org owners), so it's not
-  // listed here either.
-  { to: '/dashboard/pos', label: 'Caisse', icon: Store, roles: rolesFor('/dashboard/pos') },
-  { to: '/dashboard/organization/restock', label: "Demandes d'achat", icon: Truck, roles: rolesFor('/dashboard/organization/restock') },
-  { to: '/dashboard/organization/inventory', label: 'Inventaire', icon: ClipboardList, roles: rolesFor('/dashboard/organization/inventory') },
-  { to: '/dashboard/organization/my-sales', label: 'Mes ventes', icon: History, roles: rolesFor('/dashboard/organization/my-sales') },
-  { to: '/dashboard/organization/reports', label: 'Rapports', icon: FileBarChart, roles: rolesFor('/dashboard/organization/reports') },
-  { to: '/dashboard/organization/stats', label: 'Statistiques', icon: BarChart3, roles: rolesFor('/dashboard/organization/stats') },
-  { to: '/dashboard/organization/audit', label: 'Journal', icon: ScrollText, roles: rolesFor('/dashboard/organization/audit') },
-  // Staff-only finance entries (the enterprise owner reaches the same screens
-  // from its own Settings → Gestion, so they aren't duplicated for enterprise).
-  { to: '/dashboard/organization/sales/dashboard', label: 'Tableau de bord ventes', icon: BarChart3, roles: rolesFor('/dashboard/organization/sales/dashboard').filter((r) => r !== 'enterprise') },
-  { to: '/dashboard/organization/transactions', label: 'Transactions', icon: Receipt, roles: rolesFor('/dashboard/organization/transactions') },
-  { to: '/dashboard/organization/receive', label: 'Recevoir', icon: QrCode, roles: rolesFor('/dashboard/organization/receive').filter((r) => r !== 'enterprise') },
-  // Org management — business modules, not account config, so they live
-  // in the nav (sidebar/desktop, Plus/mobile) rather than Settings.
-  { to: '/dashboard/organization/profile', label: 'Profil entreprise', icon: Building2, roles: rolesFor('/dashboard/organization/profile') },
-  { to: '/dashboard/organization/stores', label: 'Stations', icon: Store, roles: rolesFor('/dashboard/organization/stores') },
-  { to: '/dashboard/organization/staff', label: 'Utilisateurs internes', icon: Users, roles: rolesFor('/dashboard/organization/staff'), labelFor: { gerant: 'Mes employés' } },
-  { to: '/dashboard/organization/subscription', label: 'Abonnement', icon: Sparkles, roles: rolesFor('/dashboard/organization/subscription') },
-  { to: '/dashboard/organization/wallet', label: "Portefeuille de l'entreprise", icon: Wallet, roles: rolesFor('/dashboard/organization/wallet') },
-  // Employees' own wallet: where the patron sends their salary and from where they withdraw it.
-  // Their own money (salary), never the station's: the label says so.
-  { to: '/dashboard/wallet', label: 'Mon portefeuille (personnel)', icon: Wallet, roles: rolesFor('/dashboard/wallet') },
-  { to: '/dashboard/notifications', label: 'Notifications', icon: Bell, roles: [...ALL_ROLES, ...STAFF_ROLES] },
-  // What was done offline and still waits for the server (lib/outbox.ts).
-  { to: '/dashboard/sync', label: 'Synchronisation', icon: CloudUpload, roles: [...ALL_ROLES, ...STAFF_ROLES] },
-  { to: '/dashboard/settings', label: 'Paramètres', icon: Settings, roles: [...ALL_ROLES, ...STAFF_ROLES] },
+  { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, roles: ['merchant', 'cashier'], labelFor: { merchant: 'Paiements reçus' }, section: 'follow' },
+  { to: '/dashboard/organization/stats', label: 'Statistiques', icon: BarChart3, roles: rolesFor('/dashboard/organization/stats'), section: 'follow' },
+  { to: '/dashboard/organization/reports', label: 'Rapports', icon: FileBarChart, roles: rolesFor('/dashboard/organization/reports'), section: 'follow' },
+  { to: '/dashboard/organization/audit', label: 'Journal', icon: ScrollText, roles: rolesFor('/dashboard/organization/audit'), section: 'follow' },
+
+  // ---- Stock.
+  { to: '/dashboard/organization/stock', label: 'Stock', icon: Boxes, roles: rolesFor('/dashboard/organization/stock'), section: 'stock' },
+  { to: '/dashboard/organization/inventory', label: 'Inventaire', icon: ClipboardList, roles: rolesFor('/dashboard/organization/inventory'), section: 'stock' },
+  { to: '/dashboard/organization/restock', label: "Demandes d'achat", icon: Truck, roles: rolesFor('/dashboard/organization/restock'), section: 'stock' },
+
+  // ---- Entreprise: business modules, not account config, so they live in the nav rather than Settings.
+  { to: '/dashboard/organization/wallet', label: 'Portefeuille entreprise', icon: Wallet, roles: rolesFor('/dashboard/organization/wallet'), section: 'business' },
+  { to: '/dashboard/organization/staff', label: 'Utilisateurs internes', icon: Users, roles: rolesFor('/dashboard/organization/staff'), labelFor: { gerant: 'Mes employés' }, section: 'business' },
+  { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'], section: 'business' },
+  { to: '/dashboard/organization/stores', label: 'Stations', icon: Store, roles: rolesFor('/dashboard/organization/stores'), section: 'business' },
+  { to: '/dashboard/organization/profile', label: 'Profil entreprise', icon: Building2, roles: rolesFor('/dashboard/organization/profile'), section: 'business' },
+  { to: '/dashboard/organization/subscription', label: 'Abonnement', icon: Sparkles, roles: rolesFor('/dashboard/organization/subscription'), section: 'business' },
+
+  // ---- Mon compte: the person's own money. Deliberately not for 'enterprise' (wallet, tontine, savings are
+  // personal-account concepts; an organization has its own modules).
+  // The wallet's history (the "Transactions" tab of the phone's bottom bar); on a computer, this sidebar entry.
+  { to: '/dashboard/wallet/transactions', label: 'Transactions', icon: ArrowLeftRight, roles: ['client', 'merchant'], section: 'account' },
+  { to: '/dashboard/client/transactions', label: 'Mes paiements', icon: Receipt, roles: PERSONAL_ROLES, section: 'account' },
+  // Employees' own wallet: where the patron sends their salary and from where they withdraw it — never the station's.
+  { to: '/dashboard/wallet', label: 'Mon portefeuille', icon: Wallet, roles: rolesFor('/dashboard/wallet'), section: 'account' },
+  // The personal ScanLinkPay card — not on a work (staff) account.
+  { to: '/dashboard/card', label: 'Ma carte', icon: CreditCard, roles: rolesFor('/dashboard/card'), section: 'account' },
+  { to: '/dashboard/expenses', label: 'Mes dépenses', icon: Receipt, roles: ['client', 'merchant', 'cashier', 'admin', 'super_admin'], section: 'account' },
+  ...(FEATURES.tontines ? [{ to: '/dashboard/tontines', label: 'Tontines', icon: RefreshCcw, roles: PERSONAL_ROLES, section: 'account' as const }] : []),
+  ...(FEATURES.savings ? [{ to: '/dashboard/savings', label: 'Épargne', icon: PiggyBank, roles: PERSONAL_ROLES, section: 'account' as const }] : []),
+
+  // ---- Administration (ScanLinkPay team).
+  { to: '/dashboard/admin', label: 'Administration', icon: ShieldCheck, roles: ['admin', 'super_admin'], section: 'admin' },
+  { to: '/dashboard/admin/withdrawals', label: 'Retraits à traiter', icon: ArrowUpFromLine, roles: ['admin', 'super_admin'], section: 'admin' },
+  { to: '/dashboard/admin/security-alerts', label: 'Alertes de sécurité', icon: ShieldAlert, roles: ['admin', 'super_admin'], section: 'admin' },
+  { to: '/dashboard/admin/organizations', label: 'Entreprises', icon: Building2, roles: ['admin', 'super_admin'], section: 'admin' },
+  { to: '/dashboard/admin/merchants', label: 'Commerçants', icon: Users, roles: ['admin', 'super_admin'], section: 'admin' },
+  { to: '/dashboard/admin/cards', label: 'Cartes', icon: CreditCard, roles: ['admin', 'super_admin'], section: 'admin' },
+  { to: '/dashboard/admin/settlements', label: 'Règlements', icon: Wallet, roles: ['admin', 'super_admin'], section: 'admin' },
+  { to: '/dashboard/admin/users', label: 'Utilisateurs', icon: UserCog, roles: ['super_admin'], section: 'admin' },
+  { to: '/dashboard/admin/subscriptions', label: 'Abonnements', icon: Sparkles, roles: ['super_admin'], section: 'admin' },
+  { to: '/dashboard/admin/commissions', label: 'Commissions', icon: Percent, roles: ['super_admin'], section: 'admin' },
+  { to: '/dashboard/admin/wallet-limits', label: 'Frais et limites', icon: SlidersHorizontal, roles: ['super_admin'], section: 'admin' },
+  { to: '/dashboard/admin/expense-tracker-settings', label: 'Config. des dépenses', icon: Receipt, roles: ['super_admin'], section: 'admin' },
+  { to: '/dashboard/admin/app-security', label: "Sécurité de l'application", icon: ShieldCheck, roles: ['super_admin'], section: 'admin' },
+
+  // ---- Always last. Synchronisation (what waits to be sent after working offline) is in Paramètres; the sidebar
+  // shows it only while something waits (DashboardLayout / More).
+  { to: '/dashboard/notifications', label: 'Notifications', icon: Bell, roles: [...ALL_ROLES, ...STAFF_ROLES], section: 'system' },
+  { to: '/dashboard/settings', label: 'Paramètres', icon: Settings, roles: [...ALL_ROLES, ...STAFF_ROLES], section: 'system' },
 ];
+
+/** Shown in the nav only while operations made offline wait to reach the server (lib/outbox.ts). */
+export const SYNC_NAV_ITEM: NavItem = { to: '/dashboard/sync', label: 'Synchronisation', icon: CloudUpload, roles: [...ALL_ROLES, ...STAFF_ROLES], section: 'system' };
+
+/** The entries grouped by section, in NAV_SECTIONS order; empty sections left out. */
+export function groupNavItems(items: NavItem[]) {
+  return NAV_SECTIONS
+    .map((section) => ({ ...section, items: items.filter((i) => i.section === section.id) }))
+    .filter((section) => section.items.length > 0);
+}
 
 // Sector-conditional entries — a supermarket sells at the POS till, so
 // the Ventes sales form + its history/dashboard (the electronics flow)
 // are redundant for that sector and hidden from the nav entirely.
+// An electronics shop sells in Ventes: the supermarket till and the cashier's till tickets (« Mes ventes ») are
+// empty there, so hidden too.
 const SECTOR_HIDDEN: Record<string, string[]> = {
   supermarche: [
     '/dashboard/organization/sales',
     '/dashboard/organization/sales/history',
     '/dashboard/organization/sales/dashboard',
+  ],
+  electronique: [
+    '/dashboard/pos',
+    '/dashboard/organization/my-sales',
   ],
 };
 

@@ -18,7 +18,8 @@ import { usePaymentReceivedAlert } from '@/hooks/usePaymentReceivedAlert';
 import { LogOut, Building2, Sun, Moon, Menu, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SECTORS } from '@/pages/organization/OnboardingWizard';
-import { navItemsFor } from '@/lib/nav-items';
+import { groupNavItems, navItemsFor, SYNC_NAV_ITEM, type NavItem } from '@/lib/nav-items';
+import { usePendingCount } from '@/lib/outbox';
 import { ROLE_LABELS } from '@/lib/permissions';
 
 export default function DashboardLayout() {
@@ -68,7 +69,12 @@ export default function DashboardLayout() {
   // keep the enterprise/supermarket menu — they are the owner inside their
   // store, not a standalone merchant.
   const navRole = user?.acting_as_org_id ? 'enterprise' : user?.role;
-  const visibleItems = user && navRole ? navItemsFor(navRole, org?.sector) : [];
+  const roleItems = user && navRole ? navItemsFor(navRole, org?.sector) : [];
+  // Synchronisation lives in Paramètres; it joins the sidebar only while operations made offline wait to be sent.
+  const pendingOps = usePendingCount();
+  const navGroups = groupNavItems(pendingOps && roleItems.length ? [...roleItems, SYNC_NAV_ITEM] : roleItems);
+  const badgeFor = (item: NavItem) =>
+    item.to === '/dashboard/admin/withdrawals' ? openWithdrawals?.open || 0 : item.to === SYNC_NAV_ITEM.to ? pendingOps : 0;
 
   return (
     <div className="h-[100dvh] bg-background">
@@ -109,30 +115,45 @@ export default function DashboardLayout() {
               )}
             </div>
 
-            <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-              {visibleItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.to === '/dashboard'}
-                  className={({ isActive }) =>
-                    cn(
-                      'relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
-                      isActive
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                    )
-                  }
-                  title={sidebarCollapsed ? item.label : undefined}
-                >
-                  <item.icon className="w-5 h-5 flex-shrink-0" />
-                  {!sidebarCollapsed && <span>{item.label}</span>}
-                  {item.to === '/dashboard/admin/withdrawals' && !!openWithdrawals?.open && (
-                    <span className={cn('ml-auto rounded-full bg-destructive px-2 py-0.5 text-[11px] font-bold text-destructive-foreground', sidebarCollapsed && 'absolute right-1 top-1 ml-0 px-1.5')}>
-                      {openWithdrawals.open}
-                    </span>
+            {/* Grouped by what the entries are for (lib/nav-items.ts NAV_SECTIONS): selling first, then follow-up,
+                stock, the business, the person's own account; Notifications and Paramètres always at the bottom. */}
+            <nav className="flex-1 px-3 py-4 overflow-y-auto">
+              {navGroups.map((group, gi) => (
+                <div key={group.id} className={cn(gi > 0 && 'mt-4', group.id === 'system' && 'pt-4 border-t border-border')}>
+                  {group.title && !sidebarCollapsed && (
+                    <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">{group.title}</p>
                   )}
-                </NavLink>
+                  {group.title && sidebarCollapsed && <div className="mx-3 mb-3 border-t border-border" />}
+                  <div className="space-y-0.5">
+                    {group.items.map((item) => {
+                      const badge = badgeFor(item);
+                      return (
+                        <NavLink
+                          key={item.to}
+                          to={item.to}
+                          end={item.to === '/dashboard'}
+                          className={({ isActive }) =>
+                            cn(
+                              'relative flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all',
+                              isActive
+                                ? 'bg-primary text-primary-foreground shadow-sm'
+                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                            )
+                          }
+                          title={sidebarCollapsed ? item.label : undefined}
+                        >
+                          <item.icon className="w-5 h-5 flex-shrink-0" />
+                          {!sidebarCollapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
+                          {!!badge && (
+                            <span className={cn('ml-auto rounded-full bg-destructive px-2 py-0.5 text-[11px] font-bold text-destructive-foreground', sidebarCollapsed && 'absolute right-1 top-1 ml-0 px-1.5')}>
+                              {badge}
+                            </span>
+                          )}
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                </div>
               ))}
             </nav>
 

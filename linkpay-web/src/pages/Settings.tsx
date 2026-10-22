@@ -11,12 +11,13 @@ import { Switch } from '@/components/ui/switch';
 import { Logo } from '@/components/Logo';
 import { PageHeader } from '@/components/PageHeader';
 import { CurrencySelector } from '@/components/CurrencySelector';
-import { Building2, HelpCircle, FileText, ChevronRight, Store, Loader2, Bell, Moon, Fingerprint } from 'lucide-react';
+import { Building2, HelpCircle, FileText, ChevronRight, Store, Loader2, Bell, Moon, Fingerprint, CloudUpload } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getCurrentPushPermission, hasActiveSubscription, subscribeToPush, unsubscribeFromPush, type PushPermissionStatus } from '@/lib/app-push';
 import { useTheme } from '@/hooks/useTheme';
 import { AccessCodeSettings } from '@/components/AccessCodeSettings';
 import { RecoveryCodeSettings } from '@/components/RecoveryCodeSettings';
+import { useFailedCount, usePendingCount } from '@/lib/outbox';
 import { isAppLockSupported, isAppLockEnabled, enableAppLock, disableAppLock } from '@/lib/app-lock';
 
 export default function SettingsPage() {
@@ -32,6 +33,8 @@ export default function SettingsPage() {
   const [pushPermission, setPushPermission] = useState<PushPermissionStatus>('unsupported');
   const [pushBusy, setPushBusy] = useState(false);
   const { toggleTheme, effectiveTheme } = useTheme();
+  const pendingOps = usePendingCount();
+  const failedOps = useFailedCount();
   const [appLockSupported, setAppLockSupported] = useState(false);
   const [appLockEnabled, setAppLockEnabledState] = useState(isAppLockEnabled());
   const [appLockBusy, setAppLockBusy] = useState(false);
@@ -179,6 +182,24 @@ export default function SettingsPage() {
               onCheckedChange={handleTogglePush}
             />
           </div>
+          {/* What was done offline and waits for the server (lib/outbox.ts). */}
+          <button
+            onClick={() => navigate('/dashboard/sync')}
+            className="flex items-center gap-3 w-full px-6 py-3.5 hover:bg-accent transition-colors text-left border-b border-border"
+          >
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><CloudUpload className="h-[18px] w-[18px]" /></span>
+            <div className="flex-1">
+              <p className="font-medium text-sm text-foreground">Synchronisation</p>
+              <p className={cn('text-xs', failedOps ? 'text-destructive' : 'text-muted-foreground')}>
+                {failedOps
+                  ? `${failedOps} opération${failedOps > 1 ? 's' : ''} refusée${failedOps > 1 ? 's' : ''} : à vérifier`
+                  : pendingOps
+                  ? `${pendingOps} opération${pendingOps > 1 ? 's' : ''} en attente d'envoi`
+                  : 'Tout ce qui a été fait hors ligne est envoyé.'}
+              </p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          </button>
           <button
             onClick={() => setShowHelp(!showHelp)}
             className="flex items-center gap-3 w-full px-6 py-3.5 hover:bg-accent transition-colors text-left border-b border-border"

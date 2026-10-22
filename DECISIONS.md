@@ -38,6 +38,15 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
   stock. Un paiement ScanLinkPay déjà fait ne casse plus sur le stock : rien sous zéro, et l'écart est journalisé pour
   l'inventaire, comme pour les ventes hors ligne.
 
+### 4. Menu rangé par fonction (ordinateur et téléphone)
+- Une seule liste (`lib/nav-items.ts`) groupée en sections : **Vendre** (juste après le tableau de bord),
+  **Suivi**, **Stock**, **Entreprise**, **Mon compte**, **Administration**, puis Notifications et Paramètres en bas.
+  La barre latérale (ordinateur) et la page « Plus » (téléphone) utilisent les mêmes sections.
+- **Synchronisation** est dans Paramètres ; elle n'apparaît dans le menu, avec un compteur, que si des opérations
+  faites hors ligne attendent.
+- Électronique : la Caisse et « Mes ventes » (tickets de caisse) sont masquées. Le caissier d'une boutique
+  électronique arrive sur le tableau de bord des ventes, et l'onglet central du patron ouvre Ventes, plus la Caisse.
+
 ### Reste à décider (non corrigé)
 - Une vente électronique en attente ne **réserve** pas le stock, et son QR reste payable tant qu'elle n'est pas annulée
   (pas d'expiration).

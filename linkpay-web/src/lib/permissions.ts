@@ -29,6 +29,11 @@ export const ROLE_LABELS: Record<string, string> = {
   vendeur: 'Vendeur',
   magasinier: 'Magasinier',
   comptable: 'Comptable',
+  merchant: 'Marchand',
+  cashier: 'Caissier',
+  client: 'Client',
+  admin: 'Administrateur',
+  super_admin: 'Super administrateur',
 };
 
 export const isStaffRole = (role: string | undefined | null) => !!role && STAFF_ROLES.includes(role);
