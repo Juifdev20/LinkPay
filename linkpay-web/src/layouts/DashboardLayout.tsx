@@ -131,7 +131,9 @@ export default function DashboardLayout() {
                         <NavLink
                           key={item.to}
                           to={item.to}
-                          end={item.to === '/dashboard'}
+                          // Exact match when another entry lives under it (Administration / Retraits à traiter,
+                          // Ventes / Historique des ventes, Ma carte / Encaisser par carte): only one entry lit at a time.
+                          end={roleItems.some((o) => o.to !== item.to && o.to.startsWith(`${item.to}/`))}
                           className={({ isActive }) =>
                             cn(
                               'relative flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all',
