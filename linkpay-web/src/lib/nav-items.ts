@@ -1,5 +1,5 @@
 import { isSupermarket } from '@/lib/sectors';
-import { ArrowLeftRight, LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, FileBarChart, Truck, CloudUpload, type LucideIcon } from 'lucide-react';
+import { ArrowLeftRight, LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, FileBarChart, Truck, CloudUpload, Landmark, type LucideIcon } from 'lucide-react';
 
 import { FEATURES } from '@/lib/features';
 import { ALL_ROLES, STAFF_ROLES, PERSONAL_ROLES, rolesFor } from '@/lib/permissions';
@@ -25,6 +25,8 @@ export interface NavItem {
   icon: LucideIcon;
   roles: string[];
   section: NavSection;
+  /** A grouped entry (administrators' menu): the pages it opens, shown as tabs at the top of each of them. */
+  children?: NavItem[];
   /** The same screen named for a given role (e.g. the manager's « Mes employés »). */
   labelFor?: Record<string, string>;
 }
@@ -108,6 +110,8 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/admin/merchants', label: 'Commerçants', icon: Users, roles: ['admin', 'super_admin'], section: 'admin' },
   { to: '/dashboard/admin/cards', label: 'Cartes', icon: CreditCard, roles: ['admin', 'super_admin'], section: 'admin' },
   { to: '/dashboard/admin/settlements', label: 'Règlements', icon: Wallet, roles: ['admin', 'super_admin'], section: 'admin' },
+  // What ScanLinkPay may take out of its FlexPaie account without touching the users' money (migration 079).
+  { to: '/dashboard/admin/treasury', label: 'Trésorerie', icon: Landmark, roles: ['super_admin'], section: 'admin' },
   { to: '/dashboard/admin/users', label: 'Utilisateurs', icon: UserCog, roles: ['super_admin'], section: 'admin' },
   { to: '/dashboard/admin/subscriptions', label: 'Abonnements', icon: Sparkles, roles: ['super_admin'], section: 'admin' },
   { to: '/dashboard/admin/commissions', label: 'Commissions', icon: Percent, roles: ['super_admin'], section: 'admin' },
@@ -157,4 +161,90 @@ export function navItemsFor(role: string, sector?: string): NavItem[] {
   return navItems
     .filter((i) => i.roles.includes(role) && !hidden.has(i.to))
     .map((i) => (i.labelFor?.[role] ? { ...i, label: i.labelFor[role] } : i));
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The administrators' menu is grouped: about twenty entries become eight. Each group opens its first page; its pages
+// are tabs at the top of each of them (HubTabs in DashboardLayout). Every page keeps its own address, so old links
+// and notifications still open the right one. Other accounts keep their menu as it is.
+// ---------------------------------------------------------------------------------------------------------------------
+const ADMIN_HUBS: { label: string; icon: LucideIcon; section: NavSection; pages: { to: string; tab: string }[] }[] = [
+  { label: 'Tableau de bord', icon: LayoutDashboard, section: 'home', pages: [{ to: '/dashboard/admin', tab: 'Tableau de bord' }] },
+  {
+    label: 'Argent', icon: Landmark, section: 'admin',
+    pages: [
+      { to: '/dashboard/admin/treasury', tab: 'Trésorerie' },
+      { to: '/dashboard/admin/withdrawals', tab: 'Retraits à traiter' },
+      { to: '/dashboard/admin/settlements', tab: 'Règlements' },
+    ],
+  },
+  {
+    label: 'Comptes', icon: Users, section: 'admin',
+    pages: [
+      { to: '/dashboard/admin/users', tab: 'Utilisateurs' },
+      { to: '/dashboard/admin/merchants', tab: 'Commerçants' },
+      { to: '/dashboard/admin/organizations', tab: 'Entreprises' },
+      { to: '/dashboard/admin/cards', tab: 'Cartes' },
+    ],
+  },
+  {
+    label: 'Tarifs', icon: Percent, section: 'admin',
+    pages: [
+      { to: '/dashboard/admin/commissions', tab: 'Commissions' },
+      { to: '/dashboard/admin/wallet-limits', tab: 'Frais et limites' },
+      { to: '/dashboard/admin/subscriptions', tab: 'Abonnements' },
+      { to: '/dashboard/admin/expense-tracker-settings', tab: 'Mes dépenses (Pro)' },
+    ],
+  },
+  {
+    label: 'Sécurité', icon: ShieldAlert, section: 'admin',
+    pages: [
+      { to: '/dashboard/admin/security-alerts', tab: 'Alertes' },
+      { to: '/dashboard/admin/app-security', tab: "Sécurité de l'application" },
+    ],
+  },
+  {
+    label: 'Mon compte', icon: Wallet, section: 'account',
+    pages: [
+      { to: '/dashboard/client/transactions', tab: 'Mes paiements' },
+      { to: '/dashboard/card', tab: 'Ma carte' },
+      { to: '/dashboard/expenses', tab: 'Mes dépenses' },
+    ],
+  },
+];
+
+/**
+ * The menu as shown: for administrators, their pages grouped (ADMIN_HUBS) — a group keeps only the pages this role may
+ * open, opens the first one, and is a plain entry when only one is left. Everyone else: `items` unchanged.
+ */
+export function menuFor(role: string, items: NavItem[]): NavItem[] {
+  if (role !== 'admin' && role !== 'super_admin') return items;
+  const grouped = new Set(ADMIN_HUBS.flatMap((h) => h.pages.map((p) => p.to)));
+  const hubs: NavItem[] = [];
+  for (const hub of ADMIN_HUBS) {
+    const pages = hub.pages
+      .map((p) => {
+        const item = items.find((i) => i.to === p.to);
+        return item ? { ...item, label: p.tab } : null;
+      })
+      .filter((i): i is NavItem => !!i);
+    if (!pages.length) continue;
+    hubs.push({ to: pages[0].to, label: hub.label, icon: hub.icon, roles: [role], section: hub.section, children: pages.length > 1 ? pages : undefined });
+  }
+  // « Tableau de bord » (/dashboard) only redirects administrators to /dashboard/admin: the group replaces it.
+  const rest = items.filter((i) => !grouped.has(i.to) && i.to !== '/dashboard');
+  return [...hubs, ...rest];
+}
+
+/** The group the page at `pathname` belongs to (the longest matching page wins: /dashboard/admin vs its sub-pages). */
+export function hubOf(pathname: string, menu: NavItem[]): NavItem | undefined {
+  let best: { hub: NavItem; len: number } | undefined;
+  for (const hub of menu) {
+    for (const page of hub.children ?? [hub]) {
+      // The dashboard is lit on itself only (every page lives under /dashboard).
+      const under = page.to !== '/dashboard' && pathname.startsWith(`${page.to}/`);
+      if ((pathname === page.to || under) && page.to.length > (best?.len ?? -1)) best = { hub, len: page.to.length };
+    }
+  }
+  return best?.hub;
 }

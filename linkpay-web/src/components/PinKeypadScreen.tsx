@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Delete, Loader2, ShieldCheck, KeyRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import logoSrc from '@/assets/logo.png';
@@ -172,18 +172,58 @@ const DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
  * system keyboard never opens over our keypad, and nothing moves while digits are typed.
  */
 export function PinKeypadScreen({ title, value, length, onChange, onEnter, error, note, hint, busy, footer, extra, paused }: KeypadProps) {
+  // A refused code: red dots and the message, until the person types again. Before, they stayed red (and sometimes
+  // full) while the next code was typed, as if the screen were stuck. Shown again on every new refusal, also when
+  // the message is the same as last time (the check ending with an error counts as a new refusal).
+  const [showError, setShowError] = useState(!!error);
+  const [shakeKey, setShakeKey] = useState(0);
+  const wasBusy = useRef(busy);
+  useEffect(() => {
+    setShowError(!!error);
+    if (error) setShakeKey((k) => k + 1);
+  }, [error]);
+  useEffect(() => {
+    if (wasBusy.current && !busy && error) { setShowError(true); setShakeKey((k) => k + 1); }
+    wasBusy.current = busy;
+  }, [busy, error]);
+
   // Refs so the keyboard listener always sees the current value without being re-attached on every digit.
-  const state = useRef({ value, busy: busy || paused, onChange, onEnter, length });
-  state.current = { value, busy: busy || paused, onChange, onEnter, length };
+  const state = useRef({ value, busy: busy || paused, onChange, onEnter, length, showError });
+  state.current = { value, busy: busy || paused, onChange, onEnter, length, showError };
+
+  // The dots are red only during the shake, then back to empty grey dots (the reason stays written under them).
+  const [redDots, setRedDots] = useState(!!error);
+  useEffect(() => {
+    if (!showError) { setRedDots(false); return; }
+    setRedDots(true);
+    const t = setTimeout(() => setRedDots(false), 900);
+    return () => clearTimeout(t);
+  }, [showError, shakeKey]);
+
+  // The refused code is wiped after the shake: the dots are free for a new try, without erasing digit by digit.
+  useEffect(() => {
+    if (!showError || busy || !state.current.value) return;
+    const t = setTimeout(() => { if (state.current.showError) state.current.onChange(''); }, 450);
+    return () => clearTimeout(t);
+  }, [showError, busy, shakeKey]);
 
   const press = (digit: string) => {
     const s = state.current;
-    if (s.busy || s.value.length >= s.length) return;
+    if (s.busy) return;
+    if (s.showError) {
+      // First digit after a refusal: a new code starts, whatever was left of the refused one.
+      setShowError(false);
+      s.onChange(digit);
+      return;
+    }
+    if (s.value.length >= s.length) return;
     s.onChange(s.value + digit);
   };
   const back = () => {
     const s = state.current;
-    if (!s.busy && s.value) s.onChange(s.value.slice(0, -1));
+    if (s.busy) return;
+    if (s.showError) { setShowError(false); if (s.value) s.onChange(''); return; }
+    if (s.value) s.onChange(s.value.slice(0, -1));
   };
   const enter = () => {
     const s = state.current;
@@ -215,23 +255,27 @@ export function PinKeypadScreen({ title, value, length, onChange, onEnter, error
           <p className="text-[17px] font-semibold md:text-base">{title}</p>
           {hint && <p className="mt-1.5 text-[13px] leading-snug text-muted-foreground">{hint}</p>}
           <div
+            key={shakeKey}
             role="img"
             aria-label={`${value.length} chiffre${value.length > 1 ? 's' : ''} sur ${length}`}
-            className="relative mx-auto mt-5 flex w-fit items-center justify-center gap-3.5 md:mt-4 md:rounded-full md:border md:border-border md:bg-muted/60 md:px-5 md:py-2.5 md:dark:border-white/10 md:dark:bg-white/[0.05]"
+            className={cn(
+              'relative mx-auto mt-5 flex w-fit items-center justify-center gap-3.5 md:mt-4 md:rounded-full md:border md:border-border md:bg-muted/60 md:px-5 md:py-2.5 md:dark:border-white/10 md:dark:bg-white/[0.05]',
+              showError && shakeKey > 0 && 'animate-shake',
+            )}
           >
             {Array.from({ length }, (_, i) => (
               <span
                 key={i}
                 className={cn(
                   'h-3.5 w-3.5 rounded-full transition-colors duration-150',
-                  error ? 'bg-destructive' : i < value.length ? 'bg-primary shadow-[0_0_0_3px_hsl(var(--primary)/0.18)]' : 'bg-[#e1e5f0] dark:bg-white/20',
+                  redDots ? 'bg-destructive' : i < value.length ? 'bg-primary shadow-[0_0_0_3px_hsl(var(--primary)/0.18)]' : 'bg-[#e1e5f0] dark:bg-white/20',
                 )}
               />
             ))}
             {busy && <Loader2 className="absolute -right-7 h-4 w-4 animate-spin text-muted-foreground" />}
           </div>
           {/* Reserved line: an error never pushes the keypad down. */}
-          <p className="mt-3 min-h-[1.25rem] text-[13px] font-medium leading-5 text-destructive" role="alert">{error}</p>
+          <p className="mt-3 min-h-[1.25rem] text-[13px] font-medium leading-5 text-destructive" role="alert">{showError ? error : ''}</p>
           {note && <p className="text-[13px] text-muted-foreground md:text-xs">{note}</p>}
         </>
       }

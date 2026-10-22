@@ -104,7 +104,7 @@ export default function MySalesPage() {
   };
 
   return (
-    <div className="p-4 md:p-6 pb-28 md:pb-6 space-y-5 max-w-2xl mx-auto">
+    <div className="p-4 md:p-6 pb-28 md:pb-6 space-y-5 max-w-6xl mx-auto">
       <PageHeader title="Mes ventes" />
 
       {/* Navigation mensuelle + toggle devise */}
@@ -146,7 +146,7 @@ export default function MySalesPage() {
       </div>
 
       {/* 4 cartes KPI */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="rounded-2xl border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground">Total du mois</p>
           <p className="mt-1 text-lg font-bold text-foreground [overflow-wrap:anywhere]">

@@ -1,6 +1,6 @@
 import { isSupermarket } from '@/lib/sectors';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Receipt, QrCode, Settings, ShoppingCart, BarChart3, Menu, History, ClipboardList, Wallet, Package } from 'lucide-react';
+import { Home, Receipt, QrCode, Settings, ShoppingCart, BarChart3, Menu, History, ClipboardList, Wallet, Package, ArrowUpFromLine, ShieldAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -103,7 +103,16 @@ export function computeVisibleTabs(
     : role === 'client' || role === 'merchant'
     ? { ...tabs[1], to: '/dashboard/wallet/transactions' }
     : tabs[1];
-  const allTabs = staffTabsFor(role || '', orgSector) ?? [tabs[0], transactionsTab, qrTab, tabs[2]];
+  // ScanLinkPay team: their daily work (withdrawals to send by hand, security alerts), the rest under Plus.
+  const adminTabs: Tab[] | undefined = role === 'admin' || role === 'super_admin'
+    ? [
+        tabs[0],
+        { to: '/dashboard/admin/withdrawals', label: 'Retraits', icon: ArrowUpFromLine, end: true, central: true },
+        { to: '/dashboard/admin/security-alerts', label: 'Alertes', icon: ShieldAlert, end: true },
+        tabs[2],
+      ]
+    : undefined;
+  const allTabs = adminTabs ?? staffTabsFor(role || '', orgSector) ?? [tabs[0], transactionsTab, qrTab, tabs[2]];
 
   const navRole = isEnterprise ? 'enterprise' : role;
   const businessItemCount = navRole

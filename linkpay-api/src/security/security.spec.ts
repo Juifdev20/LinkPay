@@ -74,7 +74,7 @@ describe('OtpStepUpGuard', () => {
     switchToHttp: () => ({ getRequest: () => ({ user, headers }) }),
   }) as any;
   const reflector = (required: boolean) => ({ getAllAndOverride: (k: string) => (k === REQUIRE_OTP_KEY ? required : undefined) }) as unknown as Reflector;
-  const twoFactor = (valid: boolean) => ({ assertValid: jest.fn(async () => { if (!valid) throw new ForbiddenException(); }) }) as any;
+  const twoFactor = (valid: boolean, paused = false) => ({ assertValid: jest.fn(async () => { if (!valid) throw new ForbiddenException(); }), isAdminRequirementPaused: jest.fn(async () => paused) }) as any;
 
   it('leaves unmarked endpoints alone', async () => {
     expect(await new OtpStepUpGuard(reflector(false), twoFactor(false)).canActivate(ctx({ id: 'a' }))).toBe(true);
@@ -96,6 +96,36 @@ describe('OtpStepUpGuard', () => {
     const stale = { id: 'a', mfa: true, mfa_at: 1 };
     expect(await new OtpStepUpGuard(reflector(true), twoFactor(true)).canActivate(ctx(stale, { 'x-otp-code': '123456' }))).toBe(true);
     await expect(new OtpStepUpGuard(reflector(true), twoFactor(false)).canActivate(ctx(stale, { 'x-otp-code': '000000' }))).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('asks nothing while the super admin suspended the second factor (migration 081)', async () => {
+    const tf = twoFactor(false, true);
+    expect(await new OtpStepUpGuard(reflector(true), tf).canActivate(ctx({ id: 'a', mfa: false }))).toBe(true);
+    expect(tf.assertValid).not.toHaveBeenCalled();
+  });
+});
+
+describe('TwoFactorService — the super admin suspension switch (migration 081)', () => {
+  const make = (row: any, error?: any) => {
+    const fake = createFakeSupabase((q: RecordedQuery) => (q.target === 'platform_settings' ? (error ? { error } : { data: row }) : undefined));
+    return { service: new TwoFactorService(fake.service, new LoginAttemptsService(), config), fake };
+  };
+
+  it('is required when not suspended, when the date has passed, and when the setting cannot be read', async () => {
+    expect(await make({ admin_2fa_paused_until: null }).service.isAdminRequirementPaused()).toBe(false);
+    expect(await make({ admin_2fa_paused_until: new Date(Date.now() - 1000).toISOString() }).service.isAdminRequirementPaused()).toBe(false);
+    expect(await make(null, { message: 'column does not exist' }).service.isAdminRequirementPaused()).toBe(false);
+  });
+
+  it('is suspended until the date chosen, read once and reused for a few seconds', async () => {
+    const until = new Date(Date.now() + 3600_000).toISOString();
+    const { service, fake } = make({ admin_2fa_paused_until: until });
+    expect(await service.adminRequirementPausedUntil()).toBe(until);
+    expect(await service.isAdminRequirementPaused()).toBe(true);
+    expect(fake.queries.filter((q) => q.target === 'platform_settings')).toHaveLength(1);
+    service.forgetAdminPause();
+    await service.isAdminRequirementPaused();
+    expect(fake.queries.filter((q) => q.target === 'platform_settings')).toHaveLength(2);
   });
 });
 

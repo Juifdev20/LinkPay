@@ -27,6 +27,8 @@ const PaymentLinkPage = lazyPage(() => import('@/pages/public/PaymentLinkPage'))
 const PaymentResultPage = lazyPage(() => import('@/pages/public/PaymentResultPage'));
 const PayByNumber = lazyPage(() => import('@/pages/public/PayByNumber'));
 const CardLandingPage = lazyPage(() => import('@/pages/public/CardLanding'));
+const PrivacyPolicyPage = lazyPage(() => import('@/pages/public/PrivacyPolicy'));
+const DeleteAccountPage = lazyPage(() => import('@/pages/public/DeleteAccount'));
 
 import DashboardLayout from '@/layouts/DashboardLayout';
 import MerchantDashboard from '@/pages/merchant/Dashboard';
@@ -81,6 +83,7 @@ import OrganizationProfilePage from '@/pages/OrganizationProfile';
 const StaffPage = lazyPage(() => import('@/pages/organization/Staff'));
 const SubscriptionPage = lazyPage(() => import('@/pages/organization/Subscription'));
 const AdminSubscriptionsPage = lazyPage(() => import('@/pages/admin/Subscriptions'));
+const AdminTreasuryPage = lazyPage(() => import('@/pages/admin/Treasury'));
 const StoresPage = lazyPage(() => import('@/pages/organization/Stores'));
 const StockPage = lazyPage(() => import('@/pages/organization/Stock'));
 const InventoryPage = lazyPage(() => import('@/pages/organization/Inventory'));
@@ -222,6 +225,9 @@ export default function App() {
       <Route path="/p/:token" element={<PaymentLinkPage />} />
       <Route path="/pay/:number" element={<PayByNumber />} />
       <Route path="/c/:token" element={<CardLandingPage />} />
+      {/* Public pages given to Google Play: privacy policy, account deletion. */}
+      <Route path="/confidentialite" element={<PrivacyPolicyPage />} />
+      <Route path="/supprimer-mon-compte" element={<DeleteAccountPage />} />
       <Route
         path="/admin/cards/:id/print"
         element={
@@ -536,6 +542,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={rolesFor('/dashboard/organization/subscription')}>
               <SubscriptionPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/treasury"
+          element={
+            <ProtectedRoute roles={['super_admin']}>
+              <AdminTreasuryPage />
             </ProtectedRoute>
           }
         />

@@ -4,12 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, LogOut } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
-import { groupNavItems, navItemsFor, SYNC_NAV_ITEM } from '@/lib/nav-items';
+import { groupNavItems, menuFor, navItemsFor, SYNC_NAV_ITEM } from '@/lib/nav-items';
 import { usePendingCount } from '@/lib/outbox';
 import { computeVisibleTabs } from '@/components/BottomNav';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
 import { SECTORS } from '@/pages/organization/OnboardingWizard';
 import { UserAvatar } from '@/components/UserAvatar';
+import { ROLE_LABELS } from '@/lib/permissions';
 
 /**
  * The "Plus" tab's destination — a plain page (not a modal or drawer) that
@@ -46,7 +47,8 @@ export default function MorePage() {
   ]);
 
   const moreItems = role
-    ? navItemsFor(role, org?.sector).filter((i) => !visiblePaths.has(i.to))
+    ? // A group stays even when its first page is in the bottom bar: its other pages are only reachable through it.
+      menuFor(role, navItemsFor(role, org?.sector)).filter((i) => i.children || !(visiblePaths.has(i.to) || (i.to === '/dashboard/admin' && visiblePaths.has('/dashboard'))))
     : [];
 
   // Same sections as the computer's sidebar (lib/nav-items.ts); Synchronisation only while something waits.
@@ -57,7 +59,7 @@ export default function MorePage() {
   const displayName = org?.name || user?.full_name || user?.email || '?';
   const displaySub = org
     ? user?.station_name || SECTORS.find((s) => s.value === org.sector)?.label || org.sector
-    : role;
+    : (role && ROLE_LABELS[role]) || role;
   const initial = displayName.charAt(0).toUpperCase();
 
   return (
@@ -74,7 +76,7 @@ export default function MorePage() {
         )}
         <div className="min-w-0">
           <p className="font-bold text-foreground truncate">{displayName}</p>
-          <p className="text-sm text-muted-foreground capitalize truncate">{displaySub}</p>
+          <p className="text-sm text-muted-foreground truncate">{displaySub}</p>
         </div>
       </div>
 

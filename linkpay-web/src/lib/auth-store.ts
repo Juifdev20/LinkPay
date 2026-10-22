@@ -50,6 +50,8 @@ interface User {
   two_factor_setup_required?: boolean;
   /** Administrators only: this session has passed the authenticator check (from /users/me). */
   mfa_verified?: boolean;
+  /** Administrators only: the super admin suspended the second factor until then (from /users/me, migration 081). */
+  admin_2fa_paused_until?: string | null;
   /** Whether the user has chosen their 6-digit access code (from /users/me). */
   has_app_code?: boolean;
 }

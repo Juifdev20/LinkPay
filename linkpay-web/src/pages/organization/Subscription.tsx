@@ -58,9 +58,10 @@ export default function SubscriptionPage() {
   const expiringSoon = status === 'active' && (state?.days_left ?? 99) <= 7;
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-3xl mx-auto">
+    <div className="p-4 pb-28 md:p-6 md:pb-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader title="Abonnement" />
 
+      <div className="space-y-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between gap-3">
@@ -168,6 +169,7 @@ export default function SubscriptionPage() {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

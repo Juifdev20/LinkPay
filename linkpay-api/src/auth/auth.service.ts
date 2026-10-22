@@ -294,7 +294,9 @@ export class AuthService {
         });
         throw new ForbiddenException('Accès administrateur refusé depuis ce réseau');
       }
-      if (await this.twoFactor.isEnabled(userId)) {
+      if (await this.twoFactor.isAdminRequirementPaused()) {
+        // Suspended by the super admin (migration 081): password only, no code and no setup asked.
+      } else if (await this.twoFactor.isEnabled(userId)) {
         if (!dto.otp) {
           throw new ForbiddenException({ statusCode: 403, code: 'OTP_REQUIRED', message: "Saisissez le code de votre application d'authentification." });
         }
@@ -345,7 +347,7 @@ export class AuthService {
       // for a second signInWithPassword call like register() needs.
       // An administrator who has not passed the second factor yet gets no Supabase session: it would already satisfy the
       // database's is_admin() rules and let a password alone read admin data straight from the database API.
-      supabase_session: data.session && !(MFA_REQUIRED_ROLES.includes(role) && !mfaAt)
+      supabase_session: data.session && !(MFA_REQUIRED_ROLES.includes(role) && !mfaAt && !(await this.twoFactor.isAdminRequirementPaused()))
         ? { access_token: data.session.access_token, refresh_token: data.session.refresh_token }
         : null,
     };

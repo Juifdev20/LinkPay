@@ -83,7 +83,7 @@ export default function TontineSettingsPage() {
   const myMember = members.find((m: any) => m.user_id === currentUserId);
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-2xl mx-auto">
+    <div className="p-4 pb-28 md:p-6 md:pb-6 space-y-6 max-w-6xl mx-auto">
       <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="w-4 h-4" /> Retour
       </button>
@@ -93,6 +93,7 @@ export default function TontineSettingsPage() {
         <p className="text-sm text-muted-foreground">{group.name}</p>
       </div>
 
+      <div className="space-y-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
       {!isCreator && (
         <Card>
           <CardContent className="pt-6 space-y-4 text-sm">
@@ -242,6 +243,7 @@ export default function TontineSettingsPage() {
           </CardContent>
         </Card>
       )}
+      </div>
     </div>
   );
 }

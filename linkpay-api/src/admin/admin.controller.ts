@@ -1,7 +1,8 @@
 import { Controller, Get, Put, Post, Body, Param, ParseUUIDPipe, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, MaxLength, Min } from 'class-validator';
 import { AdminService } from './admin.service';
+import { TreasuryService } from './treasury.service';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { toPage, toLimit } from '../common/utils/pagination';
@@ -35,6 +36,23 @@ export class MerchantStatusDto {
   notes?: string;
 }
 
+class FlexpaieBalanceDto {
+  @ApiProperty({ example: 'CDF' })
+  @IsIn(['CDF', 'USD'])
+  currency!: string;
+
+  @ApiProperty({ example: 125000000, description: 'Solde lu dans le tableau de bord FlexPaie, en centimes' })
+  @IsInt()
+  @Min(0)
+  amount_cents!: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  note?: string;
+}
+
 @ApiTags('Admin')
 @ApiBearerAuth()
 @Controller('admin')
@@ -43,10 +61,27 @@ export class MerchantStatusDto {
 export class AdminController {
   constructor(
     private adminService: AdminService,
+    private treasury: TreasuryService,
     private audit: AuditService,
     private alerts: SecurityAlertsService,
     private twoFactor: TwoFactorService,
   ) {}
+
+  @Get('treasury')
+  @Roles('super_admin')
+  @ApiOperation({ summary: 'Trésorerie: owed to users, earned, FlexPaie balance typed in, available to take out (Super Admin)' })
+  async getTreasury() {
+    return this.treasury.overview();
+  }
+
+  @Post('treasury/flexpaie-balance')
+  @Roles('super_admin')
+  @UseGuards(OtpStepUpGuard)
+  @RequireOtp()
+  @ApiOperation({ summary: 'Note the balance read in the FlexPaie dashboard (Super Admin, fresh authenticator code)' })
+  async noteFlexpaieBalance(@Body() dto: FlexpaieBalanceDto, @CurrentUser('id') adminId: string) {
+    return this.treasury.noteFlexpaieBalance(adminId, dto.currency, dto.amount_cents, dto.note);
+  }
 
   @Get('dashboard')
   @ApiOperation({ summary: 'Get platform dashboard stats' })

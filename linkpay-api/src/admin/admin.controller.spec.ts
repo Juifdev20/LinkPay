@@ -7,7 +7,7 @@ const UUID = '11111111-1111-4111-8111-111111111111';
 function make() {
   const adminService = { updateMerchantStatus: jest.fn(async () => ({ id: UUID })), resetUserSession: jest.fn(async () => ({ success: true })) };
   const audit = { log: jest.fn(async () => undefined) };
-  const controller = new AdminController(adminService as any, audit as any, {} as any, {} as any);
+  const controller = new AdminController(adminService as any, {} as any, audit as any, {} as any, {} as any);
   return { controller, adminService, audit };
 }
 

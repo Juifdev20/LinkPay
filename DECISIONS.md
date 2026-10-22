@@ -106,6 +106,116 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 - L'ajout direct (`addMerchantUser`) est supprimé. Une ancienne application qui l'appelle crée désormais une invitation.
 - Ne concerne pas les entreprises : elles créent leurs employés elles-mêmes (Utilisateurs internes).
 
+### 10. Trésorerie (super admin) : ce qui peut sortir de FlexPaie sans risque (migration 079)
+- L'argent réel est sur le compte marchand FlexPaie. Les soldes ScanLinkPay sont une dette envers leurs titulaires.
+  Un abonnement, une commission ou un frais ne déplace pas d'argent chez FlexPaie : il fait passer une part de cet
+  argent des utilisateurs à ScanLinkPay.
+- Page **Trésorerie** (super admin) :
+  - **dû aux utilisateurs** = soldes positifs + épargne + retraits débités pas encore envoyés + paiements reçus pas
+    encore crédités aux marchands ; les portefeuilles de test sont exclus ;
+  - **retirable sans risque** = solde FlexPaie − dû aux utilisateurs. Le solde FlexPaie est relevé dans le tableau de
+    bord FlexPaie et saisi à la main, avec code d'authentification et journal. Aucune API FlexPaie n'est utilisée.
+  - Rien n'est affiché comme retirable tant que le solde n'a pas été saisi. Un montant négatif est montré en rouge
+    (« ne retirez rien »).
+- Recettes depuis le début, pour information : abonnements, commissions, frais de retrait et de transfert, mode Pro.
+- L'ancien argent fictif d'avant FlexPaie, s'il en reste, est compté comme dû : le chiffre est prudent.
+
+### 11. Menu des administrateurs regroupé : 8 entrées au lieu d'une vingtaine
+- **Tableau de bord** : l'ancien « Administration » ; le doublon qui redirigeait est supprimé.
+- **Argent** : Trésorerie, Retraits à traiter, Règlements.
+- **Comptes** : Utilisateurs, Commerçants, Entreprises, Cartes.
+- **Tarifs** : Commissions, Frais et limites, Abonnements, Mes dépenses (Pro).
+- **Sécurité** : Alertes, Sécurité de l'application.
+- **Mon compte** : Mes paiements, Ma carte, Mes dépenses.
+- Puis Notifications et Paramètres.
+
+Fonctionnement :
+- Les pages d'un groupe sont des onglets en haut de chacune (`HubTabs`).
+- Chaque page garde son adresse : anciens liens et notifications intacts. La recherche Ctrl+K trouve chaque page.
+- Le compteur d'une page (retraits à envoyer) s'additionne sur son groupe.
+- Un administrateur simple ne voit que les pages permises ; un groupe réduit à une page n'a pas d'onglets.
+- Sur téléphone, la barre du bas des administrateurs devient : Accueil, Retraits, Alertes, Plus.
+- Les autres comptes (clients, marchands, entreprises, employés) ne changent pas.
+
+### 12. Contacts du support réglés par le super admin (migration 080)
+- Plus aucun contact écrit dans le code : l'ancien « support@linkpay.cd / +243 800 000 000 » est supprimé.
+- Le super admin les saisit dans **Paramètres → Contacts du support** : téléphone, WhatsApp, email.
+  Les numéros et l'email sont vérifiés ; chaque changement est noté dans l'audit ; le code d'authentification est demandé.
+- Ils s'affichent dans **Aide & support** (appel, WhatsApp, email en un clic) et sur l'écran **mot de passe oublié**.
+  Lus avant la connexion (`GET platform/settings`).
+- Un champ vide n'est pas affiché. Si rien n'est saisi : « Les contacts du support seront bientôt disponibles ».
+- Avant la migration 080, rien ne casse : aucun contact n'est affiché.
+
+### 13. Double authentification des administrateurs : suspendre pour un temps, réactiver (migration 081)
+- Demandé pour le développement : le code à chaque connexion et avant chaque action sensible ralentit l'équipe.
+- Où : **Sécurité → Sécurité de l'application**, super admin seulement.
+  - Suspendre pendant 1 heure, 24 heures, 7 jours ou 30 jours. Jamais « pour toujours » : une suspension oubliée
+    avant l'ouverture au public resterait.
+  - Elle revient toute seule à la fin, ou dès que le super admin clique « Réactiver maintenant ».
+- Pour suspendre, le code est demandé une dernière fois : quelqu'un qui n'a que le mot de passe ne peut pas la couper.
+- Pendant la suspension, le mot de passe suffit pour se connecter et pour les actions sensibles. Un administrateur
+  sans application d'authentification n'est plus envoyé vers sa configuration.
+- Restent actifs : le mot de passe, la liste des réseaux autorisés (`ADMIN_ALLOWED_IPS`) et l'audit.
+- Tous les super admins reçoivent une alerte à chaque suspension et réactivation.
+- Un bandeau sur toutes les pages des administrateurs rappelle jusqu'à quand elle est suspendue.
+- À la réactivation, les sessions ouvertes sans code doivent se reconnecter avec le code.
+- Chaque serveur relit le réglage toutes les 15 secondes.
+- Si le réglage est illisible (migration absente), le code reste demandé : jamais d'ouverture par erreur.
+
+### 14. Ordinateur : les dernières pages encore étroites au centre
+- Passées à la largeur commune (`max-w-6xl`), avec 2 colonnes sur grand écran :
+  - Sécurité de l'application, Profil, Synchronisation ;
+  - Abonnements, Mes dépenses (Pro) côté admin ;
+  - Impression de carte (recto et verso côte à côte) ;
+  - Tontine (détail et réglages), Épargne par arrondi ;
+  - Transactions de l'entreprise (filtres sur une ligne), Mes ventes (4 chiffres sur une ligne) ;
+  - Portefeuille de l'employé, Demandes d'achat (2 par ligne), Abonnement de l'entreprise, Inventaires.
+- Le Profil affiche le rôle en français (« Super administrateur »), plus « super_admin ».
+- Restent volontairement étroits, comme dans les applications de paiement :
+  - les écrans d'argent (envoyer, retirer, payer, recharger, code PIN, demander un paiement), qui s'ouvrent dans la
+    grande fenêtre élargie ;
+  - l'assistant de création d'entreprise ;
+  - les écrans de connexion.
+- Encaisser par carte passe de 448 à 672 px.
+- Rien ne change sur téléphone.
+
+### 15. Code PIN refusé : les points ne restent plus figés en rouge
+- Avant : après un mauvais code, les points restaient rouges pendant qu'on retapait, jusqu'à la vérification
+  suivante. Certains écrans gardaient même le code refusé dans les cases.
+- Maintenant, sur tous les écrans de code (verrouillage, PIN de paiement, d'envoi, de retrait, code d'accès,
+  confirmation d'action sensible…), après un refus :
+  - les points tremblent en rouge ;
+  - le code refusé s'efface tout seul ;
+  - les points redeviennent gris, prêts pour un nouvel essai ;
+  - le motif reste écrit dessous jusqu'au premier chiffre tapé.
+- Le premier chiffre tapé commence toujours un nouveau code, même si l'ancien n'était pas encore effacé.
+- Sur les écrans où le code est saisi dans la page, un refus efface les cases et rouvre directement le clavier de code,
+  avec le motif. Les cases ne sont rouges que tant que rien n'a été retapé.
+- Fait une seule fois dans `PinKeypadScreen` et `PinInput` : tous les écrans en profitent.
+
+### 16. Supprimer son compte : sur le site, avec la raison du départ (migration 082, exigence Google Play)
+- Dans Paramètres, le bouton « Supprimer mon compte » ouvre la page `/supprimer-mon-compte` du site (le navigateur du téléphone dans
+  l'application Android). Pas besoin d'un autre site : la version navigateur sur Render sert de site.
+- **Qui peut** : un client, un marchand (sa boutique ferme) et le patron d'une entreprise (l'entreprise ferme).
+  **Ne peuvent pas** : les employés (vendeur/caissier, gérant, magasinier, comptable…) et les administrateurs. Leur compte est retiré
+  par le patron.
+- **Avant** : solde à zéro (CDF et USD), épargne vide, aucun retrait en cours, aucune tontine en cours, et l'équipe retirée.
+  La suppression ne touche jamais à l'argent.
+- **Étapes** : la raison du départ (6 choix et un commentaire libre), le mot de passe et une case « définitif ».
+  - Les raisons vont dans `account_deletions`, sans nom ni téléphone.
+- **Effet** :
+  - la connexion est bloquée ;
+  - nom, téléphone, email, photo et codes sont effacés ;
+  - cartes bloquées, portefeuille fermé, appareils oubliés ;
+  - les opérations financières restent, sans le nom, comme la loi l'exige ;
+  - le numéro et l'email peuvent rouvrir un compte plus tard.
+- La page publique `/confidentialite` a été rédigée d'après ce que l'application collecte vraiment.
+- `docs/PLAY_STORE.md` contient :
+  - les réponses au formulaire « Sécurité des données » ;
+  - la construction de l'AAB signé (clé hors du dépôt, `android/keystore.properties` ou variables `SLP_UPLOAD_*`) ;
+  - la liste des captures ;
+  - le point de vigilance sur les abonnements payés dans l'application.
+
 ### Reste à décider (non corrigé)
 - Le stock n'est pas réservé pendant l'attente : voulu, le stock bouge au paiement (si l'article est parti
   entre-temps, les espèces sont refusées).

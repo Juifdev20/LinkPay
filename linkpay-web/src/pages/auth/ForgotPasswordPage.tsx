@@ -1,3 +1,4 @@
+import { SupportContactList } from '@/components/SupportContactList';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
@@ -120,6 +121,7 @@ export default function ForgotPasswordPage() {
             {busy ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null} Changer le mot de passe
           </Button>
           <p className="mt-4 text-center text-xs leading-relaxed text-muted-foreground">Code de secours perdu ? Utilisez l'email si vous en avez donné un, ou contactez le support ScanLinkPay.</p>
+          <SupportContactList quiet className="mt-3" />
         </form>
       ) : emailSent ? (
         <ResultView tone="success" icon={MailCheck} title="Email envoyé" message={<>{emailSent} Ouvrez l'email et suivez le lien pour choisir un nouveau mot de passe.</>} />

@@ -6,6 +6,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { StockPasswordResetDialog } from '@/components/stock/StockPasswordResetDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { ROLE_LABELS } from '@/lib/permissions';
 import { PageHeader } from '@/components/PageHeader';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -41,9 +42,11 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl mx-auto">
+    <div className="p-4 pb-28 md:p-6 md:pb-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader title="Profil" />
 
+      <div className="space-y-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
+      <div className="space-y-6">
       {/* Identity card */}
       <Card>
         <CardContent className="pt-6">
@@ -52,8 +55,8 @@ export default function ProfilePage() {
             <div className="flex-1 min-w-0">
               <p className="font-bold text-lg text-foreground truncate">{user?.full_name || 'Utilisateur'}</p>
               <p className="text-sm text-muted-foreground truncate">{user?.email}</p>
-              <span className="inline-block mt-1 text-xs font-semibold capitalize text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                {user?.role}
+              <span className="inline-block mt-1 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                {(user?.role && ROLE_LABELS[user.role]) || user?.role}
               </span>
             </div>
           </div>
@@ -65,6 +68,17 @@ export default function ProfilePage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Logout */}
+      <Button
+        variant="outline"
+        className="w-full border-destructive/20 text-destructive hover:bg-destructive/5"
+        onClick={() => setShowLogoutConfirm(true)}
+      >
+        <LogOut className="w-4 h-4 mr-2" />
+        Déconnexion
+      </Button>
+      </div>
 
       {/* Security */}
       <Card>
@@ -87,16 +101,7 @@ export default function ProfilePage() {
           ))}
         </CardContent>
       </Card>
-
-      {/* Logout */}
-      <Button
-        variant="outline"
-        className="w-full border-destructive/20 text-destructive hover:bg-destructive/5"
-        onClick={() => setShowLogoutConfirm(true)}
-      >
-        <LogOut className="w-4 h-4 mr-2" />
-        Déconnexion
-      </Button>
+      </div>
 
       {showStockPassword && org?.id && (
         <StockPasswordResetDialog orgId={org.id} open onClose={() => setShowStockPassword(false)} />

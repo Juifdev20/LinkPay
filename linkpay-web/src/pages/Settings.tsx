@@ -11,10 +11,13 @@ import { Switch } from '@/components/ui/switch';
 import { Logo } from '@/components/Logo';
 import { PageHeader } from '@/components/PageHeader';
 import { CurrencySelector } from '@/components/CurrencySelector';
-import { Building2, HelpCircle, FileText, ChevronRight, Store, Loader2, Bell, Moon, Fingerprint, CloudUpload } from 'lucide-react';
+import { Building2, HelpCircle, FileText, ChevronRight, Store, Loader2, Bell, Moon, Fingerprint, CloudUpload, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getCurrentPushPermission, hasActiveSubscription, subscribeToPush, unsubscribeFromPush, type PushPermissionStatus } from '@/lib/app-push';
 import { useTheme } from '@/hooks/useTheme';
+import { SupportContactList } from '@/components/SupportContactList';
+import { openOnWebsite } from '@/lib/open-site';
+import { SupportContactsCard } from '@/components/admin/SupportContactsCard';
 import { AccessCodeSettings } from '@/components/AccessCodeSettings';
 import { RecoveryCodeSettings } from '@/components/RecoveryCodeSettings';
 import { useFailedCount, usePendingCount } from '@/lib/outbox';
@@ -29,6 +32,7 @@ export default function SettingsPage() {
   const [showOrgForm, setShowOrgForm] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
+  const canDeleteAccount = !!user?.acting_as_org_id || ['client', 'merchant', 'enterprise'].includes(user?.role ?? '');
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushPermission, setPushPermission] = useState<PushPermissionStatus>('unsupported');
   const [pushBusy, setPushBusy] = useState(false);
@@ -209,9 +213,10 @@ export default function SettingsPage() {
             <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition-transform', showHelp && 'rotate-90')} />
           </button>
           {showHelp && (
-            <p className="px-6 py-3.5 text-sm text-muted-foreground border-b border-border bg-secondary/50">
-              Besoin d'aide ? Contactez-nous à support@linkpay.cd ou au +243 800 000 000.
-            </p>
+            <div className="px-6 py-3.5 border-b border-border bg-secondary/50 space-y-2.5">
+              <p className="text-sm text-muted-foreground">Besoin d'aide ? Contactez le support ScanLinkPay :</p>
+              <SupportContactList />
+            </div>
           )}
           <button
             onClick={() => setShowTerms(!showTerms)}
@@ -223,14 +228,31 @@ export default function SettingsPage() {
           </button>
           {showTerms && (
             <p className="px-6 py-3.5 text-sm text-muted-foreground bg-secondary/50">
-              En utilisant ScanLinkPay, vous acceptez nos conditions d'utilisation et notre politique de confidentialité.
+              En utilisant ScanLinkPay, vous acceptez nos conditions d'utilisation et notre{' '}
+              <button type="button" className="font-semibold text-primary underline underline-offset-2" onClick={() => navigate('/confidentialite')}>politique de confidentialité</button>.
             </p>
+          )}
+          {/* Only who opened the account for themselves: client, merchant, owner of an enterprise (never an employee). */}
+          {canDeleteAccount && (
+            <button
+              onClick={() => { if (!openOnWebsite('/supprimer-mon-compte')) navigate('/supprimer-mon-compte'); }}
+              className="flex items-center gap-3 w-full px-6 py-3.5 hover:bg-destructive/5 transition-colors text-left border-t border-border"
+            >
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive"><Trash2 className="h-[18px] w-[18px]" /></span>
+              <div className="flex-1">
+                <p className="font-medium text-sm text-destructive">Supprimer mon compte</p>
+                <p className="text-xs text-muted-foreground">Sur le site ScanLinkPay : dites-nous pourquoi, puis confirmez.</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </button>
           )}
         </CardContent>
       </Card>
         </div>
 
         <div className="space-y-6 min-w-0">
+      {user?.role === 'super_admin' && <SupportContactsCard />}
+
       {/* Become a merchant */}
       {user?.role === 'client' && (
         <Card>

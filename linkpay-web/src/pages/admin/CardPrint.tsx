@@ -42,15 +42,17 @@ export default function CardPrintPage() {
     <div className="min-h-screen bg-muted/30">
       {data && <style>{`@media print { @page { size: ${w}mm ${h}mm; margin: 0 } html, body { margin: 0 !important; padding: 0 !important; background: #fff !important } }`}</style>}
 
-      <div className="slp-print-hide p-4 max-w-xl mx-auto space-y-4">
+      <div className="slp-print-hide p-4 md:p-6 max-w-xl lg:max-w-6xl mx-auto space-y-4">
         <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard/admin/cards')}><ArrowLeft className="w-4 h-4 mr-1" /> Retour aux cartes</Button>
         {error && <p className="text-destructive text-sm" role="alert">{error}</p>}
         {!data && !error && <div className="py-16"><Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" /></div>}
         {data && (
           <>
-            <ScaledCard front={<CardFront data={data} />} />
-            <ScaledCard front={<CardBack data={data} />} />
-            <div className="rounded-2xl border border-border bg-card p-4 space-y-3 text-sm">
+            <div className="space-y-4 lg:grid lg:grid-cols-2 lg:gap-6 lg:space-y-0">
+              <ScaledCard front={<CardFront data={data} />} />
+              <ScaledCard front={<CardBack data={data} />} />
+            </div>
+            <div className="rounded-2xl border border-border bg-card p-4 space-y-3 text-sm lg:max-w-2xl">
               <label className="flex items-center gap-2">
                 <Checkbox checked={bleed} onCheckedChange={(v) => setBleed(v === true)} />
                 Avec fond perdu de {BLEED_MM} mm (pour une imprimerie)

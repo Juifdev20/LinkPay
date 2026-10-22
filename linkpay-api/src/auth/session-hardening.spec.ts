@@ -15,6 +15,7 @@ function makeAuth(opts: {
   role?: string;
   profile?: any;
   twoFactorEnabled?: boolean;
+  twoFactorPaused?: boolean;
   reservation?: { justLocked: boolean };
   tokensValidAfter?: string | null;
   recordedUpdates?: any[];
@@ -39,7 +40,7 @@ function makeAuth(opts: {
     recordSuccess: jest.fn(async () => undefined),
   };
   const alerts = { alert: jest.fn(async () => undefined) };
-  const twoFactor = { isEnabled: jest.fn(async () => !!opts.twoFactorEnabled), verify: jest.fn(async () => true) };
+  const twoFactor = { isEnabled: jest.fn(async () => !!opts.twoFactorEnabled), verify: jest.fn(async () => true), isAdminRequirementPaused: jest.fn(async () => !!opts.twoFactorPaused) };
   const phoneAccounts = {
     userIdsByPhone: jest.fn(async () => []),
     userIdByPhone: jest.fn(async () => null),
@@ -105,6 +106,14 @@ describe('login: the Supabase session of an administrator who has not passed the
 
     const client = makeAuth({ role: 'client' });
     expect(((await client.service.login({ email: 'a@x.com', password: 'p' } as any)) as any).supabase_session).not.toBeNull();
+  });
+
+  it('while the super admin suspended the second factor (migration 081): password only, no code, no setup asked', async () => {
+    const paused = makeAuth({ role: 'admin', twoFactorEnabled: true, twoFactorPaused: true });
+    const res: any = await paused.service.login({ email: 'a@x.com', password: 'p' } as any);
+    expect(res.supabase_session).not.toBeNull();
+    expect(res.user.two_factor_setup_required).toBe(false);
+    expect(paused.twoFactor.verify).not.toHaveBeenCalled();
   });
 });
 

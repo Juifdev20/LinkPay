@@ -75,7 +75,7 @@ export default function InventoryPage() {
   const counting = counts.find((c) => c.status === 'counting');
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-5 max-w-3xl lg:max-w-5xl mx-auto">
+    <div className="p-6 pb-28 md:pb-6 space-y-5 max-w-6xl mx-auto">
       <PageHeader title="Inventaires" />
 
       {!user?.merchant_id && merchants?.length > 1 && (

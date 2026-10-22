@@ -21,6 +21,7 @@ const SYNONYMS: Record<string, string> = {
   '/dashboard/settings': 'code pin mot de passe theme sombre synchronisation',
   '/dashboard/admin/withdrawals': 'retrait virement banque',
   '/dashboard/expenses': 'depense budget',
+  '/dashboard/admin/treasury': 'flexpaie argent recette caisse retrait banque solde',
 };
 
 /**

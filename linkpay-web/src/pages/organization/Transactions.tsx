@@ -109,22 +109,24 @@ export default function OrganizationTransactionsPage() {
   const total = data?.pages[0]?.total ?? 0;
 
   return (
-    <div className="p-6 space-y-4 max-w-2xl mx-auto">
+    <div className="p-4 pb-28 md:p-6 md:pb-6 space-y-4 max-w-6xl mx-auto">
       <PageHeader title={todayOnly ? 'Encaissements du jour' : 'Transactions'} />
 
+      {/* Computer: the filters on one line. */}
+      <div className="space-y-4 md:flex md:flex-wrap md:items-center md:gap-3 md:space-y-0">
       {isOwner && stations && stations.length > 1 && (
         <select
           aria-label="Station"
           value={stationId ?? ''}
           onChange={(e) => scope.setStation(e.target.value || null)}
-          className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-foreground"
+          className="w-full md:w-64 rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-foreground"
         >
           <option value="">Toutes les stations</option>
           {stations.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
         </select>
       )}
 
-      {!todayOnly && <div className="flex gap-2 overflow-x-auto pb-1">
+      {!todayOnly && <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0">
         {PRESETS.map((p) => (
           <button
             key={p.value}
@@ -137,8 +139,9 @@ export default function OrganizationTransactionsPage() {
       </div>}
 
       {preset === 'custom' && (
-        <Input type="date" value={customDate} onChange={(e) => setCustomDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+        <Input type="date" className="md:w-48" value={customDate} onChange={(e) => setCustomDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
       )}
+      </div>
 
       <Card>
         <CardContent className="pt-5">
