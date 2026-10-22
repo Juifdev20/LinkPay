@@ -69,9 +69,12 @@ export default function MyCardPage() {
     );
 
   return (
-    <div className="mx-auto max-w-lg space-y-4 px-4 py-5 pb-28 md:p-6">
+    <div className="mx-auto max-w-lg space-y-4 px-4 py-5 pb-28 md:p-6 lg:max-w-6xl">
       <PageHeader title="Ma carte" />
 
+      {/* Computer: the card on the left, what it draws on and its settings on the right. */}
+      <div className="space-y-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-8 lg:space-y-0">
+      <div className="space-y-4 lg:sticky lg:top-24">
       <div>
         <ScaledCard flipped={flipped} front={<CardFront data={face} />} back={<CardBack data={face} />} />
         <div className="mt-3 flex items-center justify-between gap-2">
@@ -93,7 +96,8 @@ export default function MyCardPage() {
           </div>
         </div>
       </div>
-
+      </div>
+      <div className="space-y-4">
       {/* The card holds no money: this is the wallet it draws on. */}
       <section className="rounded-3xl border border-border bg-card p-4 shadow-soft">
         <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground"><Wallet className="h-4 w-4 text-primary" /> Solde utilisé par la carte</p>
@@ -204,6 +208,8 @@ export default function MyCardPage() {
           </Button>
         </DialogContent>
       </Dialog>
+      </div>
+      </div>
     </div>
   );
 }

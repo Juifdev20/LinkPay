@@ -80,7 +80,7 @@ export default function WithdrawalsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-3xl p-4 md:p-6">
+    <div className="mx-auto max-w-6xl p-4 md:p-6">
       <PageHeader title="Retraits à traiter" />
       <p className="mb-4 text-sm text-muted-foreground">
         Ne restent ici que les retraits à envoyer à la main : vers une banque (les retraits Mobile Money partent automatiquement), ou tous tant que les retraits automatiques sont désactivés. L'argent a déjà été retiré du portefeuille du client. Envoyez-le au compte indiqué, puis confirmez ici. En cas de refus, le montant et les frais lui sont rendus.

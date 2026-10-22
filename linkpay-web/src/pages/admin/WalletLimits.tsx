@@ -97,7 +97,7 @@ export default function AdminWalletLimitsPage() {
     form.min.trim() !== '' && centsOf(form.min) >= 1;
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-4xl mx-auto">
+    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader title="Frais et limites du portefeuille" />
       <IndicativeRateCard />
 

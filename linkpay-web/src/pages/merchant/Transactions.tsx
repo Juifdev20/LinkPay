@@ -73,7 +73,7 @@ export default function MerchantTransactionsPage() {
   const refundError = (refundMutation.error as any)?.response?.data?.message;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 px-4 py-5 pb-28 md:p-6 md:pb-6">
+    <div className="mx-auto max-w-6xl space-y-4 px-4 py-5 pb-28 md:p-6 md:pb-6">
       <PageHeader title={isMerchant ? 'Paiements reçus' : 'Transactions'} />
 
       <div className="relative">

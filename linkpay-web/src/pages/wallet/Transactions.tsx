@@ -44,7 +44,7 @@ export default function WalletTransactionsPage() {
   }, [data, tab, kind, search]);
 
   return (
-    <div className="px-4 pt-2 pb-8 md:p-6 space-y-4 max-w-2xl mx-auto">
+    <div className="px-4 pt-2 pb-8 md:p-6 space-y-4 max-w-6xl mx-auto">
       <PageHeader title="Transactions" />
 
       <div className="flex items-center gap-2">

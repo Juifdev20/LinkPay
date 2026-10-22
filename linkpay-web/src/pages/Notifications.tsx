@@ -78,7 +78,7 @@ export default function NotificationsPage() {
   const notifications = tab === 'unread' ? all.filter((n: any) => !n.read) : all;
 
   return (
-    <div className="px-4 pt-2 pb-8 md:p-6 space-y-4 w-full max-w-2xl mx-auto">
+    <div className="px-4 pt-2 pb-8 md:p-6 space-y-4 w-full max-w-4xl mx-auto">
       <PageHeader title="Notifications" />
 
       <div className="flex items-center gap-2">

@@ -39,7 +39,7 @@ export default function AdminRiskLogsPage() {
   });
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto">
+    <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader title="Alertes de sécurité" />
       <p className="text-sm text-muted-foreground">
         Opérations bloquées ou signalées automatiquement (retraits et transferts suspects). Vérifiez-les, contactez l'utilisateur si besoin, puis marquez-les comme traitées.

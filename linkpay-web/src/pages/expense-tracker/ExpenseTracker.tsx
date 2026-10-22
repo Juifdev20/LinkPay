@@ -162,14 +162,19 @@ export default function ExpenseTrackerPage() {
   }
 
   return (
-    <div className="px-4 pt-2 pb-28 md:p-6 space-y-5 max-w-2xl mx-auto">
+    <div className="px-4 pt-2 pb-28 md:p-6 space-y-5 max-w-2xl lg:max-w-6xl mx-auto">
       <PageHeader title="Mes dépenses" />
 
+      {/* Computer: the automatic breakdown on the left (stays in view), the notebook on the right. */}
+      <div className="space-y-5 lg:grid lg:grid-cols-5 lg:items-start lg:gap-6 lg:space-y-0">
+      <div className="lg:sticky lg:top-24 lg:col-span-2">
       {/* Automatic: what left the wallet, by category (as in the design). */}
       <SpendingOverview />
+      </div>
 
+      <div className="space-y-5 lg:col-span-3">
       {/* The personal notebook (expenses written by hand, Pro plan), below. */}
-      <div className="pt-2">
+      <div className="pt-2 lg:pt-0">
         <p className="text-[15px] font-bold text-foreground">Mon carnet de dépenses</p>
         <p className="text-xs text-muted-foreground">Notez vos dépenses du quotidien, même celles payées en espèces.</p>
       </div>
@@ -352,6 +357,8 @@ export default function ExpenseTrackerPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
+      </div>
     </div>
   );
 }

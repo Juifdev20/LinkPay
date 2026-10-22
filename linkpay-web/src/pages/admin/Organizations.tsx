@@ -21,7 +21,7 @@ export default function AdminOrganizationsPage() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admin-organizations'] });
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto">
+    <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader title="Entreprises" />
 
       <Card>

@@ -82,7 +82,7 @@ export default function StoresPage() {
   });
 
   return (
-    <div className="p-6 space-y-6 max-w-3xl mx-auto">
+    <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader title="Stations" />
 
       <Card>
@@ -151,13 +151,14 @@ export default function StoresPage() {
               <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
             </div>
           ) : merchants?.length ? (
-            <div>
+            // Computer: one tile per station, two per row.
+            <div className="lg:grid lg:grid-cols-2 lg:gap-4">
               {merchants.map((m: any) => {
                 const summary = summaryOf(m.id);
                 const today = summary?.today_pos_sales || {};
                 const editing = renaming?.id === m.id ? renaming : null;
                 return (
-                  <div key={m.id} className="py-3 border-b border-border last:border-0">
+                  <div key={m.id} className="py-3 border-b border-border last:border-0 lg:rounded-2xl lg:border lg:p-4 lg:last:border">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
                         <Store className="w-5 h-5 text-primary" />

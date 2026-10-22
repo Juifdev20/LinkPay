@@ -61,7 +61,7 @@ export default function AdminCommissionsPage() {
   });
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-4xl mx-auto">
+    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader
         title="Règles de commission"
         action={{ label: 'Nouvelle règle', icon: Plus, onClick: () => setShowForm(true) }}

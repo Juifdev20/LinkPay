@@ -45,7 +45,7 @@ export default function PaymentRequestsPage() {
     filter === 'all' ? true : filter === 'open' ? isOpen(r.status) : filter === 'PAID' ? r.status === 'PAID' : !isOpen(r.status) && r.status !== 'PAID');
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 px-4 py-5 pb-28 md:p-6 md:pb-6">
+    <div className="mx-auto max-w-6xl space-y-4 px-4 py-5 pb-28 md:p-6 md:pb-6">
       <PageHeader title="Demandes de paiement" action={{ label: 'Nouvelle demande', icon: Plus, to: '/dashboard/payment-requests/new' }} />
 
       <FilterChips<Filter>
