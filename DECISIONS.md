@@ -137,6 +137,15 @@ Fonctionnement :
 - Sur téléphone, la barre du bas des administrateurs devient : Accueil, Retraits, Alertes, Plus.
 - Les autres comptes (clients, marchands, entreprises, employés) ne changent pas.
 
+### 12. Contacts du support réglés par le super admin (migration 080)
+- Plus aucun contact écrit dans le code : l'ancien « support@linkpay.cd / +243 800 000 000 » est supprimé.
+- Le super admin les saisit dans **Paramètres → Contacts du support** : téléphone, WhatsApp, email.
+  Les numéros et l'email sont vérifiés ; chaque changement est noté dans l'audit ; le code d'authentification est demandé.
+- Ils s'affichent dans **Aide & support** (appel, WhatsApp, email en un clic) et sur l'écran **mot de passe oublié**.
+  Lus avant la connexion (`GET platform/settings`).
+- Un champ vide n'est pas affiché. Si rien n'est saisi : « Les contacts du support seront bientôt disponibles ».
+- Avant la migration 080, rien ne casse : aucun contact n'est affiché.
+
 ### Reste à décider (non corrigé)
 - Le stock n'est pas réservé pendant l'attente : voulu, le stock bouge au paiement (si l'article est parti
   entre-temps, les espèces sont refusées).

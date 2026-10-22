@@ -15,6 +15,8 @@ import { Building2, HelpCircle, FileText, ChevronRight, Store, Loader2, Bell, Mo
 import { cn } from '@/lib/utils';
 import { getCurrentPushPermission, hasActiveSubscription, subscribeToPush, unsubscribeFromPush, type PushPermissionStatus } from '@/lib/app-push';
 import { useTheme } from '@/hooks/useTheme';
+import { SupportContactList } from '@/components/SupportContactList';
+import { SupportContactsCard } from '@/components/admin/SupportContactsCard';
 import { AccessCodeSettings } from '@/components/AccessCodeSettings';
 import { RecoveryCodeSettings } from '@/components/RecoveryCodeSettings';
 import { useFailedCount, usePendingCount } from '@/lib/outbox';
@@ -209,9 +211,10 @@ export default function SettingsPage() {
             <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition-transform', showHelp && 'rotate-90')} />
           </button>
           {showHelp && (
-            <p className="px-6 py-3.5 text-sm text-muted-foreground border-b border-border bg-secondary/50">
-              Besoin d'aide ? Contactez-nous à support@linkpay.cd ou au +243 800 000 000.
-            </p>
+            <div className="px-6 py-3.5 border-b border-border bg-secondary/50 space-y-2.5">
+              <p className="text-sm text-muted-foreground">Besoin d'aide ? Contactez le support ScanLinkPay :</p>
+              <SupportContactList />
+            </div>
           )}
           <button
             onClick={() => setShowTerms(!showTerms)}
@@ -231,6 +234,8 @@ export default function SettingsPage() {
         </div>
 
         <div className="space-y-6 min-w-0">
+      {user?.role === 'super_admin' && <SupportContactsCard />}
+
       {/* Become a merchant */}
       {user?.role === 'client' && (
         <Card>

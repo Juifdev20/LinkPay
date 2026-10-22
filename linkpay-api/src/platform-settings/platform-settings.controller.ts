@@ -1,6 +1,12 @@
 import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty } from '@nestjs/swagger';
-import { IsBoolean, IsNumber, IsOptional, Max, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsEmail, IsNumber, IsOptional, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+
+/** "+243 812 345 678", "0812345678"… — digits and spaces, an optional + in front. */
+const SUPPORT_PHONE = /^\+?[\d ]{6,19}$/;
+const SUPPORT_PHONE_MESSAGE = 'Numéro invalide : chiffres seulement, + au début permis (ex. +243 812 345 678).';
+/** Empty or null = remove the line; anything else is checked. */
+const given = (_o: unknown, v: unknown) => v !== null && v !== '';
 import { PlatformSettingsService } from './platform-settings.service';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -21,6 +27,25 @@ class UpdatePlatformSettingsDto {
   @Min(1)
   @Max(999999)
   cdf_per_usd?: number | null;
+
+  @ApiProperty({ required: false, nullable: true, description: 'Téléphone du support affiché dans l\'application (vide = pas affiché)' })
+  @IsOptional()
+  @ValidateIf(given)
+  @Matches(SUPPORT_PHONE, { message: SUPPORT_PHONE_MESSAGE })
+  support_phone?: string | null;
+
+  @ApiProperty({ required: false, nullable: true, description: 'Numéro WhatsApp du support (vide = pas affiché)' })
+  @IsOptional()
+  @ValidateIf(given)
+  @Matches(SUPPORT_PHONE, { message: SUPPORT_PHONE_MESSAGE })
+  support_whatsapp?: string | null;
+
+  @ApiProperty({ required: false, nullable: true, description: 'Email du support (vide = pas affiché)' })
+  @IsOptional()
+  @ValidateIf(given)
+  @IsEmail({}, { message: 'Email invalide (ex. support@exemple.cd).' })
+  @MaxLength(120)
+  support_email?: string | null;
 }
 
 @ApiTags('Platform settings')
@@ -31,7 +56,7 @@ export class PlatformSettingsController {
   // Public: read before login too — the login and PIN screens are protected.
   @Public()
   @Get('platform/settings')
-  @ApiOperation({ summary: "Réglages globaux lus par l'application au lancement (protection des captures d'écran, taux indicatif)" })
+  @ApiOperation({ summary: "Réglages globaux lus par l'application au lancement (protection des captures d'écran, taux indicatif, contacts du support)" })
   getPublic() {
     return this.platformSettingsService.getPublicSettings();
   }
