@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { MerchantInvitations } from '@/components/MerchantInvitations';
 import { PageHeader } from '@/components/PageHeader';
 import { BalanceCard } from '@/components/BalanceCard';
 import { RecentLedger } from '@/components/RecentLedger';
@@ -40,6 +41,9 @@ export default function ClientDashboard() {
   return (
     <div className="px-4 pt-2 pb-8 md:p-6 space-y-5 max-w-6xl mx-auto">
       <PageHeader title="Tableau de bord" hideBack />
+
+      {/* A shop inviting this person to become its cashier, until they answer. */}
+      <MerchantInvitations />
 
       {/* Computer: balance, figures and shortcuts on the left, the latest movements beside them — the phone keeps
           its single column. */}

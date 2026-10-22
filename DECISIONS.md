@@ -89,6 +89,23 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
    - Ventes : corrigé (§ 3).
    - Cartes, paiement par portefeuille, espèces en double à la caisse, ventes hors ligne : déjà protégés.
 
+### 9. Inviter un caissier (petite boutique) : par téléphone ou email, et la personne accepte (migration 078)
+- **Avant** : le marchand ajoutait un caissier par email, et le compte de la personne devenait caissier tout de suite,
+  sans son accord ni même une notification. Par téléphone (numéro facile à connaître), n'importe qui aurait pu
+  transformer le compte de n'importe qui.
+- **Maintenant** : le marchand envoie une **invitation** (numéro dans tous les formats, ou email). La personne reçoit une
+  notification et un bandeau sur son accueil : **Accepter** / **Refuser**. Rien ne change sur son compte avant
+  « Accepter ». À l'acceptation :
+  - elle rejoint l'équipe et son rôle devient caissier ;
+  - un nouveau jeton arrive, l'application bascule sans nouvelle connexion ;
+  - le marchand est prévenu.
+- Une invitation par personne et par boutique à la fois. Elle expire après 7 jours, et le marchand peut l'annuler.
+- Les règles sont revérifiées à l'acceptation : seul un compte client, dans aucune équipe, peut devenir caissier.
+- Le marchand ne voit que le prénom et l'initiale (« Grace K. ») et la fin du numéro : on ne révèle pas l'identité
+  derrière un numéro.
+- L'ajout direct (`addMerchantUser`) est supprimé. Une ancienne application qui l'appelle crée désormais une invitation.
+- Ne concerne pas les entreprises : elles créent leurs employés elles-mêmes (Utilisateurs internes).
+
 ### Reste à décider (non corrigé)
 - Le stock n'est pas réservé pendant l'attente : voulu, le stock bouge au paiement (si l'article est parti
   entre-temps, les espèces sont refusées).

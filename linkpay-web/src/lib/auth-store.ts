@@ -79,6 +79,8 @@ interface AuthState {
   // Token arguments are undefined in cookie mode (the session is in HttpOnly cookies, not in the response).
   applyMerchantUpgrade: (merchant: { id: string }, accessToken?: string) => void;
   applyEnterpriseUpgrade: (accessToken?: string) => void;
+  /** Accepted a shop's invitation: this account is now a cashier of that shop. */
+  applyCashierUpgrade: (merchantId: string, accessToken?: string) => void;
   enterStore: (merchant: { id: string }, accessToken: string | undefined, refreshToken: string | undefined, organizationId: string) => void;
   exitStore: () => Promise<void>;
   clearMustChangePassword: () => void;
@@ -142,6 +144,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     setAccessToken(accessToken);
     set((state) => ({
       user: state.user ? { ...state.user, role: 'merchant', merchant_id: merchant.id } : state.user,
+    }));
+  },
+
+  applyCashierUpgrade: (merchantId, accessToken) => {
+    setAccessToken(accessToken);
+    set((state) => ({
+      user: state.user ? { ...state.user, role: 'cashier', merchant_id: merchantId } : state.user,
     }));
   },
 

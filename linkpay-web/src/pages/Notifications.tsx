@@ -4,11 +4,12 @@ import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import { formatDate, cn } from '@/lib/utils';
-import { CheckCheck, Trash2, Loader2, ArrowDownLeft, ArrowUpFromLine, Bell, ShieldAlert, Sparkles, ShoppingCart, type LucideIcon } from 'lucide-react';
+import { CheckCheck, Trash2, Loader2, ArrowDownLeft, ArrowUpFromLine, Bell, ShieldAlert, Sparkles, ShoppingCart, UserPlus, type LucideIcon } from 'lucide-react';
 
 /** Coloured round icon by kind of notification, as in the design. */
 function notificationLook(type?: string): { icon: LucideIcon; tone: string } {
   const t = String(type || '');
+  if (/merchant_invitation/.test(t)) return { icon: UserPlus, tone: 'bg-primary' };
   if (/security|alert|lock|device/.test(t)) return { icon: ShieldAlert, tone: 'bg-rose-500' };
   if (/withdrawal/.test(t)) return { icon: ArrowUpFromLine, tone: 'bg-orange-500' };
   if (/payment|sale|invoice/.test(t)) return { icon: ShoppingCart, tone: 'bg-sky-500' };
