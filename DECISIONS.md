@@ -153,7 +153,7 @@ listes communes (`ProductTable`). Ordre de travail : A → B → C, puis le fich
   régénérable avec `construire_modele.py`. Tout est formule : on change une hypothèse (onglet Hypothèses, texte bleu)
   ou le scénario (Pessimiste / Réaliste / Optimiste) et tout se recalcule. Onglets : Accueil, Hypothèses (tarifs du
   code, coûts, applications partenaires de l'API dont HotelSaver), Scénarios, Prévisions (36 mois), Synthèse
-  (graphiques), Prix (abonnements), Rentabilité (seuil, objectif 1 000 £, nombre d'applications API), Retraits
+  (graphiques), Dépenses (toutes les charges par an, démarrage, taxes, répartition), Prix (abonnements), Rentabilité (seuil, objectif 1 000 £, nombre d'applications API), Retraits
   (frais 1 % < coût FlexPaie 2 % : perte), Sensibilité (commission × volume).
 
 ## 22/10/2026 (après-midi) — Deux secteurs seulement ; les Ventes électronique sur le modèle de la Caisse

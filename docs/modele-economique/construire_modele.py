@@ -685,6 +685,163 @@ Z.conditional_formatting.add('B10:G15', CellIsRule(operator='greaterThanOrEqual'
 put(Z, 'A17', 'Lecture : en rouge, le mois 12 est en perte. « 1x » = le volume prévu ; « 2x » = deux fois plus de paiements.', f=font(italic=True, color='555555'))
 
 # =====================================================================================================================
+# 9. Dépenses — every expense on one page
+# =====================================================================================================================
+D = wb.create_sheet('Dépenses', wb.sheetnames.index('Synthèse') + 1)
+D.sheet_view.showGridLines = False
+for i, w in enumerate([52, 15, 15, 15, 16, 12, 16], 1):
+    D.column_dimensions[col(i)].width = w
+title(D, 'Dépenses — toutes les charges sur une page', None)
+put(D, 'A2', f'="Scénario : "&{A["scenario"]}&" · USD · coûts fixes augmentés de "&TEXT({A["team_growth"]},"0%")&" par an (ans 2 et 3)"', f=font(italic=True, color='555555'))
+header(D, 4, ['Dépense', 'An 1', 'An 2', 'An 3', 'Total 3 ans', 'Part', 'Moyenne / mois an 1'])
+drow = 5
+DR = {}
+TOTAL_KEYS = []
+
+
+def dline(label, f1, f2, f3, key=None):
+    global drow
+    put(D, f'A{drow}', label)
+    for c_, f_ in (('B', f1), ('C', f2), ('D', f3)):
+        put(D, f'{c_}{drow}', f_, USD, LINK).border = BOX
+    put(D, f'E{drow}', f'=SUM(B{drow}:D{drow})', USD).border = BOX
+    put(D, f'G{drow}', f'=B{drow}/12', USD).border = BOX
+    if key:
+        DR[key] = drow
+    TOTAL_KEYS.append(drow)
+    drow += 1
+
+
+def dsec(text):
+    global drow
+    section(D, drow, text, 7)
+    drow += 1
+
+
+ysum = lambda key, y: f"=SUMIF({YEAR},{y},{PR(key)})"
+sec_rows = {}
+
+dsec('Coûts fixes (équipe, hébergement, fonctionnement)')
+start = drow
+for k, lbl, *_ in fixed:
+    dline(lbl, *[f"={A[k]}*12*(1+{A['team_growth']})^{y - 1}" for y in (1, 2, 3)])
+sec_rows['fixed'] = (start, drow - 1)
+
+dsec('Coûts variables (augmentent avec l’activité)')
+start = drow
+dline('FlexPaie — envoi des retraits vers Mobile Money', *[ysum('k_payout', y) for y in (1, 2, 3)])
+dline('FlexPaie — encaissements (si à notre charge)', *[ysum('k_payin', y) for y in (1, 2, 3)])
+dline('Serveurs (selon le nombre d’utilisateurs)', *[ysum('k_infra', y) for y in (1, 2, 3)])
+dline('SMS (inscription, sécurité)', *[ysum('k_sms', y) for y in (1, 2, 3)])
+dline('Acquisition — nouvelles entreprises', *[f"=SUMIF({YEAR},{y},{PR('e_new')})*{A['cac_e']}" for y in (1, 2, 3)])
+dline('Acquisition — nouveaux commerçants', *[f"=SUMIF({YEAR},{y},{PR('m_new')})*{A['cac_m']}" for y in (1, 2, 3)])
+dline('Acquisition — nouveaux clients', *[f"=SUMIF({YEAR},{y},{PR('c_new')})*{A['cac_c']}" for y in (1, 2, 3)])
+sec_rows['var'] = (start, drow - 1)
+
+put(D, f'A{drow}', 'Total des dépenses de fonctionnement', bold=True)
+OP = drow
+for c_ in 'BCDEG':
+    put(D, f'{c_}{drow}', f"=SUM({c_}{sec_rows['fixed'][0]}:{c_}{sec_rows['fixed'][1]})+SUM({c_}{sec_rows['var'][0]}:{c_}{sec_rows['var'][1]})", USD, bold=True, fill=TOTAL).border = BOX
+D[f'A{drow}'].fill = TOTAL
+D[f'F{drow}'].fill = TOTAL
+drow += 1
+for rr in TOTAL_KEYS:
+    put(D, f'F{rr}', f'=IF($E${OP}=0,0,E{rr}/$E${OP})', PCT).border = BOX
+put(D, f'F{OP}', 1, PCT, bold=True, fill=TOTAL)
+put(D, f'A{drow}', 'Contrôle : égal au « Total des coûts » de la Synthèse', f=font(size=9, italic=True, color='777777'))
+put(D, f'B{drow}', f"=IF(ABS(E{OP}-'Synthèse'!E{YR['cost']})<1,\"OK\",\"Écart\")", None, font(size=9, bold=True, color='008000'))
+drow += 2
+
+dsec('Une seule fois, au démarrage')
+start_init = drow
+for k, lbl in (('init_play', 'Compte Google Play'), ('init_legal', 'Création, enregistrement, agréments'), ('init_cards', 'Impression des premières cartes'), ('init_other', 'Matériel et divers')):
+    put(D, f'A{drow}', lbl)
+    put(D, f'B{drow}', f"={A[k]}", USD, LINK).border = BOX
+    put(D, f'E{drow}', f'=B{drow}', USD).border = BOX
+    drow += 1
+put(D, f'A{drow}', 'Total démarrage', bold=True)
+put(D, f'B{drow}', f'=SUM(B{start_init}:B{drow - 1})', USD, bold=True, fill=TOTAL).border = BOX
+put(D, f'E{drow}', f'=B{drow}', USD, bold=True, fill=TOTAL).border = BOX
+INIT = drow
+drow += 2
+
+dsec('Taxes (versées à l’État, pas des coûts de fonctionnement)')
+TAX0 = drow
+for key, lbl in (('vat', 'TVA reversée sur nos recettes'), ('tax', 'Impôt sur les bénéfices (estimé)')):
+    put(D, f'A{drow}', lbl)
+    for c_, y in (('B', 1), ('C', 2), ('D', 3)):
+        put(D, f'{c_}{drow}', ysum(key, y), USD, LINK).border = BOX
+    put(D, f'E{drow}', f'=SUM(B{drow}:D{drow})', USD).border = BOX
+    drow += 1
+drow += 1
+
+dsec('Tout ce qui sort, au total')
+put(D, f'A{drow}', 'Fonctionnement + démarrage + taxes', bold=True)
+for c_ in 'BCDE':
+    extra = f'+{c_}{INIT}' if c_ in 'BE' else ''
+    put(D, f'{c_}{drow}', f'={c_}{OP}{extra}+SUM({c_}{TAX0}:{c_}{TAX0 + 1})', USD, bold=True, fill=TOTAL).border = BOX
+ALL = drow
+drow += 1
+put(D, f'A{drow}', 'Chiffre d’affaires net (rappel)')
+for c_, sc_ in (('B', 'B'), ('C', 'C'), ('D', 'D'), ('E', 'E')):
+    put(D, f'{c_}{drow}', f"='Synthèse'!{sc_}{YR['rev']}", USD, LINK).border = BOX
+drow += 1
+put(D, f'A{drow}', 'Dépenses de fonctionnement pour 1 $ de chiffre d’affaires')
+for c_ in 'BCDE':
+    put(D, f'{c_}{drow}', f'=IF({c_}{drow - 1}=0,0,{c_}{OP}/{c_}{drow - 1})', '0.00" $"').border = BOX
+drow += 2
+
+# Shares of the 3-year total, by family (for the chart)
+put(D, f'A{drow}', 'Répartition sur 3 ans', f=font(bold=True, color=NAVY, size=11))
+drow += 1
+header(D, drow, ['Famille de dépenses', 'Total 3 ans'])
+drow += 1
+fam0 = drow
+families = [
+    ('Équipe (développeurs, support)', f"=E{sec_rows['fixed'][0] + 4}+E{sec_rows['fixed'][0] + 5}"),
+    ('Hébergement et services techniques', f"=SUM(E{sec_rows['fixed'][0]}:E{sec_rows['fixed'][0] + 3})+E{sec_rows['var'][0] + 2}+E{sec_rows['var'][0] + 3}"),
+    ('Marketing et acquisition', f"=E{sec_rows['fixed'][0] + 6}+SUM(E{sec_rows['var'][0] + 4}:E{sec_rows['var'][0] + 6})"),
+    ('Frais FlexPaie', f"=E{sec_rows['var'][0]}+E{sec_rows['var'][0] + 1}"),
+    ('Administration (comptabilité, bureau)', f"=E{sec_rows['fixed'][0] + 7}+E{sec_rows['fixed'][0] + 8}"),
+]
+for lbl, f_ in families:
+    put(D, f'A{drow}', lbl)
+    put(D, f'B{drow}', f_, USD).border = BOX
+    drow += 1
+put(D, f'A{drow}', 'Total (contrôle)', bold=True)
+put(D, f'B{drow}', f'=SUM(B{fam0}:B{drow - 1})', USD, bold=True, fill=TOTAL).border = BOX
+drow += 1
+
+from openpyxl.chart import PieChart
+pie = PieChart()
+pie.title = 'Où va l’argent (3 ans)'
+pie.add_data(Reference(D, min_col=2, min_row=fam0, max_row=fam0 + len(families) - 1), titles_from_data=False)
+pie.set_categories(Reference(D, min_col=1, min_row=fam0, max_row=fam0 + len(families) - 1))
+pie.height, pie.width = 9, 13
+D.add_chart(pie, f'D{fam0 - 2}')
+
+bd = BarChart()
+bd.type = 'col'
+bd.grouping = 'stacked'
+bd.overlap = 100
+bd.title = 'Dépenses de fonctionnement par an (USD)'
+bd.height, bd.width = 9, 16
+# Chart source: fixed and variable totals per year (small grey helper cells, right of the page).
+put(D, f'I4', 'Repère graphique', f=font(size=8, color='999999'))
+put(D, 'I5', 'Coûts fixes', f=font(size=8, color='999999'))
+put(D, 'I6', 'Coûts variables', f=font(size=8, color='999999'))
+for c_, src in (('J', 'B'), ('K', 'C'), ('L', 'D')):
+    put(D, f'{c_}4', f'={src}4', None, font(size=8, color='999999'))
+    put(D, f'{c_}5', f"=SUM({src}{sec_rows['fixed'][0]}:{src}{sec_rows['fixed'][1]})", USD, font(size=8, color='999999'))
+    put(D, f'{c_}6', f"=SUM({src}{sec_rows['var'][0]}:{src}{sec_rows['var'][1]})", USD, font(size=8, color='999999'))
+for rr in (5, 6):
+    bd.series.append(Series(Reference(D, min_col=10, max_col=12, min_row=rr, max_row=rr), title=D[f'I{rr}'].value))
+bd.set_categories(Reference(D, min_col=10, max_col=12, min_row=4, max_row=4))
+D.add_chart(bd, f'A{drow + 2}')
+D.freeze_panes = 'B5'
+D.print_area = f'A1:G{drow + 22}'
+
+# =====================================================================================================================
 # 0. Accueil (first tab)
 # =====================================================================================================================
 C = wb.create_sheet('Accueil', 0)
@@ -706,6 +863,7 @@ glance = [
     ('Bénéfice net — total 3 ans', f"='Synthèse'!E{YR['net']}", USD),
     ('Premier mois bénéficiaire', "='Synthèse'!H5", None),
     ('Besoin de trésorerie maximal', "='Synthèse'!H7", USD),
+    ('Dépenses de fonctionnement — an 1', f"='Dépenses'!B{OP}", USD),
     ('Paiements nécessaires pour l’objectif (par mois)', "='Rentabilité'!B23", USD),
 ]
 for j, (lbl, f_, fm) in enumerate(glance):
@@ -714,12 +872,14 @@ for j, (lbl, f_, fm) in enumerate(glance):
     cell = put(C, f'C{rr}', f_, fm, font(bold=True, color='008000'))
     cell.border = BOX
     cell.alignment = Alignment(horizontal='left')
+C.row_dimensions[19].height = 26
 put(C, 'B19', 'Les onglets', f=font(size=12, bold=True, color=NAVY))
 tabs = [
     ('Hypothèses', 'Tous les prix, frais, coûts et applications partenaires. C’est ici qu’on modifie.'),
     ('Scénarios', 'Pessimiste / Réaliste / Optimiste : rythme d’inscription, volumes, départs.'),
     ('Prévisions', '36 mois : utilisateurs, volumes, recettes par source, coûts, bénéfice, trésorerie.'),
     ('Synthèse', 'Les 3 années côte à côte, repères clés et graphiques.'),
+    ('Dépenses', 'Toutes les charges sur une page : fixes, variables, démarrage, taxes, et où va l’argent.'),
     ('Prix', 'Choisir les prix des abonnements (entreprise, Fournisseur, formule annuelle), recette par utilisateur.'),
     ('Rentabilité', 'Seuil de rentabilité, objectif de 1 000 £ par mois, ce que rapportent les applications partenaires.'),
     ('Retraits', 'Frais de retrait face au coût FlexPaie : gain ou perte.'),
@@ -729,7 +889,7 @@ for j, (t, d) in enumerate(tabs):
     rr = 20 + j
     put(C, f'B{rr}', t, f=font(bold=True, color=BRAND)).hyperlink = f"#'{t}'!A1"
     put(C, f'C{rr}', d).alignment = Alignment(wrap_text=True)
-put(C, 'B29', 'Code couleur', f=font(size=12, bold=True, color=NAVY))
+put(C, 'B30', 'Code couleur', f=font(size=12, bold=True, color=NAVY))
 legend = [
     ('Texte bleu', 'Valeur saisie : hypothèse à discuter, modifiable', INPUT, None),
     ('Fond jaune', 'Hypothèse clé (elle change beaucoup le résultat)', font(), YELLOW),
@@ -737,10 +897,10 @@ legend = [
     ('Texte noir', 'Calcul automatique : ne pas modifier', font(), None),
 ]
 for j, (a, b, ft, fl) in enumerate(legend):
-    rr = 30 + j
+    rr = 31 + j
     put(C, f'B{rr}', a, f=ft, fill=fl).border = BOX
     put(C, f'C{rr}', b)
-put(C, 'B35', 'Sources des tarifs', f=font(size=12, bold=True, color=NAVY))
+put(C, 'B36', 'Sources des tarifs', f=font(size=12, bold=True, color=NAVY))
 src = [
     'Commission 2,5 % (min 0,05 $, max 100 $), retrait 1 %, transfert gratuit : valeurs par défaut du code ScanLinkPay (migrations 002, 007, 008), réglables par le super admin.',
     'FlexPaie : ~2 % sur les retraits (à notre charge), ~2,5 % à 3 % sur les encaissements (payés par le client) — docs/FLEXPAIE.md.',
@@ -749,13 +909,13 @@ src = [
     'Volumes, adoption, coûts d’équipe et de marketing : hypothèses de travail à discuter, pas des chiffres constatés.',
 ]
 for j, t in enumerate(src):
-    rr = 36 + j
+    rr = 37 + j
     put(C, f'B{rr}', '•')
     put(C, f'C{rr}', t, f=font(size=9)).alignment = Alignment(wrap_text=True, vertical='top')
     C.row_dimensions[rr].height = 26
 
 for ws in wb.worksheets:
-    ws.sheet_properties.tabColor = NAVY if ws.title in ('Accueil', 'Synthèse') else BRAND if ws.title in ('Hypothèses', 'Scénarios') else '8EA2F5'
+    ws.sheet_properties.tabColor = NAVY if ws.title in ('Accueil', 'Synthèse', 'Dépenses') else BRAND if ws.title in ('Hypothèses', 'Scénarios') else '8EA2F5'
     ws.page_setup.orientation = 'landscape'
     ws.page_setup.fitToWidth = 1
     ws.sheet_properties.pageSetUpPr.fitToPage = True
