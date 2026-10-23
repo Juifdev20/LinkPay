@@ -6,6 +6,10 @@ Décisions et raisons : `DECISIONS.md` (racine). Repères pour les agents : `AGE
 suppression de l'argent fictif et de CinetPay, base de test). Ordre : migrations `067` → `071` en production, puis fusion
 dans `main` (voir `DECISIONS.md`, « Déploiement »).
 
+## En cours (23/10) — achats, fournisseurs, rapport des vendeurs, rôles, réseau de fournisseurs
+Plan, décisions et **état de chaque phase** : `DECISIONS.md`, section du 23/10 (phase A faite ; B, C, puis le fichier
+Excel du modèle économique à faire). Migration `083` à exécuter.
+
 ## En place
 - Nouvelle interface (maquette 2026, clair et sombre) pour client et marchand — `DECISIONS.md` (21/10 soir). Migration `072` (taux indicatif) à exécuter.
 - Carte ScanLinkPay (impression, activation, paiement par scan avec PIN) — `docs/carte/`.

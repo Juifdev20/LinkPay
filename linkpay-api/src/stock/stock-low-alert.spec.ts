@@ -26,7 +26,7 @@ function sell(before: number, after: number) {
   });
   const notifications = { create: jest.fn(async () => undefined) };
   const orgs = { getOrganizationById: jest.fn(async () => ({ id: 'org1', owner_id: 'boss' })) };
-  const service = new StockService(fake.service, orgs as any, notifications as any, {} as any, { log: jest.fn() } as any);
+  const service = new StockService(fake.service, orgs as any, notifications as any, {} as any, { log: jest.fn() } as any, {} as any);
   const run = () => service.createMovement('m1', 'item1', 'cashier', 'caissier', 'org1', { type: 'sale', quantity_delta: after - before });
   return { run, notifications };
 }

@@ -146,8 +146,12 @@ export default function StockPage() {
         description: item.description || '',
         quantity: String(item.quantity ?? ''),
         unit_price: item.unit_price_cents != null ? String(item.unit_price_cents / 100) : '',
+        cost_price: item.cost_price_cents != null ? String(item.cost_price_cents / 100) : '',
         currency: item.currency || 'CDF',
         low_stock_threshold: item.low_stock_threshold != null ? String(item.low_stock_threshold) : '5',
+        supplier_id: item.supplier_id || '',
+        // Shown as such in the sheet even when the supplier was taken off the list.
+        supplier_name: item.supplier_name || '',
       },
     });
   };
@@ -380,6 +384,7 @@ export default function StockPage() {
             showStore={(merchants?.length ?? 0) > 1 && !storeFilter}
             sortStorageKey="stock-table-sort"
             stockManagerMode
+            showPurchase={canManage}
             className="max-h-[calc(100dvh-272px)] md:max-h-none"
           />
         )}

@@ -5,6 +5,81 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 23/10/2026 — Achats et fournisseurs, rapport par vendeur, rôles du stock, réseau de fournisseurs
+
+Demande du propriétaire, valable pour **tous les secteurs** du module entreprise (`supermarche` et `electronique`) : rien
+n'est propre à un secteur, tout passe par `stock_items`, le formulaire produit commun (`StockItemFormSheet`) et les
+listes communes (`ProductTable`). Ordre de travail : A → B → C, puis le fichier Excel du modèle économique.
+**Un agent qui reprend lit cette section et la case « État » de chaque phase** (mise à jour à chaque étape poussée).
+
+### Phase A — prix d'achat, marge, fournisseur, rapport par vendeur
+- **A1. Prix d'achat et marge.** La colonne `stock_items.cost_price_cents` existe depuis la migration 031 et l'API
+  l'accepte déjà ; il manquait l'écran. Le formulaire produit a « Prix d'achat » (facultatif) à côté de « Prix de
+  vente », dans la même devise, et affiche la marge en direct (montant et %). La liste du stock a les colonnes
+  « Prix d'achat » et « Marge ». Les statistiques de marge existantes (caisse : `cost_price_cents_snapshot`,
+  ventes : `unit_cost_cents`) le reprennent sans changement.
+  - **Le vendeur et le caissier ne voient jamais le prix d'achat ni la marge** (`redactForRole` côté API, déjà en
+    place) : l'écran n'affiche ces colonnes que si le prix d'achat est présent dans les données reçues.
+  - Un produit sans prix d'achat a une marge « — » (jamais 100 %).
+- **A2. Fournisseur facultatif** (migration 083). Table `suppliers` par entreprise (nom, téléphone, e-mail, adresse,
+  notes ; archivage au lieu de suppression) et `stock_items.supplier_id`. Dans le formulaire : choisir dans la liste
+  ou « Nouveau fournisseur… » (nom tapé → le fournisseur est créé et ajouté à la liste). Colonne « Fournisseur »
+  dans la liste du stock. Masqué au vendeur et au caissier comme le prix d'achat (information d'achat).
+  - La même table servira à la phase C : un fournisseur « du réseau » est une ligne avec `supplier_org_id`
+    (l'entreprise fournisseur sur ScanLinkPay) ; un fournisseur tapé à la main n'en a pas.
+- **A3. Rapport par vendeur sur une période choisie.** Date de début et date de fin → pour chaque vendeur/caissier :
+  nombre de ventes, chiffre d'affaires par devise, marge (si prix d'achat connu). Il réunit la **caisse**
+  (`pos_tickets`, supermarché) et les **Ventes** (`sales`, électronique) : un seul rapport pour tous les secteurs.
+
+### Phase B — qui gère le stock et les achats
+- Le **magasinier** voit le stock, fait l'inventaire et **demande** un réapprovisionnement. La demande va au
+  **gérant** de sa station, qui l'approuve ou la refuse et passe la commande.
+- **S'il n'y a pas de gérant actif dans la station, la demande remonte au patron** (décision du 23/10). Le patron
+  peut toujours consulter l'historique des demandes ; il n'est plus notifié quand un gérant existe.
+- Le **gérant a tous les droits du magasinier** (stock, inventaire, demandes, commandes) ; l'inverse n'est jamais
+  vrai : un magasinier n'approuve rien, ne gère pas l'équipe, ne voit pas les rapports du gérant.
+- À la création d'un employé, le choix du rôle explique : « Pas de magasinier ? Le gérant s'occupe du stock et des
+  commandes. » et « Le magasinier gère le stock et fait des demandes au gérant. »
+
+### Phase C — réseau de fournisseurs
+- **Devenir fournisseur** (le patron l'active) : fiche (nom affiché, téléphone, adresse, zone de livraison, frais de
+  livraison par défaut facultatifs), un **numéro de fournisseur** unique, un **catalogue** (produits de son stock
+  qu'il accepte de vendre, avec son prix de vente aux entreprises).
+- Une entreprise **invite** un fournisseur par son numéro ; le fournisseur (patron ou gérant) **accepte** ou refuse.
+  Une fois acceptée, la relation ajoute ce fournisseur à la liste de A2 (`suppliers.supplier_org_id`).
+- **Commande** : le client (patron, gérant) choisit un fournisseur lié, puis les produits de **son** catalogue et les
+  quantités, et coche « Livraison » s'il veut être livré.
+- Le fournisseur (patron ou gérant, notifiés) **confirme** la commande et fixe les **frais de livraison de cette
+  commande** : les frais par défaut de sa fiche sont proposés, mais il peut les changer à chaque commande (la
+  distance varie — décision du 23/10). Les frais s'ajoutent au total quand le client a demandé la livraison.
+- **Paiement, deux voies (décision du 23/10)** : par portefeuille ScanLinkPay (paiement d'entreprise à entreprise,
+  avec les règles de commission habituelles), ou **hors application** (espèces, Mobile Money) noté à la main par le
+  fournisseur, qui confirme l'avoir reçu. Aucun argent n'est jamais créé ni déplacé hors du grand livre.
+- Chaque étape produit un **ticket** (bon de commande, reçu de paiement, bon de livraison). Le fournisseur valide le
+  paiement, puis la livraison ; le client confirme la **réception**.
+- **À la réception, le stock du client augmente tout seul** (mouvement `restock` dans `stock_movements`, jamais une
+  quantité écrite directement) et le **prix d'achat du produit devient le prix unitaire de la commande** (frais de
+  livraison non inclus) : la marge du client reste juste sans rien retaper. Le produit du client est retrouvé par son
+  code-barres, sinon il est créé (avec le fournisseur rempli).
+- Côté fournisseur, la livraison validée sort la marchandise de son stock (mouvement `sale`).
+
+### État
+- **Phase A : faite** (23/10). Où regarder :
+  - A1 : `StockItemFormSheet` (« Prix d'achat », marge en direct), `ProductTable` (`showPurchase` : colonnes Prix d'achat,
+    Marge, Fournisseur), `StockItemDetailDialog`, `lib/margin.ts` (marge = vente − achat, % du prix de vente).
+  - A2 : migration `083_suppliers.sql`, `stock/suppliers.service.ts` (+ routes `GET/POST/PUT/DELETE
+    /organizations/:id/suppliers` dans `stock.controller.ts`), champs `supplier_id` / `supplier_name` du produit
+    (`StockService.supplierOf`, nom ajouté aux listes par `withSupplierNames`, masqués au vendeur et au caissier).
+    Pas encore d'écran pour renommer ou archiver un fournisseur : il viendra avec l'écran « Fournisseurs » de la phase C.
+  - A3 : `reports/seller-report.service.ts`, route `GET /organizations/:id/reports/sellers?from&to&merchant_id`, page
+    `pages/organization/SellerReport.tsx` (menu « Rapport des vendeurs »). Une ligne de vente électronique enregistrée
+    avec un coût 0 (produit sans prix d'achat) compte comme « coût inconnu », jamais comme 100 % de marge.
+  - À faire côté Supabase : migration `083` (LinkPay Test puis production). Sans elle, le formulaire marche (sans
+    fournisseur) et la liste des fournisseurs répond « appliquez la migration 083 ».
+- Phase B : à faire.
+- Phase C : à faire.
+- Fichier Excel du modèle économique : après C.
+
 ## 22/10/2026 (après-midi) — Deux secteurs seulement ; les Ventes électronique sur le modèle de la Caisse
 
 ### 1. « Alimentation » fusionnée dans « Supermarché » (migration 076)

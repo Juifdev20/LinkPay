@@ -7,6 +7,7 @@ import { StockPasswordService } from './stock-password.service';
 import { AuditService } from '../audit/audit.service';
 import { sumByCurrency } from '../common/utils/currency';
 import { requireStaffStation } from '../common/org-access';
+import { SuppliersService } from './suppliers.service';
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -37,17 +38,33 @@ export class StockService {
     private notificationsService: NotificationsService,
     private stockPasswordService: StockPasswordService,
     private auditService: AuditService,
+    private suppliersService: SuppliersService,
   ) {}
 
   /**
    * Selling staff (vendeur, caissier) need the catalogue — name, price, quantity
-   * — to ring up a sale, but never what the shop paid for it: cost and margin
-   * stay with the patron and the stock keeper.
+   * — to ring up a sale, but never what the shop paid for it nor whom it bought
+   * from: cost, margin and supplier stay with the patron, the manager and the
+   * stock keeper.
    */
   private redactForRole<T extends Record<string, any>>(item: T, role: string | undefined): T {
     if (role !== 'vendeur' && role !== 'caissier') return item;
-    const { cost_price_cents: _cost, ...rest } = item;
+    const { cost_price_cents: _cost, supplier_id: _supplier, supplier_name: _supplierName, ...rest } = item;
     return rest as T;
+  }
+
+  /** The supplier the product sheet asks for (id, `null` to clear, `undefined` = not touched). */
+  private supplierOf(orgId: string | null | undefined, callerId: string, data: { supplier_id?: string | null; supplier_name?: string | null }) {
+    if (data.supplier_id === undefined && data.supplier_name === undefined) return Promise.resolve(undefined);
+    return this.suppliersService.resolveForProduct(orgId, callerId, data);
+  }
+
+  /** Adds `supplier_name` to products that have a supplier (migration 083). */
+  private async withSupplierNames<T extends Record<string, any>>(items: T[]): Promise<T[]> {
+    const ids = items.map((i) => i.supplier_id).filter(Boolean);
+    if (!ids.length) return items;
+    const names = await this.suppliersService.namesByIds(ids);
+    return items.map((i) => (i.supplier_id ? { ...i, supplier_name: names.get(i.supplier_id) || null } : i));
   }
 
   private isAdmin(role: string | undefined): boolean {
@@ -134,9 +151,12 @@ export class StockService {
       cost_price_cents?: number;
       currency?: string;
       low_stock_threshold?: number;
+      supplier_id?: string | null;
+      supplier_name?: string | null;
     },
   ) {
-    await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
+    const merchant = await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
+    const supplierId = await this.supplierOf(merchant.organization_id, callerId, data);
 
     const { data: item, error } = await this.supabaseService.getClient()
       .from('stock_items')
@@ -159,6 +179,7 @@ export class StockService {
         cost_price_cents: data.cost_price_cents ?? null,
         currency: data.currency || 'CDF',
         low_stock_threshold: data.low_stock_threshold ?? 5,
+        ...(supplierId ? { supplier_id: supplierId } : {}),
         created_by: callerId,
       })
       .select()
@@ -168,7 +189,7 @@ export class StockService {
       this.throwIfDuplicate(error);
       throw new Error(`Failed to create stock item: ${error.message}`);
     }
-    return item;
+    return (await this.withSupplierNames([item]))[0];
   }
 
   async listItems(merchantId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
@@ -181,7 +202,7 @@ export class StockService {
       .order('created_at', { ascending: false });
 
     if (error) throw new Error(`Failed to fetch stock items: ${error.message}`);
-    return (data || []).map((item) => this.redactForRole(item, callerRole));
+    return (await this.withSupplierNames(data || [])).map((item) => this.redactForRole(item, callerRole));
   }
 
   /** Both edit and delete are gated behind the organization's shared stock
@@ -264,6 +285,8 @@ export class StockService {
     // or two code-less products would collide on the (merchant, barcode)
     // unique constraint.
     if (filtered.barcode !== undefined) filtered.barcode = String(filtered.barcode).trim() || null;
+    const supplierId = await this.supplierOf(merchant.organization_id, callerId, updates);
+    if (supplierId !== undefined) filtered.supplier_id = supplierId;
 
     const { data: current, error: currentError } = await this.supabaseService.getClient()
       .from('stock_items')
@@ -310,10 +333,10 @@ export class StockService {
         quantity_delta: newQuantity - current.quantity,
         reason: 'Modifiée depuis la fiche produit',
       });
-      return { ...data, quantity: newQuantity };
+      return (await this.withSupplierNames([{ ...data, quantity: newQuantity }]))[0];
     }
 
-    return data;
+    return (await this.withSupplierNames([data]))[0];
   }
 
   async deleteItem(
@@ -612,7 +635,8 @@ export class StockService {
     const merchantNameById: Record<string, string> = {};
     merchants.forEach((m) => { merchantNameById[m.id] = m.name; });
 
-    return (data || []).map((item) => this.redactForRole({ ...item, merchant_name: merchantNameById[item.merchant_id] || null }, callerRole));
+    const named = await this.withSupplierNames(data || []);
+    return named.map((item) => this.redactForRole({ ...item, merchant_name: merchantNameById[item.merchant_id] || null }, callerRole));
   }
 
   async getOrgStockSummary(orgId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {

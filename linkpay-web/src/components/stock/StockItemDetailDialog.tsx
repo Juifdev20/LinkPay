@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { marginOf, formatPercent } from '@/lib/margin';
 import { formatCurrency } from '@/lib/utils';
 import { Loader2, Pencil, Trash2, Boxes, Printer } from 'lucide-react';
 import { getCategoryLabel, STOCK_CATEGORIES } from '@/lib/stock-categories';
@@ -92,6 +93,8 @@ export function StockItemDetailDialog({
   const attributeEntries = Object.entries(item.attributes || {}).filter(([, v]) => v !== '' && v != null);
   const lowStock = item.quantity <= item.low_stock_threshold;
 
+  const margin = marginOf(item.unit_price_cents, item.cost_price_cents);
+
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
@@ -122,6 +125,25 @@ export function StockItemDetailDialog({
             <p className="text-xs text-muted-foreground">Prix de vente</p>
           </div>
         </div>
+
+        {/* Purchase side — present only for the people allowed to see it (the API leaves it out for sellers). */}
+        {(item.cost_price_cents != null || item.supplier_name) && (
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="rounded-xl border border-border p-3 text-center">
+              <p className="text-lg font-bold text-foreground">
+                {item.cost_price_cents != null ? formatCurrency(item.cost_price_cents, item.currency) : '—'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Prix d'achat
+                {margin && ` · marge ${formatCurrency(margin.cents, item.currency)} (${formatPercent(margin.percent)})`}
+              </p>
+            </div>
+            <div className="rounded-xl border border-border p-3 text-center min-w-0">
+              <p className="text-lg font-bold text-foreground truncate">{item.supplier_name || '—'}</p>
+              <p className="text-xs text-muted-foreground">Fournisseur</p>
+            </div>
+          </div>
+        )}
 
         {item.barcode && (
           <div className="flex items-center justify-between gap-3 rounded-xl border border-border p-3 mb-4">

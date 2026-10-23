@@ -74,6 +74,7 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, roles: ['merchant', 'cashier'], labelFor: { merchant: 'Paiements reçus' }, section: 'follow' },
   { to: '/dashboard/organization/stats', label: 'Statistiques', icon: BarChart3, roles: rolesFor('/dashboard/organization/stats'), section: 'follow' },
   { to: '/dashboard/organization/reports', label: 'Rapports', icon: FileBarChart, roles: rolesFor('/dashboard/organization/reports'), section: 'follow' },
+  { to: '/dashboard/organization/reports/sellers', label: 'Rapport des vendeurs', icon: Users, roles: rolesFor('/dashboard/organization/reports/sellers'), section: 'follow' },
   { to: '/dashboard/organization/audit', label: 'Journal', icon: ScrollText, roles: rolesFor('/dashboard/organization/audit'), section: 'follow' },
 
   // ---- Stock.

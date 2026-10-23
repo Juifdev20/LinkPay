@@ -7,7 +7,7 @@ function setup(opts: { verify?: () => Promise<void>; required?: boolean } = {}) 
     q.target === 'merchants' ? { data: { id: 'm1', owner_id: 'boss', organization_id: 'org1' } }
       : q.target === 'organization_staff' ? { data: { merchant_id: 'm1', deactivated_at: null } } : { data: null });
   const stockPasswords = { verifyPassword: jest.fn(opts.verify ?? (async () => undefined)), isRequired: jest.fn(async () => opts.required ?? true) };
-  const service = new StockService(fake.service, {} as any, {} as any, stockPasswords as any, { log: jest.fn() } as any);
+  const service = new StockService(fake.service, {} as any, {} as any, stockPasswords as any, { log: jest.fn() } as any, {} as any);
   return { service, stockPasswords };
 }
 
@@ -55,7 +55,7 @@ describe('who did it — edits and deletions are recorded under the person\'s ow
     });
     const audit = { log: jest.fn(async () => undefined) };
     const passwords = { verifyPassword: jest.fn(async () => undefined), isRequired: jest.fn(async () => true) };
-    return { service: new StockService(fake.service, {} as any, {} as any, passwords as any, audit as any), audit };
+    return { service: new StockService(fake.service, {} as any, {} as any, passwords as any, audit as any, {} as any), audit };
   }
 
   it('a deleted article is logged with what it was and who removed it', async () => {
@@ -86,7 +86,7 @@ describe('selling staff never see what the shop paid for an item', () => {
       if (q.target === 'stock_items') return { data: items };
       return { data: null };
     });
-    return new StockService(fake.service, {} as any, {} as any, {} as any, {} as any);
+    return new StockService(fake.service, {} as any, {} as any, {} as any, {} as any, {} as any);
   };
 
   it('vendeur and caissier get price and quantity, without cost_price_cents', async () => {
@@ -115,7 +115,7 @@ describe('stations — staff only reach the station they work in', () => {
       if (q.target === 'stock_items') return { data: [] };
       return { data: null };
     });
-    return new StockService(fake.service, {} as any, {} as any, {} as any, {} as any);
+    return new StockService(fake.service, {} as any, {} as any, {} as any, {} as any, {} as any);
   };
 
   it('a cashier of station A is refused at station B', async () => {

@@ -22,7 +22,7 @@ function setup(opts: { status?: string; callerStation?: string; requestStation?:
         return { data: null };
     }
   });
-  const stock = new StockService(fake.service, {} as any, {} as any, {} as any, {} as any);
+  const stock = new StockService(fake.service, {} as any, {} as any, {} as any, {} as any, {} as any);
   const orgs = { getOrganizationById: jest.fn(async () => ({ id: 'org1', owner_id: 'boss' })) };
   const notifications = { create: jest.fn(async () => undefined) };
   return { service: new RestockService(fake.service, stock, orgs as any, notifications as any), writes, notifications };

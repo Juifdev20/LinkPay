@@ -5,6 +5,7 @@ import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency } from '@/lib/utils';
 import { getCategoryLabel } from '@/lib/stock-categories';
+import { marginOf, formatPercent } from '@/lib/margin';
 
 type SortKey = 'name' | 'price' | 'stock';
 type Sort = { key: SortKey; dir: 'asc' | 'desc' };
@@ -73,6 +74,7 @@ export function ProductTable({
   className = '',
   scrollClassName = '',
   stockManagerMode = false,
+  showPurchase = false,
 }: {
   items: any[];
   query: string;
@@ -95,6 +97,11 @@ export function ProductTable({
    * category select is hidden.
    */
   stockManagerMode?: boolean;
+  /**
+   * Stock manager mode: also the Fournisseur, Prix d'achat and Marge columns. Only for the people who may see what
+   * the shop pays (never sellers or cashiers — the API leaves the purchase price out for them anyway).
+   */
+  showPurchase?: boolean;
 }) {
   const [category, setCategory] = useState('');
   const [sort, setSortState] = useState<Sort>(() => loadSort(sortStorageKey));
@@ -117,7 +124,7 @@ export function ProductTable({
       if (!stockManagerMode && category && i.category !== category) return false;
       if (!q) return true;
       // Brand, model and IMEI / serial only exist on electronics products.
-      return [i.name, i.brand, i.model, getCategoryLabel(i.category)].some((v) => v && fold(v).includes(q))
+      return [i.name, i.brand, i.model, getCategoryLabel(i.category), showPurchase ? i.supplier_name : null].some((v) => v && fold(v).includes(q))
         || (i.barcode || '').includes(q) || fold(i.serial_number || '').includes(q);
     });
     const sign = sort.dir === 'asc' ? 1 : -1;
@@ -126,7 +133,7 @@ export function ProductTable({
       if (sort.key === 'stock') return sign * ((a.quantity ?? 0) - (b.quantity ?? 0));
       return sign * (a.name || '').localeCompare(b.name || '');
     });
-  }, [items, query, category, sort, stockManagerMode]);
+  }, [items, query, category, sort, stockManagerMode, showPurchase]);
 
   const SortHeader = ({ k, label, align }: { k: SortKey; label: string; align: 'left' | 'right' }) => (
     <th className={`px-3 py-2.5 font-medium ${align === 'right' ? 'text-right' : 'text-left'}`}>
@@ -159,9 +166,17 @@ export function ProductTable({
               <SortHeader k="name" label="Désignation" align="left" />
               <th className="px-3 py-2.5 font-medium text-left">Catégorie</th>
               <SortHeader k="stock" label="Stock dispo" align="right" />
-              <th className="px-3 py-2.5 font-medium text-right whitespace-nowrap">Seuil mini</th>
+              {/* With the purchase columns, the threshold makes room (the status badge already says "low"). */}
+              <th className={`px-3 py-2.5 font-medium text-right whitespace-nowrap ${showPurchase ? 'hidden 2xl:table-cell' : ''}`}>Seuil mini</th>
               <th className="px-3 py-2.5 font-medium text-left">Statut</th>
-              <SortHeader k="price" label="Prix unitaire" align="right" />
+              <SortHeader k="price" label="Prix de vente" align="right" />
+              {showPurchase && (
+                <>
+                  <th className="px-3 py-2.5 font-medium text-right whitespace-nowrap">Prix d'achat</th>
+                  <th className="px-3 py-2.5 font-medium text-right">Marge</th>
+                  <th className="px-3 py-2.5 font-medium text-left">Fournisseur</th>
+                </>
+              )}
               <th className="px-3 py-2.5 font-medium text-center">Actions</th>
             </tr>
           </thead>
@@ -193,7 +208,7 @@ export function ProductTable({
                 <td className="px-3 py-2 align-middle text-right font-semibold text-foreground">
                   {item.quantity ?? 0}
                 </td>
-                <td className="px-3 py-2 align-middle text-right text-muted-foreground">
+                <td className={`px-3 py-2 align-middle text-right text-muted-foreground ${showPurchase ? 'hidden 2xl:table-cell' : ''}`}>
                   {item.low_stock_threshold ?? 5}
                 </td>
                 <td className="px-3 py-2 align-middle">
@@ -202,6 +217,27 @@ export function ProductTable({
                 <td className="px-3 py-2 align-middle text-right font-semibold text-foreground whitespace-nowrap">
                   {formatCurrency(item.unit_price_cents, item.currency)}
                 </td>
+                {showPurchase && (() => {
+                  const margin = marginOf(item.unit_price_cents, item.cost_price_cents);
+                  return (
+                    <>
+                      <td className="px-3 py-2 align-middle text-right text-muted-foreground whitespace-nowrap">
+                        {item.cost_price_cents != null ? formatCurrency(item.cost_price_cents, item.currency) : '—'}
+                      </td>
+                      <td className={`px-3 py-2 align-middle text-right whitespace-nowrap ${margin && margin.cents < 0 ? 'text-destructive' : 'text-foreground'}`}>
+                        {margin ? (
+                          <>
+                            <span className="font-medium">{formatCurrency(margin.cents, item.currency)}</span>
+                            <span className="block text-[11px] text-muted-foreground">{formatPercent(margin.percent)}</span>
+                          </>
+                        ) : '—'}
+                      </td>
+                      <td className="px-3 py-2 align-middle text-muted-foreground">
+                        <span className="block truncate max-w-[140px]">{item.supplier_name || '—'}</span>
+                      </td>
+                    </>
+                  );
+                })()}
                 <td className="px-3 py-2 align-middle text-center">
                   <button
                     onClick={(e) => { e.stopPropagation(); onSelect(item); }}

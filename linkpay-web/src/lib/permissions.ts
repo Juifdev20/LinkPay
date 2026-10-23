@@ -59,6 +59,8 @@ export const ROUTE_ROLES = {
   // The manager has « Rapports » (same figures and more): no duplicate screen for them.
   '/dashboard/organization/stats': ['enterprise', 'comptable'],
   '/dashboard/organization/reports': ['enterprise', 'gerant', 'comptable'],
+  // Sales per seller between two chosen dates — till and Ventes, every sector.
+  '/dashboard/organization/reports/sellers': ['enterprise', 'gerant', 'comptable'],
   // A cashier's (or seller's) own sales of the month.
   '/dashboard/organization/my-sales': ['caissier', 'vendeur'],
   '/dashboard/organization/transactions': ['enterprise', 'gerant', 'caissier', 'comptable'],
