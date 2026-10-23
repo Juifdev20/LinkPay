@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
+import { BankSettingsService } from '../platform-settings/bank-settings.service';
 import { SupabaseService } from '../supabase/supabase.service';
 import { AuthService } from '../auth/auth.service';
 import { validateBankDestination } from '../wallets/bank-account';
@@ -9,6 +10,7 @@ export class MerchantsService {
   constructor(
     private supabaseService: SupabaseService,
     private authService: AuthService,
+    @Optional() private bankSettings?: BankSettingsService,
   ) {}
 
   async createMerchant(
@@ -132,7 +134,7 @@ export class MerchantsService {
     // A bank account for the settlements is paid by hand: refuse a malformed one now and keep it in its clean form.
     const account = filtered.settlement_account;
     if (account?.method === 'bank') {
-      const bank = validateBankDestination({ bank: account.bank_name, account_number: account.number, account_name: account.holder_name });
+      const bank = validateBankDestination({ bank: account.bank_name, account_number: account.number, account_name: account.holder_name }, await this.bankSettings?.enabledBanks());
       filtered.settlement_account = { ...account, bank_name: bank.bank, number: bank.account_number, holder_name: bank.account_name };
     }
 

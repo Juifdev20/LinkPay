@@ -1,4 +1,4 @@
-import { LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, Landmark, type LucideIcon } from 'lucide-react';
 
 export const ALL_ROLES = ['merchant', 'cashier', 'enterprise', 'client', 'admin', 'super_admin'];
 
@@ -67,6 +67,7 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/admin/wallet-limits', label: 'Frais et limites', icon: SlidersHorizontal, roles: ['super_admin'] },
   { to: '/dashboard/admin/expense-tracker-settings', label: 'Dépenses — Config.', icon: Receipt, roles: ['super_admin'] },
   { to: '/dashboard/admin/subscriptions', label: 'Abonnements', icon: Sparkles, roles: ['super_admin'] },
+  { to: '/dashboard/admin/banks', label: 'Banques de retrait', icon: Landmark, roles: ['super_admin'] },
   { to: '/dashboard/admin/app-security', label: "Sécurité de l'application", icon: ShieldCheck, roles: ['super_admin'] },
   // The one enterprise module kept at this top level — Transactions and
   // Utilisateurs internes moved to Settings.tsx's secondaryLinks instead

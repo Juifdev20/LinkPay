@@ -10,7 +10,8 @@ import { PinInput } from '@/components/PinInput';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { MobileMoneyFields } from '@/components/payment/MobileMoneyFields';
 import { displayPhone, isNumberReady, operatorById, toApiPhone } from '@/lib/mobile-money';
-import { ACCOUNT_DIGITS, BANKS, BANK_DELAY_HOURS, OTHER_BANK, accountDigits, formatAccountInput, isAccountComplete, isHolderName } from '@/lib/banks';
+import { ACCOUNT_DIGITS, BANK_DELAY_HOURS, accountDigits, formatAccountInput, isAccountComplete, isHolderName } from '@/lib/banks';
+import { useAuthStore } from '@/lib/auth-store';
 import { Select } from '@/components/ui/select';
 import { formatCurrency, cn } from '@/lib/utils';
 import { FormSheet } from '@/components/FormSheet';
@@ -31,13 +32,19 @@ export default function WithdrawPage() {
   const [operator, setOperator] = useState('airtel');
   // The 9 national digits of the Mobile Money number ("828497218"), see lib/mobile-money.
   const [phone, setPhone] = useState('');
-  // Bank: a name picked in the list (or OTHER_BANK, then typed), the account number written XXXXX-XXXXX-XXXXXXXXXXX-XX and typed twice.
-  const [bankChoice, setBankChoice] = useState('');
-  const [bankOther, setBankOther] = useState('');
+  // Bank: picked ONLY in the list the super admin switched on (never typed), the account number written XXXXX-XXXXX-XXXXXXXXXXX-XX and typed twice.
+  const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountConfirm, setAccountConfirm] = useState('');
-  const [accountName, setAccountName] = useState('');
-  const bankName = bankChoice === OTHER_BANK ? bankOther.trim() : bankChoice;
+  // The account title: the name registered AT THE BANK. Offered with the name of the ScanLinkPay account, which the person corrects if the bank has it otherwise.
+  const ownName = useAuthStore((s) => s.user?.full_name) ?? '';
+  const [accountName, setAccountName] = useState(ownName);
+  const { data: bankList } = useQuery<{ banks: string[] }>({
+    queryKey: ['platform-banks'],
+    queryFn: async () => (await api.get('/platform/banks')).data,
+    staleTime: 60_000,
+  });
+  const banks = bankList?.banks ?? [];
   const [fee, setFee] = useState<any>(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -72,7 +79,7 @@ export default function WithdrawPage() {
       if (!bankName) return setError('Choisissez votre banque.');
       if (!isAccountComplete(accountNumber)) return setError(`Le numéro de compte doit comporter ${ACCOUNT_DIGITS} chiffres (exemple : 00017-00001-12345678901-23). Vous le trouvez sur votre relevé ou dans l'application de votre banque.`);
       if (accountDigits(accountConfirm) !== accountDigits(accountNumber)) return setError('Les deux numéros de compte ne sont pas identiques. Vérifiez-les.');
-      if (!isHolderName(accountName)) return setError('Saisissez le nom du titulaire du compte, tel qu\'il apparaît à la banque.');
+      if (!isHolderName(accountName)) return setError('Saisissez l\'intitulé du compte, tel qu\'il apparaît à la banque.');
     }
     setDestinationLoading(true);
     try {
@@ -276,12 +283,10 @@ export default function WithdrawPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="bank" className="font-semibold">Banque</Label>
-                    <Select id="bank" value={bankChoice} onChange={(e) => setBankChoice(e.target.value)} autoFocus>
-                      <option value="">Choisissez votre banque</option>
-                      {BANKS.map((b) => <option key={b} value={b}>{b}</option>)}
-                      <option value={OTHER_BANK}>Autre banque…</option>
+                    <Select id="bank" value={bankName} onChange={(e) => setBankName(e.target.value)} autoFocus>
+                      <option value="">{banks.length ? 'Choisissez votre banque' : 'Chargement des banques…'}</option>
+                      {banks.map((b) => <option key={b} value={b}>{b}</option>)}
                     </Select>
-                    {bankChoice === OTHER_BANK && <Input id="bank-other" placeholder="Nom de votre banque" value={bankOther} onChange={(e) => setBankOther(e.target.value)} maxLength={60} />}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="accnum" className="font-semibold">Numéro de compte (RIB)</Label>
@@ -294,9 +299,9 @@ export default function WithdrawPage() {
                     {accountConfirm && accountDigits(accountConfirm) === accountDigits(accountNumber) && isAccountComplete(accountNumber) && <p className="text-xs text-success font-medium">Les deux numéros sont identiques.</p>}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="accname" className="font-semibold">Titulaire du compte</Label>
+                    <Label htmlFor="accname" className="font-semibold">Intitulé du compte (nom à la banque)</Label>
                     <Input id="accname" value={accountName} onChange={(e) => setAccountName(e.target.value)} maxLength={100} />
-                    <p className="text-xs text-muted-foreground">Le nom exact du titulaire à la banque. Un compte au nom d'une autre personne peut retarder le traitement.</p>
+                    <p className="text-xs text-muted-foreground">Le nom enregistré à la banque, pas celui de ScanLinkPay : corrigez-le s'il est différent. Un compte au nom d'une autre personne peut retarder le traitement.</p>
                   </div>
                 </>
               )}

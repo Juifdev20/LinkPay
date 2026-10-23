@@ -19,7 +19,11 @@ export const ACCOUNT_DIGITS = 23;
 
 export const BANK_DELAY_HOURS = 24;
 
-/** Banks the customer picks from. "Autre banque" (free name) stays possible: a missing bank must not block a customer. */
+/**
+ * The catalogue of banks the super admin can switch on (Administration → Banques de retrait). The customer picks ONLY among
+ * the banks switched on: no free typing, so every account number is read with the rules of a known bank. Adding a bank here
+ * (and in linkpay-web/src/lib/banks.ts) makes it available to the super admin's switches.
+ */
 export const BANKS: string[] = [
   'Equity BCDC',
   'Rawbank',
@@ -36,8 +40,6 @@ export const BANKS: string[] = [
   'Citibank',
 ];
 
-export const OTHER_BANK = 'Autre banque';
-
 const clean = (s: unknown) => String(s ?? '').replace(/\s+/g, ' ').trim();
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 
@@ -52,20 +54,25 @@ export function formatAccountNumber(digits: string): string {
   return `${digits.slice(0, 5)}-${digits.slice(5, 10)}-${digits.slice(10, 21)}-${digits.slice(21)}`;
 }
 
-/** The bank's usual name when the typed one is a known bank written another way ("equity bcdc", "RAWBANK"), else the typed name. */
-export function canonicalBankName(raw: unknown): string {
-  const typed = clean(raw);
-  const key = fold(typed);
-  return BANKS.find((b) => fold(b) === key || fold(b).startsWith(key) && key.length >= 3) ?? typed;
+/** The bank's usual name when the given one is a bank of the catalogue written another way ("equity bcdc", "RAWBANK"), else null. */
+export function canonicalBankName(raw: unknown): string | null {
+  const key = fold(clean(raw));
+  if (key.length < 3) return null;
+  return BANKS.find((b) => fold(b) === key || fold(b).startsWith(key)) ?? null;
 }
 
 /**
  * Checks a bank destination {bank, account_number, account_name} and returns it in its clean form (account number as
- * "XXXXX-XXXXX-XXXXXXXXXXX-XX"). Refuses with a message the customer can act on.
+ * "XXXXX-XXXXX-XXXXXXXXXXX-XX"). Refuses with a message the customer can act on. `allowed` = the banks the super admin
+ * switched on (all of the catalogue when it is not given).
  */
-export function validateBankDestination(destination: Record<string, any> | undefined | null): { bank: string; account_number: string; account_name: string } {
+export function validateBankDestination(
+  destination: Record<string, any> | undefined | null,
+  allowed: string[] = BANKS,
+): { bank: string; account_number: string; account_name: string } {
   const bank = canonicalBankName(destination?.bank);
-  if (bank.length < 2 || bank.length > 60) throw new BadRequestException('Choisissez votre banque.');
+  if (!bank) throw new BadRequestException('Choisissez votre banque dans la liste.');
+  if (!allowed.includes(bank)) throw new BadRequestException(`Les retraits vers ${bank} ne sont pas disponibles pour le moment. Choisissez une autre banque de la liste.`);
   const digits = normalizeAccountNumber(destination?.account_number);
   if (!digits) {
     throw new BadRequestException(

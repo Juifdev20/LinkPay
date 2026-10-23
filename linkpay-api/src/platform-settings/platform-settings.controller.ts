@@ -1,7 +1,8 @@
 import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty } from '@nestjs/swagger';
-import { IsBoolean } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsString } from 'class-validator';
 import { PlatformSettingsService } from './platform-settings.service';
+import { BankSettingsService } from './bank-settings.service';
 import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -14,10 +15,18 @@ class UpdatePlatformSettingsDto {
   screenshot_protection!: boolean;
 }
 
+class UpdateBanksDto {
+  @ApiProperty({ type: [String], description: 'Banques proposées pour les retraits (noms du catalogue)' })
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  banks!: string[];
+}
+
 @ApiTags('Platform settings')
 @Controller()
 export class PlatformSettingsController {
-  constructor(private platformSettingsService: PlatformSettingsService) {}
+  constructor(private platformSettingsService: PlatformSettingsService, private bankSettings: BankSettingsService) {}
 
   // Public: read before login too — the login and PIN screens are protected.
   @Public()
@@ -44,5 +53,32 @@ export class PlatformSettingsController {
   @ApiOperation({ summary: 'Modifier les réglages globaux (super admin)' })
   update(@Body() dto: UpdatePlatformSettingsDto, @CurrentUser('id') callerId: string) {
     return this.platformSettingsService.update(callerId, dto);
+  }
+
+  /** Every signed-in user: the banks offered for a withdrawal or a settlement account (chosen by the super admin). */
+  @ApiBearerAuth()
+  @Get('platform/banks')
+  @ApiOperation({ summary: 'Banques proposées pour les retraits' })
+  async banks() {
+    return { banks: await this.bankSettings.enabledBanks() };
+  }
+
+  @ApiBearerAuth()
+  @Get('admin/banks')
+  @Roles('super_admin')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'Banques du catalogue, activées ou non (super admin)' })
+  adminBanks() {
+    return this.bankSettings.adminView();
+  }
+
+  @ApiBearerAuth()
+  @Put('admin/banks')
+  @Roles('super_admin')
+  @UseGuards(RolesGuard, OtpStepUpGuard)
+  @RequireOtp()
+  @ApiOperation({ summary: 'Choisir les banques proposées pour les retraits (super admin)' })
+  setBanks(@Body() dto: UpdateBanksDto, @CurrentUser('id') callerId: string) {
+    return this.bankSettings.setEnabled(callerId, dto.banks);
   }
 }

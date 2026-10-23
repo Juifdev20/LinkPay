@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, ServiceUnavailableException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -14,6 +14,7 @@ import { completeTopupOnce } from './topup-completion';
 import { confirmedAmountMatches } from '../payments/psp/amount-check';
 import { assertNumberMatchesOperator } from '../payments/mobile-money';
 import { BANK_DELAY_HOURS, validateBankDestination } from './bank-account';
+import { BankSettingsService } from '../platform-settings/bank-settings.service';
 
 @Injectable()
 export class WalletsService {
@@ -30,6 +31,7 @@ export class WalletsService {
     private savingsService: SavingsService,
     private withdrawalPayouts: WithdrawalPayoutService,
     private riskService: RiskService,
+    @Optional() private bankSettings?: BankSettingsService,
   ) {}
 
   async getWalletByUserId(userId: string) {
@@ -677,7 +679,7 @@ export class WalletsService {
     }
     if (dto.channel === 'mobile_money') assertNumberMatchesOperator(dto.destination.operator, dto.destination.phone);
     // A bank account is paid by hand by an administrator: refuse a malformed one now, and store it in its clean form.
-    if (dto.channel === 'bank') dto = { ...dto, destination: validateBankDestination(dto.destination) };
+    if (dto.channel === 'bank') dto = { ...dto, destination: validateBankDestination(dto.destination, await this.bankSettings?.enabledBanks()) };
 
     const wallet = await this.getWalletByUserId(userId);
 

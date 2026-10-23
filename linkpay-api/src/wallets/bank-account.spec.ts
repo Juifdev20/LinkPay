@@ -23,8 +23,10 @@ describe('canonicalBankName', () => {
     expect(canonicalBankName('Fbn bank')).toBe('FBNBank');
     expect(canonicalBankName('tmb')).toBe('TMB (Trust Merchant Bank)');
   });
-  it('keeps an unknown bank as typed', () => {
-    expect(canonicalBankName('  Banque du Kivu ')).toBe('Banque du Kivu');
+  it('does not know a bank that is not in the catalogue (nothing typed is ever accepted)', () => {
+    expect(canonicalBankName('  Banque du Kivu ')).toBeNull();
+    expect(canonicalBankName('ab')).toBeNull();
+    expect(canonicalBankName('')).toBeNull();
   });
   it('lists the banks the owner asked for', () => {
     for (const b of ['Equity BCDC', 'Rawbank', 'FBNBank', 'Access Bank', 'Ecobank', 'Sofibanque', 'BGFIBank']) expect(BANKS).toContain(b);
@@ -36,8 +38,13 @@ describe('validateBankDestination', () => {
   it('returns the clean form', () => {
     expect(validateBankDestination(ok)).toEqual({ bank: 'Rawbank', account_number: '00017-00001-12345678901-23', account_name: 'Amina Kabongo' });
   });
-  it('refuses a missing bank', () => {
-    expect(() => validateBankDestination({ ...ok, bank: ' ' })).toThrow(BadRequestException);
+  it('refuses a missing bank, or one that is not in the list', () => {
+    expect(() => validateBankDestination({ ...ok, bank: ' ' })).toThrow(/dans la liste/);
+    expect(() => validateBankDestination({ ...ok, bank: 'Banque du Kivu' })).toThrow(/dans la liste/);
+  });
+  it('refuses a bank the super admin switched off', () => {
+    expect(() => validateBankDestination(ok, ['Equity BCDC', 'Ecobank'])).toThrow(/Rawbank ne sont pas disponibles|vers Rawbank/);
+    expect(validateBankDestination({ ...ok, bank: 'equity bcdc' }, ['Equity BCDC']).bank).toBe('Equity BCDC');
   });
   it('refuses an account number that is not 23 digits, and says where to find it', () => {
     expect(() => validateBankDestination({ ...ok, account_number: '12345' })).toThrow(/23 chiffres/);

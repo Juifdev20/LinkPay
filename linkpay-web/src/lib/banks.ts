@@ -11,6 +11,7 @@
 export const ACCOUNT_DIGITS = 23;
 export const BANK_DELAY_HOURS = 24;
 
+/** The catalogue (the API holds the same one). What the customer sees is only the banks the super admin switched on (GET /platform/banks); this list is the fallback while it loads. */
 export const BANKS: string[] = [
   'Equity BCDC',
   'Rawbank',
@@ -26,9 +27,6 @@ export const BANKS: string[] = [
   'Advans Banque Congo',
   'Citibank',
 ];
-
-/** Value of the bank menu for a bank that is not in the list (the person then types its name). */
-export const OTHER_BANK = '__autre__';
 
 /** Keeps the digits, at most 23, and writes them XXXXX-XXXXX-XXXXXXXXXXX-XX while the person types. */
 export function formatAccountInput(raw: string): string {

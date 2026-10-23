@@ -66,6 +66,7 @@ const AdminTwoFactorSetupPage = lazyPage(() => import('@/pages/auth/AdminTwoFact
 const AdminWalletLimitsPage = lazyPage(() => import('@/pages/admin/WalletLimits'));
 const ExpenseTrackerSettingsPage = lazyPage(() => import('@/pages/admin/ExpenseTrackerSettings'));
 const AppSecurityPage = lazyPage(() => import('@/pages/admin/AppSecurity'));
+const AdminBanksPage = lazyPage(() => import('@/pages/admin/Banks'));
 const AdminOrganizationsPage = lazyPage(() => import('@/pages/admin/Organizations'));
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
 const StaffPage = lazyPage(() => import('@/pages/organization/Staff'));
@@ -345,6 +346,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={['super_admin']}>
               <AdminWalletLimitsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/banks"
+          element={
+            <ProtectedRoute roles={['super_admin']}>
+              <AdminBanksPage />
             </ProtectedRoute>
           }
         />
