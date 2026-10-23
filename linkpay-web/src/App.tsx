@@ -72,6 +72,8 @@ const StaffWalletPage = lazyPage(() => import('@/pages/staff/StaffWallet'));
 const BusinessWalletPage = lazyPage(() => import('@/pages/organization/BusinessWallet'));
 const ReportsPage = lazyPage(() => import('@/pages/organization/Reports'));
 const SellerReportPage = lazyPage(() => import('@/pages/organization/SellerReport'));
+const SupplierSpacePage = lazyPage(() => import('@/pages/organization/SupplierSpace'));
+const SupplierOrdersPage = lazyPage(() => import('@/pages/organization/SupplierOrders'));
 const MySalesPage = lazyPage(() => import('@/pages/staff/MySales'));
 const RestockPage = lazyPage(() => import('@/pages/organization/Restock'));
 const AdminRiskLogsPage = lazyPage(() => import('@/pages/admin/RiskLogs'));
@@ -527,6 +529,22 @@ export default function App() {
           element={
             <ProtectedRoute roles={rolesFor('/dashboard/organization/reports')}>
               <ReportsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/supplier"
+          element={
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/supplier')}>
+              <SupplierSpacePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/supplier-orders"
+          element={
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/supplier-orders')}>
+              <SupplierOrdersPage />
             </ProtectedRoute>
           }
         />

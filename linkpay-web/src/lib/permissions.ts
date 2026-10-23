@@ -62,6 +62,9 @@ export const ROUTE_ROLES = {
   '/dashboard/organization/reports': ['enterprise', 'gerant', 'comptable'],
   // Sales per seller between two chosen dates — till and Ventes, every sector.
   '/dashboard/organization/reports/sellers': ['enterprise', 'gerant', 'comptable'],
+  // Supplier network (DECISIONS.md 23/10, phase C): selling to other enterprises / buying from them.
+  '/dashboard/organization/supplier': ['enterprise', 'gerant'],
+  '/dashboard/organization/supplier-orders': ['enterprise', 'gerant', 'magasinier'],
   // A cashier's (or seller's) own sales of the month.
   '/dashboard/organization/my-sales': ['caissier', 'vendeur'],
   '/dashboard/organization/transactions': ['enterprise', 'gerant', 'caissier', 'comptable'],

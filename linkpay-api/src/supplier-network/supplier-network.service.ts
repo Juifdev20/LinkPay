@@ -158,7 +158,17 @@ export class SupplierNetworkService {
         .insert({ organization_id: orgId, supplier_number: number, merchant_id: input.merchant_id, trial_ends_at: trialEnds, created_by: caller.id, ...changes })
         .select()
         .single();
-      if (!error) return { profile: data, plan: this.plan.stateOf(data), offer: await this.plan.offer() };
+      if (!error) {
+        // Told at once how long the free trial lasts (the super admin's length) and what follows.
+        const offer = await this.plan.offer();
+        const price = Object.entries(offer.prices).map(([c, v]) => `${(v / 100).toLocaleString('fr-FR')} ${c}`).join(' ou ');
+        await this.notify([caller.id], '', {
+          title: settings.trial_days > 0 ? `Essai gratuit Fournisseur : ${settings.trial_days} jour${settings.trial_days > 1 ? 's' : ''}` : 'Vous êtes fournisseur',
+          body: `Votre numéro de fournisseur : ${number}. ${settings.trial_days > 0 ? `Vos clients peuvent vous commander gratuitement jusqu'au ${new Date(trialEnds).toLocaleDateString('fr-FR')}. ` : ''}Ensuite : ${price || 'le prix sera annoncé'} par mois${offer.annual_free_months ? `, ou l'année avec ${offer.annual_free_months} mois offerts` : ''}.`,
+          url: '/dashboard/organization/supplier',
+        });
+        return { profile: data, plan: this.plan.stateOf(data), offer };
+      }
       if (error.code === '23505' && /supplier_number/.test(error.message)) continue;
       if (error.code === '23505') throw new BadRequestException('Votre entreprise est déjà fournisseur');
       this.fail(error);

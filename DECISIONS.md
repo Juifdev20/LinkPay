@@ -102,7 +102,7 @@ listes communes (`ProductTable`). Ordre de travail : A → B → C, puis le fich
     celui qui a validé.
   - Web : page Demandes d'achat (texte par rôle, boutons Valider/Refuser pour le gérant), Inventaire ouvert au gérant,
     Stock limité à sa station, explication du rôle dans le formulaire « Nouvel utilisateur » (`Staff.tsx`, `ROLES.help`).
-- **Phase C : en cours.**
+- **Phase C : faite** (23/10).
   - **Fait — API** (migration `084_supplier_network.sql`, dossier `linkpay-api/src/supplier-network/`) :
     - `supplier-plan.service.ts` : abonnement Fournisseur (essai fixé à l'activation, mensuel × N, annuel = 12 mois pour
       12 − N, rappels quotidiens, écran super admin `GET/PUT /admin/supplier-plan…`), paiement par
@@ -118,9 +118,20 @@ listes communes (`ProductTable`). Ordre de travail : A → B → C, puis le fich
       produit trouvé par code-barres ou créé avec son prix de vente, prix d'achat = prix de la commande).
     - Testé : `supplier-plan.service.spec.ts`, `supplier-orders.service.spec.ts`, et la fonction SQL sur un Postgres
       local (débit unique, prolongation après l'essai, refus d'un non-propriétaire, trésorerie).
-  - **À faire — écrans** : page « Fournisseur » (devenir fournisseur avec l'essai annoncé, abonnement, catalogue,
-    clients, commandes reçues), page « Commandes fournisseurs » (mes fournisseurs, inviter, commander, payer, réception),
-    écran super admin de l'abonnement Fournisseur, tickets imprimables.
+  - **Fait — écrans** (web, Android et Windows) :
+    - `pages/organization/SupplierSpace.tsx` (menu « Espace fournisseur », patron et gérant) : sans fiche, l'offre avec
+      « Essai gratuit de X jours » et les prix du super admin, puis le formulaire (patron) ; avec fiche, un bandeau
+      (« il vous reste X jours d'essai », fin d'abonnement), l'abonnement mensuel ou annuel payé par PIN, la fiche,
+      le catalogue, les clients (accepter / refuser) et les commandes reçues.
+    - `pages/organization/SupplierOrders.tsx` (menu « Mes fournisseurs », patron, gérant, magasinier) : inviter par
+      numéro, commander (quantités, livraison), payer par ScanLinkPay (lien `/p/:token`) ou annoncer un paiement
+      espèces / Mobile Money, confirmer la réception (produit retrouvé par code-barres ou créé avec son prix de vente).
+    - `components/supplier/OrderCard.tsx` (une commande vue des deux côtés, boutons de l'étape), `lib/supplier-order.ts`
+      (libellés, ticket A4 de chaque étape : bon de commande, reçu de paiement, bon de livraison).
+    - Super admin : carte « Abonnement Fournisseur » dans Tarifs → Abonnements (`pages/admin/SupplierPlanAdmin.tsx`).
+    - Une notification annonce l'essai dès que l'entreprise devient fournisseur ; des rappels suivent avant la fin.
+  - **À faire côté Supabase** : migrations `083` puis `084` (LinkPay Test puis production), puis fixer le prix CDF de
+    l'abonnement Fournisseur dans l'écran super admin (seul le prix USD de 10 $ est mis par la migration).
 - Fichier Excel du modèle économique : après C.
 
 ## 22/10/2026 (après-midi) — Deux secteurs seulement ; les Ventes électronique sur le modèle de la Caisse
