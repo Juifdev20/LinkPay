@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDownRight, ArrowUpRight, ChevronRight, ShoppingCart, Store, type LucideIcon } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, ChevronRight, ShoppingCart, type LucideIcon } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import type { Currency, HomeDay, HomeSale, HomeTop } from './useHomeData';
 
@@ -18,16 +18,10 @@ export function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`animate-pulse rounded-xl bg-muted ${className}`} />;
 }
 
-function greeting() {
-  const h = new Date().getHours();
-  return h < 12 ? 'Bonjour' : h < 18 ? 'Bon après-midi' : 'Bonsoir';
-}
-
 // ------------------------------------------------------------------
 // Hero — today's sales, the first thing an owner wants to know.
 // ------------------------------------------------------------------
 export function HomeHero({
-  firstName,
   orgName,
   currency,
   onCurrency,
@@ -36,53 +30,59 @@ export function HomeHero({
   loading,
   onOpenTill,
   heroLabel,
-  storeIcon,
+  firstName,
+  userRole,
+  storeIcon: _storeIcon,
 }: {
   firstName?: string;
   orgName?: string;
+  userRole?: string;
   currency: Currency;
   onCurrency: (c: Currency) => void;
   today: { revenue: number; count: number | null };
   yesterday: { revenue: number };
   loading: boolean;
   onOpenTill: () => void;
-  /** Label above the revenue figure. Default: "Ventes du jour". */
   heroLabel?: string;
-  /** Show a store icon badge before the org name (Gérant dashboard). */
   storeIcon?: boolean;
 }) {
-  const date = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
   const trend = yesterday.revenue > 0 ? Math.round(((today.revenue - yesterday.revenue) / yesterday.revenue) * 100) : null;
   const noSaleYet = !loading && today.revenue === 0;
 
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-brand-gradient p-6 text-white shadow-xl shadow-primary/25">
-      {/* Soft light blobs for depth */}
-      <div className="pointer-events-none absolute -top-16 -right-10 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
-      <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-sky-300/20 blur-2xl" />
+    <div className="relative overflow-hidden rounded-3xl bg-brand-gradient p-5 text-primary-foreground shadow-brand">
+      {/* Same SVG decoration as BalanceCard — identical card shell across all modules. */}
+      <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 400 240" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="hw-wave" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#ffffff" stopOpacity="0.18" />
+            <stop offset="1" stopColor="#7cc8ff" stopOpacity="0.05" />
+          </linearGradient>
+        </defs>
+        <circle cx="360" cy="-10" r="120" fill="#ffffff" fillOpacity="0.08" />
+        <circle cx="395" cy="40" r="70" fill="#7cc8ff" fillOpacity="0.16" />
+        <path d="M0 175 C 90 135, 170 215, 260 170 S 380 120, 400 145 L 400 240 L 0 240 Z" fill="url(#hw-wave)" />
+        <path d="M0 205 C 110 170, 200 240, 300 200 S 380 175, 400 190 L 400 240 L 0 240 Z" fill="#ffffff" fillOpacity="0.06" />
+      </svg>
 
+      {/* Mirrors BalanceCard layout: label/subtitle row → amount → stats */}
       <div className="relative">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex items-start gap-3">
-            {storeIcon && (
-              <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-white/20">
-                <Store className="h-6 w-6 text-white" />
-              </span>
-            )}
-            <div className="min-w-0">
-              <p className="text-sm text-white/80">
-                {greeting()}{firstName ? `, ${firstName}` : ''} 👑
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-primary-foreground/90">{heroLabel ?? 'Ventes du jour'}</p>
+            {orgName && <p className="mt-0.5 text-[11px] text-primary-foreground/70 truncate tracking-wide">{orgName}</p>}
+            {(firstName || userRole) && (
+              <p className="mt-0.5 text-[11px] text-primary-foreground/70 truncate tracking-wide">
+                {[firstName, userRole].filter(Boolean).join(' · ')}
               </p>
-              <h1 className="mt-0.5 text-xl font-bold leading-tight break-words">{orgName}</h1>
-              <p className="mt-0.5 text-xs capitalize text-white/70">{date}</p>
-            </div>
+            )}
           </div>
           <div className="flex flex-shrink-0 rounded-full bg-white/15 p-0.5 text-xs font-semibold">
             {(['CDF', 'USD'] as const).map((c) => (
               <button
                 key={c}
                 onClick={() => onCurrency(c)}
-                className={`rounded-full px-2.5 py-1 transition-colors ${currency === c ? 'bg-white text-primary' : 'text-white/80'}`}
+                className={`rounded-full px-2.5 py-1 transition-colors ${currency === c ? 'bg-white text-primary' : 'text-primary-foreground/80'}`}
               >
                 {c}
               </button>
@@ -90,42 +90,39 @@ export function HomeHero({
           </div>
         </div>
 
-        <div className="mt-6">
-          <p className="text-sm text-white/80">{heroLabel ?? 'Ventes du jour'}</p>
-          {loading ? (
-            <div className="mt-2 h-10 w-48 animate-pulse rounded-lg bg-white/20" />
-          ) : noSaleYet ? (
-            <div className="mt-2 space-y-3">
-              <p className="text-2xl font-bold">Prêt pour votre première vente ?</p>
+        {loading ? (
+          <div className="mt-3 h-9 w-44 animate-pulse rounded-lg bg-white/20" />
+        ) : noSaleYet ? (
+          <>
+            <p className="mt-3 text-[30px] leading-tight font-extrabold tracking-tight">0 {currency}</p>
+            <div className="mt-3">
               <button
                 onClick={onOpenTill}
-                className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-primary shadow-lg active:scale-95 transition-transform"
+                className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-primary shadow-lg active:scale-95 transition-transform"
               >
                 <ShoppingCart className="h-4 w-4" /> Ouvrir la caisse
               </button>
             </div>
-          ) : (
-            <>
-              <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1">
-                <p className="text-4xl font-extrabold tracking-tight">{money(today.revenue, currency)}</p>
-                {trend !== null && (
-                  <span
-                    className={`mb-1.5 inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${trend >= 0 ? 'bg-emerald-400/25 text-emerald-50' : 'bg-rose-400/25 text-rose-50'}`}
-                  >
-                    {trend >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-                    {trend >= 0 ? '+' : ''}{trend} % vs hier
-                  </span>
-                )}
-              </div>
-              {today.count !== null && (
-                <p className="mt-2 text-sm text-white/80">
-                  {today.count} vente{today.count > 1 ? 's' : ''}
-                  {today.count > 0 && <> · panier moyen {money(Math.round(today.revenue / today.count), currency)}</>}
-                </p>
+          </>
+        ) : (
+          <>
+            <div className="mt-3 flex flex-wrap items-end gap-x-3 gap-y-1">
+              <p className="text-[30px] leading-tight font-extrabold tracking-tight">{money(today.revenue, currency)}</p>
+              {trend !== null && (
+                <span className={`mb-1 inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${trend >= 0 ? 'bg-emerald-400/25 text-emerald-50' : 'bg-rose-400/25 text-rose-50'}`}>
+                  {trend >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
+                  {trend >= 0 ? '+' : ''}{trend} % vs hier
+                </span>
               )}
-            </>
-          )}
-        </div>
+            </div>
+            {today.count !== null && (
+              <p className="mt-1.5 text-[11px] text-primary-foreground/70 tracking-wide">
+                {today.count} vente{today.count > 1 ? 's' : ''}
+                {today.count > 0 && <> · panier moyen {money(Math.round(today.revenue / today.count), currency)}</>}
+              </p>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

@@ -4,6 +4,8 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { StockPasswordService } from '../stock/stock-password.service';
 import { AuditService } from '../audit/audit.service';
 import { requireStaffStation } from '../common/org-access';
+import { businessDayKey, startOfBusinessDay, lastBusinessDays } from '../common/utils/business-day';
+import { trustedNow } from '../common/utils/trusted-clock';
 
 // Internal staff roles (organization-staff module) per sales action. The
 // owner is always allowed on top of these — see assertOrgAccess().
@@ -414,7 +416,7 @@ export class SalesService {
 
     const { error } = await this.db()
       .from('sales')
-      .update({ status: 'PAID', payment_method: 'wallet', paid_at: new Date().toISOString(), transaction_id: transactionId ?? null })
+      .update({ status: 'PAID', payment_method: 'wallet', paid_at: trustedNow().toISOString(), transaction_id: transactionId ?? null })
       .eq('id', sale.id)
       .eq('status', 'PENDING');
     if (error) throw new Error(`Failed to mark sale paid: ${error.message}`);
@@ -495,7 +497,7 @@ export class SalesService {
 
     const { data: updated, error: updateError } = await this.db()
       .from('sales')
-      .update({ status: 'PAID', payment_method: 'cash', paid_at: new Date().toISOString() })
+      .update({ status: 'PAID', payment_method: 'cash', paid_at: trustedNow().toISOString() })
       .eq('id', sale.id)
       .eq('status', 'PENDING')
       .select()
@@ -509,8 +511,20 @@ export class SalesService {
   /** Financial dashboard numbers for paid sales in [from, to). Money is always
    * kept per currency — CDF and USD are never summed together. Net margin
    * deducts the platform/PSP fees recorded on the linked wallet transaction. */
-  async getStats(orgId: string, callerId: string, callerOrgId: string | undefined, from?: string, to?: string, callerRole?: string) {
+  async getStats(orgId: string, callerId: string, callerOrgId: string | undefined, from?: string, to?: string, callerRole?: string, days?: number) {
     const station = await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SALES_VIEW_ROLES);
+
+    // `days` = "the last N business days up to now", cut by the server in the business timezone
+    // (the caller's clock is ignored); `today` is then answered by the server too.
+    const now = trustedNow();
+    const windowDays = days && days > 0 ? Math.min(Math.floor(days), 90) : 0;
+    if (windowDays) {
+      const todayStart = startOfBusinessDay(now);
+      from = new Date(todayStart.getTime() - (windowDays - 1) * 24 * 60 * 60 * 1000).toISOString();
+      // No upper bound: a payment dated slightly in the future (a host clock that ran ahead) still counts, as "today".
+      to = undefined;
+    }
+    const todayKey = businessDayKey(now);
 
     let query = this.db()
       .from('sales')
@@ -541,10 +555,13 @@ export class SalesService {
     const products = new Map<string, { name: string; category: string | null; quantity: number; revenue: Money; margin: Money }>();
     const categories = new Map<string, { revenue: Money; margin: Money; quantity: number }>();
     const daily = new Map<string, Money>();
+    const salesByDay = new Map<string, number>();
 
     for (const sale of sales || []) {
       const cur = sale.currency;
-      const day = (sale.paid_at || '').slice(0, 10);
+      // A payment can't have happened after now: clamp (older sales were stamped by a host clock that ran ahead).
+      const day = sale.paid_at ? businessDayKey(new Date(Math.min(new Date(sale.paid_at).getTime(), now.getTime()))) : '';
+      if (day) salesByDay.set(day, (salesByDay.get(day) || 0) + 1);
       if (sale.transaction_id && feesByTx.has(sale.transaction_id)) {
         addTo(fees, cur, feesByTx.get(sale.transaction_id)!);
       }
@@ -588,6 +605,9 @@ export class SalesService {
       .slice(0, 10);
     const byCategory = [...categories.entries()].map(([category, v]) => ({ category, ...v }));
     const daysSeries = [...daily.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, amounts]) => ({ day, ...amounts }));
+    // Today as the server sees it (business timezone) — what the home hero shows.
+    const today = { revenue: daily.get(todayKey) || {}, sales_count: salesByDay.get(todayKey) || 0 };
+    const dayKeys = windowDays ? lastBusinessDays(windowDays, now) : undefined;
 
     // Sellers see sales volume only — cost, margins and platform fees are
     // reserved for the owner and the finance role (stripped server-side, not
@@ -599,6 +619,9 @@ export class SalesService {
         top_products: topProducts.map(({ margin, cost: _cost, ...p }: any) => p),
         by_category: byCategory.map(({ margin, cost: _cost, ...c }: any) => c),
         daily: daysSeries,
+        today_key: todayKey,
+        today,
+        day_keys: dayKeys,
       };
     }
 
@@ -613,6 +636,9 @@ export class SalesService {
       top_products: topProducts,
       by_category: byCategory,
       daily: daysSeries,
+      today_key: todayKey,
+      today,
+      day_keys: dayKeys,
     };
   }
 

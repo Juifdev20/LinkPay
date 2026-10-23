@@ -43,13 +43,15 @@ const walletTab: Tab = { to: '/dashboard/wallet', label: 'Portefeuille', icon: W
 // fighting Stock for the 4th fixed slot.
 const venteTab: Tab = { to: '/dashboard/pos', label: 'Vente', icon: ShoppingCart, end: false, central: true };
 const stockTab: Tab = { to: '/dashboard/organization/stock', label: 'Stock', icon: Package, end: false };
+// Gérant : "Ventes" → tableau de bord (CA, stats), pas le formulaire de création de vente
+const gerantSalesTab: Tab = { to: SALES_DASHBOARD_PATH, label: 'Ventes', icon: BarChart3, end: true, central: true };
 
 const staffTabsFor = (role: string, orgSector?: string): Tab[] | undefined => {
   const caissierSale = isSupermarket(orgSector) ? venteTab : salesTab;
   const map: Record<string, Tab[]> = {
     vendeur: [homeTab, historyTab, salesTab, settingsTab],
     // The manager: home dashboard · sales · stock · (Plus for the rest).
-    gerant: [homeTab, salesTab, stockTab, settingsTab],
+    gerant: [homeTab, gerantSalesTab, stockTab, settingsTab],
     caissier: [homeTab, orgTransactionsTab, caissierSale, settingsTab],
     comptable: [homeTab, orgTransactionsTab, financeTab, settingsTab],
     // Accueil IS the stock page for the stock keeper, so the second tab is the inventory (no duplicate).
