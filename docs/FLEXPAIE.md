@@ -66,6 +66,16 @@ L'administrateur envoie l'argent à la main (Mobile Money de l'entreprise, ou l'
 
 Règles de sécurité : le code de l'application d'authentification est demandé pour chaque décision ; un administrateur ne peut pas traiter un retrait de son propre portefeuille ; chaque décision est écrite dans le journal d'audit (`withdrawal_manual_sent`, `withdrawal_manual_rejected`) ; deux administrateurs qui cliquent en même temps ne règlent le retrait qu'une fois.
 
+### Retraits vers un compte bancaire (23/10/2026)
+Le virement bancaire est lui aussi envoyé à la main par un administrateur, **sous 24 h** (délai annoncé au client). Ce que l'application contrôle :
+- la **banque** se choisit dans une liste (Equity BCDC, Rawbank, TMB, FBNBank, Access Bank, Ecobank, Sofibanque, BGFIBank, Afriland First Bank, Bank of Africa, UBA, Advans Banque Congo, Citibank, ou « Autre banque » avec son nom) : `linkpay-api/src/wallets/bank-account.ts` (autorité) et `linkpay-web/src/lib/banks.ts` (même liste, garder identiques) ;
+- le **numéro de compte** doit avoir **23 chiffres** (instruction n°28 de la Banque Centrale du Congo : code banque 5 + code agence 5 + compte 11 + clé 2, écrit `XXXXX-XXXXX-XXXXXXXXXXX-XX`, source : avis de la TMB à ses clients, 2017) ; il est saisi **deux fois** ; seuls la longueur et les chiffres sont vérifiés, car aucune table des codes banque ni algorithme de la clé n'a pu être consultée (une table fausse bloquerait de vrais clients) ;
+- le **titulaire** est obligatoire ; l'écran de l'administrateur signale (sans bloquer) quand son nom diffère de celui du compte ScanLinkPay (normal pour une entreprise) ;
+- l'**existence** du compte, seule la banque la connaît : si elle refuse le virement, l'administrateur clique « Refuser » (raisons prêtes : compte introuvable, nom du titulaire différent, compte bloqué) et le client récupère montant et frais ;
+- rappels aux administrateurs : à 12 h (avertissement) puis 20 h (alerte critique SMS + e-mail) pour un virement bancaire, au lieu de 2 h / 6 h pour le Mobile Money.
+Le même contrôle vaut pour le compte bancaire de règlement d'un marchand (`MerchantsService.updateMerchant`).
+Pas encore fait : action « virement retourné par la banque » (recréditer après un virement déjà marqué envoyé) et export quotidien des virements.
+
 Dès que FlexPaie fournit son API d'envoi : il suffira de l'écrire dans `FlexPaieAdapter.payout()` / `getPayoutStatus()` et de retirer `supportsPayout = false` ; les retraits suivent alors le chemin automatique (ceux déjà en attente restent à traiter dans la page).
 
 

@@ -13,6 +13,7 @@ import { WithdrawalPayoutService } from './withdrawal-payout.service';
 import { completeTopupOnce } from './topup-completion';
 import { confirmedAmountMatches } from '../payments/psp/amount-check';
 import { assertNumberMatchesOperator } from '../payments/mobile-money';
+import { BANK_DELAY_HOURS, validateBankDestination } from './bank-account';
 
 @Injectable()
 export class WalletsService {
@@ -675,6 +676,8 @@ export class WalletsService {
       throw new BadRequestException('Compte de destination requis');
     }
     if (dto.channel === 'mobile_money') assertNumberMatchesOperator(dto.destination.operator, dto.destination.phone);
+    // A bank account is paid by hand by an administrator: refuse a malformed one now, and store it in its clean form.
+    if (dto.channel === 'bank') dto = { ...dto, destination: validateBankDestination(dto.destination) };
 
     const wallet = await this.getWalletByUserId(userId);
 
@@ -719,7 +722,7 @@ export class WalletsService {
       type: 'withdrawal_processing',
       title: manualPayout ? 'Demande de retrait enregistrée' : 'Retrait en cours',
       body: manualPayout
-        ? `Votre demande de retrait de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${dto.currency} est enregistrée. Elle sera traitée par notre équipe : vous serez averti dès que l'argent est envoyé.`
+        ? `Votre demande de retrait de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${dto.currency} est enregistrée. Elle sera traitée par notre équipe${dto.channel === 'bank' ? ` sous ${BANK_DELAY_HOURS} h` : ''} : vous serez averti dès que l'argent est envoyé.`
         : `Votre retrait de ${(dto.amount_cents / 100).toLocaleString('fr-FR')} ${dto.currency} est en cours.`,
       data: { withdrawal_id: withdrawal.id },
     }).catch(() => null);
@@ -740,7 +743,7 @@ export class WalletsService {
       throw new BadRequestException(`Le retrait n'a pas pu être effectué : ${rejectedReason} Votre argent est resté dans votre portefeuille.`);
     }
 
-    return { withdrawal: settled, ...(manual ? { manual: true } : {}) };
+    return { withdrawal: settled, ...(manual ? { manual: true, ...(dto.channel === 'bank' ? { expected_hours: BANK_DELAY_HOURS } : {}) } : {}) };
   }
 
   /** A key replays only the SAME withdrawal by the SAME wallet; anything else is a reused or guessed key. */

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { AuthService } from '../auth/auth.service';
+import { validateBankDestination } from '../wallets/bank-account';
 import { sumByCurrency } from '../common/utils/currency';
 
 @Injectable()
@@ -126,6 +127,13 @@ export class MerchantsService {
       if (updates[key] !== undefined) {
         filtered[key] = updates[key];
       }
+    }
+
+    // A bank account for the settlements is paid by hand: refuse a malformed one now and keep it in its clean form.
+    const account = filtered.settlement_account;
+    if (account?.method === 'bank') {
+      const bank = validateBankDestination({ bank: account.bank_name, account_number: account.number, account_name: account.holder_name });
+      filtered.settlement_account = { ...account, bank_name: bank.bank, number: bank.account_number, holder_name: bank.account_name };
     }
 
     const { data, error } = await this.supabaseService.getClient()
