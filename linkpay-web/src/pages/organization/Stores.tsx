@@ -29,6 +29,8 @@ export default function StoresPage() {
   const [enteringId, setEnteringId] = useState<string | null>(null);
   const setStation = useStationScope((s) => s.setStation);
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  // Just created while the business is a supplier: ask whether it also sells to enterprises (DECISIONS.md 23/10).
+  const [justCreated, setJustCreated] = useState<{ id: string; name: string } | null>(null);
 
   const { data: org } = useQuery({
     queryKey: ['my-organization'],
@@ -72,9 +74,22 @@ export default function StoresPage() {
     },
   });
 
+  const { data: supplier } = useQuery({
+    queryKey: ['supplier-profile', org?.id],
+    queryFn: async () => (await api.get(`/organizations/${org.id}/supplier-profile`)).data,
+    enabled: !!org?.id,
+    retry: false,
+  });
+  const isSupplier = !!supplier?.profile;
+  const sellMutation = useMutation({
+    mutationFn: async (merchantId: string) => (await api.put(`/organizations/${org.id}/supplier-stations/${merchantId}`, { active: true })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['supplier-profile', org.id] }),
+  });
+
   const createStoreMutation = useMutation({
     mutationFn: async () => (await api.post(`/organizations/${org.id}/merchants`, newStore)).data,
-    onSuccess: () => {
+    onSuccess: (res: any) => {
+      if (isSupplier && res?.merchant?.id) setJustCreated({ id: res.merchant.id, name: res.merchant.name || newStore.name });
       setShowCreate(false);
       setNewStore({ name: '', phone: '', city: '', default_currency: 'CDF' });
       queryClient.invalidateQueries({ queryKey: ['org-merchants', org.id] });
@@ -85,6 +100,37 @@ export default function StoresPage() {
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader title="Stations" />
+
+      {justCreated && (
+        <Card className="border-primary/40 bg-primary/5">
+          <CardContent className="p-4 space-y-3">
+            {sellMutation.isSuccess ? (
+              <>
+                <p className="text-sm"><strong>{justCreated.name}</strong> vend maintenant aux entreprises. Remplissez son catalogue pour que vos clients puissent y commander.</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => navigate(`/dashboard/organization/supplier?onglet=catalogue&station=${justCreated.id}`)}>Remplir son catalogue</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setJustCreated(null)}>Fermer</Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm">
+                  Station <strong>{justCreated.name}</strong> créée. Vous êtes fournisseur : voulez-vous qu’elle <strong>vende aussi aux entreprises</strong> ?
+                  Elle aura son propre catalogue, tiré de son stock. L’abonnement Fournisseur ne change pas.
+                </p>
+                {sellMutation.isError && <p className="text-sm text-destructive">{(sellMutation.error as any)?.response?.data?.message || 'Impossible pour le moment, réessayez.'}</p>}
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" disabled={sellMutation.isPending} onClick={() => sellMutation.mutate(justCreated.id)}>
+                    {sellMutation.isPending && <Loader2 className="mr-1 w-4 h-4 animate-spin" />} Oui, elle vend aussi
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setJustCreated(null)}>Plus tard</Button>
+                </div>
+                <p className="text-xs text-muted-foreground">Vous pourrez toujours la cocher ou la décocher dans Espace fournisseur → Abonnement et fiche.</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

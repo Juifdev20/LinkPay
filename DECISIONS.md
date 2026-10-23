@@ -144,6 +144,9 @@ listes communes (`ProductTable`). Ordre de travail : A → B → C, puis le fich
   - les invitations sont annoncées au patron et aux gérants de toutes les stations qui vendent ; le gérant de
     n'importe laquelle peut les accepter ;
   - sans la migration 085, l'API se comporte comme avant (la station unique du profil).
+  - **Une nouvelle station n'est jamais cochée toute seule** : quand un fournisseur crée une station, le patron reçoit
+    une notification et, sur la page Stations, la question « voulez-vous qu'elle vende aussi aux entreprises ? »
+    (« Oui » la coche et ouvre son catalogue ; « Plus tard » la laisse non cochée).
 - **Revue de sécurité des phases A, B, C (23/10)** — corrigé :
   - noms de fournisseurs comparés exactement (dans un motif PostgREST, `*` et `%` sont des jokers : « Bra* » aurait
     été pris pour « Bralima ») — `sameName` dans `suppliers.service.ts` ;

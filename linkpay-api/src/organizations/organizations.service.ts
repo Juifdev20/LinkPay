@@ -220,7 +220,29 @@ export class OrganizationsService {
       organizationId: orgId,
       elevateCallerRole: false,
     });
+    await this.suggestSellingStation(orgId, ownerId, merchant);
     return { merchant };
+  }
+
+  /**
+   * A supplier (migration 084/085) that opens a new station is asked whether it should also sell to enterprises — it
+   * is never ticked on its own: the owner decides, in the supplier space. Best effort: never fails the creation.
+   */
+  private async suggestSellingStation(orgId: string, ownerId: string, merchant: { id: string; name?: string }) {
+    try {
+      const { data: profile } = await this.supabaseService.getClient()
+        .from('supplier_profiles').select('organization_id').eq('organization_id', orgId).maybeSingle();
+      if (!profile) return;
+      await this.notificationsService.create({
+        user_id: ownerId,
+        type: 'supplier_network',
+        title: `Nouvelle station « ${merchant.name || 'station'} »`,
+        body: 'Voulez-vous qu’elle vende aussi aux entreprises ? Cochez-la dans votre espace fournisseur, puis remplissez son catalogue.',
+        data: { url: '/dashboard/organization/supplier', merchant_id: merchant.id },
+      });
+    } catch {
+      /* migration 084 not run, or notification down: the station is created anyway */
+    }
   }
 
   /** Renames one of the organization's stations (owner only — checked by the controller). */

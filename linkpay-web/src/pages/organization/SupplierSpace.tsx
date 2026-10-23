@@ -362,8 +362,10 @@ function Catalog({ orgId, stations, isOwner, myStation }: { orgId: string; stati
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState<Record<string, { price: string; min: string }>>({});
   // The owner picks the station; a manager works on his own.
-  const [picked, setPicked] = useState<string>('');
-  const station = isOwner ? picked || stations[0]?.merchant_id || '' : myStation || '';
+  // Opened from « Remplir son catalogue » (new station): that station first.
+  const [params] = useSearchParams();
+  const [picked, setPicked] = useState<string>(() => params.get('station') || '');
+  const station = isOwner ? (stations.some((st) => st.merchant_id === picked) ? picked : stations[0]?.merchant_id || '') : myStation || '';
   const { data: items, isLoading, error } = useQuery({
     queryKey: ['supplier-catalog', orgId, station],
     queryFn: async () => (await api.get(`/organizations/${orgId}/supplier-catalog`, { params: station ? { merchant_id: station } : {} })).data as any[],
