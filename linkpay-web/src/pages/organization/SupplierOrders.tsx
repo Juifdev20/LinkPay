@@ -175,7 +175,12 @@ function NewOrderSheet({ orgId, supplier, isOwner, onClose, onDone }: { orgId: s
   const [delivery, setDelivery] = useState(false);
   const [address, setAddress] = useState('');
   const [note, setNote] = useState('');
-  const items: any[] = data?.items || [];
+  // The supplier's station that serves us: its own catalog, stock and delivery fee.
+  const supStations: any[] = data?.stations || [];
+  const [from, setFrom] = useState('');
+  const serving = from || (supStations.length === 1 ? supStations[0].merchant_id : '');
+  const servingStation = supStations.find((st) => st.merchant_id === serving);
+  const items: any[] = (data?.items || []).filter((i: any) => !serving || i.merchant_id === serving);
   const shown = useMemo(() => items.filter((i) => !query.trim() || i.name.toLowerCase().includes(query.trim().toLowerCase())), [items, query]);
   const lines = items.filter((i) => (qty[i.id] || 0) > 0);
   const currencies = new Set(lines.map((l) => l.currency));
@@ -185,6 +190,7 @@ function NewOrderSheet({ orgId, supplier, isOwner, onClose, onDone }: { orgId: s
   const order = useMutation({
     mutationFn: async () => (await api.post(`/organizations/${orgId}/supplier-orders`, {
       supplier_org_id: supplier.supplier_org_id,
+      supplier_merchant_id: serving,
       ...(isOwner ? { merchant_id: receiving } : {}),
       items: lines.map((l) => ({ catalog_item_id: l.id, quantity: qty[l.id] })),
       delivery_requested: delivery, delivery_address: delivery ? address || undefined : undefined, note: note || undefined,
@@ -192,7 +198,8 @@ function NewOrderSheet({ orgId, supplier, isOwner, onClose, onDone }: { orgId: s
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['supplier-orders', orgId] }); onDone(); },
   });
   const set = (id: string, n: number) => setQty({ ...qty, [id]: Math.max(0, Math.min(1_000_000, Math.round(n) || 0)) });
-  const fee = data?.supplier?.default_delivery_fee_cents;
+  const fee = servingStation?.default_delivery_fee_cents ?? null;
+  const feeCur = servingStation?.default_delivery_currency || 'CDF';
 
   return (
     <FormSheet onClose={onClose} title={`Commander chez ${supplier.supplier_name}`}>
@@ -200,6 +207,22 @@ function NewOrderSheet({ orgId, supplier, isOwner, onClose, onDone }: { orgId: s
         <h2 className="text-xl font-bold">Commander chez {supplier.supplier_name}</h2>
         {isLoading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : error ? <p className="text-sm text-destructive">{msg(error)}</p> : (
           <>
+            {supStations.length > 1 && (
+              <div className="space-y-1.5">
+                <Label>Station du fournisseur qui vous sert</Label>
+                <div className="flex flex-wrap gap-2">
+                  {supStations.map((st) => (
+                    <button key={st.merchant_id} onClick={() => { setFrom(st.merchant_id); setQty({}); }}
+                      className={cn('rounded-xl border px-3 py-2 text-left text-sm', serving === st.merchant_id ? 'border-primary bg-primary/5' : 'border-border')}>
+                      <span className="font-semibold block">{st.name}</span>
+                      {st.delivery_zone && <span className="text-xs text-muted-foreground">Livre : {st.delivery_zone}</span>}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">Choisissez la plus proche : chaque station a son stock et ses prix.</p>
+              </div>
+            )}
+            {!serving && supStations.length > 1 ? null : (<>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input className="pl-9" placeholder="Rechercher dans son catalogue…" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -223,7 +246,7 @@ function NewOrderSheet({ orgId, supplier, isOwner, onClose, onDone }: { orgId: s
 
             {isOwner && (stations?.length ?? 0) > 1 && (
               <div className="space-y-1.5">
-                <Label htmlFor="ord_station">Station qui reçoit</Label>
+                <Label htmlFor="ord_station">Votre station qui reçoit la marchandise</Label>
                 <Select id="ord_station" value={station} onChange={(e) => setStation(e.target.value)}>
                   <option value="">Choisir…</option>
                   {(stations || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -236,7 +259,7 @@ function NewOrderSheet({ orgId, supplier, isOwner, onClose, onDone }: { orgId: s
                 Me faire livrer
                 <span className="block text-xs text-muted-foreground">
                   Le fournisseur fixe les frais de cette livraison (selon la distance) en confirmant ; ils s'ajoutent au total.
-                  {fee != null && ` Habituellement : ${formatCurrency(fee, data.supplier.default_delivery_currency || 'CDF')}.`}
+                  {fee != null && ` Habituellement depuis ${servingStation.name} : ${formatCurrency(fee, feeCur)}.`}
                 </span>
               </span>
             </label>
@@ -249,9 +272,10 @@ function NewOrderSheet({ orgId, supplier, isOwner, onClose, onDone }: { orgId: s
               {tooFew && <p className="text-destructive text-xs mt-1">« {tooFew.name} » : au moins {tooFew.min_quantity}.</p>}
             </div>
             {order.isError && <p className="text-sm text-destructive">{msg(order.error)}</p>}
-            <Button className="w-full" size="lg" disabled={!lines.length || currencies.size > 1 || !!tooFew || !receiving || order.isPending} onClick={() => order.mutate()}>
-              {order.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />} Envoyer la commande
+            <Button className="w-full" size="lg" disabled={!lines.length || currencies.size > 1 || !!tooFew || !receiving || !serving || order.isPending} onClick={() => order.mutate()}>
+              {order.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />} Envoyer la commande{servingStation && supStations.length > 1 ? ` à ${servingStation.name}` : ''}
             </Button>
+            </>)}
           </>
         )}
       </div>

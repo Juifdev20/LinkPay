@@ -6,7 +6,7 @@ const DAY = 86_400_000;
 const future = () => new Date(Date.now() + 10 * DAY).toISOString();
 const past = () => new Date(Date.now() - DAY).toISOString();
 
-function setup(opts: { order?: any; profile?: any; catalog?: any[]; stock?: any[]; clientStock?: any[]; requestClosable?: boolean } = {}) {
+function setup(opts: { order?: any; profile?: any; catalog?: any[]; stock?: any[]; clientStock?: any[]; requestClosable?: boolean; selling?: string[] } = {}) {
   const writes: { table: string; method: string; payload: any }[] = [];
   const profile = opts.profile ?? { organization_id: 'sup', merchant_id: 'sm', display_name: 'Grossiste', active: true, trial_ends_at: future(), plan_expires_at: null };
   const fake = createFakeSupabase((q: RecordedQuery) => {
@@ -41,6 +41,7 @@ function setup(opts: { order?: any; profile?: any; catalog?: any[]; stock?: any[
       throw new ForbiddenException('no');
     }),
     stationsOf: jest.fn(async () => [{ id: 'cm' }]),
+    sellingStationIds: jest.fn(async () => opts.selling ?? ['sm']),
     assertLinked: jest.fn(async () => undefined),
     profileOf: jest.fn(async () => profile),
     supplierRecipients: jest.fn(async () => ['sboss']),
@@ -76,6 +77,15 @@ describe('orders between enterprises (all sectors)', () => {
     const lines = writes.find((w) => w.table === 'supplier_order_items')!.payload;
     expect(lines.map((l: any) => [l.name, l.unit_price_cents, l.quantity])).toEqual([['Riz 25 kg', 500, 4], ['Huile 5 L', 900, 5]]);
     expect(network.notify).toHaveBeenCalledWith(['sboss'], 'boss', expect.objectContaining({ title: expect.stringContaining('Nouvelle commande') }));
+  });
+
+  it('several selling stations: the client must pick one; the order goes to that station and its managers', async () => {
+    const two = setup({ catalog, stock, selling: ['sm', 'beni'] });
+    await expect(two.service.create('cli', boss, { supplier_org_id: 'sup', items: [{ catalog_item_id: 'c1', quantity: 5 }] })).rejects.toThrow(/station du fournisseur/);
+    await expect(two.service.create('cli', boss, { supplier_org_id: 'sup', supplier_merchant_id: 'goma-not-selling', items: [{ catalog_item_id: 'c1', quantity: 5 }] })).rejects.toThrow(/ne vend pas/);
+    await two.service.create('cli', boss, { supplier_org_id: 'sup', supplier_merchant_id: 'sm', items: [{ catalog_item_id: 'c1', quantity: 5 }] });
+    expect(two.writes.find((w) => w.table === 'supplier_orders')!.payload.supplier_merchant_id).toBe('sm');
+    expect(two.network.supplierRecipients).toHaveBeenCalledWith(expect.anything(), 'sm');
   });
 
   it('refused below the minimum quantity, across currencies, or when the supplier plan has ended', async () => {

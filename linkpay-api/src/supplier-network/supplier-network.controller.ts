@@ -32,6 +32,15 @@ class ProfileDto {
   @IsOptional() @IsInt() @Min(0) @Max(MAX_AMOUNT_CENTS) default_delivery_fee_cents?: number | null;
   @ApiPropertyOptional({ enum: ['CDF', 'USD'] }) @IsOptional() @IsIn(['CDF', 'USD']) default_delivery_currency?: 'CDF' | 'USD' | null;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
+  @ApiPropertyOptional({ description: 'Les stations qui vendent (devenir fournisseur)' })
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('4', { each: true }) merchant_ids?: string[];
+}
+
+class StationDto {
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(255) delivery_zone?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) @Max(MAX_AMOUNT_CENTS) default_delivery_fee_cents?: number | null;
+  @ApiPropertyOptional({ enum: ['CDF', 'USD'] }) @IsOptional() @IsIn(['CDF', 'USD']) default_delivery_currency?: 'CDF' | 'USD' | null;
 }
 
 class PlanQuoteDto {
@@ -67,6 +76,7 @@ class OrderLineDto {
 class CreateOrderDto {
   @ApiProperty() @IsUUID() supplier_org_id!: string;
   @ApiPropertyOptional({ description: 'La station qui reçoit (le patron) — celle du gérant sinon' }) @IsOptional() @IsUUID() merchant_id?: string;
+  @ApiPropertyOptional({ description: 'La station du fournisseur qui sert ce client' }) @IsOptional() @IsUUID() supplier_merchant_id?: string;
   @ApiProperty({ type: [OrderLineDto] }) @IsArray() @ArrayMaxSize(100) @ValidateNested({ each: true }) @Type(() => OrderLineDto) items!: OrderLineDto[];
   @ApiPropertyOptional() @IsOptional() @IsBoolean() delivery_requested?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(255) delivery_address?: string;
@@ -143,8 +153,14 @@ export class SupplierNetworkController {
   // ---- catalog (supplier side)
   @Get('supplier-catalog')
   @ApiOperation({ summary: "Articles of the shipping station, with their business price when in the catalog" })
-  catalog(@Param('id') id: string, @CurrentUser() caller: any) {
-    return this.network.myCatalog(id, caller);
+  catalog(@Param('id') id: string, @Query('merchant_id') merchantId: string | undefined, @CurrentUser() caller: any) {
+    return this.network.myCatalog(id, caller, merchantId || undefined);
+  }
+
+  @Put('supplier-stations/:merchantId')
+  @ApiOperation({ summary: 'Owner: a station sells to enterprises or not, its delivery zone and default delivery fee' })
+  setStation(@Param('id') id: string, @Param('merchantId') merchantId: string, @Body() dto: StationDto, @CurrentUser() caller: any) {
+    return this.network.setStation(id, caller, merchantId, dto);
   }
 
   @Put('supplier-catalog/:stockItemId')

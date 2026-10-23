@@ -30,7 +30,7 @@ const TABS = [
  * « Espace fournisseur » (DECISIONS.md 23/10, phase C), every sector: an enterprise sells to other enterprises.
  * Not a supplier yet → what it is, the free trial announced (days set by the super admin) and the prices, then the
  * form (the owner). A supplier → its plan (trial days left, monthly or yearly payment), its catalog, its clients
- * (invitations to accept) and the orders it receives. The owner and the shipping station's managers work here.
+ * (invitations to accept) and the orders it receives. The owner and the managers of the selling stations work here.
  */
 export default function SupplierSpacePage() {
   const user = useAuthStore((s) => s.user);
@@ -69,10 +69,15 @@ export default function SupplierSpacePage() {
               ))}
             </div>
           </div>
-          {tab === 'profil' && <PlanAndProfile orgId={org.id} data={data} isOwner={isOwner} />}
-          {tab === 'catalogue' && <Catalog orgId={org.id} />}
+          {tab === 'profil' && (
+            <>
+              <PlanAndProfile orgId={org.id} data={data} isOwner={isOwner} />
+              <SellingStations orgId={org.id} stations={data.stations || []} isOwner={isOwner} />
+            </>
+          )}
+          {tab === 'catalogue' && <Catalog orgId={org.id} stations={(data.stations || []).filter((st: any) => st.active)} isOwner={isOwner} myStation={data.my_station} />}
           {tab === 'clients' && <Clients orgId={org.id} />}
-          {tab === 'commandes' && <ReceivedOrders orgId={org.id} profile={data.profile} />}
+          {tab === 'commandes' && <ReceivedOrders orgId={org.id} stations={data.stations || []} />}
         </>
       )}
     </div>
@@ -106,12 +111,15 @@ function BecomeSupplier({ orgId, offer, isOwner }: { orgId: string; offer: any; 
     queryKey: ['org-merchants', orgId],
     queryFn: async () => (await api.get(`/organizations/${orgId}/merchants`)).data as { id: string; name: string }[],
   });
-  const [form, setForm] = useState({ display_name: '', phone: '', address: '', delivery_zone: '', merchant_id: '', fee: '', fee_currency: 'CDF' });
-  const station = form.merchant_id || (stations?.length === 1 ? stations[0].id : '');
+  const [form, setForm] = useState({ display_name: '', phone: '', address: '', delivery_zone: '', fee: '', fee_currency: 'CDF' });
+  const [picked, setPicked] = useState<string[] | null>(null);
+  // One station: ticked by itself. Several: the owner ticks those that sell.
+  const chosen = picked ?? (stations?.length === 1 ? [stations[0].id] : []);
+  const toggle = (id: string) => setPicked(chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id]);
   const become = useMutation({
     mutationFn: async () => (await api.post(`/organizations/${orgId}/supplier-profile`, {
       display_name: form.display_name.trim() || undefined, phone: form.phone || undefined, address: form.address || undefined,
-      delivery_zone: form.delivery_zone || undefined, merchant_id: station,
+      delivery_zone: form.delivery_zone || undefined, merchant_ids: chosen,
       ...(form.fee.trim() ? { default_delivery_fee_cents: Math.round(parseFloat(form.fee.replace(',', '.')) * 100), default_delivery_currency: form.fee_currency } : {}),
     })).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['supplier-profile', orgId] }),
@@ -130,8 +138,8 @@ function BecomeSupplier({ orgId, offer, isOwner }: { orgId: string; offer: any; 
           )}
           <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
             <li>Un numéro de fournisseur à donner à vos clients : ils vous invitent, vous acceptez.</li>
-            <li>Votre catalogue, tiré du stock d'une station, à vos prix pour les entreprises.</li>
-            <li>Les commandes arrivent chez vous et chez le gérant de la station : vous fixez les frais de livraison de chaque commande.</li>
+            <li>Une ou plusieurs stations qui vendent (Goma, Beni…), chacune avec son catalogue tiré de son stock, à vos prix pour les entreprises. Un seul abonnement pour toutes.</li>
+            <li>Le client choisit la station qui le sert : la commande arrive chez vous et chez le gérant de cette station, qui fixe les frais de livraison.</li>
             <li>Payé par ScanLinkPay (automatique) ou en espèces / Mobile Money que vous confirmez. La livraison sort du stock toute seule.</li>
           </ul>
           <p>
@@ -148,25 +156,29 @@ function BecomeSupplier({ orgId, offer, isOwner }: { orgId: string; offer: any; 
           <CardContent className="space-y-3">
             <div className="space-y-1.5"><Label htmlFor="sp_name">Nom affiché à vos clients</Label><Input id="sp_name" placeholder="Nom de votre entreprise" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></div>
             <div className="space-y-1.5">
-              <Label htmlFor="sp_station">Station d'où partent les marchandises</Label>
-              <Select id="sp_station" value={station} onChange={(e) => setForm({ ...form, merchant_id: e.target.value })}>
-                <option value="">Choisir…</option>
-                {(stations || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </Select>
-              <p className="text-xs text-muted-foreground">Son stock forme votre catalogue, et ses gérants traitent les commandes.</p>
+              <Label>Stations qui vendent aux entreprises</Label>
+              <div className="rounded-xl border border-border divide-y divide-border">
+                {(stations || []).map((st) => (
+                  <label key={st.id} className="flex items-center gap-3 px-3 py-2.5 text-sm cursor-pointer">
+                    <input type="checkbox" checked={chosen.includes(st.id)} onChange={() => toggle(st.id)} />
+                    <span className="font-medium">{st.name}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">Chaque station cochée a son catalogue (son stock) ; ses gérants traitent ses commandes. Vous pourrez en ajouter ou en retirer ensuite.</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5"><Label htmlFor="sp_phone">Téléphone</Label><Input id="sp_phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
-              <div className="space-y-1.5"><Label htmlFor="sp_zone">Zone de livraison</Label><Input id="sp_zone" placeholder="Kinshasa, Gombe…" value={form.delivery_zone} onChange={(e) => setForm({ ...form, delivery_zone: e.target.value })} /></div>
+              <div className="space-y-1.5"><Label htmlFor="sp_zone">Zone de livraison (par défaut)</Label><Input id="sp_zone" placeholder="Kinshasa, Gombe…" value={form.delivery_zone} onChange={(e) => setForm({ ...form, delivery_zone: e.target.value })} /></div>
             </div>
             <div className="space-y-1.5"><Label htmlFor="sp_addr">Adresse</Label><Input id="sp_addr" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
             <div className="grid grid-cols-[1fr_100px] gap-3">
               <div className="space-y-1.5"><Label htmlFor="sp_fee">Frais de livraison proposés (facultatif)</Label><Input id="sp_fee" inputMode="decimal" value={form.fee} onChange={(e) => setForm({ ...form, fee: e.target.value })} /></div>
               <div className="space-y-1.5"><Label htmlFor="sp_feecur">Devise</Label><Select id="sp_feecur" value={form.fee_currency} onChange={(e) => setForm({ ...form, fee_currency: e.target.value })}><option>CDF</option><option>USD</option></Select></div>
             </div>
-            <p className="text-xs text-muted-foreground -mt-1">Proposés par défaut ; vous les changez à chaque commande selon la distance.</p>
+            <p className="text-xs text-muted-foreground -mt-1">Proposés par défaut à chaque station (réglables station par station ensuite) ; changés à chaque commande selon la distance.</p>
             {become.isError && <p className="text-sm text-destructive">{msg(become.error)}</p>}
-            <Button className="w-full" disabled={!station || become.isPending} onClick={() => become.mutate()}>
+            <Button className="w-full" disabled={!chosen.length || become.isPending} onClick={() => become.mutate()}>
               {become.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
               {offer.trial_days > 0 ? `Devenir fournisseur — essai gratuit de ${days(offer.trial_days)}` : 'Devenir fournisseur'}
             </Button>
@@ -264,21 +276,15 @@ function PlanAndProfile({ orgId, data, isOwner }: { orgId: string; data: any; is
         <CardHeader><CardTitle className="text-base font-bold">Fiche fournisseur</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-1.5"><Label htmlFor="pf_name">Nom affiché</Label><Input id="pf_name" disabled={!isOwner} value={edit.display_name} onChange={(e) => setEdit({ ...edit, display_name: e.target.value })} /></div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <div className="space-y-1.5"><Label htmlFor="pf_phone">Téléphone</Label><Input id="pf_phone" disabled={!isOwner} value={edit.phone} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} /></div>
-            <div className="space-y-1.5"><Label htmlFor="pf_zone">Zone de livraison</Label><Input id="pf_zone" disabled={!isOwner} value={edit.delivery_zone} onChange={(e) => setEdit({ ...edit, delivery_zone: e.target.value })} /></div>
           </div>
           <div className="space-y-1.5"><Label htmlFor="pf_addr">Adresse</Label><Input id="pf_addr" disabled={!isOwner} value={edit.address} onChange={(e) => setEdit({ ...edit, address: e.target.value })} /></div>
-          <div className="grid grid-cols-[1fr_100px] gap-3">
-            <div className="space-y-1.5"><Label htmlFor="pf_fee">Frais de livraison proposés</Label><Input id="pf_fee" disabled={!isOwner} inputMode="decimal" value={edit.fee} onChange={(e) => setEdit({ ...edit, fee: e.target.value })} /></div>
-            <div className="space-y-1.5"><Label htmlFor="pf_cur">Devise</Label><Select id="pf_cur" disabled={!isOwner} value={edit.fee_currency} onChange={(e) => setEdit({ ...edit, fee_currency: e.target.value })}><option>CDF</option><option>USD</option></Select></div>
-          </div>
           {update.isError && <p className="text-sm text-destructive">{msg(update.error)}</p>}
           {isOwner && (
             <div className="flex flex-wrap gap-2">
               <Button disabled={update.isPending} onClick={() => update.mutate({
-                display_name: edit.display_name, phone: edit.phone || null, address: edit.address || null, delivery_zone: edit.delivery_zone || null,
-                default_delivery_fee_cents: edit.fee.trim() ? Math.round(parseFloat(edit.fee.replace(',', '.')) * 100) : null, default_delivery_currency: edit.fee.trim() ? edit.fee_currency : null,
+                display_name: edit.display_name, phone: edit.phone || null, address: edit.address || null,
               })}>Enregistrer</Button>
               <Button variant="outline" disabled={update.isPending} onClick={() => update.mutate({ active: !profile.active })}>
                 {profile.active ? 'Mettre en pause' : 'Reprendre'}
@@ -291,23 +297,99 @@ function PlanAndProfile({ orgId, data, isOwner }: { orgId: string; data: any; is
   );
 }
 
-/** The shipping station's articles: put one in the catalog with its business price, change it, take it out. */
-function Catalog({ orgId }: { orgId: string }) {
+/**
+ * The owner ticks the stations that sell (one Fournisseur plan for all), and sets each one's delivery zone and
+ * default fee — Goma and Beni don't deliver at the same distances.
+ */
+function SellingStations({ orgId, stations, isOwner }: { orgId: string; stations: any[]; isOwner: boolean }) {
+  const qc = useQueryClient();
+  const { data: all } = useQuery({
+    queryKey: ['org-merchants', orgId],
+    queryFn: async () => (await api.get(`/organizations/${orgId}/merchants`)).data as { id: string; name: string }[],
+  });
+  const [draft, setDraft] = useState<Record<string, { zone: string; fee: string; cur: string }>>({});
+  const save = useMutation({
+    mutationFn: async ({ id, body }: { id: string; body: any }) => (await api.put(`/organizations/${orgId}/supplier-stations/${id}`, body)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['supplier-profile', orgId] }),
+  });
+  const rowOf = (id: string) => stations.find((st) => st.merchant_id === id);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base font-bold">Stations qui vendent aux entreprises</CardTitle>
+        <p className="text-xs text-muted-foreground">Un seul abonnement pour toutes. Le client choisit la station qui le sert ; chaque station a son catalogue et ses frais de livraison.</p>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {save.isError && <p className="text-sm text-destructive">{msg(save.error)}</p>}
+        {(all || []).map((st) => {
+          const row = rowOf(st.id);
+          const on = !!row?.active;
+          const d = draft[st.id] ?? { zone: row?.delivery_zone || '', fee: row?.default_delivery_fee_cents != null ? String(row.default_delivery_fee_cents / 100) : '', cur: row?.default_delivery_currency || 'CDF' };
+          return (
+            <div key={st.id} className={cn('rounded-xl border p-3 space-y-2', on ? 'border-primary/40 bg-primary/5' : 'border-border')}>
+              <div className="flex items-center justify-between gap-3">
+                <label className="flex items-center gap-2 font-medium text-sm">
+                  <input type="checkbox" disabled={!isOwner || save.isPending} checked={on} onChange={() => save.mutate({ id: st.id, body: { active: !on } })} />
+                  {st.name}
+                </label>
+                <Badge variant={on ? 'success' : 'secondary'}>{on ? 'Vend aux entreprises' : 'Ne vend pas'}</Badge>
+              </div>
+              {on && (
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_90px_auto] gap-2 items-end">
+                  <Input aria-label={`Zone de livraison ${st.name}`} disabled={!isOwner} placeholder="Zone de livraison" value={d.zone} onChange={(e) => setDraft({ ...draft, [st.id]: { ...d, zone: e.target.value } })} />
+                  <Input aria-label={`Frais de livraison ${st.name}`} disabled={!isOwner} inputMode="decimal" placeholder="Frais par défaut" value={d.fee} onChange={(e) => setDraft({ ...draft, [st.id]: { ...d, fee: e.target.value } })} />
+                  <Select aria-label={`Devise ${st.name}`} disabled={!isOwner} value={d.cur} onChange={(e) => setDraft({ ...draft, [st.id]: { ...d, cur: e.target.value } })}><option>CDF</option><option>USD</option></Select>
+                  {isOwner && (
+                    <Button size="sm" variant="outline" disabled={save.isPending} onClick={() => save.mutate({ id: st.id, body: {
+                      delivery_zone: d.zone || null,
+                      default_delivery_fee_cents: d.fee.trim() ? Math.round(parseFloat(d.fee.replace(',', '.')) * 100) : null,
+                      default_delivery_currency: d.fee.trim() ? d.cur : null,
+                    } })}>Enregistrer</Button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** One selling station's articles: put one in the catalog with its business price, change it, take it out. */
+function Catalog({ orgId, stations, isOwner, myStation }: { orgId: string; stations: any[]; isOwner: boolean; myStation: string | null }) {
   const qc = useQueryClient();
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState<Record<string, { price: string; min: string }>>({});
-  const { data: items, isLoading, error } = useQuery({ queryKey: ['supplier-catalog', orgId], queryFn: async () => (await api.get(`/organizations/${orgId}/supplier-catalog`)).data as any[] });
+  // The owner picks the station; a manager works on his own.
+  const [picked, setPicked] = useState<string>('');
+  const station = isOwner ? picked || stations[0]?.merchant_id || '' : myStation || '';
+  const { data: items, isLoading, error } = useQuery({
+    queryKey: ['supplier-catalog', orgId, station],
+    queryFn: async () => (await api.get(`/organizations/${orgId}/supplier-catalog`, { params: station ? { merchant_id: station } : {} })).data as any[],
+    enabled: !!station,
+  });
   const save = useMutation({
     mutationFn: async ({ id, body }: { id: string; body: any }) => (await api.put(`/organizations/${orgId}/supplier-catalog/${id}`, body)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['supplier-catalog', orgId] }),
   });
   const rows = useMemo(() => (items || []).filter((i) => !query.trim() || i.name.toLowerCase().includes(query.trim().toLowerCase()) || (i.barcode || '').includes(query.trim())), [items, query]);
-  if (isLoading) return <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />;
+  if (!station) return <p className="text-sm text-muted-foreground">Aucune station ne vend aux entreprises : cochez-en une dans « Abonnement et fiche ».</p>;
   if (error) return <p className="text-sm text-destructive">{msg(error)}</p>;
   const inCatalog = (items || []).filter((i) => i.catalog?.active).length;
 
   return (
     <div className="space-y-3">
+      {isOwner && stations.length > 1 && (
+        <div className="flex flex-wrap gap-2">
+          {stations.map((st) => (
+            <button key={st.merchant_id} onClick={() => setPicked(st.merchant_id)} className={cn('rounded-full border px-3 py-1.5 text-sm font-medium', station === st.merchant_id ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-muted-foreground')}>
+              Catalogue de {st.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {isLoading && <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />}
       <p className="text-sm text-muted-foreground">{inCatalog} article{inCatalog > 1 ? 's' : ''} au catalogue. Vos clients voient le nom, votre prix entreprise et la quantité disponible — jamais votre prix d'achat.</p>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -354,7 +436,7 @@ function Catalog({ orgId }: { orgId: string }) {
             })}
           </tbody>
         </table>
-        {!rows.length && <p className="px-3 py-6 text-sm text-muted-foreground text-center">Aucun article dans le stock de la station d'expédition.</p>}
+        {!rows.length && !isLoading && <p className="px-3 py-6 text-sm text-muted-foreground text-center">Aucun article dans le stock de cette station.</p>}
       </div>
     </div>
   );
@@ -398,7 +480,12 @@ function Clients({ orgId }: { orgId: string }) {
 
 const ORDER_FILTERS = [['', 'Toutes'], ['submitted', 'À confirmer'], ['confirmed', 'Attendent le paiement'], ['paid', 'À livrer'], ['delivered', 'Livrées'], ['received', 'Terminées']] as const;
 
-function ReceivedOrders({ orgId, profile }: { orgId: string; profile: any }) {
+function ReceivedOrders({ orgId, stations }: { orgId: string; stations: any[] }) {
+  // Each order's default delivery fee is the one of the station that serves it.
+  const feeOf = (merchantId: string) => {
+    const st = stations.find((x) => x.merchant_id === merchantId);
+    return { cents: st?.default_delivery_fee_cents ?? null, currency: st?.default_delivery_currency ?? null };
+  };
   const [filter, setFilter] = useState('');
   const { data: orders, isLoading } = useQuery({
     queryKey: ['supplier-orders', orgId, 'supplier', filter],
@@ -416,7 +503,7 @@ function ReceivedOrders({ orgId, profile }: { orgId: string; profile: any }) {
         <EmptyState icon={Truck} title="Aucune commande" text="Les commandes de vos clients arrivent ici (et en notification)." />
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
-          {orders.map((o) => <OrderCard key={o.id} order={o} side="supplier" orgId={orgId} defaultFee={{ cents: profile.default_delivery_fee_cents, currency: profile.default_delivery_currency }} />)}
+          {orders.map((o) => <OrderCard key={o.id} order={o} side="supplier" orgId={orgId} defaultFee={feeOf(o.supplier_merchant_id)} />)}
         </div>
       )}
     </div>

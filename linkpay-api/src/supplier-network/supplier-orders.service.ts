@@ -120,7 +120,7 @@ export class SupplierOrdersService {
   async create(
     orgId: string,
     caller: Caller,
-    input: { supplier_org_id: string; merchant_id?: string; items: { catalog_item_id: string; quantity: number }[]; delivery_requested?: boolean; delivery_address?: string; note?: string },
+    input: { supplier_org_id: string; merchant_id?: string; supplier_merchant_id?: string; items: { catalog_item_id: string; quantity: number }[]; delivery_requested?: boolean; delivery_address?: string; note?: string },
   ) {
     const m = await this.network.member(orgId, caller);
     // The receiving station: a manager's own; the owner picks one of theirs.
@@ -134,6 +134,11 @@ export class SupplierOrdersService {
     const profile = await this.network.profileOf(input.supplier_org_id);
     if (!profile || !profile.active) throw new BadRequestException('Ce fournisseur est fermé');
     this.plan.assertCanSell(profile);
+    // The supplier's station that serves this client (picked by the client; the only one when there is one).
+    const selling = await this.network.sellingStationIds(input.supplier_org_id, profile);
+    const from = input.supplier_merchant_id || (selling.length === 1 ? selling[0] : null);
+    if (!from) throw new BadRequestException('Choisissez la station du fournisseur qui vous sert.');
+    if (!selling.includes(from)) throw new BadRequestException("Cette station du fournisseur ne vend pas (ou plus) aux entreprises.");
 
     const wanted = (input.items || []).filter((l) => l?.catalog_item_id && Number.isInteger(l.quantity) && l.quantity > 0);
     if (!wanted.length) throw new BadRequestException('Ajoutez au moins un produit et sa quantité.');
@@ -143,12 +148,12 @@ export class SupplierOrdersService {
       .in('id', wanted.map((l) => l.catalog_item_id));
     const byId = new Map((catalog || []).map((c: any) => [c.id, c]));
     const { data: stock } = await this.db.from('stock_items').select('id, name, barcode, category, merchant_id')
-      .in('id', (catalog || []).map((c: any) => c.stock_item_id)).eq('merchant_id', profile.merchant_id);
+      .in('id', (catalog || []).map((c: any) => c.stock_item_id)).eq('merchant_id', from);
     const stockById = new Map((stock || []).map((s: any) => [s.id, s]));
     const lines = wanted.map((l) => {
       const c: any = byId.get(l.catalog_item_id);
       const s: any = c && stockById.get(c.stock_item_id);
-      if (!c || !s) throw new BadRequestException("Un produit n'est plus dans le catalogue de ce fournisseur : actualisez.");
+      if (!c || !s) throw new BadRequestException("Un produit n'est pas (ou plus) dans le catalogue de cette station : actualisez.");
       if (l.quantity < c.min_quantity) throw new BadRequestException(`« ${s.name} » : au moins ${c.min_quantity} par commande.`);
       return { c, s, quantity: Math.min(l.quantity, 1_000_000) };
     });
@@ -165,7 +170,7 @@ export class SupplierOrdersService {
         client_org_id: orgId,
         client_merchant_id: station,
         supplier_org_id: input.supplier_org_id,
-        supplier_merchant_id: profile.merchant_id,
+        supplier_merchant_id: from,
         currency,
         subtotal_cents: subtotal,
         total_cents: subtotal,
@@ -186,7 +191,7 @@ export class SupplierOrdersService {
       this.network.fail(linesError);
     }
 
-    await this.network.notify(await this.network.supplierRecipients(profile), caller.id, {
+    await this.network.notify(await this.network.supplierRecipients(profile, from), caller.id, {
       title: `Nouvelle commande ${order.number}`,
       body: `${m.org.name} : ${lines.length} produit(s), ${money(subtotal, currency)}${input.delivery_requested ? ', avec livraison' : ''}. Confirmez-la${input.delivery_requested ? ' et indiquez les frais de livraison' : ''}.`,
       url: SALES_URL,
@@ -226,7 +231,7 @@ export class SupplierOrdersService {
     await this.move(order, order.status, { status: 'cancelled', closed_by: caller.id, closed_at: new Date().toISOString() });
     const profile = await this.network.profileOf(order.supplier_org_id);
     if (profile) {
-      await this.network.notify(await this.network.supplierRecipients(profile), caller.id, {
+      await this.network.notify(await this.network.supplierRecipients(profile, order.supplier_merchant_id), caller.id, {
         title: `Commande ${order.number} annulée`, body: `Le client a annulé la commande${note ? ` : « ${note.trim().slice(0, 200)} »` : ''}.`, url: SALES_URL,
       });
     }
@@ -241,7 +246,7 @@ export class SupplierOrdersService {
     await this.move(order, 'confirmed', { payment_method: input.method, payment_reference: input.reference?.trim().slice(0, 100) || null, client_declared_payment_at: new Date().toISOString() });
     const profile = await this.network.profileOf(order.supplier_org_id);
     if (profile) {
-      await this.network.notify(await this.network.supplierRecipients(profile), caller.id, {
+      await this.network.notify(await this.network.supplierRecipients(profile, order.supplier_merchant_id), caller.id, {
         title: `Paiement annoncé — ${order.number}`,
         body: `Le client dit avoir payé ${money(order.total_cents, order.currency)} ${input.method === 'cash' ? 'en espèces' : 'par Mobile Money'}${input.reference ? ` (réf. ${input.reference.trim().slice(0, 100)})` : ''}. Vérifiez puis confirmez le paiement.`,
         url: SALES_URL,
@@ -344,7 +349,7 @@ export class SupplierOrdersService {
     if (!paid) return false;
     const profile = await this.network.profileOf(order.supplier_org_id);
     if (profile) {
-      await this.network.notify(await this.network.supplierRecipients(profile), '', {
+      await this.network.notify(await this.network.supplierRecipients(profile, order.supplier_merchant_id), '', {
         title: `Commande ${order.number} payée`, body: `${money(order.total_cents, order.currency)} reçus par ScanLinkPay. Préparez et validez la livraison.`, url: SALES_URL,
       });
     }
@@ -436,7 +441,7 @@ export class SupplierOrdersService {
     await this.move(order, 'delivered', { status: 'received', received_by: caller.id, received_at: new Date().toISOString() });
     const profile = await this.network.profileOf(order.supplier_org_id);
     if (profile) {
-      await this.network.notify(await this.network.supplierRecipients(profile), caller.id, {
+      await this.network.notify(await this.network.supplierRecipients(profile, order.supplier_merchant_id), caller.id, {
         title: `Commande ${order.number} reçue`, body: 'Le client a confirmé la réception. Commande terminée.', url: SALES_URL,
       });
     }

@@ -132,6 +132,18 @@ listes communes (`ProductTable`). Ordre de travail : A → B → C, puis le fich
     - Une notification annonce l'essai dès que l'entreprise devient fournisseur ; des rappels suivent avant la fin.
   - **À faire côté Supabase** : migrations `083` puis `084` (LinkPay Test puis production), puis fixer le prix CDF de
     l'abonnement Fournisseur dans l'écran super admin (seul le prix USD de 10 $ est mis par la migration).
+- **Plusieurs stations par fournisseur (23/10, décision du propriétaire)** — migration `085_supplier_stations.sql` :
+  - un seul espace fournisseur par entreprise, **un seul numéro et un seul abonnement pour toutes ses stations** ;
+  - le patron coche les stations qui vendent (Goma, Beni…) — au moins une — et règle pour chacune sa zone et ses frais
+    de livraison par défaut (`PUT /organizations/:id/supplier-stations/:merchantId`) ;
+  - **un catalogue par station**, tiré de son propre stock, à ses propres prix (`supplier_catalog_items.merchant_id`) ;
+    le patron passe d'un catalogue à l'autre, le gérant ne gère que celui de sa station ;
+  - **le client choisit la station qui le sert** en commandant (`supplier_merchant_id`) ; la commande va au patron et
+    aux gérants de cette station, sort de son stock et lui est payée. Une commande = une station (deux stations =
+    deux commandes) ;
+  - les invitations sont annoncées au patron et aux gérants de toutes les stations qui vendent ; le gérant de
+    n'importe laquelle peut les accepter ;
+  - sans la migration 085, l'API se comporte comme avant (la station unique du profil).
 - **Revue de sécurité des phases A, B, C (23/10)** — corrigé :
   - noms de fournisseurs comparés exactement (dans un motif PostgREST, `*` et `%` sont des jokers : « Bra* » aurait
     été pris pour « Bralima ») — `sameName` dans `suppliers.service.ts` ;

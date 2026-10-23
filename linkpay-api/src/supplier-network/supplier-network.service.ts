@@ -18,6 +18,8 @@ export interface ProfileInput {
   delivery_zone?: string | null;
   description?: string | null;
   merchant_id?: string;
+  /** The stations that sell (migration 085). */
+  merchant_ids?: string[];
   default_delivery_fee_cents?: number | null;
   default_delivery_currency?: 'CDF' | 'USD' | null;
 }
@@ -65,21 +67,48 @@ export class SupplierNetworkService {
     return { org, isOwner: false, station };
   }
 
-  /** Supplier side: the owner, or a manager of the shipping station. */
+  /** Supplier side: the owner, or a manager of one of the stations that sell (migration 085). */
   async supplierSide(orgId: string, caller: Caller) {
     const m = await this.member(orgId, caller);
     const profile = await this.profileOf(orgId);
     if (!profile) throw new NotFoundException("Cette entreprise n'est pas fournisseur");
-    if (!m.isOwner && m.station !== profile.merchant_id) {
-      throw new ForbiddenException("Seuls le patron et le gérant de la station d'expédition gèrent les ventes aux entreprises");
+    const selling = await this.sellingStationIds(orgId, profile);
+    if (!m.isOwner && !selling.includes(m.station!)) {
+      throw new ForbiddenException("Seuls le patron et les gérants des stations qui vendent gèrent les ventes aux entreprises");
     }
-    return { ...m, profile };
+    return { ...m, profile, selling };
   }
 
-  /** Owner and managers of the shipping station: who is told about invitations and orders. */
-  async supplierRecipients(profile: { organization_id: string; merchant_id: string }) {
+  /**
+   * The stations a supplier sells from (migration 085), with their names, zone and default delivery fee. Before 085 is
+   * run, the single station of the profile stands for them.
+   */
+  async sellingStations(orgId: string, profile?: any, activeOnly = true) {
+    let query = this.db.from('supplier_stations').select('*').eq('supplier_org_id', orgId);
+    if (activeOnly) query = query.eq('active', true);
+    const { data, error } = await query;
+    let rows: any[] = data || [];
+    if (error) {
+      const p = profile ?? (await this.profileOf(orgId));
+      rows = p ? [{ supplier_org_id: orgId, merchant_id: p.merchant_id, active: true, delivery_zone: p.delivery_zone, default_delivery_fee_cents: p.default_delivery_fee_cents, default_delivery_currency: p.default_delivery_currency }] : [];
+    }
+    if (!rows.length) return [];
+    const { data: names } = await this.db.from('merchants').select('id, name').in('id', rows.map((r) => r.merchant_id));
+    const nameOf = new Map((names || []).map((n: any) => [n.id, n.name]));
+    return rows
+      .map((r) => ({ ...r, name: nameOf.get(r.merchant_id) || 'Station' }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async sellingStationIds(orgId: string, profile?: any) {
+    return (await this.sellingStations(orgId, profile)).map((s: any) => s.merchant_id as string);
+  }
+
+  /** Owner, and the managers of `merchantId` (an order's station) — or of every selling station (an invitation). */
+  async supplierRecipients(profile: { organization_id: string; merchant_id: string }, merchantId?: string) {
     const org = await this.organizationsService.getOrganizationById(profile.organization_id);
-    const managers = await stationStaffWithRoles(this.db, profile.merchant_id, ['gerant']);
+    const stations = merchantId ? [merchantId] : await this.sellingStationIds(profile.organization_id, profile);
+    const managers = (await Promise.all(stations.map((s) => stationStaffWithRoles(this.db, s, ['gerant'])))).flat();
     return [...new Set([org.owner_id, ...managers])];
   }
 
@@ -108,9 +137,10 @@ export class SupplierNetworkService {
 
   /** "Devenir fournisseur": the profile (or null) with its plan, and the offer (trial days, prices) set by the super admin. */
   async myProfile(orgId: string, caller: Caller) {
-    await this.member(orgId, caller);
+    const m = await this.member(orgId, caller);
     const [profile, offer] = await Promise.all([this.profileOf(orgId), this.plan.offer()]);
-    return { profile, plan: profile ? this.plan.stateOf(profile) : null, offer };
+    const stations = profile ? await this.sellingStations(orgId, profile, false) : [];
+    return { profile, plan: profile ? this.plan.stateOf(profile) : null, offer, stations, my_station: m.station };
   }
 
   stationsOf(orgId: string) {
@@ -147,8 +177,10 @@ export class SupplierNetworkService {
     const { org, isOwner } = await this.member(orgId, caller);
     if (!isOwner) throw new ForbiddenException('Seul le patron peut faire de son entreprise un fournisseur');
     if (await this.profileOf(orgId)) throw new BadRequestException('Votre entreprise est déjà fournisseur');
-    if (!input.merchant_id) throw new BadRequestException("Choisissez la station d'où partent les marchandises.");
-    await this.checkStation(orgId, input.merchant_id);
+    const chosen = [...new Set(input.merchant_ids?.length ? input.merchant_ids : input.merchant_id ? [input.merchant_id] : [])];
+    if (!chosen.length) throw new BadRequestException('Choisissez au moins une station qui vend.');
+    for (const s of chosen) await this.checkStation(orgId, s);
+    input = { ...input, merchant_id: chosen[0] };
     const changes = this.profileChanges({ display_name: input.display_name ?? org.name, ...input });
     const settings = await this.plan.getSettings();
     const trialEnds = new Date(Date.now() + settings.trial_days * 86_400_000).toISOString();
@@ -160,6 +192,11 @@ export class SupplierNetworkService {
         .select()
         .single();
       if (!error) {
+        const { error: stErr } = await this.db.from('supplier_stations').upsert(
+          chosen.map((s) => ({ supplier_org_id: orgId, merchant_id: s, active: true, delivery_zone: changes.delivery_zone ?? null, default_delivery_fee_cents: changes.default_delivery_fee_cents ?? null, default_delivery_currency: changes.default_delivery_currency ?? null })),
+          { onConflict: 'supplier_org_id,merchant_id' },
+        );
+        if (stErr) this.fail(stErr);
         // Told at once how long the free trial lasts (the super admin's length) and what follows.
         const offer = await this.plan.offer();
         const price = Object.entries(offer.prices).map(([c, v]) => `${(v / 100).toLocaleString('fr-FR')} ${c}`).join(' ou ');
@@ -197,13 +234,54 @@ export class SupplierNetworkService {
     return { profile: data, plan: this.plan.stateOf(data) };
   }
 
+  /**
+   * The owner ticks a station that sells (or unticks it), and sets its delivery zone and default fee. At least one
+   * station keeps selling; orders already placed with an unticked station go on.
+   */
+  async setStation(orgId: string, caller: Caller, merchantId: string, input: { active?: boolean; delivery_zone?: string | null; default_delivery_fee_cents?: number | null; default_delivery_currency?: 'CDF' | 'USD' | null }) {
+    const { isOwner } = await this.member(orgId, caller);
+    if (!isOwner) throw new ForbiddenException('Seul le patron choisit les stations qui vendent');
+    const profile = await this.profileOf(orgId);
+    if (!profile) throw new NotFoundException("Votre entreprise n'est pas fournisseur");
+    await this.checkStation(orgId, merchantId);
+    const row: Record<string, unknown> = { supplier_org_id: orgId, merchant_id: merchantId, updated_at: new Date().toISOString() };
+    if (input.active !== undefined) row.active = !!input.active;
+    if (input.delivery_zone !== undefined) row.delivery_zone = clean(input.delivery_zone, 255);
+    if (input.default_delivery_fee_cents !== undefined) {
+      const fee = input.default_delivery_fee_cents;
+      if (fee !== null && (!Number.isInteger(fee) || fee < 0)) throw new BadRequestException('Frais de livraison invalides.');
+      row.default_delivery_fee_cents = fee;
+      row.default_delivery_currency = fee === null ? null : input.default_delivery_currency || 'CDF';
+    }
+    if (input.active === false) {
+      const others = (await this.sellingStationIds(orgId, profile)).filter((s) => s !== merchantId);
+      if (!others.length) throw new BadRequestException('Gardez au moins une station qui vend (ou mettez l’espace fournisseur en pause).');
+    }
+    const { error } = await this.db.from('supplier_stations').upsert(row, { onConflict: 'supplier_org_id,merchant_id' });
+    if (error) this.fail(error);
+    // The profile's station follows the first one still selling.
+    const selling = await this.sellingStationIds(orgId, profile);
+    if (selling.length && !selling.includes(profile.merchant_id)) {
+      await this.db.from('supplier_profiles').update({ merchant_id: selling[0], updated_at: new Date().toISOString() }).eq('organization_id', orgId);
+    }
+    return this.sellingStations(orgId, profile, false);
+  }
+
   // ------------------------------------------------------------------ catalog (supplier side)
 
-  /** Every article of the shipping station, with its business price when it is in the catalog. */
-  async myCatalog(orgId: string, caller: Caller) {
-    const { profile } = await this.supplierSide(orgId, caller);
+  /** The station whose catalog is handled: a manager's own; the owner picks one (default: the first that sells). */
+  private catalogStation(side: { isOwner: boolean; station: string | null; selling: string[] }, wanted?: string) {
+    const station = side.isOwner ? wanted || side.selling[0] : side.station!;
+    if (!station || !side.selling.includes(station)) throw new BadRequestException("Cette station ne vend pas aux entreprises : cochez-la d'abord dans la fiche fournisseur.");
+    return station;
+  }
+
+  /** Every article of one selling station, with its business price when it is in the catalog. */
+  async myCatalog(orgId: string, caller: Caller, merchantId?: string) {
+    const side = await this.supplierSide(orgId, caller);
+    const station = this.catalogStation(side, merchantId);
     const [{ data: stock, error }, { data: catalog }] = await Promise.all([
-      this.db.from('stock_items').select('id, name, barcode, category, quantity, unit_price_cents, cost_price_cents, currency').eq('merchant_id', profile.merchant_id).order('name'),
+      this.db.from('stock_items').select('id, name, barcode, category, quantity, unit_price_cents, cost_price_cents, currency, merchant_id').eq('merchant_id', station).order('name'),
       this.db.from('supplier_catalog_items').select('*').eq('supplier_org_id', orgId),
     ]);
     if (error) this.fail(error);
@@ -211,18 +289,21 @@ export class SupplierNetworkService {
     return (stock || []).map((s: any) => ({ ...s, catalog: byItem.get(s.id) || null }));
   }
 
-  /** Puts an article of the shipping station in the catalog (or changes its price), or takes it out (active false). */
+  /** Puts an article of a selling station in the catalog (or changes its price), or takes it out (active false). */
   async setCatalogItem(orgId: string, caller: Caller, stockItemId: string, input: { price_cents: number; min_quantity?: number; active?: boolean }) {
-    const { profile } = await this.supplierSide(orgId, caller);
-    const { data: item } = await this.db.from('stock_items').select('id, currency').eq('id', stockItemId).eq('merchant_id', profile.merchant_id).maybeSingle();
-    if (!item) throw new BadRequestException("Cet article n'est pas dans le stock de la station d'expédition.");
+    const side = await this.supplierSide(orgId, caller);
+    const { data: item } = await this.db.from('stock_items').select('id, currency, merchant_id').eq('id', stockItemId).maybeSingle();
+    // The article must belong to a selling station — the manager's own one for a manager.
+    if (!item || !side.selling.includes(item.merchant_id) || (!side.isOwner && item.merchant_id !== side.station)) {
+      throw new BadRequestException("Cet article n'est pas dans le stock d'une de vos stations qui vendent.");
+    }
     if (!Number.isInteger(input.price_cents) || input.price_cents <= 0) throw new BadRequestException('Indiquez le prix de vente aux entreprises.');
     const min = input.min_quantity ?? 1;
     if (!Number.isInteger(min) || min < 1) throw new BadRequestException('Quantité minimum invalide.');
     const { data, error } = await this.db
       .from('supplier_catalog_items')
       .upsert(
-        { supplier_org_id: orgId, stock_item_id: stockItemId, price_cents: input.price_cents, currency: item.currency, min_quantity: min, active: input.active ?? true, updated_at: new Date().toISOString() },
+        { supplier_org_id: orgId, stock_item_id: stockItemId, merchant_id: item.merchant_id, price_cents: input.price_cents, currency: item.currency, min_quantity: min, active: input.active ?? true, updated_at: new Date().toISOString() },
         { onConflict: 'supplier_org_id,stock_item_id' },
       )
       .select()
@@ -387,9 +468,10 @@ export class SupplierNetworkService {
     if (!profile || !profile.active) throw new NotFoundException('Ce fournisseur est fermé');
     const { data: catalog, error } = await this.db.from('supplier_catalog_items').select('*').eq('supplier_org_id', supplierOrgId).eq('active', true);
     if (error) this.fail(error);
+    const stations = await this.sellingStations(supplierOrgId, profile);
     const ids = (catalog || []).map((c: any) => c.stock_item_id);
-    const { data: stock } = ids.length
-      ? await this.db.from('stock_items').select('id, name, barcode, category, quantity, merchant_id').in('id', ids).eq('merchant_id', profile.merchant_id)
+    const { data: stock } = ids.length && stations.length
+      ? await this.db.from('stock_items').select('id, name, barcode, category, quantity, merchant_id').in('id', ids).in('merchant_id', stations.map((s: any) => s.merchant_id))
       : { data: [] as any[] };
     const byId = new Map((stock || []).map((s: any) => [s.id, s]));
     const plan = this.plan.stateOf(profile);
@@ -400,11 +482,16 @@ export class SupplierNetworkService {
         default_delivery_fee_cents: profile.default_delivery_fee_cents, default_delivery_currency: profile.default_delivery_currency,
         takes_orders: plan.can_sell,
       },
+      // The client picks the station that serves it, then orders from its catalog.
+      stations: stations.map((s: any) => ({
+        merchant_id: s.merchant_id, name: s.name, delivery_zone: s.delivery_zone,
+        default_delivery_fee_cents: s.default_delivery_fee_cents, default_delivery_currency: s.default_delivery_currency,
+      })),
       items: (catalog || [])
         .filter((c: any) => byId.has(c.stock_item_id))
         .map((c: any) => {
           const s: any = byId.get(c.stock_item_id);
-          return { id: c.id, name: s.name, barcode: s.barcode, category: s.category, price_cents: c.price_cents, currency: c.currency, min_quantity: c.min_quantity, available: s.quantity };
+          return { id: c.id, merchant_id: s.merchant_id, name: s.name, barcode: s.barcode, category: s.category, price_cents: c.price_cents, currency: c.currency, min_quantity: c.min_quantity, available: s.quantity };
         })
         .sort((a: any, b: any) => a.name.localeCompare(b.name)),
     };

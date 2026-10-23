@@ -5,7 +5,7 @@ import { createFakeSupabase, RecordedQuery } from '../test-utils/fake-supabase';
 
 const DAY = 86_400_000;
 
-function setup(opts: { profile?: any; link?: any; staffStation?: string } = {}) {
+function setup(opts: { profile?: any; link?: any; staffStation?: string; stations?: any[] } = {}) {
   const writes: { table: string; payload: any }[] = [];
   const fake = createFakeSupabase((q: RecordedQuery) => {
     const m = (name: string) => q.calls.find((c) => c.method === name);
@@ -22,6 +22,11 @@ function setup(opts: { profile?: any; link?: any; staffStation?: string } = {}) 
       case 'supplier_links':
         if (m('insert') || m('update')) return { data: { id: 'k1', ...(opts.link || {}), ...write!.args[0] } };
         return { data: opts.link ?? null };
+      case 'supplier_stations':
+        if (m('upsert')) { writes.push({ table: q.target, payload: m('upsert')!.args[0] }); return { data: null }; }
+        return { data: opts.stations ?? [{ supplier_org_id: 'sup', merchant_id: 'm1', active: true }] };
+      case 'merchants':
+        return { data: [{ id: 'm1', name: 'Goma' }, { id: 'm2', name: 'Beni' }] };
       case 'organization_staff':
         if (m('maybeSingle')) return { data: { merchant_id: opts.staffStation ?? 'm1', deactivated_at: null } };
         return { data: [] };
@@ -31,7 +36,7 @@ function setup(opts: { profile?: any; link?: any; staffStation?: string } = {}) 
   });
   const orgs = {
     getOrganizationById: jest.fn(async (id: string) => ({ id, name: id === 'cli' ? 'Client SARL' : 'Grossiste', owner_id: id === 'cli' ? 'cboss' : 'sboss' })),
-    getOrganizationMerchants: jest.fn(async () => [{ id: 'm1', name: 'Dépôt' }]),
+    getOrganizationMerchants: jest.fn(async () => [{ id: 'm1', name: 'Goma' }, { id: 'm2', name: 'Beni' }]),
   };
   const notifications = { create: jest.fn(async () => undefined) };
   const plan = new SupplierPlanService(fake.service, notifications as any, {} as any, {} as any, {} as any);
@@ -70,6 +75,20 @@ describe('supplier network', () => {
     const ok = setup({ profile: live, link });
     await ok.service.decideLink('sup', sboss, 'k1', 'accept');
     expect(ok.writes.find((w) => w.table === 'suppliers')!.payload).toMatchObject({ organization_id: 'cli', name: 'Grossiste', supplier_org_id: 'sup' });
+  });
+
+  it('several stations sell: each one is a selling station; a manager of either acts, only for his own catalog', async () => {
+    const both = [{ supplier_org_id: 'sup', merchant_id: 'm1', active: true }, { supplier_org_id: 'sup', merchant_id: 'm2', active: true }];
+    const ok = setup();
+    await ok.service.becomeSupplier('sup', sboss, { merchant_ids: ['m1', 'm2'] });
+    expect(ok.writes.find((w) => w.table === 'supplier_stations')!.payload.map((r: any) => r.merchant_id)).toEqual(['m1', 'm2']);
+    const link = { id: 'k1', client_org_id: 'cli', supplier_org_id: 'sup', status: 'pending' };
+    await expect(setup({ profile: live, link, staffStation: 'm2', stations: both }).service.decideLink('sup', { id: 'g', role: 'gerant', organization_id: 'sup' }, 'k1', 'accept')).resolves.toBeTruthy();
+    await expect(setup({ profile: live, stations: both, staffStation: 'm2' }).service.myCatalog('sup', { id: 'g', role: 'gerant', organization_id: 'sup' }, 'm1')).resolves.toBeTruthy(); // his own station, whatever asked
+  });
+
+  it('the last selling station cannot be unticked', async () => {
+    await expect(setup({ profile: live }).service.setStation('sup', sboss, 'm1', { active: false })).rejects.toThrow(/au moins une station/);
   });
 
   it('a manager of another station cannot act for the supplier', async () => {

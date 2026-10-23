@@ -48,6 +48,7 @@ export function OrderCard({ order, side, orgId, defaultFee }: { order: any; side
               {order.number} · {formatDate(order.created_at)}
               {side === 'supplier' && order.client_station_name ? ` · ${order.client_station_name}` : ''}
               {side === 'client' && order.client_station_name ? ` · pour ${order.client_station_name}` : ''}
+              {order.supplier_station_name ? ` · ${side === 'client' ? 'servie par' : 'depuis'} ${order.supplier_station_name}` : ''}
             </p>
           </div>
           <Badge variant={s.variant}>{s[side]}</Badge>
