@@ -182,3 +182,21 @@ describe('alerts to the administrators', () => {
     });
   });
 });
+
+describe('a withdrawal already handed to the provider is never settled by hand', () => {
+  it('is hidden from the list and refused to "sent" / "reject" (an admin could otherwise pay it twice)', async () => {
+    const inFlightAdapter = { supportsPayout: false, payoutsInFlight: async (ids: string[]) => new Set(ids), getPayoutStatus: jest.fn(), payout: jest.fn() };
+    const fake = createFakeSupabase((q: RecordedQuery) => {
+      if (q.target === 'withdrawals') return { data: has(q, 'maybeSingle') ? W() : [W()] };
+      if (q.target === 'wallets') return { data: { user_id: 'user-1' } };
+      return undefined;
+    });
+    const payouts = { apply: jest.fn() };
+    const service = new ManualWithdrawalsService(fake.service, { get: () => inFlightAdapter } as any, payouts as any, { log: jest.fn() } as any);
+    expect((await service.list('open')).data).toEqual([]);
+    expect(await service.openCount()).toEqual({ open: 0 });
+    await expect(service.markSent('admin-1', W().id)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.reject('admin-1', W().id, 'test refus')).rejects.toBeInstanceOf(BadRequestException);
+    expect(payouts.apply).not.toHaveBeenCalled();
+  });
+});

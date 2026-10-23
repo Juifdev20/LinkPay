@@ -41,16 +41,18 @@ export class LedgerService {
       },
     ];
 
+    // A fee of zero (no provider fee, a commission rounded away) is not an entry.
+    const written = entries.filter((e) => e.entry_type === 'PAYMENT' || Number(e.amount_cents) > 0);
     const { error } = await this.supabaseService.getClient()
       .from('ledger_entries')
-      .insert(entries);
+      .insert(written);
 
     if (error) {
       this.logger.error(`Failed to write ledger entries: ${error.message}`);
       throw new Error(`Ledger write failed: ${error.message}`);
     }
 
-    this.logger.log(`Wrote ${entries.length} ledger entries for transaction ${transaction.reference}`);
+    this.logger.log(`Wrote ${written.length} ledger entries for transaction ${transaction.reference}`);
   }
 
   async writeRefundEntry(transaction: any, refundAmountCents: number, refundId: string): Promise<void> {

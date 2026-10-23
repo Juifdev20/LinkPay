@@ -8,6 +8,8 @@ import { PageHeader } from '@/components/PageHeader';
 import { TransactionItem } from '@/components/TransactionItem';
 import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
+import { useAuthStore } from '@/lib/auth-store';
+import { useStationScope, resolveStation } from '@/lib/station-scope';
 
 const PAGE_SIZE = 20;
 
@@ -67,7 +69,11 @@ export function presetRange(preset: Preset, customDate: string): { from?: string
  * presets plus an exact-date picker, per product request.
  */
 export default function OrganizationTransactionsPage() {
-  const [preset, setPreset] = useState<Preset>('all');
+  const user = useAuthStore((s) => s.user);
+  const isOwner = user?.role === 'enterprise' || !!user?.acting_as_org_id;
+  // A cashier sees today's payments at their till only (the API enforces it too).
+  const todayOnly = user?.role === 'caissier';
+  const [preset, setPreset] = useState<Preset>(todayOnly ? 'today' : 'all');
   const [customDate, setCustomDate] = useState('');
 
   const { data: org } = useQuery({
@@ -75,13 +81,22 @@ export default function OrganizationTransactionsPage() {
     queryFn: async () => (await api.get('/organizations/me')).data,
   });
 
+  // Owner: every station, or one. Staff: the API narrows it to their station.
+  const { data: stations } = useQuery({
+    queryKey: ['org-merchants', org?.id],
+    queryFn: async () => (await api.get(`/organizations/${org.id}/merchants`)).data as { id: string; name: string }[],
+    enabled: !!org?.id && isOwner,
+  });
+  const scope = useStationScope();
+  const stationId = isOwner ? resolveStation(scope.stationId, stations) : null;
+
   const range = useMemo(() => presetRange(preset, customDate), [preset, customDate]);
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery({
-    queryKey: ['org-transactions', org?.id, range.from, range.to],
+    queryKey: ['org-transactions', org?.id, stationId, range.from, range.to],
     queryFn: async ({ pageParam = 1 }) => {
       const { data } = await api.get(`/organizations/${org.id}/transactions`, {
-        params: { page: pageParam, limit: PAGE_SIZE, from: range.from, to: range.to },
+        params: { page: pageParam, limit: PAGE_SIZE, from: range.from, to: range.to, ...(stationId ? { merchant_id: stationId } : {}) },
       });
       return data as { items: any[]; total: number };
     },
@@ -94,10 +109,24 @@ export default function OrganizationTransactionsPage() {
   const total = data?.pages[0]?.total ?? 0;
 
   return (
-    <div className="p-6 space-y-4 max-w-2xl mx-auto">
-      <PageHeader title="Transactions" />
+    <div className="p-4 pb-28 md:p-6 md:pb-6 space-y-4 max-w-6xl mx-auto">
+      <PageHeader title={todayOnly ? 'Encaissements du jour' : 'Transactions'} />
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      {/* Computer: the filters on one line. */}
+      <div className="space-y-4 md:flex md:flex-wrap md:items-center md:gap-3 md:space-y-0">
+      {isOwner && stations && stations.length > 1 && (
+        <select
+          aria-label="Station"
+          value={stationId ?? ''}
+          onChange={(e) => scope.setStation(e.target.value || null)}
+          className="w-full md:w-64 rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-foreground"
+        >
+          <option value="">Toutes les stations</option>
+          {stations.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+        </select>
+      )}
+
+      {!todayOnly && <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0">
         {PRESETS.map((p) => (
           <button
             key={p.value}
@@ -107,11 +136,12 @@ export default function OrganizationTransactionsPage() {
             {p.label}
           </button>
         ))}
-      </div>
+      </div>}
 
       {preset === 'custom' && (
-        <Input type="date" value={customDate} onChange={(e) => setCustomDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+        <Input type="date" className="md:w-48" value={customDate} onChange={(e) => setCustomDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
       )}
+      </div>
 
       <Card>
         <CardContent className="pt-5">
@@ -125,7 +155,7 @@ export default function OrganizationTransactionsPage() {
               {transactions.map((t: any) => (
                 <TransactionItem
                   key={t.id}
-                  name={t.merchant?.name || 'Boutique'}
+                  name={t.merchant?.name || 'Station'}
                   amountCents={t.amount_cents}
                   currency={t.currency}
                   status={t.status}

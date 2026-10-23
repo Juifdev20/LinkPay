@@ -1,5 +1,6 @@
+import { isSupermarket } from '@/lib/sectors';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Receipt, QrCode, Settings, ShoppingCart, BarChart3, Menu, History, ClipboardList, Wallet } from 'lucide-react';
+import { Home, Receipt, QrCode, Settings, ShoppingCart, BarChart3, Menu, History, ClipboardList, Wallet, Package, ArrowUpFromLine, ShieldAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -34,14 +35,23 @@ const orgTransactionsTab: Tab = { to: '/dashboard/organization/transactions', la
 const financeTab: Tab = { to: SALES_DASHBOARD_PATH, label: 'Finances', icon: BarChart3, end: true, central: true };
 const walletTab: Tab = { to: '/dashboard/wallet', label: 'Portefeuille', icon: Wallet, end: true, central: true };
 
-// Selling is the daily business activity — the supermarket/electronics
-// cashier lands on the POS till; other sectors keep the Ventes form.
+// Selling is the daily business activity — the supermarket cashier lands on
+// the POS till; the electronics vendeur (who also runs the cash desk for
+// the Ventes flow) keeps the Ventes form as their central tab. Transactions
+// stays one tap away via the sidebar/"Plus" page for roles with more than
+// 3 business destinations (see computeVisibleTabs below), rather than
+// fighting Stock for the 4th fixed slot.
 const venteTab: Tab = { to: '/dashboard/pos', label: 'Vente', icon: ShoppingCart, end: false, central: true };
+const stockTab: Tab = { to: '/dashboard/organization/stock', label: 'Stock', icon: Package, end: false };
+// Gérant : "Ventes" → tableau de bord (CA, stats), pas le formulaire de création de vente
+const gerantSalesTab: Tab = { to: SALES_DASHBOARD_PATH, label: 'Ventes', icon: BarChart3, end: true, central: true };
 
 const staffTabsFor = (role: string, orgSector?: string): Tab[] | undefined => {
-  const caissierSale = orgSector === 'supermarche' ? venteTab : salesTab;
+  const caissierSale = isSupermarket(orgSector) ? venteTab : salesTab;
   const map: Record<string, Tab[]> = {
     vendeur: [homeTab, historyTab, salesTab, settingsTab],
+    // The manager: home dashboard · sales · stock · (Plus for the rest).
+    gerant: [homeTab, gerantSalesTab, stockTab, settingsTab],
     caissier: [homeTab, orgTransactionsTab, caissierSale, settingsTab],
     comptable: [homeTab, orgTransactionsTab, financeTab, settingsTab],
     // Accueil IS the stock page for the stock keeper, so the second tab is the inventory (no duplicate).
@@ -75,28 +85,43 @@ export function computeVisibleTabs(
 
   // The central tab is the account's main daily action, and its label says
   // whether the user SHOWS a QR or SCANS one:
-  //  - enterprise: "Vente" → the POS till.
-  //  - plain merchant: "Encaisser" → creates the payment QR the customer scans.
-  //    (It used to be labelled just "QR", which reads as "scan".)
+  //  - enterprise: "Vente" → the POS till (supermarket) or Ventes (electronics).
+  //  - plain merchant: "Encaisser" → shows the merchant's own QR + ScanLinkPay
+  //    number (wallet/Receive page) so a customer pays them on the spot.
+  //    Creating a per-amount payment request stays in Plus → Demandes de
+  //    paiement → Créer, so this tab is the quick "show my code" screen.
   //  - client: "Recevoir" → their own wallet QR.
   // Scanning to pay is deliberately NOT in the bar: the big balance card
   // already offers it ("Payer" → pay screen → "Scanner un QR"), for clients
   // and merchants alike. The bar only holds what the home screen doesn't.
   const qrTab: Tab = isEnterprise
-    ? venteTab
+    ? (orgSector && !isSupermarket(orgSector) ? salesTab : venteTab)
     : hasMerchantId
-    ? { to: '/dashboard/payment-requests/new', label: 'Encaisser', icon: QrCode, end: false, central: true }
+    ? { to: '/dashboard/wallet/receive', label: 'Encaisser', icon: QrCode, end: false, central: true }
     : { to: '/dashboard/wallet/receive', label: 'Recevoir', icon: QrCode, end: false, central: true };
+  // Clients and merchants: the wallet's own history (top-ups, transfers, payments, withdrawals), as in the design.
   const transactionsTab = isEnterprise
     ? { ...tabs[1], to: '/dashboard/organization/transactions' }
+    : role === 'client' || role === 'merchant'
+    ? { ...tabs[1], to: '/dashboard/wallet/transactions' }
     : tabs[1];
-  const allTabs = staffTabsFor(role || '', orgSector) ?? [tabs[0], transactionsTab, qrTab, tabs[2]];
+  // ScanLinkPay team: their daily work (withdrawals to send by hand, security alerts), the rest under Plus.
+  const adminTabs: Tab[] | undefined = role === 'admin' || role === 'super_admin'
+    ? [
+        tabs[0],
+        { to: '/dashboard/admin/withdrawals', label: 'Retraits', icon: ArrowUpFromLine, end: true, central: true },
+        { to: '/dashboard/admin/security-alerts', label: 'Alertes', icon: ShieldAlert, end: true },
+        tabs[2],
+      ]
+    : undefined;
+  const allTabs = adminTabs ?? staffTabsFor(role || '', orgSector) ?? [tabs[0], transactionsTab, qrTab, tabs[2]];
 
   const navRole = isEnterprise ? 'enterprise' : role;
   const businessItemCount = navRole
     ? navItemsFor(navRole, orgSector).filter((i) => !NAV_CHROME_PATHS.includes(i.to)).length
     : 0;
-  const usePlusTab = businessItemCount > 3;
+  // Clients and merchants always get the four tabs of the design: Accueil, Transactions, Encaisser/Recevoir, Plus.
+  const usePlusTab = businessItemCount > 3 || navRole === 'client' || navRole === 'merchant';
   const displayTabs = usePlusTab
     ? [...allTabs.filter((t) => t.to !== '/dashboard/settings'), plusTab]
     : allTabs;
@@ -139,11 +164,11 @@ export function BottomNav() {
   return (
     <nav
       className={cn(
-        'md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border shadow-nav safe-area-bottom transition-transform duration-200',
+        'md:hidden fixed bottom-0 left-0 right-0 z-[58] bg-card/95 backdrop-blur-md border-t border-border shadow-nav safe-area-bottom transition-transform duration-200',
         hidden && 'translate-y-full',
       )}
     >
-      <div className="flex items-center justify-around h-16 px-2">
+      <div className="flex items-center justify-around h-[68px] px-2">
         {displayTabs.map((tab) => {
           // Accueil is also the staff's sales dashboard, so it lights up there.
           const forceActive =
@@ -157,41 +182,26 @@ export function BottomNav() {
               className={({ isActive: navActive }) => {
                 const isActive = navActive || forceActive;
                 return cn(
-                  'flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg transition-colors min-w-[60px]',
-                  tab.central && 'relative -mt-6',
-                  !tab.central && (isActive ? 'text-primary' : 'text-muted-foreground'),
+                  'flex flex-col items-center justify-center gap-1 px-2 py-1 rounded-lg transition-colors min-w-[64px]',
+                  isActive ? 'text-primary' : 'text-muted-foreground',
                 );
               }}
             >
               {({ isActive: navActive }) => {
                 const isActive = navActive || forceActive;
-                return tab.central ? (
+                // Same look for every tab (the design has no raised central button): the active one gets its
+                // icon on the brand gradient and a blue label.
+                return (
                   <>
-                    {/* Central tab is coloured only while it is the current screen. */}
                     <div
                       className={cn(
-                        'w-12 h-12 rounded-2xl flex items-center justify-center transition-colors',
-                        isActive ? 'bg-primary shadow-lg shadow-primary/30' : 'bg-card border border-border',
+                        'w-11 h-8 rounded-xl flex items-center justify-center transition-all',
+                        isActive && 'bg-brand-gradient shadow-brand',
                       )}
                     >
-                      <tab.icon className={cn('w-6 h-6', isActive ? 'text-primary-foreground' : 'text-muted-foreground')} />
+                      <tab.icon className={cn('w-[21px] h-[21px]', isActive && 'text-primary-foreground')} strokeWidth={isActive ? 2.2 : 1.8} />
                     </div>
-                    <span className="text-[10px] font-medium mt-0.5">{tab.label}</span>
-                  </>
-                ) : (
-                  <>
-                    {/* Active tab: colored pill behind the icon, icon stays
-                        light — same treatment as the central QR button above,
-                        generalized to every tab instead of just that one. */}
-                    <div
-                      className={cn(
-                        'w-9 h-9 rounded-full flex items-center justify-center transition-colors',
-                        isActive && 'bg-primary',
-                      )}
-                    >
-                      <tab.icon className={cn('w-5 h-5', isActive && 'text-primary-foreground')} />
-                    </div>
-                    <span className="text-[10px] font-medium">{tab.label}</span>
+                    <span className={cn('text-[11px] leading-none', isActive ? 'font-semibold' : 'font-medium')}>{tab.label}</span>
                   </>
                 );
               }}

@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import { Input } from '@/components/ui/input';
@@ -11,7 +10,17 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { TransactionItem } from '@/components/TransactionItem';
 import { formatCurrency } from '@/lib/utils';
-import { Search, ChevronLeft, ChevronRight, Loader2, Undo2 } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Loader2, Undo2, Inbox } from 'lucide-react';
+import { FilterChips } from '@/components/ui/filter-chips';
+
+const STATUSES = [
+  { value: '', label: 'Tous' },
+  { value: 'SUCCESS', label: 'Réussis' },
+  { value: 'PENDING', label: 'En attente' },
+  { value: 'FAILED', label: 'Échoués' },
+  { value: 'REFUNDED', label: 'Remboursés' },
+  { value: 'PARTIALLY_REFUNDED', label: 'Remb. en partie' },
+];
 
 export default function MerchantTransactionsPage() {
   const [page, setPage] = useState(1);
@@ -22,6 +31,7 @@ export default function MerchantTransactionsPage() {
   const [refundReason, setRefundReason] = useState('');
   const queryClient = useQueryClient();
   const merchantId = useAuthStore((s) => s.user?.merchant_id);
+  const isMerchant = useAuthStore((s) => s.user?.role === 'merchant');
 
   const { data } = useQuery({
     queryKey: ['transactions', page, search, status],
@@ -63,83 +73,79 @@ export default function MerchantTransactionsPage() {
   const refundError = (refundMutation.error as any)?.response?.data?.message;
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto">
-      <PageHeader title="Transactions" />
+    <div className="mx-auto max-w-6xl space-y-4 px-4 py-5 pb-28 md:p-6 md:pb-6">
+      <PageHeader title={isMerchant ? 'Paiements reçus' : 'Transactions'} />
 
-      <div className="flex gap-3 flex-col sm:flex-row">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Rechercher par référence..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            className="pl-10"
-          />
-        </div>
-        <select
-          className="rounded-xl border border-input bg-background px-4 py-3 text-sm font-medium h-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary transition-colors"
-          value={status}
-          onChange={(e) => { setStatus(e.target.value); setPage(1); }}
-        >
-          <option value="">Tous</option>
-          <option value="SUCCESS">Réussi</option>
-          <option value="PENDING">En attente</option>
-          <option value="FAILED">Échoué</option>
-          <option value="REFUNDED">Remboursé</option>
-          <option value="PARTIALLY_REFUNDED">Remboursé en partie</option>
-        </select>
+      <div className="relative">
+        <Search className="absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Rechercher une référence…"
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          className="h-12 rounded-2xl border-border bg-card pl-11 text-base shadow-sm"
+        />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base font-bold">{data?.total || 0} transaction(s)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {data?.data?.length ? (
-            <>
-              <div>
-                {data.data.map((tx: any) => (
-                  <TransactionItem
-                    key={tx.id}
-                    name={tx.reference}
-                    amountCents={tx.amount_cents}
-                    currency={tx.currency}
-                    status={tx.status}
-                    date={tx.created_at}
-                    type="in"
-                    action={
-                      // A transaction already included in a settlement has
-                      // been (or is being) paid out — the API refuses it.
-                      (tx.status === 'SUCCESS' || tx.status === 'PARTIALLY_REFUNDED') && !tx.settlement_id ? (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Rembourser"
-                          aria-label="Rembourser"
-                          onClick={() => openRefund(tx)}
-                        >
-                          <Undo2 className="w-4 h-4" />
-                        </Button>
-                      ) : undefined
-                    }
-                  />
-                ))}
-              </div>
-              <div className="flex items-center justify-between mt-4">
-                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
-                  <ChevronLeft className="w-4 h-4" />
+      <FilterChips label="Statut" options={STATUSES} value={status} onChange={(v) => { setStatus(v); setPage(1); }} />
+
+      <section className="rounded-3xl border border-border bg-card px-4 py-2 shadow-soft sm:px-5">
+        <p className="pt-3 text-sm font-semibold text-muted-foreground">
+          {data?.total || 0} paiement{(data?.total || 0) > 1 ? 's' : ''}
+        </p>
+        {data?.data?.length ? (
+          <>
+            <div>
+              {data.data.map((tx: any) => (
+                <TransactionItem
+                  key={tx.id}
+                  name={isMerchant ? 'Paiement reçu' : tx.reference}
+                  subtitle={isMerchant ? tx.reference : undefined}
+                  amountCents={tx.amount_cents}
+                  currency={tx.currency}
+                  status={tx.status}
+                  date={tx.created_at}
+                  type="in"
+                  action={
+                    // A transaction already included in a settlement has
+                    // been (or is being) paid out — the API refuses it.
+                    (tx.status === 'SUCCESS' || tx.status === 'PARTIALLY_REFUNDED') && !tx.settlement_id ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Rembourser"
+                        aria-label="Rembourser"
+                        className="h-9 w-9 rounded-full"
+                        onClick={() => openRefund(tx)}
+                      >
+                        <Undo2 className="h-4 w-4" />
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              ))}
+            </div>
+            {(page > 1 || data.data.length >= 20) && (
+              <div className="flex items-center justify-between border-t border-border py-3">
+                <Button variant="outline" size="sm" className="h-9 rounded-full" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                  <ChevronLeft className="mr-1 h-4 w-4" /> Précédent
                 </Button>
                 <span className="text-sm text-muted-foreground">Page {page}</span>
-                <Button variant="outline" size="sm" disabled={!data?.data || data.data.length < 20} onClick={() => setPage(page + 1)}>
-                  <ChevronRight className="w-4 h-4" />
+                <Button variant="outline" size="sm" className="h-9 rounded-full" disabled={data.data.length < 20} onClick={() => setPage(page + 1)}>
+                  Suivant <ChevronRight className="ml-1 h-4 w-4" />
                 </Button>
               </div>
-            </>
-          ) : (
-            <p className="text-muted-foreground text-center py-6">Aucune transaction</p>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </>
+        ) : (
+          <div className="flex flex-col items-center py-12 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Inbox className="h-7 w-7" /></span>
+            <p className="mt-3 font-semibold text-foreground">{search || status ? 'Aucun résultat' : 'Aucun paiement pour l\'instant'}</p>
+            <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+              {search || status ? 'Essayez une autre référence ou un autre filtre.' : 'Les paiements de vos clients apparaîtront ici dès qu\'ils arrivent.'}
+            </p>
+          </div>
+        )}
+      </section>
 
       <Dialog open={!!refundTarget} onOpenChange={(open) => !open && setRefundTarget(null)}>
         <DialogContent>

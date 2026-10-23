@@ -11,7 +11,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { StockPasswordDialog } from '@/components/stock/StockPasswordDialog';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { SaleInvoice } from '@/components/sales/SaleInvoice';
+import { SaleReceipt } from '@/components/sales/SaleReceipt';
 import { PRESETS, presetRange, type Preset } from '@/pages/organization/Transactions';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -188,6 +190,7 @@ export default function SalesHistoryPage() {
   const [preset, setPreset] = useState<Preset>('today');
   const [customDate, setCustomDate] = useState('');
   const [openSaleId, setOpenSaleId] = useState<string | null>(null);
+  const [openInvoice, setOpenInvoice] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState<Row | null>(null);
   const sessionUser = useAuthStore((s) => s.user);
   const canArchive = sessionUser?.role === 'enterprise' || sessionUser?.role === 'comptable' || !!sessionUser?.acting_as_org_id;
@@ -250,8 +253,12 @@ export default function SalesHistoryPage() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      {openSaleId && org && openSale?.sale_items && (
-        <SaleInvoice org={org} sale={openSale} onClose={() => setOpenSaleId(null)} />
+      {/* A sale opens on its thermal ticket, like at the till; the A4 invoice is one tap away. */}
+      {openSaleId && org && openSale?.sale_items && !openInvoice && (
+        <SaleReceipt org={org} sale={openSale} closeLabel="Fermer" onInvoice={() => setOpenInvoice(true)} onClose={() => setOpenSaleId(null)} />
+      )}
+      {openSaleId && org && openSale?.sale_items && openInvoice && (
+        <SaleInvoice org={org} sale={openSale} onClose={() => setOpenInvoice(false)} />
       )}
 
       <div className="no-print sticky top-20 md:top-0 z-10 bg-background px-6 pt-6 pb-4 space-y-3">
@@ -361,7 +368,8 @@ export default function SalesHistoryPage() {
         )}
       </div>
 
-      {archiveTarget && org && (
+      {/* The management password only when the owner switched it on; otherwise a plain confirmation. */}
+      {archiveTarget && org && org.stock_password_required && (
         <StockPasswordDialog
           orgId={org.id}
           open
@@ -369,6 +377,14 @@ export default function SalesHistoryPage() {
           onUnlocked={(password) => archiveMutation.mutate({ sale: archiveTarget, password })}
         />
       )}
+      <ConfirmDialog
+        open={!!archiveTarget && !!org && !org.stock_password_required}
+        onOpenChange={(open) => !open && setArchiveTarget(null)}
+        title="Archiver cette vente ?"
+        description="Elle disparaît de cette liste mais n'est pas supprimée : les totaux et le Journal la gardent."
+        confirmLabel="Archiver"
+        onConfirm={() => archiveTarget && archiveMutation.mutate({ sale: archiveTarget, password: '' })}
+      />
 
       <style>{`
         @media print {

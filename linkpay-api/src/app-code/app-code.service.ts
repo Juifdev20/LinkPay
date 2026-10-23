@@ -152,7 +152,15 @@ export class AppCodeService {
     if (!p) throw new UnauthorizedException();
     const key = `appcode-reset:${userId}`;
     await this.loginAttempts.reserve(key);
-    const { error } = await this.supabaseService.getAuthClient().auth.signInWithPassword({ email: p.email, password });
+    // The email Supabase Auth knows the account by: a phone-only account's profile has none (migration 066).
+    let authEmail = p.email || '';
+    try {
+      const { data: authUser } = await this.supabaseService.getClient().auth.admin.getUserById(userId);
+      authEmail = authUser?.user?.email || authEmail;
+    } catch {
+      // Keep the profile's email.
+    }
+    const { error } = await this.supabaseService.getAuthClient().auth.signInWithPassword({ email: authEmail, password });
     if (error) {
       throw new ForbiddenException('Mot de passe incorrect.');
     }

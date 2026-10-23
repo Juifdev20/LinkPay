@@ -5,7 +5,7 @@ import { BANKS } from '../wallets/bank-account';
 
 /**
  * Which banks the customers can pick for a withdrawal or a merchant settlement. The super admin switches banks of the catalogue
- * on and off (single row, platform_settings.withdrawal_banks, migration 061). Nothing chosen yet, or the column not migrated yet
+ * on and off (single row, platform_settings.withdrawal_banks, migration 086). Nothing chosen yet, or the column not migrated yet
  * = the whole catalogue is offered, so the feature never breaks because of a missing setting.
  */
 @Injectable()
@@ -51,7 +51,7 @@ export class BankSettingsService {
       .upsert({ id: 1, withdrawal_banks: ordered, updated_at: new Date().toISOString(), updated_by: callerId });
     if (error) {
       if (/withdrawal_banks/.test(error.message) && /schema cache|does not exist|column/.test(error.message)) {
-        throw new ServiceUnavailableException("La colonne withdrawal_banks n'existe pas encore — appliquez la migration 061_withdrawal_banks.sql dans l'éditeur SQL de Supabase.");
+        throw new ServiceUnavailableException("La colonne withdrawal_banks n'existe pas encore — appliquez la migration 086_withdrawal_banks.sql dans l'éditeur SQL de Supabase.");
       }
       throw new Error(`Failed to save the banks: ${error.message}`);
     }

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { forgetOfflineCode } from './offline-code';
 import api from './api';
 import { supabase } from './supabase';
 import { getDeviceId } from './device';
@@ -25,7 +26,8 @@ import { runDeviceCheck } from './device-integrity';
 
 interface User {
   id: string;
-  email: string;
+  /** Empty for an account created with its phone number only. */
+  email?: string | null;
   full_name?: string;
   phone?: string;
   role: string;
@@ -34,6 +36,9 @@ interface User {
    * comptable) — the organization they belong to, since they aren't its
    * owner (see organization-staff module). */
   organization_id?: string;
+  /** Enterprise staff: the station (store of the organization) they work in — from /users/me. */
+  station_id?: string;
+  station_name?: string;
   /** Set while "acting as" one of an organization's stores — see
    * enterStore()/exitStore() below. */
   acting_as_org_id?: string;
@@ -45,6 +50,8 @@ interface User {
   two_factor_setup_required?: boolean;
   /** Administrators only: this session has passed the authenticator check (from /users/me). */
   mfa_verified?: boolean;
+  /** Administrators only: the super admin suspended the second factor until then (from /users/me, migration 081). */
+  admin_2fa_paused_until?: string | null;
   /** Whether the user has chosen their 6-digit access code (from /users/me). */
   has_app_code?: boolean;
 }
@@ -58,20 +65,24 @@ interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string, rememberMe?: boolean, otp?: string) => Promise<void>;
+  /** By phone number (the default, "+243…") or by email (older accounts, administrators). */
+  login: (identifier: { phone?: string; email?: string }, password: string, rememberMe?: boolean, otp?: string) => Promise<void>;
+  /** Resolves with the recovery code issued at sign-up (shown once). */
   register: (data: {
-    email: string;
+    phone: string;
+    email?: string;
     password: string;
     full_name: string;
-    phone?: string;
     account_type?: 'client' | 'merchant' | 'enterprise';
     business_name?: string;
-  }, rememberMe?: boolean) => Promise<void>;
+  }, rememberMe?: boolean) => Promise<{ recovery_code: string | null }>;
   logout: () => Promise<void>;
   fetchProfile: () => Promise<void>;
   // Token arguments are undefined in cookie mode (the session is in HttpOnly cookies, not in the response).
   applyMerchantUpgrade: (merchant: { id: string }, accessToken?: string) => void;
   applyEnterpriseUpgrade: (accessToken?: string) => void;
+  /** Accepted a shop's invitation: this account is now a cashier of that shop. */
+  applyCashierUpgrade: (merchantId: string, accessToken?: string) => void;
   enterStore: (merchant: { id: string }, accessToken: string | undefined, refreshToken: string | undefined, organizationId: string) => void;
   exitStore: () => Promise<void>;
   clearMustChangePassword: () => void;
@@ -96,17 +107,17 @@ function clearSupabaseSession() {
 
 const hasSession = hasStoredSession();
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   // Last known profile: screens render at once on launch while
   // fetchProfile() refreshes it in the background (App.tsx).
   user: hasSession ? getCachedUser<User>() : null,
   isAuthenticated: hasSession,
   isLoading: false,
 
-  login: async (email: string, password: string, rememberMe = true, otp?: string) => {
+  login: async (identifier, password: string, rememberMe = true, otp?: string) => {
     // Cookie mode: the API sets session cookies (or persistent ones) according to this choice, so it must be known first.
     if (COOKIE_AUTH) setRememberMe(rememberMe);
-    const { data } = await api.post('/auth/login', { email, password, device_id: getDeviceId(), ...(otp ? { otp } : {}) });
+    const { data } = await api.post('/auth/login', { ...identifier, password, device_id: getDeviceId(), ...(otp ? { otp } : {}) });
     queryClient.clear(); // never show another account's cached data
     forgetSessionSecrets(); // …nor inherit the previous person's stock password / confirmation
     setRememberMe(rememberMe);
@@ -128,12 +139,20 @@ export const useAuthStore = create<AuthState>((set) => ({
     useAppLock.getState().unlock();
     set({ user: res.data.user, isAuthenticated: true });
     void runDeviceCheck();
+    return { recovery_code: res.data.recovery_code ?? null };
   },
 
   applyMerchantUpgrade: (merchant, accessToken) => {
     setAccessToken(accessToken);
     set((state) => ({
       user: state.user ? { ...state.user, role: 'merchant', merchant_id: merchant.id } : state.user,
+    }));
+  },
+
+  applyCashierUpgrade: (merchantId, accessToken) => {
+    setAccessToken(accessToken);
+    set((state) => ({
+      user: state.user ? { ...state.user, role: 'cashier', merchant_id: merchantId } : state.user,
     }));
   },
 
@@ -184,6 +203,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
+    // The offline unlock fingerprint belongs to this session on this device.
+    forgetOfflineCode(get().user?.id);
     try {
       await api.post('/auth/logout');
     } catch {

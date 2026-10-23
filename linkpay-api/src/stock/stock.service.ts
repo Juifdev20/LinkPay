@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException, HttpException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, HttpException, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
 import { OrganizationsService } from '../organizations/organizations.service';
@@ -6,42 +6,65 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { StockPasswordService } from './stock-password.service';
 import { AuditService } from '../audit/audit.service';
 import { sumByCurrency } from '../common/utils/currency';
+import { requireStaffStation } from '../common/org-access';
+import { SuppliersService } from './suppliers.service';
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
-// Only 'magasinier' can manage stock today — the other enterprise-staff
-// roles (vendeur/caissier/comptable) get their own gate once their modules
-// (ventes, caisse) land, same reasoning as elsewhere in this codebase of
-// only building the access path a real feature needs right now.
-const STOCK_STAFF_ROLES = ['magasinier'];
+// Who manages a station's stock (with the owner): the stock keeper, and the
+// manager — a manager can do everything a stock keeper does (stock, inventory,
+// requests, orders), never the other way round (DECISIONS.md 23/10, phase B).
+// Some businesses have no stock keeper: then the manager keeps the stock.
+export const STOCK_STAFF_ROLES = ['magasinier', 'gerant'];
 // Read-only stock access (lists, movement history, org summary) — vendeur and
 // caissier need it to know what they can sell, but never to change anything.
-const STOCK_READ_ROLES = ['magasinier', 'vendeur', 'caissier'];
+const STOCK_READ_ROLES = ['magasinier', 'vendeur', 'caissier', 'gerant'];
 // Roles that can SELL from the POS till (supermarket module) — selling writes
 // a 'sale' stock movement, so it needs more than read but less than the full
 // magasinier management access.
-export const POS_SALE_ROLES = ['magasinier', 'vendeur', 'caissier'];
+export const POS_SALE_ROLES = ['magasinier', 'vendeur', 'caissier', 'gerant'];
+// Who in a station is told when an article runs low (with the owner): the people who
+// sell it or keep the stock — not the accountant.
+const LOW_STOCK_ALERT_ROLES = ['gerant', 'magasinier', 'vendeur', 'caissier'];
 
 @Injectable()
 export class StockService {
+  private readonly logger = new Logger(StockService.name);
+
   constructor(
     private supabaseService: SupabaseService,
     private organizationsService: OrganizationsService,
     private notificationsService: NotificationsService,
     private stockPasswordService: StockPasswordService,
     private auditService: AuditService,
+    private suppliersService: SuppliersService,
   ) {}
 
   /**
    * Selling staff (vendeur, caissier) need the catalogue — name, price, quantity
-   * — to ring up a sale, but never what the shop paid for it: cost and margin
-   * stay with the patron and the stock keeper.
+   * — to ring up a sale, but never what the shop paid for it nor whom it bought
+   * from: cost, margin and supplier stay with the patron, the manager and the
+   * stock keeper.
    */
   private redactForRole<T extends Record<string, any>>(item: T, role: string | undefined): T {
     if (role !== 'vendeur' && role !== 'caissier') return item;
-    const { cost_price_cents: _cost, ...rest } = item;
+    const { cost_price_cents: _cost, supplier_id: _supplier, supplier_name: _supplierName, ...rest } = item;
     return rest as T;
+  }
+
+  /** The supplier the product sheet asks for (id, `null` to clear, `undefined` = not touched). */
+  private supplierOf(orgId: string | null | undefined, callerId: string, data: { supplier_id?: string | null; supplier_name?: string | null }) {
+    if (data.supplier_id === undefined && data.supplier_name === undefined) return Promise.resolve(undefined);
+    return this.suppliersService.resolveForProduct(orgId, callerId, data);
+  }
+
+  /** Adds `supplier_name` to products that have a supplier (migration 083). */
+  private async withSupplierNames<T extends Record<string, any>>(items: T[]): Promise<T[]> {
+    const ids = items.map((i) => i.supplier_id).filter(Boolean);
+    if (!ids.length) return items;
+    const names = await this.suppliersService.namesByIds(ids);
+    return items.map((i) => (i.supplier_id ? { ...i, supplier_name: names.get(i.supplier_id) || null } : i));
   }
 
   private isAdmin(role: string | undefined): boolean {
@@ -78,8 +101,11 @@ export class StockService {
     const allowedRoles = Array.isArray(access)
       ? access
       : access ? STOCK_READ_ROLES : STOCK_STAFF_ROLES;
+    // Staff only ever reach the station they're assigned to.
     if (callerOrgId && merchant.organization_id === callerOrgId && allowedRoles.includes(callerRole || '')) {
-      return merchant;
+      const station = await requireStaffStation(this.supabaseService.getClient(), callerId, callerOrgId);
+      if (station === merchant.id) return merchant;
+      throw new ForbiddenException("Cette station n'est pas la vôtre");
     }
 
     throw new ForbiddenException('You do not manage this store\'s stock');
@@ -125,9 +151,12 @@ export class StockService {
       cost_price_cents?: number;
       currency?: string;
       low_stock_threshold?: number;
+      supplier_id?: string | null;
+      supplier_name?: string | null;
     },
   ) {
-    await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
+    const merchant = await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
+    const supplierId = await this.supplierOf(merchant.organization_id, callerId, data);
 
     const { data: item, error } = await this.supabaseService.getClient()
       .from('stock_items')
@@ -150,6 +179,7 @@ export class StockService {
         cost_price_cents: data.cost_price_cents ?? null,
         currency: data.currency || 'CDF',
         low_stock_threshold: data.low_stock_threshold ?? 5,
+        ...(supplierId ? { supplier_id: supplierId } : {}),
         created_by: callerId,
       })
       .select()
@@ -159,7 +189,7 @@ export class StockService {
       this.throwIfDuplicate(error);
       throw new Error(`Failed to create stock item: ${error.message}`);
     }
-    return item;
+    return (await this.withSupplierNames([item]))[0];
   }
 
   async listItems(merchantId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
@@ -172,7 +202,7 @@ export class StockService {
       .order('created_at', { ascending: false });
 
     if (error) throw new Error(`Failed to fetch stock items: ${error.message}`);
-    return (data || []).map((item) => this.redactForRole(item, callerRole));
+    return (await this.withSupplierNames(data || [])).map((item) => this.redactForRole(item, callerRole));
   }
 
   /** Both edit and delete are gated behind the organization's shared stock
@@ -183,6 +213,8 @@ export class StockService {
     if (!merchant.organization_id) {
       throw new BadRequestException('Cette boutique ne fait partie d\'aucune entreprise');
     }
+    // Off (the default): the role check already done is enough.
+    if (!(await this.stockPasswordService.isRequired(merchant.organization_id))) return;
     if (!stockPassword) {
       throw new BadRequestException('Mot de passe de gestion de stock requis');
     }
@@ -208,6 +240,8 @@ export class StockService {
     if (!merchant.organization_id) {
       throw new BadRequestException("Cette boutique ne fait partie d'aucune entreprise");
     }
+    // Off (the default): the role check above is enough.
+    if (!(await this.stockPasswordService.isRequired(merchant.organization_id))) return;
     if (!password) {
       throw new ForbiddenException({ statusCode: 403, code: 'STOCK_PASSWORD_REQUIRED', message: 'Mot de passe de gestion de stock requis' });
     }
@@ -251,6 +285,8 @@ export class StockService {
     // or two code-less products would collide on the (merchant, barcode)
     // unique constraint.
     if (filtered.barcode !== undefined) filtered.barcode = String(filtered.barcode).trim() || null;
+    const supplierId = await this.supplierOf(merchant.organization_id, callerId, updates);
+    if (supplierId !== undefined) filtered.supplier_id = supplierId;
 
     const { data: current, error: currentError } = await this.supabaseService.getClient()
       .from('stock_items')
@@ -297,10 +333,10 @@ export class StockService {
         quantity_delta: newQuantity - current.quantity,
         reason: 'Modifiée depuis la fiche produit',
       });
-      return { ...data, quantity: newQuantity };
+      return (await this.withSupplierNames([{ ...data, quantity: newQuantity }]))[0];
     }
 
-    return data;
+    return (await this.withSupplierNames([data]))[0];
   }
 
   async deleteItem(
@@ -387,13 +423,23 @@ export class StockService {
    * stock_items.quantity atomically. If the resulting quantity drops to or
    * below the item's low_stock_threshold, the organization's owner is
    * notified (best-effort — never blocks the movement itself). */
+  private async movementByClientRef(merchantId: string, clientRef: string) {
+    const { data, error } = await this.supabaseService.getClient()
+      .from('stock_movements')
+      .select('*')
+      .eq('merchant_id', merchantId)
+      .eq('client_ref', clientRef)
+      .maybeSingle();
+    return error ? null : data;
+  }
+
   async createMovement(
     merchantId: string,
     itemId: string,
     callerId: string,
     callerRole: string,
     callerOrgId: string | undefined,
-    data: { type: 'in' | 'out' | 'adjustment' | 'sale'; quantity_delta: number; reason?: string },
+    data: { type: 'in' | 'out' | 'adjustment' | 'sale'; quantity_delta: number; reason?: string; client_ref?: string },
   ) {
     // A 'sale' movement is how the POS till deducts stock — caissier/vendeur
     // need it (POS_SALE_ROLES), while manual 'in'/'out'/'adjustment' still
@@ -411,24 +457,39 @@ export class StockService {
       .single();
 
     if (itemError || !currentItem) throw new NotFoundException('Stock item not found');
+
+    // A movement made offline and already received (answer lost): give back the first one, never apply it twice.
+    if (data.client_ref) {
+      const existing = await this.movementByClientRef(merchantId, data.client_ref);
+      if (existing) return existing;
+    }
     if (currentItem.quantity + data.quantity_delta < 0) {
       throw new BadRequestException(
         `Quantité insuffisante : il ne reste que ${currentItem.quantity} unité(s) en stock`,
       );
     }
 
-    const { data: movement, error } = await this.supabaseService.getClient()
-      .from('stock_movements')
-      .insert({
-        stock_item_id: itemId,
-        merchant_id: merchantId,
-        type: data.type,
-        quantity_delta: data.quantity_delta,
-        reason: data.reason || null,
-        created_by: callerId,
-      })
-      .select()
-      .single();
+    const row: Record<string, unknown> = {
+      stock_item_id: itemId,
+      merchant_id: merchantId,
+      type: data.type,
+      quantity_delta: data.quantity_delta,
+      reason: data.reason || null,
+      created_by: callerId,
+    };
+    if (data.client_ref) row.client_ref = data.client_ref;
+    let { data: movement, error } = await this.supabaseService.getClient().from('stock_movements').insert(row).select().single();
+
+    if (error && data.client_ref && (error as any).code === '23505') {
+      const existing = await this.movementByClientRef(merchantId, data.client_ref);
+      if (existing) return existing;
+    }
+    // Migration 074 not run yet: still record the movement (without the duplicate protection).
+    if (error && data.client_ref && /client_ref/.test(error.message)) {
+      this.logger.warn('stock_movements.client_ref missing — run migration 074');
+      delete row.client_ref;
+      ({ data: movement, error } = await this.supabaseService.getClient().from('stock_movements').insert(row).select().single());
+    }
 
     if (error) {
       // 23514 = check_violation: stock_items_quantity_nonnegative refused it —
@@ -445,20 +506,52 @@ export class StockService {
       .eq('id', itemId)
       .single();
 
-    if (item && merchant.organization_id && item.quantity <= item.low_stock_threshold) {
-      const organization = await this.organizationsService.getOrganizationById(merchant.organization_id).catch(() => null);
-      if (organization) {
-        await this.notificationsService.create({
-          user_id: organization.owner_id,
-          type: 'stock_low',
-          title: 'Stock bas',
-          body: `${item.name} (${merchant.name}) — il ne reste que ${item.quantity} unité(s).`,
-          data: { merchant_id: merchantId, stock_item_id: itemId },
-        });
-      }
+    // Alert once when the item crosses its threshold, and again when it runs
+    // out — not on every sale below it, which would bury the alert.
+    const before = currentItem.quantity;
+    const crossedThreshold = item && before > item.low_stock_threshold && item.quantity <= item.low_stock_threshold;
+    const ranOut = item && before > 0 && item.quantity <= 0;
+    if (item && merchant.organization_id && (crossedThreshold || ranOut)) {
+      await this.notifyLowStock(merchant, itemId, item).catch(() => undefined);
     }
 
     return movement;
+  }
+
+  /**
+   * "Stock bas" goes to the owner AND to the station's people who sell or
+   * keep the stock (manager, stock keeper, sellers, cashiers): the owner may
+   * be busy elsewhere, the people on the floor see the shelf and remind them.
+   * Best effort — never blocks the sale or the movement.
+   */
+  private async notifyLowStock(merchant: any, itemId: string, item: { name: string; quantity: number }) {
+    const client = this.supabaseService.getClient();
+    const organization = await this.organizationsService.getOrganizationById(merchant.organization_id).catch(() => null);
+
+    const { data: staff } = await client
+      .from('organization_staff')
+      .select('user_id')
+      .eq('merchant_id', merchant.id)
+      .is('deactivated_at', null);
+    const staffIds = (staff || []).map((s) => s.user_id);
+    const { data: roles } = staffIds.length
+      ? await client.from('user_roles').select('user_id, role:roles(slug)').in('user_id', staffIds)
+      : { data: [] as any[] };
+    const onTheFloor = (roles || [])
+      .filter((r: any) => LOW_STOCK_ALERT_ROLES.includes(r.role?.slug))
+      .map((r: any) => r.user_id as string);
+
+    const recipients = [...new Set([organization?.owner_id, ...onTheFloor].filter(Boolean))] as string[];
+    const out = item.quantity <= 0;
+    await Promise.all(recipients.map((userId) => this.notificationsService.create({
+      user_id: userId,
+      type: 'stock_low',
+      title: out ? 'Rupture de stock' : 'Stock bas',
+      body: out
+        ? `${item.name} (${merchant.name}) — il n'en reste plus. À réapprovisionner.`
+        : `${item.name} (${merchant.name}) — il ne reste que ${item.quantity} unité(s). Pensez à réapprovisionner.`,
+      data: { merchant_id: merchant.id, stock_item_id: itemId },
+    }).catch(() => undefined)));
   }
 
   /** POS barcode scan lookup — read-level access, caissier included
@@ -522,7 +615,12 @@ export class StockService {
     const org = await this.organizationsService.getOrganizationById(orgId);
     this.assertOrgAccess(org, callerId, callerRole, callerOrgId, true);
 
-    const merchants = await this.organizationsService.getOrganizationMerchants(orgId);
+    let merchants = await this.organizationsService.getOrganizationMerchants(orgId);
+    // Staff: their own station only — the cross-station view is the owner's.
+    if (callerId !== org.owner_id && !this.isAdmin(callerRole)) {
+      const station = await requireStaffStation(this.supabaseService.getClient(), callerId, callerOrgId);
+      merchants = merchants.filter((m) => m.id === station);
+    }
     const merchantIds = merchants.map((m) => m.id);
     if (!merchantIds.length) return [];
 
@@ -537,7 +635,8 @@ export class StockService {
     const merchantNameById: Record<string, string> = {};
     merchants.forEach((m) => { merchantNameById[m.id] = m.name; });
 
-    return (data || []).map((item) => this.redactForRole({ ...item, merchant_name: merchantNameById[item.merchant_id] || null }, callerRole));
+    const named = await this.withSupplierNames(data || []);
+    return named.map((item) => this.redactForRole({ ...item, merchant_name: merchantNameById[item.merchant_id] || null }, callerRole));
   }
 
   async getOrgStockSummary(orgId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
@@ -552,5 +651,125 @@ export class StockService {
       // Independent per-currency figures — never summed together.
       stock_value: sumByCurrency(valueRows, 'amount_cents'),
     };
+  }
+
+  /** Movement chart + recent activity feed for the magasinier dashboard.
+   *  Accepts optional `from` / `to` ISO date strings (YYYY-MM-DD).
+   *  Defaults to the last 7 days when omitted.
+   *  Scoped to the caller's station when they are staff (not owner).
+   *
+   *  "Réceptions" in the chart include both 'in' stock movements AND stock
+   *  items created directly (createItem writes quantity without a movement). */
+  async getOrgRecentActivity(
+    orgId: string,
+    callerId: string,
+    callerRole: string,
+    callerOrgId: string | undefined,
+    from?: string,
+    to?: string,
+  ) {
+    const org = await this.organizationsService.getOrganizationById(orgId);
+    this.assertOrgAccess(org, callerId, callerRole, callerOrgId, true);
+
+    let merchants = await this.organizationsService.getOrganizationMerchants(orgId);
+    if (callerId !== org.owner_id && !this.isAdmin(callerRole)) {
+      const station = await requireStaffStation(this.supabaseService.getClient(), callerId, callerOrgId);
+      merchants = merchants.filter((m: any) => m.id === station);
+    }
+
+    if (!merchants.length) return { daily: [], recent: [] };
+
+    const merchantIds = merchants.map((m: any) => m.id as string);
+    const merchantNameById: Record<string, string> = {};
+    merchants.forEach((m: any) => { merchantNameById[m.id] = m.name; });
+
+    // Resolve date range (inclusive). Default: last 7 days.
+    const toDate = to ? new Date(to + 'T23:59:59.999Z') : new Date();
+    const fromDate = (() => {
+      if (from) return new Date(from + 'T00:00:00.000Z');
+      const d = new Date(toDate);
+      d.setDate(d.getDate() - 6);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    })();
+
+    // Fetch stock movements in the range joined with item name/category.
+    const { data: movements, error } = await this.supabaseService.getClient()
+      .from('stock_movements')
+      .select('id, merchant_id, type, quantity_delta, created_at, stock_items(name, category)')
+      .in('merchant_id', merchantIds)
+      .gte('created_at', fromDate.toISOString())
+      .lte('created_at', toDate.toISOString())
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(`Failed to fetch stock movements: ${error.message}`);
+
+    // Also fetch stock items created in the range (createItem sets quantity
+    // directly without writing a movement — we treat each as a "reception").
+    const { data: createdItems, error: ciError } = await this.supabaseService.getClient()
+      .from('stock_items')
+      .select('id, name, category, quantity, merchant_id, created_at')
+      .in('merchant_id', merchantIds)
+      .gte('created_at', fromDate.toISOString())
+      .lte('created_at', toDate.toISOString())
+      .order('created_at', { ascending: false });
+
+    if (ciError) throw new Error(`Failed to fetch created items: ${ciError.message}`);
+
+    const allMovements: any[] = movements || [];
+    const allCreated: any[] = createdItems || [];
+
+    // Build one entry per calendar day in [fromDate, toDate].
+    const daily: { date: string; receptions: number; sorties: number }[] = [];
+    const cursor = new Date(fromDate);
+    cursor.setUTCHours(0, 0, 0, 0);
+    const endDate = new Date(toDate);
+    endDate.setUTCHours(23, 59, 59, 999);
+
+    while (cursor <= endDate) {
+      const dateStr = cursor.toISOString().slice(0, 10);
+      const dayMvts = allMovements.filter((m) => (m.created_at as string).slice(0, 10) === dateStr);
+      const dayNew  = allCreated.filter((i) => (i.created_at as string).slice(0, 10) === dateStr);
+      daily.push({
+        date: dateStr,
+        // Movements of type 'in' + initial quantity of new items.
+        receptions:
+          dayMvts.filter((m) => m.type === 'in').reduce((s: number, m) => s + Math.abs(m.quantity_delta), 0)
+          + dayNew.reduce((s: number, i) => s + (i.quantity as number || 0), 0),
+        // Movements of type 'out' or 'sale' (sales = stock exits from POS).
+        sorties: dayMvts
+          .filter((m) => m.type === 'out' || m.type === 'sale')
+          .reduce((s: number, m) => s + Math.abs(m.quantity_delta), 0),
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    // Build the activity feed: merge movements + newly created items,
+    // sort chronologically and keep the 15 most recent entries.
+    const recentMovements = allMovements.map((m) => ({
+      id: m.id as string,
+      type: m.type as string,
+      quantity_delta: m.quantity_delta as number,
+      item_name: (m.stock_items as any)?.name ?? '—',
+      category: (m.stock_items as any)?.category ?? null,
+      merchant_name: merchantNameById[m.merchant_id] ?? null,
+      created_at: m.created_at as string,
+    }));
+
+    const recentCreations = allCreated.map((i) => ({
+      id: i.id as string,
+      type: 'new_item',
+      quantity_delta: i.quantity as number,
+      item_name: i.name as string,
+      category: i.category ?? null,
+      merchant_name: merchantNameById[i.merchant_id] ?? null,
+      created_at: i.created_at as string,
+    }));
+
+    const recent = [...recentMovements, ...recentCreations]
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .slice(0, 15);
+
+    return { daily, recent };
   }
 }

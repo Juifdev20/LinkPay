@@ -13,6 +13,8 @@ import { OrganizationsModule } from './organizations/organizations.module';
 import { OrganizationStaffModule } from './organization-staff/organization-staff.module';
 import { StockModule } from './stock/stock.module';
 import { PosModule } from './pos/pos.module';
+import { ReportsModule } from './reports/reports.module';
+import { SupplierNetworkModule } from './supplier-network/supplier-network.module';
 import { CashRegisterModule } from './cash-register/cash-register.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { PaymentRequestsModule } from './payment-requests/payment-requests.module';
@@ -72,6 +74,8 @@ import { createThrottlerStorage } from './common/throttler/redis-throttler.stora
     OrganizationStaffModule,
     StockModule,
     PosModule,
+    ReportsModule,
+    SupplierNetworkModule,
     CashRegisterModule,
     InventoryModule,
     PaymentRequestsModule,

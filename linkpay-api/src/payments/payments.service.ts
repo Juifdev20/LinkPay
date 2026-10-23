@@ -1,5 +1,7 @@
 import { SecurityAlertsService } from '../security/security-alerts.service';
-import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException, ServiceUnavailableException, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import { SupplierOrdersService } from '../supplier-network/supplier-orders.service';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import { PspFactory } from './psp/psp.factory';
@@ -17,9 +19,12 @@ import { MerchantWalletCreditService } from './merchant-wallet-credit.service';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
 import { completeTopupOnce } from '../wallets/topup-completion';
+import { completeFundedTransferOnce } from '../wallets/funded-transfer-completion';
 import { confirmedAmountMatches } from './psp/amount-check';
 import { assertMerchantCanReceive } from '../common/merchant-status';
 import { assertNumberMatchesOperator } from './mobile-money';
+import { assertNoRecentSecurityChange } from '../common/security-hold';
+import { assertTestMoneyStaysInTests } from '../common/test-money';
 
 @Injectable()
 export class PaymentsService {
@@ -41,7 +46,21 @@ export class PaymentsService {
     private salesService: SalesService,
     private merchantWalletCredit: MerchantWalletCreditService,
     private securityAlerts: SecurityAlertsService,
+    @Optional() private moduleRef?: ModuleRef,
   ) {}
+
+  /**
+   * An order between enterprises paid through its payment request (supplier network, DECISIONS.md 23/10): marked paid.
+   * Reached through the ModuleRef — importing that module here would close a module loop (Wallets → Payments).
+   */
+  private async markSupplierOrderPaid(requestId: string, transactionId: string | undefined, intentId: string) {
+    try {
+      const orders = this.moduleRef?.get(SupplierOrdersService, { strict: false });
+      await orders?.markPaidByPaymentRequest(requestId, transactionId);
+    } catch (err: any) {
+      this.logger.error(`Payment ${intentId} is paid but its supplier order could not be marked paid: ${err.message}`);
+    }
+  }
 
   async createPayment(data: {
     link_token: string;
@@ -189,23 +208,6 @@ export class PaymentsService {
       throw new Error(`Failed to create payment intent: ${intentError.message}`);
     }
 
-    // The mock PSP has no real checkout page or webhook delivery mechanism —
-    // simulate a successful payment instead of leaving the intent stuck
-    // PENDING forever (see README: "PSP mock: succès automatique"). A short
-    // artificial delay stands in for the real round trip of a mobile money
-    // STK/USSD push, where the customer confirms with their PIN on their own
-    // phone before the provider calls our webhook.
-    if (provider === 'mock') {
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      const transaction = await this.handleSuccessfulPayment(intent, { psp_intent_id: pspResult.psp_intent_id });
-      return {
-        payment_intent_id: intent.id,
-        psp_intent_id: pspResult.psp_intent_id,
-        status: 'SUCCESS',
-        reference: transaction?.reference,
-      };
-    }
-
     return {
       payment_intent_id: intent.id,
       psp_intent_id: pspResult.psp_intent_id,
@@ -282,6 +284,8 @@ export class PaymentsService {
 
     // PIN verified before anything is created/debited — never trust the
     // frontend's "user confirmed" state for a financial operation.
+    await assertNoRecentSecurityChange(this.supabaseService.getClient(), userId);
+    await this.assertTestMoneyToMerchant(userId, request.merchant_id);
     await this.walletPinService.verifyPin(userId, pin);
 
     const fees = await this.commissionsService.calculateFeesPreview(
@@ -407,6 +411,7 @@ export class PaymentsService {
     }
     await this.salesService.markPaidByPaymentRequest(request.id, transaction.id)
       .catch((err: any) => this.logger.error(`Wallet payment ${intent.id} is paid but its sale could not be marked paid: ${err.message}`));
+    await this.markSupplierOrderPaid(request.id, transaction.id, intent.id);
 
     await this.auditService.log({
       user_id: userId,
@@ -425,7 +430,7 @@ export class PaymentsService {
 
   /**
    * Checks a payment's status by reference — public (the payer may be
-   * anonymous, returning from a CinetPay redirect with no session). Used as
+   * anonymous, returning from the payment provider's page with no session). Used as
    * the fallback source of truth when a webhook hasn't arrived yet: if the
    * intent is still PENDING, re-verifies with the PSP directly and applies
    * the same handleSuccessfulPayment/handleFailedPayment transition the
@@ -477,13 +482,18 @@ export class PaymentsService {
     };
   }
 
+  /** Test money may pay only a merchant whose owner's wallet is a test wallet too (docs/RECHARGE_TEST.md). */
+  private async assertTestMoneyToMerchant(payerId: string, merchantId: string) {
+    const client = this.supabaseService.getClient();
+    const { data: merchant } = await client.from('merchants').select('owner_id').eq('id', merchantId).maybeSingle();
+    await assertTestMoneyStaysInTests(client, { userId: payerId }, { userId: merchant?.owner_id ?? null });
+  }
+
   async processWebhook(provider: string, payload: Buffer, signature: string, headers: Record<string, string>) {
-    // `provider` comes from the public URL. The mock adapter accepts any
-    // payload as genuine, so unless this deployment actually runs on it,
-    // anyone could POST /webhooks/mock and mark a payment as paid for free.
-    const configuredProvider = this.configService.get<string>('PSP_PROVIDER', 'mock');
-    if (provider === 'mock' && configuredProvider !== 'mock') {
-      this.logger.warn('Rejected a mock webhook: PSP_PROVIDER is not "mock" on this deployment');
+    // `provider` comes from the public URL. There is no simulated provider any more (no fictitious money): a call
+    // naming "mock" is somebody trying to fake a payment.
+    if (provider === 'mock') {
+      this.logger.warn('Rejected a mock webhook: there is no simulated payment provider');
       void this.securityAlerts.alert({
         severity: 'warning',
         title: 'Faux webhook de paiement rejeté',
@@ -571,6 +581,12 @@ export class PaymentsService {
         return { status: 'processed', event_type: event.event_type };
       }
 
+      const handledAsTransfer = await this.tryHandleFundedTransferWebhook(event.psp_intent_id, event.status, event.amount_cents);
+      if (handledAsTransfer) {
+        await this.markWebhookProcessed(dedupHash);
+        return { status: 'processed', event_type: event.event_type };
+      }
+
       this.logger.warn(`No payment intent found for psp_intent_id: ${event.psp_intent_id}`);
       await this.markWebhookProcessed(dedupHash, 'no_intent_found');
       return { status: 'no_intent' };
@@ -611,7 +627,10 @@ export class PaymentsService {
   }
 
   private async handleSuccessfulPayment(intent: any, event: any): Promise<any> {
-    if (!this.amountAccepted('paiement', intent.id, intent.amount_cents, event?.amount_cents)) return undefined;
+    // The provider was asked for total_cents (the amount plus the commission when the payer bears it, see createPayment): that is
+    // what it confirms. Comparing with amount_cents alone refused every payer-paid payment — money taken, nothing credited, the
+    // payer's screen waiting for ever (HotelSaver subscription, 22/10/2026: 1 USD + commission = 2.04 USD debited).
+    if (!this.amountAccepted('paiement', intent.id, Number(intent.total_cents ?? intent.amount_cents), event?.amount_cents)) return undefined;
 
     // Atomically claim the PENDING -> SUCCEEDED transition before doing any
     // work: a webhook delivery and a concurrent status-check poll (GET
@@ -699,6 +718,10 @@ export class PaymentsService {
     // claim at the top of this method.)
 
     await this.paymentRequestsService.markPaid(request.id);
+    // A Ventes sale paid by Mobile Money / card through its QR: paid, its stock leaves the shelf (as for a wallet payment).
+    await this.salesService.markPaidByPaymentRequest(request.id, transaction.id)
+      .catch((err: any) => this.logger.error(`Payment ${intent.id} is paid but its sale could not be marked paid: ${err.message}`));
+    await this.markSupplierOrderPaid(request.id, transaction.id, intent.id);
 
     await this.generateReceipt(transaction, request.merchant);
 
@@ -836,19 +859,30 @@ export class PaymentsService {
     }
 
     if (status === 'SUCCESS') {
-      if (payment.status !== 'SUCCESS') {
+      // Claimed first: the webhook, the payer's status check and the reconciliation job can confirm the same payment
+      // at the same moment — only one may extend Pro (one payment, one month).
+      const { data: claimed } = payment.status === 'SUCCESS' ? { data: null } : await this.supabaseService.getClient()
+        .from('expense_pro_payments')
+        .update({ status: 'SUCCESS', updated_at: new Date().toISOString() })
+        .eq('id', payment.id)
+        .in('status', ['PENDING', 'FAILED'])
+        .select('id')
+        .maybeSingle();
+      if (claimed) {
         const { data: newExpiry, error: rpcError } = await this.supabaseService.getClient().rpc('extend_expense_pro', {
           p_user_id: payment.user_id,
         });
 
         if (rpcError) {
+          // Given back: the payment is real, the next confirmation extends it.
+          await this.supabaseService.getClient().from('expense_pro_payments').update({ status: 'PENDING' }).eq('id', payment.id).eq('status', 'SUCCESS');
           this.logger.error(`Failed to extend expense Pro for payment ${payment.id}: ${rpcError.message}`);
           return true;
         }
 
         await this.supabaseService.getClient()
           .from('expense_pro_payments')
-          .update({ status: 'SUCCESS', extended_to: newExpiry, updated_at: new Date().toISOString() })
+          .update({ extended_to: newExpiry, updated_at: new Date().toISOString() })
           .eq('id', payment.id);
 
         await this.notificationsService.create({
@@ -873,6 +907,63 @@ export class PaymentsService {
     return true;
   }
 
+  /** Returns true if a PSP-funded transfers row was found for this psp_intent_id (handled either way). */
+  private async tryHandleFundedTransferWebhook(pspIntentId: string, status: string, confirmedAmountCents?: number): Promise<boolean> {
+    const { data: transfer } = await this.supabaseService.getClient()
+      .from('transfers')
+      .select('*')
+      .eq('psp_intent_id', pspIntentId)
+      .single();
+
+    if (!transfer) {
+      return false;
+    }
+
+    if (status === 'SUCCESS') {
+      // The sender was charged amount + fee: that total is what must match the provider's confirmation.
+      if (!this.amountAccepted('transfert', transfer.id, transfer.amount_cents + (transfer.fee_cents || 0), confirmedAmountCents)) return true;
+      let outcome;
+      try {
+        outcome = await completeFundedTransferOnce(this.supabaseService.getClient(), transfer.id, pspIntentId, this.logger);
+      } catch (err: any) {
+        // Left PENDING: the next confirmation (a webhook retry, the status check, the sweep) credits it.
+        this.logger.error(`Failed to credit recipient for funded transfer ${transfer.id}: ${err.message}`);
+        return true;
+      }
+      if (outcome.credited) {
+        const amount = ((outcome.amountCents ?? 0) / 100).toLocaleString('fr-FR');
+        if (outcome.senderUserId) {
+          await this.notificationsService.create({
+            user_id: outcome.senderUserId,
+            type: 'transfer_sent',
+            title: 'Transfert envoyé',
+            body: `Votre transfert de ${amount} ${outcome.currency} a été effectué.`,
+            data: { transfer_id: transfer.id },
+          }).catch(() => null);
+        }
+        if (outcome.recipientUserId) {
+          await this.notificationsService.create({
+            user_id: outcome.recipientUserId,
+            type: 'transfer_received',
+            title: 'Transfert reçu',
+            body: `Vous avez reçu ${amount} ${outcome.currency}.`,
+            data: { transfer_id: transfer.id, amount_cents: outcome.amountCents, currency: outcome.currency },
+          }).catch(() => null);
+        }
+        this.logger.log(`Funded transfer ${transfer.id} confirmed via webhook, wallet ${transfer.recipient_wallet_id} credited`);
+      }
+    } else if (status === 'FAILED') {
+      // Only a transfer still waiting can fail: a late "failed" must never undo one that already succeeded.
+      await this.supabaseService.getClient()
+        .from('transfers')
+        .update({ status: 'FAILED', failure_reason: 'PSP_FAILED', updated_at: new Date().toISOString() })
+        .eq('id', transfer.id)
+        .eq('status', 'PENDING');
+    }
+
+    return true;
+  }
+
   /**
    * Settles what the provider's callback never settled. A callback can be lost (a restart, a network cut), and some
    * providers do not sign it nor resend it: a customer who paid and closed the app would otherwise never be credited.
@@ -881,7 +972,7 @@ export class PaymentsService {
    * is credited once).
    */
   async reconcilePending(provider: string, limit = 50): Promise<{ checked: number; settled: number }> {
-    if (!provider || provider === 'mock' || provider === 'wallet') return { checked: 0, settled: 0 };
+    if (!provider || provider === 'wallet') return { checked: 0, settled: 0 };
     const adapter = this.pspFactory.get(provider);
     const db = this.supabaseService.getClient();
     const olderThan = new Date(Date.now() - 45_000).toISOString();
@@ -931,6 +1022,15 @@ export class PaymentsService {
       const live = await ask(pro.psp_intent_id);
       if (!live) continue;
       if (await this.tryHandleExpenseProWebhook(pro.psp_intent_id, live.status).catch(() => false)) settled++;
+    }
+
+    const { data: transfers } = await db.from('transfers').select('psp_intent_id')
+      .eq('psp_provider', provider).eq('status', 'PENDING').lt('created_at', olderThan).gt('created_at', newerThan)
+      .order('created_at', { ascending: true }).limit(limit);
+    for (const transfer of transfers ?? []) {
+      const live = await ask(transfer.psp_intent_id);
+      if (!live) continue;
+      if (await this.tryHandleFundedTransferWebhook(transfer.psp_intent_id, live.status, live.amount_cents).catch(() => false)) settled++;
     }
 
     if (settled > 0) this.logger.log(`Reconciliation (${provider}): ${settled} of ${checked} waiting payment(s) settled`);

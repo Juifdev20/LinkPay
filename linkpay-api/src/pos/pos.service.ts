@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { writeFile, unlink } from 'fs/promises';
@@ -8,11 +8,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { StockService, POS_SALE_ROLES } from '../stock/stock.service';
 import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
 import { AuditService } from '../audit/audit.service';
-import { CashierPinService } from '../organization-staff/cashier-pin.service';
-
-// Job roles of organization-internal staff (seeded in 029) — used to decide
-// whether voiding a ticket line requires a second employee's PIN.
-const STAFF_JOB_ROLES = ['magasinier', 'vendeur', 'caissier', 'comptable'];
+import { OWN_TILL_ONLY_ROLES } from '../common/org-access';
 
 /**
  * Point of sale — a ticket is always a single currency, chosen when the
@@ -42,7 +38,6 @@ export class PosService {
     private stockService: StockService,
     private paymentRequestsService: PaymentRequestsService,
     private auditService: AuditService,
-    private cashierPinService: CashierPinService,
   ) {}
 
   private get db() {
@@ -244,6 +239,74 @@ export class PosService {
     return { ...ticket, items, payments, merchant };
   }
 
+  /**
+   * A sale made without network, sent when the network came back (see migration 074). Cash only — the customer paid
+   * and left with the goods. record_offline_pos_sale() writes everything in one transaction, once per client_ref; what
+   * the till could not know (price changed, stock already sold elsewhere, session closed meanwhile) comes back as
+   * `conflicts` and is written to the journal, never refused.
+   */
+  async recordOfflineSale(
+    merchantId: string,
+    callerId: string,
+    callerRole: string,
+    callerOrgId: string | undefined,
+    dto: { client_ref: string; currency: string; sold_at: string; items: { stock_item_id: string; quantity: number; unit_price_cents: number }[]; received_cents?: number },
+  ) {
+    await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
+
+    // The same product on several lines (two taps offline) is one line.
+    const lines = new Map<string, { stock_item_id: string; quantity: number; unit_price_cents: number }>();
+    for (const l of dto.items) {
+      const key = `${l.stock_item_id}:${l.unit_price_cents}`;
+      const prev = lines.get(key);
+      lines.set(key, prev ? { ...prev, quantity: prev.quantity + l.quantity } : { ...l });
+    }
+
+    const { data, error } = await this.db.rpc('record_offline_pos_sale', {
+      p_merchant_id: merchantId,
+      p_cashier_id: callerId,
+      p_client_ref: dto.client_ref,
+      p_currency: dto.currency,
+      p_sold_at: dto.sold_at,
+      p_items: [...lines.values()],
+      p_received_cents: dto.received_cents ?? null,
+    });
+    if (error || !data) throw this.toOfflineSaleError(error?.message);
+
+    const result = data as { ticket_id: string; created: boolean; conflicts: any[] };
+    const ticket = await this.getOwnTicket(merchantId, result.ticket_id);
+
+    if (result.created) {
+      await this.auditService.log({
+        user_id: callerId,
+        action: result.conflicts?.length ? 'offline_sale_with_conflicts' : 'offline_sale_recorded',
+        entity_type: 'pos_ticket',
+        entity_id: result.ticket_id,
+        changes: { client_ref: dto.client_ref, sold_at: dto.sold_at, total_cents: ticket.total_cents, conflicts: result.conflicts ?? [] },
+      });
+    }
+    return { ...(await this.withDetails(ticket)), conflicts: result.conflicts ?? [], created: result.created };
+  }
+
+  private toOfflineSaleError(message?: string) {
+    const m = message ?? '';
+    if (m.includes('POS_OFFLINE_NO_SESSION')) {
+      return new BadRequestException("Aucune caisse n'a jamais été ouverte dans cette devise pour cette boutique.");
+    }
+    if (m.includes('POS_OFFLINE_ITEM_NOT_FOUND')) {
+      return new BadRequestException("Un article de cette vente n'existe plus dans la boutique (supprimé entre-temps).");
+    }
+    if (m.includes('POS_OFFLINE_ITEM_CURRENCY')) {
+      return new BadRequestException(`L'article « ${m.split(':').pop()} » n'est plus vendu dans cette devise.`);
+    }
+    if (m.includes('POS_OFFLINE_')) return new BadRequestException('Vente hors ligne invalide.');
+    if (m.includes('record_offline_pos_sale') && m.includes('does not exist')) {
+      // Migration 074 not run yet: a server error, so the till keeps the sale and retries later.
+      this.logger.error('record_offline_pos_sale() missing — run migration 074');
+    }
+    return new Error(`Failed to record offline sale: ${m}`);
+  }
+
   async createTicket(
     merchantId: string,
     callerId: string,
@@ -298,9 +361,12 @@ export class PosService {
     callerId: string,
     callerRole: string,
     callerOrgId: string | undefined,
-    filters: { status?: string; session_id?: string; held?: boolean; page?: number; limit?: number },
+    filters: { status?: string; from?: string; to?: string; session_id?: string; held?: boolean; page?: number; limit?: number },
   ) {
     await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
+    const validDate = (value?: string) => (value && !Number.isNaN(Date.parse(value)) ? new Date(value).toISOString() : undefined);
+    const from = validDate(filters.from);
+    const to = validDate(filters.to);
 
     let query = this.db
       .from('pos_tickets')
@@ -308,9 +374,13 @@ export class PosService {
       .eq('merchant_id', merchantId)
       .order('created_at', { ascending: false });
 
+    if (OWN_TILL_ONLY_ROLES.includes(callerRole)) query = query.eq('cashier_user_id', callerId);
     if (filters.status) query = query.eq('status', filters.status);
     if (filters.session_id) query = query.eq('cash_register_session_id', filters.session_id);
     if (filters.held) query = query.eq('is_held', true);
+    // Paid within [from, to) — a cashier's day or week, for their dashboard.
+    if (from) query = query.gte('paid_at', from);
+    if (to) query = query.lt('paid_at', to);
 
     const page = filters.page || 1;
     const limit = Math.min(filters.limit || 30, 100);
@@ -522,11 +592,11 @@ export class PosService {
     return { ...saved.ticket, items: saved.items, payments, merchant };
   }
 
-  /** "Annulation de lignes avec autorisation" — the line is VOIDED (kept on
-   * the ticket, excluded from totals) rather than deleted, so the receipt
-   * and the audit trail both show what happened. Staff callers must have a
-   * second employee type their own till PIN to authorize; the org owner and
-   * platform admins void freely. */
+  /** Voiding a line — the line is VOIDED (kept on the ticket, excluded from
+   * totals) rather than deleted, so the receipt and the audit trail both
+   * show what happened. Anyone selling at the till voids freely, with no
+   * colleague's code; `supervisor_pin` is still accepted from older app
+   * versions and ignored. */
   async voidItem(
     merchantId: string,
     ticketId: string,
@@ -542,14 +612,10 @@ export class PosService {
       throw new NotFoundException('Ligne introuvable sur ce ticket');
     }
 
-    let authorizedBy: string | null = null;
-    if (STAFF_JOB_ROLES.includes(callerRole)) {
-      if (!callerOrgId) throw new ForbiddenException('Compte employé sans organisation associée.');
-      if (!data.supervisor_pin) {
-        throw new BadRequestException("Un code PIN d'un autre employé est requis pour autoriser l'annulation.");
-      }
-      authorizedBy = await this.cashierPinService.verifyOtherStaffPin(callerOrgId, data.supervisor_pin, callerId);
-    }
+    // No colleague's code any more: the cashier corrects their own open ticket
+    // (a wrong scan) freely, and every void stays traced — who, when, which
+    // line, why — on the line itself and in the audit journal below.
+    const authorizedBy: string | null = null;
 
     const { error } = await this.db
       .from('pos_ticket_items')
@@ -781,8 +847,8 @@ export class PosService {
       p_created_by: callerId,
     }).single();
     if (error || !payment) {
-      // The ticket was paid in the meantime: don't leave a live QR for it.
-      await this.db.from('payment_requests').update({ status: 'CANCELLED', updated_at }).eq('id', request.id);
+      // The ticket was paid in the meantime: don't leave a live QR for it (nobody has it yet: just created).
+      await this.db.from('payment_requests').update({ status: 'CANCELLED', updated_at }).eq('id', request.id).eq('status', 'CREATED');
       throw this.toPosPaymentError(error?.message, ticket.currency);
     }
     await this.db.from('pos_tickets').update({ payment_request_id: request.id, updated_at }).eq('id', ticketId);
@@ -793,16 +859,28 @@ export class PosService {
     };
   }
 
-  /** Drop a pending ScanLinkPay part — the minted QR can't be un-minted,
-   * but removing the payment row frees the amount for another method (the
-   * linked payment_request just expires unpaid). Only 'pending' rows can
-   * go: a confirmed payment is real money already in. */
+  /** Drop a pending ScanLinkPay part, freeing the amount for another method. Its QR is closed FIRST, and only while
+   * nobody is paying it: left open, the customer could still pay it after handing over cash — paying twice. A QR
+   * already claimed (the customer confirmed their PIN) or paid keeps its row: the cashier waits for it. Only 'pending'
+   * rows can go: a confirmed payment is real money already in. */
   async voidPayment(merchantId: string, ticketId: string, paymentId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
     const { ticket, items, payments, merchant } = await this.loadOpenTicket(merchantId, ticketId, callerId, callerRole, callerOrgId);
     const payment = payments.find((p) => p.id === paymentId);
     if (!payment) throw new NotFoundException('Paiement introuvable sur ce ticket');
     if (payment.status !== 'pending') {
       throw new BadRequestException('Seul un paiement ScanLinkPay en attente peut être retiré.');
+    }
+    if (payment.payment_request_id) {
+      const { data: closed } = await this.db
+        .from('payment_requests')
+        .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
+        .eq('id', payment.payment_request_id)
+        .in('status', ['CREATED', 'EXPIRED'])
+        .select('id')
+        .maybeSingle();
+      if (!closed) {
+        throw new BadRequestException('Le client est en train de payer (ou a payé) par ScanLinkPay : attendez la confirmation avant de faire payer autrement.');
+      }
     }
 
     const clearsMirror = ticket.payment_request_id === payment.payment_request_id;

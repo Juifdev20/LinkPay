@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty } from '@nestjs/swagger';
-import { IsArray, ArrayMinSize, ValidateNested, IsInt, IsString, Min, IsUUID } from 'class-validator';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsArray, ArrayMinSize, ArrayMaxSize, ValidateNested, IsInt, IsOptional, IsString, Min, Max, IsUUID, IsISO8601 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SalesService } from './sales.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -26,10 +26,46 @@ class CreateSaleDto {
   items!: SaleLineDto[];
 }
 
+class OfflineSaleLineDto {
+  @ApiProperty()
+  @IsUUID()
+  stock_item_id!: string;
+
+  @ApiProperty({ example: 1 })
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  quantity!: number;
+
+  @ApiProperty({ description: "Prix unitaire vu par l'appareil au moment de la vente (centimes)" })
+  @IsInt()
+  @Min(0)
+  unit_price_cents!: number;
+}
+
+class OfflineSaleDto {
+  @ApiProperty({ description: "Id créé sur l'appareil : la même vente envoyée deux fois est gardée une fois" })
+  @IsUUID()
+  client_ref!: string;
+
+  @ApiProperty({ description: 'Heure de la vente (7 jours au plus, jamais dans le futur)' })
+  @IsISO8601()
+  sold_at!: string;
+
+  @ApiProperty({ type: [OfflineSaleLineDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => OfflineSaleLineDto)
+  items!: OfflineSaleLineDto[];
+}
+
 class ArchiveSaleDto {
-  @ApiProperty({ description: 'Mot de passe de gestion de cette entreprise' })
+  @ApiPropertyOptional({ description: "Mot de passe de gestion — seulement si le patron l'a activé" })
+  @IsOptional()
   @IsString()
-  stock_password!: string;
+  stock_password?: string;
 }
 
 @ApiTags('Sales')
@@ -51,6 +87,18 @@ export class SalesController {
     return this.salesService.createSale(orgId, callerId, callerOrgId, dto.items, callerRole);
   }
 
+  @Post(':id/sales/offline')
+  @ApiOperation({ summary: 'Record a sale made without network (paid in cash), in one piece and only once' })
+  async recordOfflineSale(
+    @Param('id') orgId: string,
+    @Body() dto: OfflineSaleDto,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+    @CurrentUser('role') callerRole?: string,
+  ) {
+    return this.salesService.recordOfflineSale(orgId, callerId, callerOrgId, dto, callerRole);
+  }
+
   @Get(':id/sales/stats')
   @ApiOperation({ summary: 'Financial dashboard: revenue, margins and top products for paid sales in a period' })
   async getStats(
@@ -60,8 +108,9 @@ export class SalesController {
     @Query('from') from?: string,
     @Query('to') to?: string,
     @CurrentUser('role') callerRole?: string,
+    @Query('days') days?: string,
   ) {
-    return this.salesService.getStats(orgId, callerId, callerOrgId, from, to, callerRole);
+    return this.salesService.getStats(orgId, callerId, callerOrgId, from, to, callerRole, days ? Number(days) : undefined);
   }
 
   // Declared before ':saleId' so "history" is not read as a sale id.
@@ -113,5 +162,17 @@ export class SalesController {
     @CurrentUser('role') callerRole?: string,
   ) {
     return this.salesService.payCash(orgId, saleId, callerId, callerOrgId, callerRole);
+  }
+
+  @Post(':id/sales/:saleId/cancel')
+  @ApiOperation({ summary: 'Cancel a sale not paid yet (the customer left) and close its payment QR' })
+  async cancelSale(
+    @Param('id') orgId: string,
+    @Param('saleId') saleId: string,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+    @CurrentUser('role') callerRole?: string,
+  ) {
+    return this.salesService.cancelSale(orgId, saleId, callerId, callerOrgId, callerRole);
   }
 }

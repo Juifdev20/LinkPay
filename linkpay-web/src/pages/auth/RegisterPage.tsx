@@ -2,121 +2,108 @@ import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/lib/auth-store';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { AuthBrandingPanel } from '@/components/auth/AuthBrandingPanel';
-import { Loader2, User, Mail, Phone, Lock, Store, Building2, Eye, EyeOff } from 'lucide-react';
+import { AuthShell } from '@/components/auth/AuthShell';
+import { AuthField } from '@/components/auth/AuthField';
+import { PhoneInput, isCompletePhone } from '@/components/PhoneInput';
+import { RecoveryCodePanel } from '@/components/auth/RecoveryCodePanel';
+import { toApiPhone, displayPhone } from '@/lib/mobile-money';
+import { Loader2, User, Mail, Lock, Store, Building2, CheckCircle2, ArrowRight, ArrowLeft } from 'lucide-react';
 import { cn, safeRedirect } from '@/lib/utils';
+
+const ACCOUNT_TYPES = [
+  { value: 'client',     label: 'Client',     icon: User,      hint: "Pour payer, envoyer et recevoir de l'argent." },
+  { value: 'merchant',   label: 'Marchand',   icon: Store,     hint: 'Pour recevoir des paiements par lien et QR code.' },
+  { value: 'enterprise', label: 'Entreprise', icon: Building2, hint: 'Pour gérer plusieurs boutiques sous une même entreprise.' },
+] as const;
+
 
 export default function RegisterPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const register = useAuthStore((s) => s.register);
+
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [accountType, setAccountType] = useState<'client' | 'merchant' | 'enterprise'>('client');
   const [businessName, setBusinessName] = useState('');
   const [form, setForm] = useState({ email: '', password: '', full_name: '', phone: '', confirmPassword: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [confirmPasswordError, setConfirmPasswordError] = useState('');
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
 
   const validateEmail = (email: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email) {
-      setEmailError('');
-      return true;
-    }
-    if (!emailRegex.test(email)) {
-      setEmailError('Email invalide');
-      return false;
-    }
-    setEmailError('');
-    return true;
+    if (!email) { setEmailError(''); return true; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setEmailError('Email invalide'); return false; }
+    setEmailError(''); return true;
   };
-
-  const validatePhone = (phone: string) => {
-    if (!phone) {
-      setPhoneError('');
-      return true;
-    }
-    const phoneRegex = /^\+243\s?\d{3}\s?\d{3}\s?\d{3}$/;
-    if (!phoneRegex.test(phone)) {
-      setPhoneError('Format: +243 XXX XXX XXX');
-      return false;
-    }
-    setPhoneError('');
-    return true;
+  const validatePhone = (digits: string) => {
+    if (!isCompletePhone(digits)) { setPhoneError('Saisissez 9 chiffres après +243 (ex. 812 345 678)'); return false; }
+    setPhoneError(''); return true;
   };
-
   const validatePassword = (password: string) => {
-    if (!password) {
-      setPasswordError('');
-      return true;
-    }
-    if (password.length < 8) {
-      setPasswordError('Minimum 8 caractères');
-      return false;
-    }
-    setPasswordError('');
-    return true;
+    if (!password) { setPasswordError(''); return true; }
+    if (password.length < 8) { setPasswordError('Minimum 8 caractères'); return false; }
+    setPasswordError(''); return true;
   };
-
   const validateConfirmPassword = (confirmPassword: string) => {
-    if (!confirmPassword) {
-      setConfirmPasswordError('');
-      return true;
-    }
-    if (confirmPassword !== form.password) {
-      setConfirmPasswordError('Les mots de passe ne correspondent pas');
-      return false;
-    }
-    setConfirmPasswordError('');
-    return true;
+    if (!confirmPassword) { setConfirmPasswordError(''); return true; }
+    if (confirmPassword !== form.password) { setConfirmPasswordError('Les mots de passe ne correspondent pas'); return false; }
+    setConfirmPasswordError(''); return true;
   };
 
   const calculatePasswordStrength = (password: string): number => {
     if (!password) return 0;
-    let strength = 0;
-    if (password.length >= 8) strength++;
-    if (password.length >= 12) strength++;
-    if (/[A-Z]/.test(password) && /[a-z]/.test(password) && /[0-9]/.test(password)) strength++;
-    return Math.min(strength, 3);
+    let s = 0;
+    if (password.length >= 8) s++;
+    if (password.length >= 12) s++;
+    if (/[A-Z]/.test(password) && /[a-z]/.test(password) && /[0-9]/.test(password)) s++;
+    return Math.min(s, 3);
+  };
+
+  const goBack = () => { setError(''); setStep((s) => (s - 1) as 1 | 2 | 3); };
+
+  const handleStep1Continue = () => {
+    setError('');
+    if (!form.full_name.trim()) { setError('Saisissez votre nom complet'); return; }
+    if (!validatePhone(form.phone)) return;
+    // Client : pas de step 2 (pas de boutique ni email obligatoire) → direct step 3
+    if (accountType === 'client') { setStep(3); return; }
+    setStep(2);
+  };
+
+  const handleStep2Continue = () => {
+    setError('');
+    const business = accountType === 'merchant' || accountType === 'enterprise';
+    if (business && !businessName.trim()) { setError(accountType === 'merchant' ? 'Saisissez le nom de la boutique' : "Saisissez le nom de l'entreprise"); return; }
+    if (form.email && !validateEmail(form.email)) return;
+    setStep(3);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
-    // Validate all fields
     const isEmailValid = validateEmail(form.email);
-    const isPhoneValid = validatePhone(form.phone);
     const isPasswordValid = validatePassword(form.password);
     const isConfirmPasswordValid = validateConfirmPassword(form.confirmPassword);
-
-    if (!isEmailValid || !isPhoneValid || !isPasswordValid || !isConfirmPasswordValid) {
-      return;
-    }
-
-    if (!acceptTerms) {
-      setError('Vous devez accepter les CGU et la politique de confidentialité');
-      return;
-    }
-
+    if (!isEmailValid || !isPasswordValid || !isConfirmPasswordValid) return;
+    if (!acceptTerms) { setError('Vous devez accepter les CGU et la politique de confidentialité'); return; }
     setLoading(true);
     try {
-      const { confirmPassword: _confirmPassword, ...registerData } = form;
-      await register({
-        ...registerData,
+      const { recovery_code } = await register({
+        phone: toApiPhone(form.phone),
+        ...(form.email.trim() ? { email: form.email.trim() } : {}),
+        password: form.password,
+        full_name: form.full_name,
         account_type: accountType,
         ...(accountType === 'merchant' || accountType === 'enterprise' ? { business_name: businessName } : {}),
       });
-      navigate(safeRedirect(searchParams.get('redirect')));
+      if (recovery_code) setRecoveryCode(recovery_code);
+      else navigate(safeRedirect(searchParams.get('redirect')));
     } catch (err: any) {
       setError(err.response?.data?.message || "Échec de l'inscription");
     } finally {
@@ -124,300 +111,239 @@ export default function RegisterPage() {
     }
   };
 
+  if (recoveryCode) {
+    return (
+      <AuthShell headline="Rejoignez">
+        <p className="mb-5 rounded-xl bg-success/10 px-4 py-3 text-center text-sm font-semibold text-success">Votre compte est créé</p>
+        <RecoveryCodePanel
+          code={recoveryCode}
+          phone={displayPhone(form.phone)}
+          onDone={() => navigate(safeRedirect(searchParams.get('redirect')))}
+        />
+      </AuthShell>
+    );
+  }
+
+  const strength = calculatePasswordStrength(form.password);
+  const strengthLabel = ['Faible', 'Moyen', 'Fort', 'Très fort'][strength];
+  const strengthColor = ['bg-destructive', 'bg-warning', 'bg-orange-500', 'bg-success'][strength];
+  const loginLink = searchParams.get('redirect') ? `/login?redirect=${encodeURIComponent(searchParams.get('redirect')!)}` : '/login';
+
+  const stepTitles = ['Créer un compte', 'Votre activité', 'Sécurité'];
+  // Client saute l'étape 2 → les pastilles affichent 2 étapes seulement pour lui
+  const totalSteps = accountType === 'client' ? 2 : 3;
+  // Numéro d'étape affiché (client : step 3 s'affiche comme étape 2)
+  const displayStep = accountType === 'client' && step === 3 ? 2 : step;
+
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-background">
-      <AuthBrandingPanel
-        headline="Créer un compte"
-        tagline="Rejoignez ScanLinkPay en quelques secondes et recevez vos paiements instantanément."
-        className="h-48 md:h-auto md:w-1/2"
-      />
-
-      {/* Form section */}
-      <div className="flex-1 flex items-center justify-center p-4 md:p-12 lg:p-16">
-        {/* max-h + flex-col + only the form scrolling internally keeps the
-            card from ever overflowing the viewport, on mobile or desktop —
-            this form in particular has grown long (confirm password,
-            strength meter, terms checkbox), so this matters more here than
-            on LoginPage. On mobile the branding panel above now takes a
-            fixed h-48 (12rem) of viewport height too, so the cap is sized
-            against the remaining space (`dvh`, for mobile browser chrome
-            correctness) rather than a flat percentage. Same "fixed chrome,
-            scrolling middle" pattern as FormSheet.tsx. */}
-        <div className="w-full max-w-md bg-card backdrop-blur-lg rounded-2xl border border-border shadow-2xl max-h-[calc(100dvh-12rem)] md:max-h-[85vh] flex flex-col overflow-hidden">
-          <div className="px-6 md:px-8 pt-6 md:pt-8 pb-2 flex-shrink-0">
-            <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Inscription</h2>
-            <p className="text-muted-foreground text-sm">
-              Rejoignez ScanLinkPay en quelques secondes
-            </p>
-          </div>
-
-          <div className="flex-1 min-h-0 overflow-y-auto px-6 md:px-8 py-4">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
-                  {error}
+    <AuthShell
+      title={step === 3 && accountType === 'client' ? stepTitles[2] : stepTitles[step - 1]}
+      headline="Rejoignez"
+      switchPrompt="Déjà un compte ?"
+      switchLabel="Se connecter"
+      switchTo={loginLink}
+    >
+      <div className="mb-3 flex items-center gap-2">
+        {step > 1 && (
+          <button type="button" onClick={goBack} className="flex items-center text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+        )}
+        <div className="flex flex-1 items-center justify-center">
+          {Array.from({ length: totalSteps }, (_, i) => {
+            const n = i + 1;
+            const done = n < displayStep;
+            const active = n === displayStep;
+            return (
+              <div key={n} className="flex items-center">
+                <div className={cn(
+                  'flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold transition-colors',
+                  active ? 'bg-primary text-primary-foreground' :
+                  done   ? 'bg-primary/20 text-primary' :
+                           'bg-muted text-muted-foreground',
+                )}>
+                  {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : n}
                 </div>
-              )}
-
-              <div className="space-y-2">
-                <Label className="font-semibold text-foreground">Type de compte</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAccountType('client')}
-                    className={cn(
-                      'flex flex-col items-center gap-2 rounded-xl border-2 px-2 py-4 text-sm font-semibold transition-colors',
-                      accountType === 'client'
-                        ? 'border-primary bg-primary/5 text-primary'
-                        : 'border-input text-muted-foreground hover:bg-accent',
-                    )}
-                  >
-                    <User className="w-6 h-6" />
-                    Client
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAccountType('merchant')}
-                    className={cn(
-                      'flex flex-col items-center gap-2 rounded-xl border-2 px-2 py-4 text-sm font-semibold transition-colors',
-                      accountType === 'merchant'
-                        ? 'border-primary bg-primary/5 text-primary'
-                        : 'border-input text-muted-foreground hover:bg-accent',
-                    )}
-                  >
-                    <Store className="w-6 h-6" />
-                    Marchand
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAccountType('enterprise')}
-                    className={cn(
-                      'flex flex-col items-center gap-2 rounded-xl border-2 px-2 py-4 text-sm font-semibold transition-colors',
-                      accountType === 'enterprise'
-                        ? 'border-primary bg-primary/5 text-primary'
-                        : 'border-input text-muted-foreground hover:bg-accent',
-                    )}
-                  >
-                    <Building2 className="w-6 h-6" />
-                    Entreprise
-                  </button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {accountType === 'client' && 'Pour payer des commerçants ScanLinkPay.'}
-                  {accountType === 'merchant' && 'Pour recevoir des paiements via lien et QR code.'}
-                  {accountType === 'enterprise' && 'Pour gérer plusieurs boutiques sous une même entreprise.'}
-                </p>
+                {n < totalSteps && <div className={cn('h-px w-7 transition-colors', n < displayStep ? 'bg-primary/40' : 'bg-border')} />}
               </div>
-
-              {(accountType === 'merchant' || accountType === 'enterprise') && (
-                <div className="space-y-2">
-                  <Label htmlFor="business_name" className="font-semibold text-foreground">
-                    {accountType === 'merchant' ? 'Nom de la boutique' : "Nom de l'entreprise"}
-                  </Label>
-                  <div className="relative">
-                    {accountType === 'merchant' ? (
-                      <Store className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    ) : (
-                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    )}
-                    <Input
-                      id="business_name"
-                      placeholder={accountType === 'merchant' ? 'Boutique Mukendi' : 'Doli Hotels'}
-                      value={businessName}
-                      onChange={(e) => setBusinessName(e.target.value)}
-                      required
-                      className="pl-10 bg-background border-input text-foreground placeholder:text-muted-foreground focus:bg-accent"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="full_name" className="font-semibold text-foreground">
-                  {accountType === 'enterprise' ? 'Nom complet du responsable' : 'Nom complet'}
-                </Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="full_name"
-                    placeholder="Dieudonne Merci Jean"
-                    value={form.full_name}
-                    onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                    required
-                    className="pl-10 bg-background border-input text-foreground placeholder:text-muted-foreground focus:bg-accent"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="email" className="font-semibold text-foreground">Email</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="vous@exemple.com"
-                    value={form.email}
-                    onChange={(e) => {
-                      setForm({ ...form, email: e.target.value });
-                      validateEmail(e.target.value);
-                    }}
-                    required
-                    className={`pl-10 bg-background border-input text-foreground placeholder:text-muted-foreground focus:bg-accent ${emailError ? 'border-destructive' : ''}`}
-                  />
-                </div>
-                {emailError && (
-                  <p className="text-xs text-destructive mt-1">{emailError}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="phone" className="font-semibold text-foreground">Téléphone</Label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="phone"
-                    placeholder="+243 8XX XXX XXX"
-                    value={form.phone}
-                    onChange={(e) => {
-                      setForm({ ...form, phone: e.target.value });
-                      validatePhone(e.target.value);
-                    }}
-                    className={`pl-10 bg-background border-input text-foreground placeholder:text-muted-foreground focus:bg-accent ${phoneError ? 'border-destructive' : ''}`}
-                  />
-                </div>
-                {phoneError && (
-                  <p className="text-xs text-destructive mt-1">{phoneError}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password" className="font-semibold text-foreground">Mot de passe</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    value={form.password}
-                    onChange={(e) => {
-                      setForm({ ...form, password: e.target.value });
-                      validatePassword(e.target.value);
-                    }}
-                    required
-                    minLength={8}
-                    className={`pl-10 pr-10 bg-background border-input text-foreground placeholder:text-muted-foreground focus:bg-accent ${passwordError ? 'border-destructive' : ''}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {passwordError && (
-                  <p className="text-xs text-destructive mt-1">{passwordError}</p>
-                )}
-                {/* Password Strength Indicator */}
-                {form.password && (
-                  <div className="mt-2">
-                    <div className="flex gap-1">
-                      {[0, 1, 2].map((index) => (
-                        <div
-                          key={index}
-                          className={`h-1 flex-1 rounded-full transition-colors ${
-                            index < calculatePasswordStrength(form.password)
-                              ? calculatePasswordStrength(form.password) === 1
-                                ? 'bg-warning'
-                                : calculatePasswordStrength(form.password) === 2
-                                ? 'bg-orange-500'
-                                : 'bg-success'
-                              : 'bg-border'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {calculatePasswordStrength(form.password) === 0 && 'Faible'}
-                      {calculatePasswordStrength(form.password) === 1 && 'Moyen'}
-                      {calculatePasswordStrength(form.password) === 2 && 'Fort'}
-                      {calculatePasswordStrength(form.password) === 3 && 'Très fort'}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword" className="font-semibold text-foreground">Confirmer le mot de passe</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="confirmPassword"
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    value={form.confirmPassword}
-                    onChange={(e) => {
-                      setForm({ ...form, confirmPassword: e.target.value });
-                      validateConfirmPassword(e.target.value);
-                    }}
-                    required
-                    className={`pl-10 pr-10 bg-background border-input text-foreground placeholder:text-muted-foreground focus:bg-accent ${confirmPasswordError ? 'border-destructive' : ''}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {confirmPasswordError && (
-                  <p className="text-xs text-destructive mt-1">{confirmPasswordError}</p>
-                )}
-              </div>
-
-              <div className="flex items-start space-x-2">
-                <Checkbox
-                  id="terms"
-                  checked={acceptTerms}
-                  onCheckedChange={(checked) => setAcceptTerms(checked as boolean)}
-                />
-                <Label
-                  htmlFor="terms"
-                  className="text-sm font-normal text-muted-foreground cursor-pointer leading-tight"
-                >
-                  J'accepte les{' '}
-                  <Link to="/terms" className="text-primary hover:text-primary/80 hover:underline">
-                    CGU
-                  </Link>{' '}
-                  et la{' '}
-                  <Link to="/privacy" className="text-primary hover:text-primary/80 hover:underline">
-                    politique de confidentialité
-                  </Link>
-                </Label>
-              </div>
-
-              <Button type="submit" className="w-full py-6 text-base font-semibold rounded-xl" disabled={loading || !acceptTerms}>
-                {loading && <Loader2 className="mr-2 w-5 h-5 animate-spin" />}
-                Créer mon compte
-              </Button>
-            </form>
-          </div>
-
-          <div className="px-6 md:px-8 pb-6 md:pb-8 pt-4 flex-shrink-0">
-            <p className="text-sm text-muted-foreground text-center">
-              Déjà un compte ?{' '}
-              <Link
-                to={searchParams.get('redirect') ? `/login?redirect=${encodeURIComponent(searchParams.get('redirect')!)}` : '/login'}
-                className="text-primary font-semibold hover:text-primary/80 hover:underline"
-              >
-                Se connecter
-              </Link>
-            </p>
-          </div>
+            );
+          })}
         </div>
+        {step > 1 && <div className="w-5" />}
       </div>
-    </div>
+
+      {error && (
+        <div role="alert" className="mb-4 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+          {error}
+        </div>
+      )}
+
+      {/* ── ÉTAPE 1 : type + identité de base ── */}
+      {step === 1 && (
+        <div>
+          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Type de compte">
+            {ACCOUNT_TYPES.map(({ value, label, icon: Icon }) => {
+              const selected = accountType === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => setAccountType(value)}
+                  className={cn(
+                    'relative flex flex-col items-center gap-1.5 rounded-2xl border-2 px-1 py-3 text-xs font-semibold transition-colors',
+                    selected
+                      ? 'border-primary bg-primary/[0.06] text-primary'
+                      : 'border-input text-muted-foreground hover:border-primary/40 hover:bg-accent',
+                  )}
+                >
+                  {selected && <CheckCircle2 className="absolute right-1.5 top-1.5 h-4 w-4 fill-primary text-primary-foreground" />}
+                  <span className={cn('flex h-8 w-8 items-center justify-center rounded-xl', selected ? 'bg-brand-gradient text-white' : 'bg-muted text-muted-foreground')}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mb-1 mt-1.5 hidden text-xs leading-4 text-muted-foreground sm:block">
+            {ACCOUNT_TYPES.find((t) => t.value === accountType)!.hint}
+          </p>
+          <AuthField
+            id="full_name"
+            label={accountType === 'enterprise' ? 'Nom complet du responsable' : 'Nom complet'}
+            icon={User}
+            autoComplete="name"
+            placeholder="Ex. Dieudonné Merci Jean"
+            value={form.full_name}
+            onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+            required
+          />
+          <AuthField id="phone" label="Téléphone" error={phoneError} hint="Vous vous connecterez avec ce numéro.">
+            <PhoneInput
+              id="phone"
+              value={form.phone}
+              onChange={(digits) => { setForm({ ...form, phone: digits }); if (phoneError) validatePhone(digits); }}
+              invalid={!!phoneError}
+              className="h-12"
+            />
+          </AuthField>
+          <Button type="button" className="mt-2 h-[52px] w-full rounded-xl text-base font-semibold" onClick={handleStep1Continue}>
+            Continuer <ArrowRight className="ml-2 h-5 w-5" />
+          </Button>
+        </div>
+      )}
+
+      {/* ── ÉTAPE 2 : boutique/entreprise + email (marchand & entreprise seulement) ── */}
+      {step === 2 && (
+        <div>
+          <AuthField
+            id="business_name"
+            label={accountType === 'merchant' ? 'Nom de la boutique' : "Nom de l'entreprise"}
+            icon={accountType === 'merchant' ? Store : Building2}
+            autoComplete="organization"
+            placeholder={accountType === 'merchant' ? 'Boutique Mukendi' : 'Doli Hotels'}
+            value={businessName}
+            onChange={(e) => setBusinessName(e.target.value)}
+            required
+          />
+          <AuthField
+            id="email2"
+            label={<>Email <span className="font-normal text-muted-foreground">(facultatif)</span></>}
+            icon={Mail}
+            type="email"
+            autoComplete="email"
+            placeholder="vous@exemple.com"
+            value={form.email}
+            onChange={(e) => { setForm({ ...form, email: e.target.value }); if (emailError) validateEmail(e.target.value); }}
+            onBlur={(e) => validateEmail(e.target.value)}
+            error={emailError}
+            hint="Pour récupérer votre compte et recevoir vos reçus."
+          />
+          <Button type="button" className="mt-2 h-[52px] w-full rounded-xl text-base font-semibold" onClick={handleStep2Continue}>
+            Continuer <ArrowRight className="ml-2 h-5 w-5" />
+          </Button>
+        </div>
+      )}
+
+      {/* ── ÉTAPE 3 : sécurité ── */}
+      {step === 3 && (
+        <form onSubmit={handleSubmit}>
+          {/* Email : uniquement pour les clients (marchand/entreprise l'ont renseigné à l'étape 2) */}
+          {accountType === 'client' && (
+            <AuthField
+              id="email"
+              label={<>Email <span className="font-normal text-muted-foreground">(facultatif)</span></>}
+              icon={Mail}
+              type="email"
+              autoComplete="email"
+              placeholder="vous@exemple.com"
+              value={form.email}
+              onChange={(e) => { setForm({ ...form, email: e.target.value }); if (emailError) validateEmail(e.target.value); }}
+              onBlur={(e) => validateEmail(e.target.value)}
+              error={emailError}
+              hint="Pour récupérer votre compte et recevoir vos reçus."
+            />
+          )}
+          <AuthField
+            id="password"
+            label="Mot de passe"
+            icon={Lock}
+            password
+            autoComplete="new-password"
+            placeholder="8 caractères minimum"
+            value={form.password}
+            onChange={(e) => { setForm({ ...form, password: e.target.value }); if (passwordError) validatePassword(e.target.value); }}
+            onBlur={(e) => validatePassword(e.target.value)}
+            required
+            minLength={8}
+            error={passwordError}
+            hint={
+              <span className="flex items-center gap-2">
+                <span className="flex flex-1 gap-1">
+                  {[0, 1, 2].map((i) => (
+                    <span key={i} className={cn('h-1 flex-1 rounded-full transition-colors', form.password && i < Math.max(strength, 1) ? strengthColor : 'bg-border')} />
+                  ))}
+                </span>
+                <span className="w-14 text-right">{form.password ? strengthLabel : ''}</span>
+              </span>
+            }
+          />
+          <AuthField
+            id="confirmPassword"
+            label="Confirmer le mot de passe"
+            icon={Lock}
+            password
+            autoComplete="new-password"
+            placeholder="Retapez le mot de passe"
+            value={form.confirmPassword}
+            onChange={(e) => { setForm({ ...form, confirmPassword: e.target.value }); if (confirmPasswordError || e.target.value.length >= form.password.length) validateConfirmPassword(e.target.value); }}
+            onBlur={(e) => validateConfirmPassword(e.target.value)}
+            required
+            error={confirmPasswordError}
+          />
+          <label htmlFor="terms" className="flex cursor-pointer items-start gap-2.5 text-sm leading-snug text-muted-foreground">
+            <Checkbox id="terms" checked={acceptTerms} onCheckedChange={(checked) => setAcceptTerms(checked as boolean)} className="mt-px" />
+            <span>
+              J'accepte les{' '}
+              <Link to="/terms" className="font-semibold text-primary hover:underline">CGU</Link>
+              {' '}et la{' '}
+              <Link to="/privacy" className="font-semibold text-primary hover:underline">politique de confidentialité</Link>
+            </span>
+          </label>
+          <Button type="submit" className="mt-5 h-[52px] w-full rounded-xl text-base font-semibold" disabled={loading || !acceptTerms}>
+            {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
+            Créer mon compte
+            {!loading && <ArrowRight className="ml-2 h-5 w-5" />}
+          </Button>
+        </form>
+      )}
+
+      <p className="mt-5 text-center text-sm text-muted-foreground">
+        Déjà un compte ?{' '}
+        <Link to={loginLink} className="font-semibold text-primary hover:underline">Se connecter</Link>
+      </p>
+    </AuthShell>
   );
 }

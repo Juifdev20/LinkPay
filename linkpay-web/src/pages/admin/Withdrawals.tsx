@@ -60,8 +60,9 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 /**
- * Withdrawals that wait for a person, because the payment provider has no API to send money out (FlexPaie): the amount
- * has already left the wallet; the admin sends it by hand to the Mobile Money number shown, then confirms here.
+ * Withdrawals that wait for a person: bank withdrawals (FlexPaie's PayoutService only sends to Mobile Money), and all
+ * of them while automatic payouts are switched off. The amount has already left the wallet; the admin sends it by
+ * hand to the account shown, then confirms here.
  */
 export default function WithdrawalsPage() {
   const queryClient = useQueryClient();
@@ -96,10 +97,10 @@ export default function WithdrawalsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-3xl p-4 md:p-6">
+    <div className="mx-auto max-w-6xl p-4 md:p-6">
       <PageHeader title="Retraits à traiter" />
       <p className="mb-4 text-sm text-muted-foreground">
-        L'argent a déjà été retiré du portefeuille du client. Envoyez-le au numéro Mobile Money ou au compte bancaire indiqué, puis confirmez ici. Les virements bancaires sont annoncés aux clients sous 24 h. Si la banque refuse le compte, refusez le retrait : le montant et les frais sont rendus au client.
+        Ne restent ici que les retraits à envoyer à la main : vers une banque (les retraits Mobile Money partent automatiquement), ou tous tant que les retraits automatiques sont désactivés. L'argent a déjà été retiré du portefeuille du client. Envoyez-le au compte indiqué, puis confirmez ici. En cas de refus, le montant et les frais lui sont rendus.
       </p>
 
       <div role="tablist" className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-secondary p-1">
@@ -166,15 +167,15 @@ export default function WithdrawalsPage() {
                       </div>
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="text-xs text-muted-foreground">Titulaire</p>
+                          <p className="text-xs text-muted-foreground">Intitulé du compte</p>
                           <p className="truncate font-semibold">{String(w.destination?.account_name ?? '')}</p>
                         </div>
-                        {w.status === 'PENDING' && <CopyButton text={String(w.destination?.account_name ?? '')} label="le nom du titulaire" />}
+                        {w.status === 'PENDING' && <CopyButton text={String(w.destination?.account_name ?? '')} label="l'intitulé du compte" />}
                       </div>
                       {w.status === 'PENDING' && w.holder_matches_owner === false && (
                         <p className="flex items-start gap-2 rounded-xl bg-warning/10 px-3 py-2 text-xs font-medium text-warning">
                           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                          Le titulaire du compte est différent du nom du compte ScanLinkPay ({w.owner?.name || 'inconnu'}). Normal pour une entreprise ou un proche ; sinon vérifiez avant d'envoyer.
+                          L'intitulé du compte est différent du nom du compte ScanLinkPay ({w.owner?.name || 'inconnu'}). Normal pour une entreprise ou un proche ; sinon vérifiez avant d'envoyer.
                         </p>
                       )}
                       {w.status === 'PENDING' && (

@@ -2,11 +2,12 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { StockService } from './stock.service';
 import { createFakeSupabase, RecordedQuery } from '../test-utils/fake-supabase';
 
-function setup(opts: { verify?: () => Promise<void> } = {}) {
+function setup(opts: { verify?: () => Promise<void>; required?: boolean } = {}) {
   const fake = createFakeSupabase((q: RecordedQuery) =>
-    q.target === 'merchants' ? { data: { id: 'm1', owner_id: 'boss', organization_id: 'org1' } } : { data: null });
-  const stockPasswords = { verifyPassword: jest.fn(opts.verify ?? (async () => undefined)) };
-  const service = new StockService(fake.service, {} as any, {} as any, stockPasswords as any, { log: jest.fn() } as any);
+    q.target === 'merchants' ? { data: { id: 'm1', owner_id: 'boss', organization_id: 'org1' } }
+      : q.target === 'organization_staff' ? { data: { merchant_id: 'm1', deactivated_at: null } } : { data: null });
+  const stockPasswords = { verifyPassword: jest.fn(opts.verify ?? (async () => undefined)), isRequired: jest.fn(async () => opts.required ?? true) };
+  const service = new StockService(fake.service, {} as any, {} as any, stockPasswords as any, { log: jest.fn() } as any, {} as any);
   return { service, stockPasswords };
 }
 
@@ -47,13 +48,14 @@ describe('who did it — edits and deletions are recorded under the person\'s ow
   function withAudit() {
     const fake = createFakeSupabase((q: RecordedQuery) => {
       if (q.target === 'merchants') return { data: { id: 'm1', owner_id: 'boss', organization_id: 'org1' } };
+      if (q.target === 'organization_staff') return { data: { merchant_id: 'm1', deactivated_at: null } };
       if (q.target === 'stock_items' && q.calls.some((c) => c.method === 'maybeSingle')) return { data: { name: 'Samsung A15', quantity: 12, unit_price_cents: 90000 } };
       if (q.target === 'stock_items' && q.calls.some((c) => c.method === 'single')) return { data: { name: 'Samsung A15', quantity: 12, unit_price_cents: 90000 } };
       return { data: null };
     });
     const audit = { log: jest.fn(async () => undefined) };
-    const passwords = { verifyPassword: jest.fn(async () => undefined) };
-    return { service: new StockService(fake.service, {} as any, {} as any, passwords as any, audit as any), audit };
+    const passwords = { verifyPassword: jest.fn(async () => undefined), isRequired: jest.fn(async () => true) };
+    return { service: new StockService(fake.service, {} as any, {} as any, passwords as any, audit as any, {} as any), audit };
   }
 
   it('a deleted article is logged with what it was and who removed it', async () => {
@@ -80,10 +82,11 @@ describe('selling staff never see what the shop paid for an item', () => {
   const build = () => {
     const fake = createFakeSupabase((q: RecordedQuery) => {
       if (q.target === 'merchants') return { data: { id: 'm1', owner_id: 'boss', organization_id: 'org1' } };
+      if (q.target === 'organization_staff') return { data: { merchant_id: 'm1', deactivated_at: null } };
       if (q.target === 'stock_items') return { data: items };
       return { data: null };
     });
-    return new StockService(fake.service, {} as any, {} as any, {} as any, {} as any);
+    return new StockService(fake.service, {} as any, {} as any, {} as any, {} as any, {} as any);
   };
 
   it('vendeur and caissier get price and quantity, without cost_price_cents', async () => {
@@ -101,5 +104,50 @@ describe('selling staff never see what the shop paid for an item', () => {
 
   it('the movement history is no longer open to sellers', async () => {
     await expect(build().listMovements('m1', 'i1', 'emp', 'vendeur', 'org1')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('stations — staff only reach the station they work in', () => {
+  const build = (station: string | null, deactivated = false) => {
+    const fake = createFakeSupabase((q: RecordedQuery) => {
+      if (q.target === 'merchants') return { data: { id: 'm1', owner_id: 'boss', organization_id: 'org1' } };
+      if (q.target === 'organization_staff') return { data: { merchant_id: station, deactivated_at: deactivated ? '2026-10-01' : null } };
+      if (q.target === 'stock_items') return { data: [] };
+      return { data: null };
+    });
+    return new StockService(fake.service, {} as any, {} as any, {} as any, {} as any, {} as any);
+  };
+
+  it('a cashier of station A is refused at station B', async () => {
+    await expect(build('m2').listItems('m1', 'emp', 'caissier', 'org1')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('a staff member with no station yet, or whose access was removed, reaches none', async () => {
+    await expect(build(null).listItems('m1', 'emp', 'caissier', 'org1')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(build('m1', true).listItems('m1', 'emp', 'caissier', 'org1')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('their own station works, and the owner reaches every station', async () => {
+    await expect(build('m1').listItems('m1', 'emp', 'gerant', 'org1')).resolves.toEqual([]);
+    await expect(build(null).listItems('m1', 'boss', 'enterprise', undefined)).resolves.toEqual([]);
+  });
+});
+
+describe('the stock password is an option the owner switches on (off by default)', () => {
+  it('off: no password is asked — the role alone decides', async () => {
+    const { service, stockPasswords } = setup({ required: false });
+    await expect(service.assertManagementPassword('m1', 'emp', 'magasinier', 'org1', undefined)).resolves.toBeUndefined();
+    await expect(service.assertManagementPassword('m1', 'boss', 'enterprise', undefined, undefined)).resolves.toBeUndefined();
+    expect(stockPasswords.verifyPassword).not.toHaveBeenCalled();
+  });
+
+  it('off: someone without the role is still refused', async () => {
+    await expect(setup({ required: false }).service.assertManagementPassword('m1', 'stranger', 'client', undefined, undefined))
+      .rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('on: the password is asked again', async () => {
+    const err: any = await setup({ required: true }).service.assertManagementPassword('m1', 'boss', 'enterprise', undefined, undefined).catch((e) => e);
+    expect(err.getResponse().code).toBe('STOCK_PASSWORD_REQUIRED');
   });
 });

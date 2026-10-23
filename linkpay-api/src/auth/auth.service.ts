@@ -6,6 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { SupabaseService } from '../supabase/supabase.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RegisterDto, LoginDto } from './dto';
+import { PhoneAccountService } from './phone-account.service';
+import { normalizeDrcPhone, technicalEmailFor } from './phone';
 import { SESSION_TRACKING_EXEMPT_ROLES, MFA_REQUIRED_ROLES } from './constants';
 import { getRequiredJwtSecret } from './jwt-secret.util';
 import { LoginAttemptsService } from './login-attempts.service';
@@ -32,6 +34,10 @@ export interface JwtPayload {
   // org, and role/merchant_id above are a temporary "acting as that store's
   // merchant" lens — not a permanent role change. See refresh() below.
   acting_as_org_id?: string;
+  // Set for enterprise staff: the one station (store of the organization)
+  // they work in — organization_staff.merchant_id. Deliberately not
+  // merchant_id, which would make them pass merchant-owner checks.
+  station_id?: string;
   // Set only when an authenticator-app code was checked for this session
   // (mfa_at = when, in epoch seconds): required of admin roles, see JwtAuthGuard.
   mfa?: boolean;
@@ -50,11 +56,25 @@ export class AuthService {
     private loginAttempts: LoginAttemptsService,
     private twoFactor: TwoFactorService,
     private securityAlerts: SecurityAlertsService,
+    private phoneAccounts: PhoneAccountService,
   ) {}
 
   async register(dto: RegisterDto, ctx: { platform?: string } = {}) {
-    const { email, password, phone, full_name, account_type, business_name } = dto;
+    const { password, full_name, account_type, business_name } = dto;
     const roleSlug = account_type === 'merchant' ? 'merchant' : account_type === 'enterprise' ? 'enterprise' : 'client';
+
+    // The phone number is the account's identifier; the email is optional. A
+    // phone-only account signs in to Supabase Auth with a technical email
+    // (never delivered, never shown — see phone.ts), and its profile has none.
+    const phone = normalizeDrcPhone(dto.phone);
+    if (!phone) {
+      throw new BadRequestException('Numéro de téléphone invalide : +243 suivi de 9 chiffres (ex. 812 345 678).');
+    }
+    if ((await this.phoneAccounts.userIdsByPhone(phone)).length) {
+      throw new ConflictException('Ce numéro de téléphone est déjà utilisé par un autre compte');
+    }
+    const realEmail = dto.email?.trim().toLowerCase() || null;
+    const email = realEmail || technicalEmailFor(phone);
 
     const { data, error } = await this.supabaseService.getClient().auth.admin.createUser({
       email,
@@ -65,8 +85,13 @@ export class AuthService {
     });
 
     if (error) {
+      // Supabase refuses a duplicate phone number with an "already registered" message too:
+      // say which of the two is taken, or the person keeps changing an email that was never the problem.
+      if (/phone/i.test(error.message) && /already|exists|registered/i.test(error.message)) {
+        throw new ConflictException('Ce numéro de téléphone est déjà utilisé par un autre compte');
+      }
       if (error.message.includes('already')) {
-        throw new ConflictException('Email already registered');
+        throw new ConflictException('Un compte existe déjà avec cet email');
       }
       throw new UnauthorizedException(error.message);
     }
@@ -75,7 +100,7 @@ export class AuthService {
 
     const { error: profileError } = await this.supabaseService.getClient().from('profiles').upsert({
       id: userId,
-      email,
+      email: realEmail,
       phone,
       full_name,
     }, { onConflict: 'id' });
@@ -161,8 +186,15 @@ export class AuthService {
     const refreshToken = await this.generateRefreshToken(userId, email, sessionId);
     const supabaseSession = await this.mintSupabaseSession(email, password);
 
+    // The way back in without SMS if the password is forgotten: shown once, by the app, right now.
+    const recoveryCode = await this.phoneAccounts.issueRecoveryCode(userId).catch((err) => {
+      this.logger.warn(`Recovery code not issued for ${userId} (apply migration 066): ${err.message}`);
+      return null;
+    });
+
     return {
-      user: { id: userId, email, phone, full_name, role: roleSlug, merchant_id: merchantId, organization_id: organizationId },
+      user: { id: userId, email: realEmail, phone, full_name, role: roleSlug, merchant_id: merchantId, organization_id: organizationId },
+      recovery_code: recoveryCode,
       access_token: token,
       refresh_token: refreshToken,
       supabase_session: supabaseSession,
@@ -170,10 +202,28 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, ctx: { ip?: string; userAgent?: string; platform?: string } = {}) {
-    const { email, password, device_id } = dto;
+    const { password, device_id } = dto;
+
+    // By phone (the default) or by email (older accounts, administrators). A
+    // number is turned into the email Supabase Auth knows the account by; an
+    // unknown number still goes through the same steps and fails the same way,
+    // so the answer never tells whether a number has an account.
+    const byPhone = !dto.email;
+    let email: string;
+    let attemptKey: string;
+    if (byPhone) {
+      const phone = normalizeDrcPhone(dto.phone);
+      if (!phone) throw new UnauthorizedException('Numéro ou mot de passe incorrect');
+      attemptKey = `phone:${phone}`;
+      const userIdForPhone = await this.phoneAccounts.userIdByPhone(phone);
+      email = (userIdForPhone && (await this.phoneAccounts.authEmailOf(userIdForPhone))) || technicalEmailFor(phone);
+    } else {
+      email = dto.email!;
+      attemptKey = email;
+    }
 
     // Counted before the password is tried (atomic): a burst of parallel guesses can't all slip past the lock.
-    const reservation = await this.loginAttempts.reserve(email);
+    const reservation = await this.loginAttempts.reserve(attemptKey);
 
     const { data, error } = await this.supabaseService.getAuthClient().auth.signInWithPassword({
       email,
@@ -189,29 +239,29 @@ export class AuthService {
       // 429 is the auth provider rate-limiting US (every login comes from the same API address): not a wrong password,
       // and it must not count against — or lock — the user.
       if (error && !(isAuthApiError(error) && error.status >= 400 && error.status < 500 && error.status !== 429)) {
-        await this.loginAttempts.release(email);
+        await this.loginAttempts.release(attemptKey);
         throw new ServiceUnavailableException(
           'Le service de connexion est temporairement indisponible. Veuillez réessayer plus tard.',
         );
       }
       // An employee whose access the patron removed: say so instead of "wrong password".
       if (error && /banned/i.test(error.message || '')) {
-        await this.loginAttempts.release(email);
+        await this.loginAttempts.release(attemptKey);
         throw new ForbiddenException("Votre accès a été retiré. Contactez votre employeur.");
       }
       if (reservation.justLocked) {
         void this.securityAlerts.alert({
           severity: 'warning',
           title: 'Compte verrouillé après des échecs de connexion',
-          body: `${email} : 5 mots de passe incorrects. Connexion bloquée 15 minutes (IP ${ctx.ip || 'inconnue'}).`,
+          body: `${byPhone ? dto.phone : email} : 5 mots de passe incorrects. Connexion bloquée 15 minutes (IP ${ctx.ip || 'inconnue'}).`,
           audience: 'admins',
           dedupeKey: `lock:${email.toLowerCase()}`,
         });
       }
-      throw new UnauthorizedException('Email ou mot de passe incorrect');
+      throw new UnauthorizedException(byPhone ? 'Numéro ou mot de passe incorrect' : 'Email ou mot de passe incorrect');
     }
 
-    await this.loginAttempts.recordSuccess(email);
+    await this.loginAttempts.recordSuccess(attemptKey);
     const userId = data.user.id;
 
     const { data: roleData } = await this.supabaseService.getClient()
@@ -244,7 +294,9 @@ export class AuthService {
         });
         throw new ForbiddenException('Accès administrateur refusé depuis ce réseau');
       }
-      if (await this.twoFactor.isEnabled(userId)) {
+      if (await this.twoFactor.isAdminRequirementPaused()) {
+        // Suspended by the super admin (migration 081): password only, no code and no setup asked.
+      } else if (await this.twoFactor.isEnabled(userId)) {
         if (!dto.otp) {
           throw new ForbiddenException({ statusCode: 403, code: 'OTP_REQUIRED', message: "Saisissez le code de votre application d'authentification." });
         }
@@ -271,18 +323,21 @@ export class AuthService {
 
     const sessionId = await this.claimSession(userId, role, device_id);
     await this.recordClientPlatform(userId, ctx.platform);
-    const token = await this.generateToken(userId, email, role, merchantId, sessionId, undefined, organizationId, mfaAt);
+    const stationId = await this.stationOf(userId, organizationId);
+    const token = await this.generateToken(userId, email, role, merchantId, sessionId, undefined, organizationId, mfaAt, stationId);
     const refreshToken = await this.generateRefreshToken(userId, email, sessionId, undefined, undefined, mfaAt, role);
 
     return {
       user: {
         id: userId,
-        email,
+        // The real email, if any — never the technical one of a phone-only account.
+        email: profile?.email ?? null,
         phone: profile?.phone,
         full_name: profile?.full_name,
         role,
         merchant_id: merchantId,
         organization_id: organizationId,
+        station_id: stationId,
         must_change_password: !!profile?.must_change_password,
         two_factor_setup_required: twoFactorSetupRequired,
       },
@@ -292,7 +347,7 @@ export class AuthService {
       // for a second signInWithPassword call like register() needs.
       // An administrator who has not passed the second factor yet gets no Supabase session: it would already satisfy the
       // database's is_admin() rules and let a password alone read admin data straight from the database API.
-      supabase_session: data.session && !(MFA_REQUIRED_ROLES.includes(role) && !mfaAt)
+      supabase_session: data.session && !(MFA_REQUIRED_ROLES.includes(role) && !mfaAt && !(await this.twoFactor.isAdminRequirementPaused()))
         ? { access_token: data.session.access_token, refresh_token: data.session.refresh_token }
         : null,
     };
@@ -396,7 +451,7 @@ export class AuthService {
     // password-only admin session into a verified one.
     const mfaAt = payload.mfa === true && MFA_REQUIRED_ROLES.includes(role) ? payload.mfa_at : undefined;
     return {
-      access_token: await this.generateToken(payload.sub, payload.email, role, merchantId, payload.session_id, undefined, organizationId, mfaAt),
+      access_token: await this.generateToken(payload.sub, payload.email, role, merchantId, payload.session_id, undefined, organizationId, mfaAt, await this.stationOf(payload.sub, organizationId)),
       refresh_token: await this.generateRefreshToken(payload.sub, payload.email, payload.session_id, undefined, undefined, mfaAt, role, payload.auth_at ?? payload.iat),
     };
   }
@@ -494,7 +549,9 @@ export class AuthService {
       if (!currentPassword) throw new BadRequestException('Le mot de passe actuel est requis.');
       const key = `chpw:${userId}`;
       const reservation = await this.loginAttempts.reserve(key);
-      const { error: verifyError } = await this.supabaseService.getAuthClient().auth.signInWithPassword({ email: profile?.email, password: currentPassword });
+      // The email Supabase Auth knows the account by (a phone-only account's profile has none).
+      const authEmail = (await this.phoneAccounts.authEmailOf(userId)) || profile?.email;
+      const { error: verifyError } = await this.supabaseService.getAuthClient().auth.signInWithPassword({ email: authEmail, password: currentPassword });
       if (verifyError) {
         void reservation;
         throw new ForbiddenException('Mot de passe actuel incorrect.');
@@ -602,6 +659,7 @@ export class AuthService {
     actingAsOrgId?: string,
     organizationId?: string,
     mfaAt?: number,
+    stationId?: string,
   ): Promise<string> {
     const payload: JwtPayload = {
       sub: userId,
@@ -611,6 +669,7 @@ export class AuthService {
       ...(sessionId ? { session_id: sessionId } : {}),
       ...(actingAsOrgId ? { acting_as_org_id: actingAsOrgId } : {}),
       ...(organizationId ? { organization_id: organizationId } : {}),
+      ...(stationId ? { station_id: stationId } : {}),
       ...(mfaAt ? { mfa: true, mfa_at: mfaAt } : {}),
     };
     return this.jwtService.sign(payload);
@@ -656,6 +715,91 @@ export class AuthService {
           : this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '365d'),
       },
     );
+  }
+
+  // ---------------------------------------------------------------- forgotten password (no SMS)
+
+  /**
+   * Forgotten password, with the recovery code given at sign-up. One answer
+   * for every failure (unknown number, wrong code) and a limited number of
+   * tries per number. The code is used up: a new one is issued and returned.
+   */
+  async recoverWithCode(input: { phone: string; recovery_code: string; new_password: string }) {
+    const wrong = new BadRequestException('Numéro ou code de secours incorrect.');
+    const phone = normalizeDrcPhone(input.phone);
+    if (!phone) throw wrong;
+    const key = `recover:${phone}`;
+    await this.loginAttempts.reserve(key);
+
+    const userId = await this.phoneAccounts.userIdByPhone(phone).catch(() => null);
+    if (!userId || !(await this.phoneAccounts.recoveryCodeMatches(userId, input.recovery_code))) throw wrong;
+    await this.loginAttempts.recordSuccess(key);
+
+    await this.setNewPassword(userId, input.new_password);
+    const recoveryCode = await this.phoneAccounts.issueRecoveryCode(userId);
+    await this.notificationsService.create({
+      user_id: userId,
+      type: 'security',
+      title: 'Mot de passe réinitialisé',
+      body: "Votre mot de passe a été changé avec votre code de secours, et un nouveau code de secours vous a été donné. Si ce n'est pas vous, contactez le support.",
+    }).catch(() => undefined);
+    return { success: true, recovery_code: recoveryCode };
+  }
+
+  /**
+   * Forgotten password, by email: Supabase sends a reset link to the app's
+   * /reset-password page. Same answer whether the email has an account or not.
+   */
+  async forgotPassword(email: string) {
+    const redirectTo = `${this.configService.get<string>('FRONTEND_URL', 'http://localhost:5173')}/reset-password`;
+    const { error } = await this.supabaseService.getAuthClient().auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo });
+    if (error) this.logger.warn(`Password reset email not sent: ${error.message}`);
+    return { success: true, message: 'Si un compte utilise cet email, un lien pour choisir un nouveau mot de passe vient de lui être envoyé.' };
+  }
+
+  /** The new password, with the recovery token carried by the email's reset link. */
+  async resetPassword(accessToken: string, newPassword: string) {
+    const { data, error } = await this.supabaseService.getClient().auth.getUser(accessToken);
+    if (error || !data?.user) throw new BadRequestException('Ce lien a expiré ou a déjà servi. Demandez-en un nouveau.');
+    await this.setNewPassword(data.user.id, newPassword);
+    return { success: true };
+  }
+
+  /** A new recovery code for a signed-in account — older accounts have none. The password proves it's them. */
+  async issueRecoveryCode(userId: string, currentPassword: string) {
+    const key = `recovery-code:${userId}`;
+    await this.loginAttempts.reserve(key);
+    const authEmail = await this.phoneAccounts.authEmailOf(userId);
+    const { error } = await this.supabaseService.getAuthClient().auth.signInWithPassword({ email: authEmail || '', password: currentPassword });
+    if (error) throw new ForbiddenException('Mot de passe incorrect.');
+    await this.loginAttempts.recordSuccess(key);
+    return { recovery_code: await this.phoneAccounts.issueRecoveryCode(userId) };
+  }
+
+  async recoveryCodeStatus(userId: string) {
+    return { has_recovery_code: await this.phoneAccounts.hasRecoveryCode(userId) };
+  }
+
+  /** Sets the password and ends every session of the account (a thief signed in elsewhere is logged out too). */
+  private async setNewPassword(userId: string, newPassword: string) {
+    const { error } = await this.supabaseService.getClient().auth.admin.updateUserById(userId, { password: newPassword });
+    if (error) throw new BadRequestException(error.message);
+    await this.supabaseService.getClient()
+      .from('profiles')
+      .update({ must_change_password: false, active_session_id: null, active_device_id: null })
+      .eq('id', userId);
+  }
+
+  /** The station an enterprise staff member works in (organization_staff.merchant_id), if any. */
+  private async stationOf(userId: string, organizationId?: string): Promise<string | undefined> {
+    if (!organizationId) return undefined;
+    const { data } = await this.supabaseService.getClient()
+      .from('organization_staff')
+      .select('merchant_id')
+      .eq('user_id', userId)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+    return data?.merchant_id || undefined;
   }
 
   private async getRoleId(slug: string): Promise<string> {

@@ -15,6 +15,7 @@ import {
   expiryFor, formatCardNumber, generateCardNumber, generateQrToken, holderNameFor, isExpired, isQrToken, isValidCardNumber,
   maskCardNumber, normalizeCardNumber, publicHolderName,
 } from './card-number';
+import { isOrgStaffRole, requireStaffStation } from '../common/org-access';
 import { CardSettings, DEFAULT_CARD_SETTINGS, validateCardSettings } from './card-settings';
 
 export const LIVE_STATUSES = ['requested', 'issued', 'active', 'frozen'];
@@ -449,6 +450,12 @@ export class CardsService {
       if (caller.merchantId && requested === caller.merchantId) return caller.merchantId;
       if (caller.merchantId) throw new ForbiddenException("Cette boutique n'est pas la vôtre.");
       throw new BadRequestException("Aucune boutique n'est associée à votre compte.");
+    }
+    // Staff are paid into their own station, never another one of the business.
+    if (isOrgStaffRole(caller.role)) {
+      const station = await requireStaffStation(this.db, caller.userId, orgId);
+      if (requested && requested !== station) throw new ForbiddenException("Cette station n'est pas la vôtre.");
+      return station;
     }
     const { data: stores } = await this.db.from('merchants').select('id').eq('organization_id', orgId).order('created_at', { ascending: true });
     if (!stores?.length) throw new BadRequestException("Aucune boutique n'est liée à cette entreprise.");

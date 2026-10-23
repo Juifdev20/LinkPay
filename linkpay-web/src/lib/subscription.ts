@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
-import { STAFF_ROLES } from '@/lib/nav-items';
+import { STAFF_ROLES } from '@/lib/permissions';
 
 /** active: paid and running · trial: free trial · expired: was paid, ended · none: trial over, never paid */
 export type SubscriptionStatus = 'active' | 'trial' | 'expired' | 'none';
@@ -38,7 +38,8 @@ export function useSubscription() {
     staleTime: 30_000,
     retry: false,
   });
-  return { ...query, orgId: org?.id as string | undefined, isOwner: role === 'enterprise', applies };
+  // isOwner = may pay the subscription: the owner, or a station manager.
+  return { ...query, orgId: org?.id as string | undefined, isOwner: role === 'enterprise' || role === 'gerant', applies };
 }
 
 /** Can the screens be used at all (reading counts)? */

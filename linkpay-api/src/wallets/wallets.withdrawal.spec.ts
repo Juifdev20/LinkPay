@@ -5,7 +5,7 @@ import { createFakeSupabase, RecordedQuery } from '../test-utils/fake-supabase';
 const WALLET = { id: 'wal1', status: 'ACTIVE', user_id: 'u1' };
 const DTO = { amount_cents: 200000, currency: 'CDF', channel: 'mobile_money' as const, destination: { operator: 'mpesa', phone: '+243900000000' }, pin: '1234' };
 
-function setup(dispatchResult: any) {
+function setup(dispatchResult: any, provider: any = { provider: 'mock' }) {
   const fake = createFakeSupabase((q: RecordedQuery) => {
     if (q.target === 'wallets') return { data: WALLET };
     if (q.target === 'withdrawals') {
@@ -17,7 +17,7 @@ function setup(dispatchResult: any) {
   const payouts = { dispatch: jest.fn(async () => dispatchResult) };
   const service = new WalletsService(
     fake.service,
-    { get: () => ({ provider: 'mock' }) } as any,
+    { get: () => provider } as any,
     { create: jest.fn(async () => undefined) } as any,
     { get: (_k: string, d?: any) => d } as any,
     { verifyPin: jest.fn(async () => undefined) } as any,
@@ -69,5 +69,52 @@ describe('WalletsService.requestWithdrawal', () => {
     expect(payouts.dispatch).toHaveBeenCalledTimes(1);
     const rpc = fake.queries.find((q) => q.calls.some((c) => c.method === 'rpc'));
     void rpc;
+  });
+});
+
+describe('WalletsService.requestWithdrawal — what the provider would refuse', () => {
+  it('is refused BEFORE anything is debited (no withdrawal, no dispatch)', async () => {
+    const { service, payouts, fake } = setup({}, { provider: 'flexpaie', checkPayout: () => 'Montant minimum pour un retrait Mobile Money : 100 CDF.' });
+    await expect(service.requestWithdrawal('u1', { ...DTO, amount_cents: 5000 }, 'key-x')).rejects.toThrow('Montant minimum');
+    expect(payouts.dispatch).not.toHaveBeenCalled();
+    expect(fake.queries.some((q) => q.target.startsWith('rpc:') || q.target === 'withdrawals')).toBe(false);
+  });
+});
+
+describe('WalletsService.requestWithdrawal — 24 h after a change of keys', () => {
+  it('is refused before the PIN and before anything is debited', async () => {
+    const fake = createFakeSupabase((q: RecordedQuery) => {
+      if (q.target === 'wallets') return { data: WALLET };
+      if (q.target === 'profiles') return { data: { security_changed_at: new Date(Date.now() - 60_000).toISOString() } };
+      return { data: null };
+    });
+    const pin = { verifyPin: jest.fn(async () => undefined) };
+    const payouts = { dispatch: jest.fn() };
+    const service = new WalletsService(
+      fake.service, { get: () => ({ provider: 'mock' }) } as any, { create: jest.fn() } as any, { get: (_k: string, d?: any) => d } as any,
+      pin as any, {} as any, { log: jest.fn() } as any, {} as any, payouts as any, { assessOutflow: jest.fn() } as any,
+    );
+    await expect(service.requestWithdrawal('u1', DTO, 'key-h')).rejects.toThrow(/24 h/);
+    expect(pin.verifyPin).not.toHaveBeenCalled();
+    expect(payouts.dispatch).not.toHaveBeenCalled();
+    expect(fake.queries.some((q) => q.target.startsWith('rpc:'))).toBe(false);
+  });
+});
+
+describe('WalletsService.requestWithdrawal — test money', () => {
+  it('a test wallet can never withdraw: refused before the PIN and before anything is debited', async () => {
+    const fake = createFakeSupabase((q: RecordedQuery) => {
+      if (q.target === 'wallets') return { data: { ...WALLET, is_test: true } };
+      return { data: null };
+    });
+    const pin = { verifyPin: jest.fn(async () => undefined) };
+    const payouts = { dispatch: jest.fn() };
+    const service = new WalletsService(
+      fake.service, { get: () => ({ provider: 'flexpaie' }) } as any, { create: jest.fn() } as any, { get: (_k: string, d?: any) => d } as any,
+      pin as any, {} as any, { log: jest.fn() } as any, {} as any, payouts as any, { assessOutflow: jest.fn() } as any,
+    );
+    await expect(service.requestWithdrawal('u1', DTO, 'key-t')).rejects.toThrow(/argent de test/);
+    expect(pin.verifyPin).not.toHaveBeenCalled();
+    expect(fake.queries.some((q) => q.target.startsWith('rpc:'))).toBe(false);
   });
 });

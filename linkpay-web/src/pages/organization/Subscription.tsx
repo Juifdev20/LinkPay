@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useSubscription } from '@/lib/subscription';
@@ -57,9 +58,10 @@ export default function SubscriptionPage() {
   const expiringSoon = status === 'active' && (state?.days_left ?? 99) <= 7;
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-3xl mx-auto">
+    <div className="p-4 pb-28 md:p-6 md:pb-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader title="Abonnement" />
 
+      <div className="space-y-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between gap-3">
@@ -133,9 +135,24 @@ export default function SubscriptionPage() {
               <div className="rounded-xl bg-muted/50 p-4 space-y-1 text-sm" aria-live="polite">
                 <div className="flex justify-between"><span className="text-muted-foreground">Durée</span><span>{monthsLabel(months)}</span></div>
                 <div className="flex justify-between font-bold text-base pt-1 border-t border-border"><span>Total</span><span data-testid="total">{formatCurrency(total, currency)}</span></div>
-                <div className="flex justify-between text-xs text-muted-foreground pt-1"><span className="flex items-center gap-1"><Wallet className="w-3 h-3" /> Solde du portefeuille</span><span className={cn(!enough && 'text-destructive font-semibold')}>{formatCurrency(balance, currency)}</span></div>
+                <div className="flex justify-between text-xs text-muted-foreground pt-1"><span className="flex items-center gap-1"><Wallet className="w-3 h-3" /> Solde de votre portefeuille ScanLinkPay</span><span className={cn(!enough && 'text-destructive font-semibold')}>{formatCurrency(balance, currency)}</span></div>
               </div>
-              {!enough && <p className="text-sm text-destructive">Solde insuffisant : rechargez votre portefeuille ScanLinkPay pour payer.</p>}
+              <p className="text-xs text-muted-foreground">
+                L'abonnement est payé depuis votre portefeuille ScanLinkPay : celui qui reçoit les paiements ScanLinkPay de vos stations.
+              </p>
+              {!enough && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+                  <p className="text-sm text-destructive">
+                    Solde insuffisant : il manque {formatCurrency(total - balance, currency)}.
+                  </p>
+                  <Link
+                    to={`/dashboard/wallet/topup?currency=${currency}&retour=/dashboard/organization/subscription`}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                  >
+                    <Wallet className="w-4 h-4" /> Recharger mon portefeuille
+                  </Link>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label className="font-semibold">Code PIN de transaction</Label>
@@ -152,6 +169,7 @@ export default function SubscriptionPage() {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

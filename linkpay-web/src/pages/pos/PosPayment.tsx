@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { FormSheet } from '@/components/FormSheet';
 import { PaymentRequestShareCard } from '@/components/PaymentRequestShareCard';
 import { posErrorMessage } from './PosPage';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, countLabel } from '@/lib/utils';
 import { Banknote, QrCode, Loader2, CheckCircle, Clock } from 'lucide-react';
 
 /**
@@ -120,7 +120,7 @@ export function PosPaymentSheet({
       <div className="p-6 max-w-lg mx-auto space-y-5">
         <div className="text-center">
           <p className="text-sm text-muted-foreground">
-            Ticket #{ticket.ticket_number ?? '—'} · {ticket.items?.filter((i: any) => i.status !== 'voided').length || 0} article(s)
+            Ticket #{ticket.ticket_number ?? '—'} · {countLabel(ticket.items?.filter((i: any) => i.status !== 'voided').length || 0, 'article')}
           </p>
           <p className="text-3xl font-bold text-foreground">{formatCurrency(remaining, ticket.currency)}</p>
           <p className="text-xs text-muted-foreground">reste à payer sur {formatCurrency(ticket.total_cents, ticket.currency)}</p>

@@ -10,7 +10,7 @@ interface PinInputProps {
   length?: number;
   autoFocus?: boolean;
   error?: boolean;
-  /** Title of the code screen. Default: "Entrer votre code PIN". */
+  /** Title of the code screen. Default: "Entrez votre code PIN". */
   title?: string;
   /** A few words under the title ("Confirmez l'envoi de 5 000 FC à Marie"). */
   hint?: string;
@@ -28,6 +28,10 @@ export function PinInput({ value, onChange, length = 4, autoFocus, error, title,
   const user = useAuthStore((s) => s.user);
   const [open, setOpen] = useState(() => !!autoFocus && value.length < length);
   const wasComplete = useRef(value.length === length);
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   const complete = value.length === length;
   useEffect(() => {
@@ -42,6 +46,26 @@ export function PinInput({ value, onChange, length = 4, autoFocus, error, title,
     if (autoFocus && message && wasComplete.current && value === '') setOpen(true);
     wasComplete.current = complete;
   }, [value, complete, autoFocus, message]);
+
+  // A refusal (wrong PIN, codes that differ…): the reason stays on screen and the boxes are red until the person
+  // types a new code — never longer. A refused code left in the boxes is wiped and the code screen opens again at
+  // once, so nobody has to tap red boxes and erase them first. The reason is kept even when the caller derives it
+  // from the code itself (it disappears with the code we wipe).
+  const [refusal, setRefusal] = useState<{ value: string; message?: string } | null>(error || message ? { value, message } : null);
+  useEffect(() => {
+    if (!error && !message) return;
+    if (message && valueRef.current.length === length) {
+      onChangeRef.current('');
+      setOpen(true);
+      setRefusal({ value: '', message });
+    } else {
+      setRefusal({ value: valueRef.current, message });
+    }
+  }, [error, message, length]);
+  useEffect(() => {
+    if (refusal && value !== refusal.value) setRefusal(null);
+  }, [value, refusal]);
+  const showError = !!refusal;
 
   const boxes = Array.from({ length }, (_, i) => i < value.length);
 
@@ -58,7 +82,7 @@ export function PinInput({ value, onChange, length = 4, autoFocus, error, title,
             key={i}
             className={cn(
               'w-12 h-14 flex items-center justify-center text-2xl font-bold rounded-xl border-2 bg-background text-foreground transition-colors',
-              error ? 'border-destructive' : filled ? 'border-primary' : 'border-input',
+              showError ? 'border-destructive' : filled ? 'border-primary' : 'border-input',
             )}
           >
             {filled ? '•' : ''}
@@ -67,16 +91,16 @@ export function PinInput({ value, onChange, length = 4, autoFocus, error, title,
       </button>
       {open && createPortal(
         <PinKeypadScreen
-          title={title ?? 'Entrer votre code PIN'}
+          title={title ?? 'Entrez votre code PIN'}
           hint={hint}
           value={value}
           length={length}
           onChange={onChange}
           onEnter={() => setOpen(false)}
-          error={message}
+          error={refusal?.message}
           note={identityNote(user)}
           footer={
-            <button type="button" className="text-[16px] text-slate-700 py-1" onClick={() => { onChange(''); setOpen(false); }}>
+            <button type="button" className="py-1 font-semibold hover:text-primary" onClick={() => { onChange(''); setOpen(false); }}>
               Annuler
             </button>
           }

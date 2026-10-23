@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsIn, IsNumber, Min, Max, MaxLength, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsIn, IsNumber, Min, Max, MaxLength, IsBoolean, IsUUID, IsInt, IsISO8601, IsArray, ArrayMinSize, ArrayMaxSize, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { PosService } from './pos.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -120,11 +121,56 @@ class UpdatePosSettingsDto {
 // or 'magasinier' (POS_SALE_ROLES in stock.service.ts). Fine-grained,
 // per-store authorization still happens inside PosService via
 // StockService.resolveMerchantAccess() — this is just the coarse gate.
+class OfflineSaleLineDto {
+  @ApiProperty()
+  @IsUUID()
+  stock_item_id!: string;
+
+  @ApiProperty({ example: 2 })
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  quantity!: number;
+
+  @ApiProperty({ example: 150000, description: 'Prix unitaire TTC vu par la caisse au moment de la vente (centimes)' })
+  @IsInt()
+  @Min(0)
+  unit_price_cents!: number;
+}
+
+class OfflineSaleDto {
+  @ApiProperty({ description: 'Id de la vente créé sur l\'appareil : la même vente envoyée deux fois est gardée une fois' })
+  @IsUUID()
+  client_ref!: string;
+
+  @ApiProperty({ enum: ['CDF', 'USD'] })
+  @IsIn(['CDF', 'USD'])
+  currency!: string;
+
+  @ApiProperty({ description: 'Heure de la vente (7 jours au plus, jamais dans le futur)' })
+  @IsISO8601()
+  sold_at!: string;
+
+  @ApiProperty({ type: [OfflineSaleLineDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => OfflineSaleLineDto)
+  items!: OfflineSaleLineDto[];
+
+  @ApiPropertyOptional({ description: 'Montant remis par le client (espèces), en centimes' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  received_cents?: number;
+}
+
 @ApiTags('POS')
 @ApiBearerAuth()
 @Controller('merchants/:id/pos')
 @RequireSubscription('merchant')
-@Roles('enterprise', 'caissier', 'magasinier', 'admin', 'super_admin')
+@Roles('enterprise', 'gerant', 'caissier', 'magasinier', 'admin', 'super_admin')
 @UseGuards(RolesGuard)
 export class PosController {
   constructor(private posService: PosService) {}
@@ -152,6 +198,18 @@ export class PosController {
     return this.posService.updateSettings(merchantId, callerId, callerRole, callerOrgId, dto);
   }
 
+  @Post('offline-sales')
+  @ApiOperation({ summary: 'Record a sale made without network (cash only), in one piece and only once' })
+  async recordOfflineSale(
+    @Param('id') merchantId: string,
+    @Body() dto: OfflineSaleDto,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    return this.posService.recordOfflineSale(merchantId, callerId, callerRole, callerOrgId, dto);
+  }
+
   @Post('tickets')
   @ApiOperation({ summary: 'Start a new sale (requires an open cash-register session in the chosen currency)' })
   async createTicket(
@@ -165,10 +223,12 @@ export class PosController {
   }
 
   @Get('tickets')
-  @ApiOperation({ summary: 'List tickets — held tickets to resume, or paid ones for sales history' })
+  @ApiOperation({ summary: 'List tickets — held tickets to resume, or paid ones for sales history (optionally paid within [from, to))' })
   async listTickets(
     @Param('id') merchantId: string,
     @Query('status') status: string | undefined,
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
     @Query('session_id') sessionId: string | undefined,
     @Query('held') held: string | undefined,
     @Query('page') page: string | undefined,
@@ -179,6 +239,8 @@ export class PosController {
   ) {
     return this.posService.listTickets(merchantId, callerId, callerRole, callerOrgId, {
       status,
+      from,
+      to,
       session_id: sessionId,
       held: held === 'true' ? true : undefined,
       page: page ? parseInt(page, 10) : undefined,

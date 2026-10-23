@@ -28,6 +28,10 @@ export default function TopupPage() {
   const [currency, setCurrency] = useState<'CDF' | 'USD'>(
     searchParams.get('currency') === 'USD' ? 'USD' : 'CDF',
   );
+  // ?retour=/dashboard/... — where to go once the top-up is done (e.g. back to the
+  // subscription it was made for). Only an in-app path is accepted.
+  const retour = searchParams.get('retour') || '';
+  const backTo = retour.startsWith('/dashboard') && !retour.startsWith('//') ? retour : '/dashboard';
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId>('mobile_money');
   const [operator, setOperator] = useState('airtel');
   // The 9 national digits of the number ("828497218"), see lib/mobile-money.
@@ -105,7 +109,7 @@ export default function TopupPage() {
         return;
       }
 
-      // Mock provider (and an idempotent replay) settle synchronously.
+      // An idempotent replay settles synchronously.
       setResult(data.topup);
       if (data.topup?.status === 'PENDING') {
         setStep('pending');
@@ -145,7 +149,7 @@ export default function TopupPage() {
           currency={currency}
           extraRows={extraRows}
           reference={result?.id}
-          onBack={() => navigate('/dashboard')}
+          onBack={() => navigate(backTo)}
         />
       );
     }
@@ -261,7 +265,7 @@ export default function TopupPage() {
 
     return (
       <PaymentStep
-        title="Recharger mon compte"
+        title="Montant de la recharge"
         subtitle={wallet?.wallet_number ? `Compte ${wallet.wallet_number}` : 'Ajoutez des fonds à votre solde ScanLinkPay'}
         error={error}
         footer={
@@ -283,7 +287,7 @@ export default function TopupPage() {
   }
 
   return (
-    <FormSheet onClose={() => navigate(-1)} title="Recharger mon compte">
+    <FormSheet fullPage onClose={() => navigate(-1)} title="Recharger mon compte">
       {renderStep()}
     </FormSheet>
   );

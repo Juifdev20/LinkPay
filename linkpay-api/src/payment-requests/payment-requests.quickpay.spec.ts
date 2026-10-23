@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PaymentRequestsController } from './payment-requests.controller';
 
 describe('quick-pay with options and fees preview', () => {
@@ -9,7 +9,10 @@ describe('quick-pay with options and fees preview', () => {
       previewFees: jest.fn().mockResolvedValue({ currency: 'USD', total_cents: 5150, net_cents: 4800 }),
     };
     const orgs = { getOrganizationByScanLinkPayNumber: jest.fn().mockResolvedValue(orgOverride) };
-    return { controller: new PaymentRequestsController(service as any, orgs as any), service, orgs };
+    const merchants = {
+      getMerchantByScanLinkPayNumber: jest.fn().mockResolvedValue({ id: 'm-seul', name: 'HotelSaver', legal_name: 'HotelSaver SAS' }),
+    };
+    return { controller: new PaymentRequestsController(service as any, orgs as any, merchants as any), service, orgs, merchants };
   };
 
   it('passes the commission model, the cleaned label and the expiry to the payment request', async () => {
@@ -47,5 +50,14 @@ describe('quick-pay with options and fees preview', () => {
   it('a business with several stores must say which one', async () => {
     const { controller } = make({ ...org, merchants: [{ id: 'a' }, { id: 'b' }] });
     await expect(controller.feesPreview({ scanlinkpay_number: 'SLP-1', amount_cents: '5000' } as any)).rejects.toThrow(/merchant_id/);
+  });
+
+  it('a standalone merchant number (SLP-MER-…) works for quick-pay and the fees preview', async () => {
+    const { controller, service, orgs } = make();
+    orgs.getOrganizationByScanLinkPayNumber.mockRejectedValue(new NotFoundException('Numéro ScanLinkPay introuvable'));
+    await controller.quickPay({ scanlinkpay_number: 'SLP-MER-000001', amount_cents: 5900, currency: 'USD', commission_model: 'CUSTOMER_PAID' } as any);
+    expect(service.createPaymentRequest).toHaveBeenCalledWith('m-seul', undefined, expect.objectContaining({ commission_model: 'CUSTOMER_PAID' }), { withQrCode: false });
+    await controller.feesPreview({ scanlinkpay_number: 'SLP-MER-000001', amount_cents: '5900', currency: 'USD', commission_model: 'CUSTOMER_PAID' } as any);
+    expect(service.previewFees).toHaveBeenCalledWith('m-seul', 5900, 'USD', 'CUSTOMER_PAID', { business: 'HotelSaver SAS' });
   });
 });

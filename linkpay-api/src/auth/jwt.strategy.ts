@@ -15,6 +15,7 @@ export interface JwtPayload {
   organization_id?: string;
   session_id?: string;
   acting_as_org_id?: string;
+  station_id?: string;
   mfa?: boolean;
   mfa_at?: number;
   type?: string;
@@ -85,6 +86,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       merchant_id: payload.merchant_id,
       organization_id: payload.organization_id,
       acting_as_org_id: payload.acting_as_org_id,
+      station_id: payload.station_id,
       // True only for a token minted after an authenticator code was checked.
       mfa: payload.mfa === true,
       mfa_at: payload.mfa === true ? payload.mfa_at : undefined,

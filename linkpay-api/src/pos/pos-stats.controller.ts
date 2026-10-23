@@ -15,7 +15,7 @@ function requireRange(from?: string, to?: string) {
 @ApiBearerAuth()
 @Controller('merchants/:id/pos/stats')
 @RequireSubscription('merchant')
-@Roles('enterprise', 'comptable', 'admin', 'super_admin')
+@Roles('enterprise', 'gerant', 'comptable', 'admin', 'super_admin')
 @UseGuards(RolesGuard)
 export class PosStatsController {
   constructor(private posStatsService: PosStatsService) {}

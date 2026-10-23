@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Body, Param, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { PaymentRequestsService } from './payment-requests.service';
 import { OrganizationsService } from '../organizations/organizations.service';
+import { MerchantsService } from '../merchants/merchants.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { IsNumber, IsString, IsOptional, IsObject, IsIn, Min, Max, MaxLength } from 'class-validator';
@@ -124,6 +125,7 @@ export class PaymentRequestsController {
   constructor(
     private paymentRequestsService: PaymentRequestsService,
     private organizationsService: OrganizationsService,
+    private merchantsService: MerchantsService,
   ) {}
 
   @Post()
@@ -139,25 +141,40 @@ export class PaymentRequestsController {
     return this.paymentRequestsService.createPaymentRequest(merchantId, userId, dto);
   }
 
-  // Public and unauthenticated: a tighter per-IP limit than the global one,
-  // so nobody can flood a business with junk payment requests.
-  /** The store that receives a payment made with a ScanLinkPay number: the one named, or the only one. */
+  /**
+   * The store that receives a payment made with a ScanLinkPay number: the one named, or the only one.
+   * One shared number namespace: the business behind an SLP-… number is either an organization
+   * (possibly multi-store) or a standalone merchant (migration 061), which is its own only store.
+   * `business`: the name shown to the payer (fees preview).
+   */
   private async resolveQuickPayMerchant(scanlinkpayNumber: string, merchantIdWanted?: string) {
-    const org = await this.organizationsService.getOrganizationByScanLinkPayNumber(scanlinkpayNumber);
-
     let merchantId = merchantIdWanted;
-    if (merchantId) {
-      if (!org.merchants.some((m: any) => m.id === merchantId)) {
-        throw new BadRequestException("Cette boutique n'appartient pas à cette entreprise");
+    let business: string;
+    try {
+      const org = await this.organizationsService.getOrganizationByScanLinkPayNumber(scanlinkpayNumber);
+      business = org.legal_name || org.name;
+      if (merchantId) {
+        if (!org.merchants.some((m: any) => m.id === merchantId)) {
+          throw new BadRequestException("Cette boutique n'appartient pas à cette entreprise");
+        }
+      } else if (org.merchants.length === 1) {
+        merchantId = org.merchants[0].id;
+      } else if (org.merchants.length === 0) {
+        throw new BadRequestException("Cette entreprise n'a pas encore de boutique pouvant recevoir un paiement");
+      } else {
+        throw new BadRequestException('merchant_id requis — cette entreprise a plusieurs boutiques');
       }
-    } else if (org.merchants.length === 1) {
-      merchantId = org.merchants[0].id;
-    } else if (org.merchants.length === 0) {
-      throw new BadRequestException("Cette entreprise n'a pas encore de boutique pouvant recevoir un paiement");
-    } else {
-      throw new BadRequestException('merchant_id requis — cette entreprise a plusieurs boutiques');
+    } catch (err) {
+      if (!(err instanceof NotFoundException)) throw err;
+      // Not an organization number — try a standalone merchant's number.
+      const merchant = await this.merchantsService.getMerchantByScanLinkPayNumber(scanlinkpayNumber);
+      if (merchantIdWanted && merchantIdWanted !== merchant.id) {
+        throw new BadRequestException("Cette boutique ne correspond pas à ce numéro ScanLinkPay");
+      }
+      merchantId = merchant.id;
+      business = merchant.legal_name || merchant.name;
     }
-    return { org, merchantId: merchantId! };
+    return { business, merchantId: merchantId! };
   }
 
   // Public and unauthenticated: a tighter per-IP limit than the global one,
@@ -189,9 +206,9 @@ export class PaymentRequestsController {
     if (!Number.isInteger(amount) || amount < 100 || amount > 99999999999) {
       throw new BadRequestException('amount_cents doit être un entier entre 100 et 99999999999');
     }
-    const { org, merchantId } = await this.resolveQuickPayMerchant(query.scanlinkpay_number, query.merchant_id);
+    const { business, merchantId } = await this.resolveQuickPayMerchant(query.scanlinkpay_number, query.merchant_id);
     return this.paymentRequestsService.previewFees(merchantId, amount, query.currency ?? 'CDF', query.commission_model ?? 'MERCHANT_PAID', {
-      business: org.legal_name || org.name,
+      business,
     });
   }
 

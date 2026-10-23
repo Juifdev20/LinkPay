@@ -1,5 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { OrganizationStaffService } from './organization-staff.service';
+import { OrganizationStaffService, normalizeStaffRole } from './organization-staff.service';
 import { createFakeSupabase, RecordedQuery } from '../test-utils/fake-supabase';
 
 const STAFF = { id: 'st1', user_id: 'emp-user', organization_id: 'org1', prenom: 'Jean', nom: 'Mukendi', email: 'j@x.com', deactivated_at: null };
@@ -81,5 +81,39 @@ describe('removing an employee\'s access', () => {
     expect(r.temp_password).toHaveLength(10);
     expect(writes.find((w) => w.table === 'profiles')!.payload).toMatchObject({ must_change_password: true });
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'staff_access_restored' }));
+  });
+});
+
+describe('a station manager (gérant) manages the staff of their own station only', () => {
+  it('may act on a cashier of their station', async () => {
+    const { service } = setup({ staff: { ...STAFF, merchant_id: 'm1' }, currentRole: 'caissier' });
+    await expect(service.assertCanManage('org1', 'st1', { station: 'm1' })).resolves.toBeUndefined();
+  });
+
+  it('is refused on someone of another station, and on another manager', async () => {
+    await expect(setup({ staff: { ...STAFF, merchant_id: 'm2' }, currentRole: 'caissier' }).service.assertCanManage('org1', 'st1', { station: 'm1' }))
+      .rejects.toThrow(/votre station/);
+    await expect(setup({ staff: { ...STAFF, merchant_id: 'm1' }, currentRole: 'gerant' }).service.assertCanManage('org1', 'st1', { station: 'm1' }))
+      .rejects.toThrow(/gérants/);
+  });
+
+  it('the owner acts on everyone', async () => {
+    await expect(setup({ staff: { ...STAFF, merchant_id: 'm2' }, currentRole: 'gerant' }).service.assertCanManage('org1', 'st1', { station: null }))
+      .resolves.toBeUndefined();
+  });
+});
+
+describe('moving an employee to another station', () => {
+  it('refuses a station of another business', async () => {
+    // merchants lookup returns nothing: not a store of org1
+    await expect(setup().service.changeStaffStation('org1', 'st1', 'boss', 'm-other')).rejects.toThrow(/n'appartient pas/);
+  });
+});
+
+describe('one person sells and takes the money', () => {
+  it("'vendeur' (older app) becomes the single « Vendeur / caissier » role, in every sector", () => {
+    expect(normalizeStaffRole('vendeur')).toBe('caissier');
+    expect(normalizeStaffRole('caissier')).toBe('caissier');
+    expect(normalizeStaffRole('gerant')).toBe('gerant');
   });
 });

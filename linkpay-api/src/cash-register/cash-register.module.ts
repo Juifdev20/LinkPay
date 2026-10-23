@@ -4,9 +4,10 @@ import { CashRegisterService } from './cash-register.service';
 import { SupabaseModule } from '../supabase/supabase.module';
 import { StockModule } from '../stock/stock.module';
 import { AuditModule } from '../audit/audit.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [SupabaseModule, StockModule, AuditModule],
+  imports: [SupabaseModule, StockModule, AuditModule, NotificationsModule],
   controllers: [CashRegisterController],
   providers: [CashRegisterService],
   exports: [CashRegisterService],

@@ -104,7 +104,7 @@ export class ExpenseTrackerService {
     };
   }
 
-  /** First-ever choice: the free, count-limited trial. Choosing "unlimited" instead just means paying directly (activateProViaWallet/CinetPay below), no separate call needed. */
+  /** First-ever choice: the free, count-limited trial. Choosing "unlimited" instead just means paying directly (activateProViaWallet/MobileMoney below), no separate call needed. */
   async choosePlan(userId: string) {
     const existing = await this.getProStatus(userId);
     if (existing) {
@@ -207,7 +207,17 @@ export class ExpenseTrackerService {
     return this.getReport(userId, reportId);
   }
 
-  async addEntry(userId: string, reportId: string, dto: { amount_cents: number; currency?: string; description?: string }) {
+  async addEntry(
+    userId: string,
+    reportId: string,
+    dto: { amount_cents: number; currency?: string; description?: string; client_ref?: string; noted_at?: string },
+  ) {
+    // A note written offline and already received (its answer was lost): give back the first one, never a duplicate.
+    if (dto.client_ref) {
+      const existing = await this.entryByClientRef(userId, dto.client_ref);
+      if (existing) return existing;
+    }
+
     await this.assertNotReadOnly(userId);
     const report = await this.getOwnReport(userId, reportId);
 
@@ -215,22 +225,55 @@ export class ExpenseTrackerService {
       throw new ForbiddenException('Cette dépense est déjà clôturée.');
     }
 
-    const { data: entry, error } = await this.db
-      .from('expense_entries')
-      .insert({
-        report_id: reportId,
-        user_id: userId,
-        amount_cents: dto.amount_cents,
-        currency: dto.currency === 'USD' ? 'USD' : 'CDF',
-        description: dto.description,
-      })
-      .select()
-      .single();
+    const row: Record<string, unknown> = {
+      report_id: reportId,
+      user_id: userId,
+      amount_cents: dto.amount_cents,
+      currency: dto.currency === 'USD' ? 'USD' : 'CDF',
+      description: dto.description,
+    };
+    const notedAt = this.offlineNotedAt(dto.noted_at);
+    if (notedAt) row.created_at = notedAt;
+    if (dto.client_ref) row.client_ref = dto.client_ref;
+
+    let { data: entry, error } = await this.db.from('expense_entries').insert(row).select().single();
+
+    // Two sends of the same offline note crossed: the unique index kept one, return it.
+    if (error && dto.client_ref && (error as any).code === '23505') {
+      const existing = await this.entryByClientRef(userId, dto.client_ref);
+      if (existing) return existing;
+    }
+    // Migration 073 not run yet: still record the note (without the duplicate protection).
+    if (error && dto.client_ref && /client_ref/.test(error.message)) {
+      this.logger.warn('expense_entries.client_ref missing — run migration 073');
+      delete row.client_ref;
+      ({ data: entry, error } = await this.db.from('expense_entries').insert(row).select().single());
+    }
 
     if (error) {
       throw new Error(`Failed to add expense entry: ${error.message}`);
     }
     return entry;
+  }
+
+  private async entryByClientRef(userId: string, clientRef: string) {
+    const { data, error } = await this.db
+      .from('expense_entries')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('client_ref', clientRef)
+      .maybeSingle();
+    return error ? null : data;
+  }
+
+  /** The time an offline note was written, kept only if it is in the past 30 days (never in the future). */
+  private offlineNotedAt(notedAt?: string): string | null {
+    if (!notedAt) return null;
+    const t = Date.parse(notedAt);
+    if (!Number.isFinite(t)) return null;
+    const now = Date.now();
+    if (t > now + 5 * 60_000 || t < now - 30 * 24 * 3600_000) return null;
+    return new Date(Math.min(t, now)).toISOString();
   }
 
   /** Closing is what "generates" a report against the trial count — increments trial_reports_used by 1 when the caller is on the trial plan. */
@@ -306,7 +349,7 @@ export class ExpenseTrackerService {
     return { pro_expires_at: newExpiry };
   }
 
-  async activateProViaCinetPay(userId: string) {
+  async activateProViaMobileMoney(userId: string) {
     const settings = await this.getSettings();
     if (!settings) {
       throw new Error('Expense tracker settings not configured');
@@ -346,8 +389,8 @@ export class ExpenseTrackerService {
         user_id: userId,
         amount_cents: settings.monthly_price_cents,
         currency: settings.monthly_price_currency,
-        // The column name says "cinetpay" for "paid through the payment provider"; psp_provider says which one.
-        payment_method: 'cinetpay',
+        // Paid through the payment provider; psp_provider says which one.
+        payment_method: 'mobile_money',
         status: 'PENDING',
         psp_provider: provider,
         psp_intent_id: pspResult.psp_intent_id,
@@ -357,15 +400,6 @@ export class ExpenseTrackerService {
 
     if (error) {
       throw new Error(`Failed to create expense pro payment: ${error.message}`);
-    }
-
-    // Mock PSP has no real checkout/webhook delivery — same short-circuit
-    // pattern as WalletsService.initiateTopup()'s mock branch.
-    if (provider === 'mock') {
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      const { data: newExpiry } = await this.db.rpc('extend_expense_pro', { p_user_id: userId });
-      await this.db.from('expense_pro_payments').update({ status: 'SUCCESS', extended_to: newExpiry }).eq('id', payment.id);
-      return { payment: { ...payment, status: 'SUCCESS', extended_to: newExpiry }, pro_expires_at: newExpiry };
     }
 
     return { payment, checkout_url: pspResult.checkout_url };
@@ -387,10 +421,17 @@ export class ExpenseTrackerService {
       const adapter = this.pspFactory.get(payment.psp_provider);
       const live = await adapter.getTransactionStatus(payment.psp_intent_id);
       if (live.status === 'SUCCESS') {
-        const { data: newExpiry } = await this.db.rpc('extend_expense_pro', { p_user_id: userId });
-        await this.db.from('expense_pro_payments').update({ status: 'SUCCESS', extended_to: newExpiry, updated_at: new Date().toISOString() }).eq('id', payment.id);
+        // Claimed first (same rule as the webhook): one payment extends Pro once, even if both confirm at once.
+        const { data: claimed } = await this.db.from('expense_pro_payments')
+          .update({ status: 'SUCCESS', updated_at: new Date().toISOString() })
+          .eq('id', payment.id).eq('status', 'PENDING').select('id').maybeSingle();
+        if (claimed) {
+          const { data: newExpiry, error } = await this.db.rpc('extend_expense_pro', { p_user_id: userId });
+          if (error) await this.db.from('expense_pro_payments').update({ status: 'PENDING' }).eq('id', payment.id).eq('status', 'SUCCESS');
+          else await this.db.from('expense_pro_payments').update({ extended_to: newExpiry }).eq('id', payment.id);
+        }
       } else if (live.status === 'FAILED') {
-        await this.db.from('expense_pro_payments').update({ status: 'FAILED', updated_at: new Date().toISOString() }).eq('id', payment.id);
+        await this.db.from('expense_pro_payments').update({ status: 'FAILED', updated_at: new Date().toISOString() }).eq('id', payment.id).eq('status', 'PENDING');
       }
     }
 

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import api from '@/lib/api';
+import { isNetworkError } from '@/lib/network';
 import { useAuthStore } from '@/lib/auth-store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,16 +11,17 @@ import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/PageHeader';
 import { FormSheet } from '@/components/FormSheet';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { CashierPinGate } from './CashierPinGate';
+import { useNavigate } from 'react-router-dom';
+import { useAppLock } from '@/lib/app-lock-store';
 import { PosTill } from './PosTill';
-import { PosHeldTickets, PosSalesHistory, PosSessionPanel } from './PosPanels';
+import { PosHeldTickets, PosSalesHistory, PosSessionPanel, SessionDetailSheet } from './PosPanels';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   Lock, Store, Loader2, ShoppingCart, PauseCircle,
   Receipt, Vault, DoorClosed, DoorOpen, MoreHorizontal, ChevronRight,
 } from 'lucide-react';
 
-export const STAFF_ROLES = ['magasinier', 'vendeur', 'caissier', 'comptable'];
+import { STAFF_ROLES } from '@/lib/permissions';
 
 export function posErrorMessage(err: any, fallback: string) {
   const msg = err?.response?.data?.message;
@@ -48,10 +51,17 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
 export default function PosPage() {
   const user = useAuthStore((s) => s.user);
   const isStaff = STAFF_ROLES.includes(user?.role || '');
-  const [gateKey, setGateKey] = useState(0);
+  const navigate = useNavigate();
+  const lockApp = useAppLock((s) => s.lock);
+  // "Verrouiller la caisse": the employee's one code (their 6-digit access
+  // code) locks the app. The till is a selling screen, where the app lock
+  // never shows, so leave it for the home screen first.
+  const lockTill = () => {
+    navigate('/dashboard');
+    setTimeout(lockApp, 0);
+  };
 
-  const till = <PosScreen onLock={isStaff ? () => setGateKey((k) => k + 1) : undefined} />;
-  return isStaff ? <CashierPinGate key={gateKey}>{till}</CashierPinGate> : till;
+  return <PosScreen onLock={isStaff ? lockTill : undefined} />;
 }
 
 function PosScreen({ onLock }: { onLock?: () => void }) {
@@ -88,6 +98,16 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
   const setCurrency = (c: 'CDF' | 'USD') => {
     setCurrencyState(c);
     try { localStorage.setItem('pos-currency', c); } catch { /* not persisted */ }
+  };
+
+  // What the catalog shows: every product ("Tous", the default) or one
+  // currency. In "Tous" the till follows the product: tapping a USD product
+  // switches the till to USD and the product lands on a USD ticket.
+  const [view, setView] = useState<'ALL' | 'CDF' | 'USD'>('ALL');
+  const [pendingProduct, setPendingProduct] = useState<any>(null);
+  const sellInCurrencyOf = (item: any) => {
+    setPendingProduct(item);
+    setCurrency(item.currency);
   };
   const [error, setError] = useState('');
 
@@ -144,19 +164,39 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
   // refresh doesn't silently orphan the sale.
   // ------------------------------------------------------------------
   const ticketKey = merchantId ? `pos_ticket:${merchantId}:${currency}` : '';
-  const [ticket, setTicket] = useState<any>(null);
+  const [ticket, setTicketState] = useState<any>(null);
+  // The open ticket is also kept whole on the device: reopened without network, the till still shows it (and can
+  // finish it offline, see PosTill).
+  const setTicket = (t: any) => {
+    setTicketState(t);
+    if (!ticketKey) return;
+    try {
+      if (t) localStorage.setItem(`${ticketKey}:data`, JSON.stringify(t));
+      else localStorage.removeItem(`${ticketKey}:data`);
+    } catch { /* not kept */ }
+  };
 
   useEffect(() => {
-    setTicket(null);
+    setTicketState(null);
     if (!ticketKey) return;
     const id = localStorage.getItem(ticketKey);
     if (!id) return;
     api.get(`/merchants/${merchantId}/pos/tickets/${id}`)
       .then(({ data }) => {
         if (data.status === 'open') setTicket(data);
-        else localStorage.removeItem(ticketKey);
+        else { localStorage.removeItem(ticketKey); setTicket(null); }
       })
-      .catch(() => localStorage.removeItem(ticketKey));
+      .catch((err) => {
+        if (isNetworkError(err)) {
+          try {
+            const cached = JSON.parse(localStorage.getItem(`${ticketKey}:data`) || 'null');
+            if (cached?.id === id) setTicketState(cached);
+          } catch { /* nothing kept */ }
+          return;
+        }
+        localStorage.removeItem(ticketKey);
+        setTicket(null);
+      });
   }, [ticketKey]);
 
   const clearTicket = () => {
@@ -177,13 +217,23 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
     }
   };
 
-  const [tab, setTab] = useState<Tab>('vente');
+  // ?onglet=attente|ventes|caisse opens that panel directly (links from the cashier's home).
+  const [searchParams] = useSearchParams();
+  const linked = searchParams.get('onglet');
+  const linkedTab = linked === 'attente' || linked === 'ventes' || linked === 'caisse' ? linked : null;
+  const [tab, setTab] = useState<Tab>(linkedTab ?? 'vente');
+  // The session just closed: its end-of-shift report stays on screen after the till closes.
+  const [closedSessionId, setClosedSessionId] = useState<string | null>(null);
+  const showShiftReport = (sessionId: string) => {
+    setMobileSheet(null);
+    setClosedSessionId(sessionId);
+  };
   const canSell = !!merchantId && !!session;
 
   // Mobile/tablet: the till is the whole screen; the secondary tabs live in
   // a "⋯" menu opening as bottom sheets instead of a permanent tab bar.
   const isDesktop = useMediaQuery('(min-width: 1024px)');
-  const [mobileSheet, setMobileSheet] = useState<null | 'menu' | 'attente' | 'ventes' | 'caisse'>(null);
+  const [mobileSheet, setMobileSheet] = useState<null | 'menu' | 'attente' | 'ventes' | 'caisse'>(linkedTab);
   const activeTab: Tab = isDesktop ? tab : 'vente';
 
   // Held tickets count for the tab badge.
@@ -224,16 +274,16 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
             <Store className="w-4 h-4 flex-shrink-0" /> <span className="truncate">{merchantName}</span>
           </p>
         )}
-        {/* Currency — locked while a ticket is open (tickets are single-currency) */}
+        {/* Catalog view — "Tous" by default; locked while a ticket is open (tickets are single-currency) */}
         <div className="flex gap-1.5 lg:gap-2 items-center ml-auto flex-shrink-0">
-          {(['CDF', 'USD'] as const).map((c) => (
+          {(['ALL', 'CDF', 'USD'] as const).map((c) => (
             <button
               key={c}
               disabled={!!ticket}
-              onClick={() => setCurrency(c)}
-              className={`rounded-full px-3 lg:px-4 py-1 lg:py-1.5 text-xs lg:text-sm font-medium border disabled:opacity-50 ${(ticket?.currency || currency) === c ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'}`}
+              onClick={() => { setView(c); if (c !== 'ALL') setCurrency(c); }}
+              className={`rounded-full px-3 lg:px-4 py-1 lg:py-1.5 text-xs lg:text-sm font-medium border disabled:opacity-50 ${view === c ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'}`}
             >
-              {c}
+              {c === 'ALL' ? 'Tous' : c}
             </button>
           ))}
           {onLock && (
@@ -331,6 +381,10 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
             <PosTill
               merchantId={merchantId}
               currency={currency}
+              view={view}
+              onWantsCurrency={sellInCurrencyOf}
+              pendingProduct={pendingProduct}
+              onPendingDone={() => setPendingProduct(null)}
               ticket={ticket}
               setTicket={setTicket}
               ticketKey={ticketKey}
@@ -354,7 +408,7 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
           )}
 
           {activeTab === 'caisse' && (
-            <PosSessionPanel merchantId={merchantId} session={session} />
+            <PosSessionPanel merchantId={merchantId} session={session} onClosed={showShiftReport} />
           )}
 
           {/* Mobile "⋯" menu and the secondary panels it opens */}
@@ -407,11 +461,20 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
                 </h2>
                 {mobileSheet === 'attente' && <PosHeldTickets merchantId={merchantId} onResume={resumeTicket} />}
                 {mobileSheet === 'ventes' && <PosSalesHistory merchantId={merchantId} />}
-                {mobileSheet === 'caisse' && <PosSessionPanel merchantId={merchantId} session={session} />}
+                {mobileSheet === 'caisse' && <PosSessionPanel merchantId={merchantId} session={session} onClosed={showShiftReport} />}
               </div>
             </FormSheet>
           )}
         </>
+      )}
+
+      {closedSessionId && merchantId && (
+        <SessionDetailSheet
+          merchantId={merchantId}
+          sessionId={closedSessionId}
+          title="Rapport de fin de service"
+          onClose={() => setClosedSessionId(null)}
+        />
       )}
     </div>
   );

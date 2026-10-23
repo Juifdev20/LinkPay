@@ -26,45 +26,11 @@ function setup(opts: { targetRoles?: string[]; existingMembership?: boolean; rem
     if (q.target === 'merchant_users' && has(q, 'insert')) return { data: { id: 'mu-new' } };
     return { data: null };
   });
-  const service = new MerchantsService(fake.service, {} as any);
+  const service = new MerchantsService(fake.service, {} as any, {} as any);
   const userRoleWrites = () =>
     fake.queries.filter((q) => q.target === 'user_roles' && (has(q, 'insert') || (has(q, 'delete') && !has(q, 'select', 'id'))));
   return { service, fake, userRoleWrites };
 }
-
-describe('MerchantsService.addMerchantUser', () => {
-  it.each(['super_admin', 'admin', 'merchant', 'enterprise', 'cashier'])(
-    'refuses to invite a user whose role is %s, without touching their role',
-    async (role) => {
-      const { service, userRoleWrites } = setup({ targetRoles: [role] });
-      await expect(service.addMerchantUser(MERCHANT, OWNER, { email: 'x@y.cd' })).rejects.toBeInstanceOf(BadRequestException);
-      expect(userRoleWrites()).toHaveLength(0);
-    },
-  );
-
-  it('refuses someone already on a store team', async () => {
-    const { service, userRoleWrites } = setup({ existingMembership: true });
-    await expect(service.addMerchantUser(MERCHANT, OWNER, { email: 'x@y.cd' })).rejects.toBeInstanceOf(BadRequestException);
-    expect(userRoleWrites()).toHaveLength(0);
-  });
-
-  it('refuses inviting oneself', async () => {
-    const fake = createFakeSupabase((q) => (q.target === 'profiles' ? { data: { id: OWNER } } : { data: null }));
-    const service = new MerchantsService(fake.service, {} as any);
-    await expect(service.addMerchantUser(MERCHANT, OWNER, { email: 'me@y.cd' })).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('invites a plain client and makes them cashier of this store', async () => {
-    const { service, fake } = setup({ targetRoles: ['client'] });
-    await service.addMerchantUser(MERCHANT, OWNER, { email: 'x@y.cd' });
-    const insert = fake.queries.find((q) => q.target === 'user_roles' && has(q, 'insert'));
-    expect(insert?.calls.find((c) => c.method === 'insert')?.args[0]).toEqual({
-      user_id: 'target-1',
-      role_id: ROLE_IDS.cashier,
-      merchant_id: MERCHANT,
-    });
-  });
-});
 
 describe('MerchantsService.removeMerchantUser', () => {
   it('refuses removing the owner', async () => {

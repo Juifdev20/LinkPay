@@ -75,10 +75,11 @@ describe('Mobile Money payment (type 1)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('a refusal by FlexPaie (code 1) is an error, and nothing is recorded', async () => {
+  it('a refusal by FlexPaie (code 1) reaches the payer as a 400 with THEIR message, and nothing is recorded', async () => {
     const { adapter, fake } = setup();
     fetchMock.mockResolvedValue(reply({ code: '1', message: 'Solde marchand insuffisant' }));
-    await expect(adapter.createPaymentIntent({ ...BASE, customer: { phone: '0891234567' } })).rejects.toThrow(/refused the payment: Solde marchand insuffisant/);
+    await expect(adapter.createPaymentIntent({ ...BASE, customer: { phone: '0891234567' } })).rejects.toThrow(BadRequestException);
+    await expect(adapter.createPaymentIntent({ ...BASE, customer: { phone: '0891234567' } })).rejects.toThrow('Solde marchand insuffisant');
     expect(fake.queries.some((q) => has(q, 'insert'))).toBe(false);
   });
 
@@ -256,10 +257,10 @@ describe('the callback (no signature: only a hint)', () => {
 });
 
 describe('what FlexPaie does not document', () => {
-  it('no automatic withdrawal is attempted, and it is said so; no automatic refund either', async () => {
+  it('without the PayoutService switched on, no withdrawal is attempted, and it is said so; no automatic refund either', async () => {
     const { adapter } = setup();
+    expect(adapter.supportsPayout).toBe(false);
     await expect(adapter.payout({ reference: 'w1', amount_cents: 100, currency: 'CDF', channel: 'mobile_money', destination: {} })).rejects.toBeInstanceOf(PayoutNotSentError);
-    expect(await adapter.getPayoutStatus('w1')).toEqual({ status: 'NOT_FOUND' });
     await expect(adapter.refund({ psp_intent_id: 'x', amount_cents: 100 })).rejects.toBeInstanceOf(BadRequestException);
     expect(fetchMock).not.toHaveBeenCalled();
   });

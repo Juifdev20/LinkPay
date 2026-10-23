@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { PageHeader } from '@/components/PageHeader';
 import { Loader2, Check } from 'lucide-react';
+import { SupplierPlanAdmin } from './SupplierPlanAdmin';
 
 const CURRENCIES = ['CDF', 'USD'] as const;
 const MODES = [
@@ -116,7 +117,7 @@ export default function AdminSubscriptionsPage() {
   if (isLoading || !data) return <div className="p-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>;
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-3xl mx-auto">
+    <div className="p-4 pb-28 md:p-6 md:pb-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader title="Abonnements" />
 
       <Card>
@@ -136,8 +137,12 @@ export default function AdminSubscriptionsPage() {
         </CardContent>
       </Card>
 
+      <div className="space-y-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
+      <div className="space-y-6">
       <PriceCard prices={data.prices} />
       <SettingsCard settings={data.settings} />
+      <SupplierPlanAdmin />
+      </div>
 
       <Card>
         <CardHeader><CardTitle className="text-base font-bold">Derniers paiements</CardTitle></CardHeader>
@@ -154,6 +159,7 @@ export default function AdminSubscriptionsPage() {
           ))}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

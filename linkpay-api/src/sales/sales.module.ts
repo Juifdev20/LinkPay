@@ -4,11 +4,12 @@ import { StockModule } from '../stock/stock.module';
 import { AuditModule } from '../audit/audit.module';
 import { SalesController } from './sales.controller';
 import { SalesService } from './sales.service';
+import { SalesExpiryService } from './sales-expiry.service';
 
 @Module({
   imports: [SupabaseModule, StockModule, AuditModule],
   controllers: [SalesController],
-  providers: [SalesService],
+  providers: [SalesService, SalesExpiryService],
   exports: [SalesService],
 })
 export class SalesModule {}

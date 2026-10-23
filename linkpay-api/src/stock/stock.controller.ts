@@ -1,13 +1,15 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, Headers, UseInterceptors, UploadedFile, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Headers, UseInterceptors, UploadedFile, UseGuards, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiConsumes, ApiBody } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, IsIn, IsObject, MaxLength, Min, MinLength } from 'class-validator';
-import { StockService } from './stock.service';
+import { IsString, IsOptional, IsNumber, IsIn, IsObject, IsBoolean, MaxLength, Min, MinLength, IsUUID } from 'class-validator';
+import { StockService, STOCK_STAFF_ROLES } from './stock.service';
+import { SuppliersService } from './suppliers.service';
 import { StockPasswordService } from './stock-password.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequireSubscription } from '../subscriptions/subscription.guard';
+import { AppCodeConfirmGuard, RequireAppCode } from '../common/guards/app-code-confirm.guard';
 
 const CONDITIONS = ['neuf', 'occasion', 'reconditionne'];
 const MOVEMENT_TYPES = ['in', 'out', 'adjustment'];
@@ -111,21 +113,34 @@ class CreateStockItemDto {
   @IsNumber()
   @Min(0)
   low_stock_threshold?: number;
+
+  @ApiPropertyOptional({ description: "Fournisseur choisi dans la liste de l'entreprise ; null pour l'enlever" })
+  @IsOptional()
+  @IsUUID()
+  supplier_id?: string | null;
+
+  @ApiPropertyOptional({ example: 'Bralima', description: 'Fournisseur tapé à la main : retrouvé par son nom, sinon ajouté à la liste' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  supplier_name?: string | null;
 }
 
 // Editing is gated behind the module's shared stock password — see
-// StockPasswordService. Required here (not just checked client-side) so a
-// direct API call can't bypass the UI gate.
+// StockPasswordService, when the owner switched it on (checked server-side,
+// so a direct API call can't bypass the UI gate).
 class UpdateStockItemDto extends CreateStockItemDto {
-  @ApiProperty({ description: 'Mot de passe de gestion de stock de cette entreprise' })
+  @ApiPropertyOptional({ description: "Mot de passe de gestion de stock — seulement si le patron l'a activé" })
+  @IsOptional()
   @IsString()
-  stock_password!: string;
+  stock_password?: string;
 }
 
 class DeleteStockItemDto {
-  @ApiProperty({ description: 'Mot de passe de gestion de stock de cette entreprise' })
+  @ApiPropertyOptional({ description: "Mot de passe de gestion de stock — seulement si le patron l'a activé" })
+  @IsOptional()
   @IsString()
-  stock_password!: string;
+  stock_password?: string;
 }
 
 class CreateMovementDto {
@@ -142,6 +157,11 @@ class CreateMovementDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+
+  @ApiPropertyOptional({ description: "Id créé sur l'appareil pour un mouvement fait hors ligne : envoyé deux fois, il est gardé une fois" })
+  @IsOptional()
+  @IsUUID()
+  client_ref?: string;
 }
 
 class SetStockPasswordDto {
@@ -161,6 +181,12 @@ class ResetStockPasswordDto {
   @IsString()
   @MinLength(4)
   new_password!: string;
+}
+
+class StockPasswordRequiredDto {
+  @ApiProperty()
+  @IsBoolean()
+  required!: boolean;
 }
 
 class VerifyStockPasswordDto {
@@ -188,7 +214,7 @@ export function assertStockPasswordAccess(
   if (level === 'member' && sameOrg) return;
   // Trying the password counts toward a lockout of the whole company's stock edits: only people who actually manage
   // stock may try it (a seller or cashier guessing could otherwise lock the stock keeper out).
-  if (level === 'manager' && sameOrg && caller.role === 'magasinier') return;
+  if (level === 'manager' && sameOrg && STOCK_STAFF_ROLES.includes(caller.role || '')) return;
   throw new ForbiddenException(
     level === 'owner'
       ? "Seul le patron peut définir ou modifier le mot de passe de gestion de stock."
@@ -358,6 +384,19 @@ export class OrganizationStockController {
     return this.stockService.getOrgStockSummary(orgId, callerId, callerRole, callerOrgId);
   }
 
+  @Get(':id/stock-recent-activity')
+  @ApiOperation({ summary: 'Movement chart + recent activity feed for the magasinier dashboard. Optional ?from=YYYY-MM-DD&to=YYYY-MM-DD (defaults to last 7 days).' })
+  async getOrgRecentActivity(
+    @Param('id') orgId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @CurrentUser('id') callerId?: string,
+    @CurrentUser('role') callerRole?: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    return this.stockService.getOrgRecentActivity(orgId, callerId!, callerRole!, callerOrgId, from, to);
+  }
+
   @Get(':id/stock-password/status')
   @ApiOperation({ summary: 'Whether this organization has a stock management password set yet' })
   async getStockPasswordStatus(
@@ -367,7 +406,29 @@ export class OrganizationStockController {
     @CurrentUser('organization_id') callerOrgId?: string,
   ) {
     assertStockPasswordAccess(await this.organizationsService.getOrganizationById(orgId), { id: callerId, role: callerRole, organizationId: callerOrgId }, 'member');
-    return { is_set: await this.stockPasswordService.hasPasswordSet(orgId) };
+    const [isSet, required] = await Promise.all([
+      this.stockPasswordService.hasPasswordSet(orgId),
+      this.stockPasswordService.isRequired(orgId),
+    ]);
+    return { is_set: isSet, required };
+  }
+
+  // Switching the protection off removes a control: the owner confirms with their access code.
+  @UseGuards(AppCodeConfirmGuard)
+  @RequireAppCode()
+  @Put(':id/stock-password/required')
+  @ApiOperation({ summary: 'Switch the stock password on or off (owner only) — off by default' })
+  async setStockPasswordRequired(
+    @Param('id') orgId: string,
+    @Body() dto: StockPasswordRequiredDto,
+    @CurrentUser('id') callerId: string,
+    @CurrentUser('role') callerRole: string,
+    @CurrentUser('organization_id') callerOrgId?: string,
+  ) {
+    const org = await this.organizationsService.getOrganizationById(orgId);
+    assertStockPasswordAccess(org, { id: callerId, role: callerRole, organizationId: callerOrgId }, 'owner');
+    await this.stockPasswordService.setRequired(orgId, dto.required);
+    return { required: dto.required };
   }
 
   @Post(':id/stock-password/verify')
@@ -414,5 +475,45 @@ export class OrganizationStockController {
     }
     await this.stockPasswordService.resetPassword(orgId, dto.new_password);
     return { success: true };
+  }
+}
+
+class SupplierDto {
+  @ApiPropertyOptional({ example: 'Bralima' }) @IsOptional() @IsString() @MaxLength(120) name?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(30) phone?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(160) email?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(255) address?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) notes?: string | null;
+}
+
+/** An enterprise's suppliers (migration 083) — optional on every product, all sectors. */
+@ApiTags('Stock')
+@ApiBearerAuth()
+@Controller('organizations')
+export class SuppliersController {
+  constructor(private suppliers: SuppliersService) {}
+
+  @Get(':id/suppliers')
+  @ApiOperation({ summary: "The enterprise's suppliers (owner, manager, stock keeper, accountant)" })
+  list(@Param('id') orgId: string, @CurrentUser() caller: any) {
+    return this.suppliers.list(orgId, caller);
+  }
+
+  @Post(':id/suppliers')
+  @ApiOperation({ summary: 'Add a supplier — gives back the existing one when the name is already on the list' })
+  create(@Param('id') orgId: string, @Body() dto: SupplierDto, @CurrentUser() caller: any) {
+    return this.suppliers.create(orgId, caller, dto);
+  }
+
+  @Put(':id/suppliers/:supplierId')
+  @ApiOperation({ summary: 'Change a supplier (name, contact, notes)' })
+  update(@Param('id') orgId: string, @Param('supplierId') supplierId: string, @Body() dto: SupplierDto, @CurrentUser() caller: any) {
+    return this.suppliers.update(orgId, supplierId, caller, dto);
+  }
+
+  @Delete(':id/suppliers/:supplierId')
+  @ApiOperation({ summary: 'Take a supplier off the list (archived: products keep showing it)' })
+  archive(@Param('id') orgId: string, @Param('supplierId') supplierId: string, @CurrentUser() caller: any) {
+    return this.suppliers.archive(orgId, supplierId, caller);
   }
 }

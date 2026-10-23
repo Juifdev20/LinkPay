@@ -1,7 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { StockService, POS_SALE_ROLES } from '../stock/stock.service';
 import { AuditService } from '../audit/audit.service';
+import { OWN_TILL_ONLY_ROLES, stationStaffWithRoles } from '../common/org-access';
+import { NotificationsService } from '../notifications/notifications.service';
 
 /**
  * One open session per (store, currency) at a time — a till is opened with
@@ -20,7 +22,10 @@ export class CashRegisterService {
     private supabaseService: SupabaseService,
     private stockService: StockService,
     private auditService: AuditService,
+    private notificationsService: NotificationsService,
   ) {}
+
+  private readonly logger = new Logger(CashRegisterService.name);
 
   private get db() {
     return this.supabaseService.getClient();
@@ -58,15 +63,31 @@ export class CashRegisterService {
     const page = filters.page || 1;
     const limit = Math.min(filters.limit || 20, 100);
 
-    const { data, error, count } = await this.db
+    let query = this.db
       .from('cash_register_sessions')
-      .select('*, cashier:profiles!cashier_user_id(full_name, email)', { count: 'exact' })
-      .eq('merchant_id', merchantId)
+      .select('*', { count: 'exact' })
+      .eq('merchant_id', merchantId);
+    if (OWN_TILL_ONLY_ROLES.includes(callerRole)) query = query.eq('cashier_user_id', callerId);
+    const { data, error, count } = await query
       .order('opened_at', { ascending: false })
       .range((page - 1) * limit, page * limit - 1);
 
     if (error) throw new Error(`Failed to list sessions: ${error.message}`);
-    return { data: data || [], total: count || 0, page, limit };
+
+    // cashier_user_id references auth.users, not profiles, so PostgREST can't
+    // embed the cashier: look the names up in a second query.
+    const cashierIds = [...new Set((data || []).map((s) => s.cashier_user_id).filter(Boolean))];
+    const { data: cashiers } = cashierIds.length
+      ? await this.db.from('profiles').select('id, full_name, email').in('id', cashierIds)
+      : { data: [] as { id: string; full_name: string | null; email: string | null }[] };
+    const byId = new Map((cashiers || []).map((c) => [c.id, { full_name: c.full_name, email: c.email }]));
+
+    return {
+      data: (data || []).map((s) => ({ ...s, cashier: byId.get(s.cashier_user_id) || null })),
+      total: count || 0,
+      page,
+      limit,
+    };
   }
 
   /** Sum of cash actually taken during a session: confirmed 'cash' payment
@@ -106,6 +127,10 @@ export class CashRegisterService {
   async getSessionDetail(merchantId: string, sessionId: string, callerId: string, callerRole: string, callerOrgId: string | undefined) {
     await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
     const session = await this.getOwnSession(merchantId, sessionId);
+    // A cashier may check the live till, but not a colleague's past shift.
+    if (OWN_TILL_ONLY_ROLES.includes(callerRole) && session.status !== 'open' && session.cashier_user_id !== callerId) {
+      throw new ForbiddenException("Cette session de caisse n'est pas la vôtre");
+    }
 
     const [{ data: movements }, { data: tickets }, cashSales] = await Promise.all([
       this.db.from('cash_movements').select('*').eq('session_id', sessionId).order('created_at', { ascending: true }),
@@ -187,31 +212,48 @@ export class CashRegisterService {
     return data;
   }
 
+  private async movementByClientRef(sessionId: string, clientRef: string) {
+    const { data, error } = await this.db.from('cash_movements').select('*').eq('session_id', sessionId).eq('client_ref', clientRef).maybeSingle();
+    return error ? null : data;
+  }
+
   async addMovement(
     merchantId: string,
     sessionId: string,
     callerId: string,
     callerRole: string,
     callerOrgId: string | undefined,
-    data: { type: 'cash_in' | 'cash_out'; amount_cents: number; reason?: string },
+    data: { type: 'cash_in' | 'cash_out'; amount_cents: number; reason?: string; client_ref?: string },
   ) {
     await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
     const session = await this.getOwnSession(merchantId, sessionId);
+    // Made offline and already received (answer lost): give back the first one.
+    if (data.client_ref) {
+      const existing = await this.movementByClientRef(sessionId, data.client_ref);
+      if (existing) return existing;
+    }
     if (session.status !== 'open') {
       throw new BadRequestException('Cette session de caisse est déjà clôturée.');
     }
 
-    const { data: movement, error } = await this.db
-      .from('cash_movements')
-      .insert({
-        session_id: sessionId,
-        type: data.type,
-        amount_cents: data.amount_cents,
-        reason: data.reason || null,
-        created_by: callerId,
-      })
-      .select()
-      .single();
+    const row: Record<string, unknown> = {
+      session_id: sessionId,
+      type: data.type,
+      amount_cents: data.amount_cents,
+      reason: data.reason || null,
+      created_by: callerId,
+    };
+    if (data.client_ref) row.client_ref = data.client_ref;
+    let { data: movement, error } = await this.db.from('cash_movements').insert(row).select().single();
+    if (error && data.client_ref && (error as any).code === '23505') {
+      const existing = await this.movementByClientRef(sessionId, data.client_ref);
+      if (existing) return existing;
+    }
+    if (error && data.client_ref && /client_ref/.test(error.message)) {
+      this.logger.warn('cash_movements.client_ref missing — run migration 075');
+      delete row.client_ref;
+      ({ data: movement, error } = await this.db.from('cash_movements').insert(row).select().single());
+    }
 
     if (error) throw new Error(`Failed to record cash movement: ${error.message}`);
     return movement;
@@ -225,7 +267,7 @@ export class CashRegisterService {
     callerOrgId: string | undefined,
     data: { closing_counted_cents: number },
   ) {
-    await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
+    const merchant = await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
     const session = await this.getOwnSession(merchantId, sessionId);
     if (session.status !== 'open') {
       throw new BadRequestException('Cette session de caisse est déjà clôturée.');
@@ -266,6 +308,55 @@ export class CashRegisterService {
       changes: { expected_cents: expected, closing_counted_cents: data.closing_counted_cents, discrepancy_cents: discrepancy },
     });
 
+    await this.notifyClosure(merchant, closed, cashSales, callerId).catch((err) =>
+      this.logger.warn(`Closure notice not sent for session ${sessionId}: ${err?.message || err}`),
+    );
+
     return closed;
   }
+
+  /**
+   * End of a shift: the station manager(s) and the owner are told what the
+   * till took and whether the count matched — "Écart de caisse" when it
+   * didn't. Best effort: closing the till never depends on it.
+   */
+  private async notifyClosure(merchant: any, session: any, cashSales: number, closedBy: string) {
+    const { data: tickets } = await this.db
+      .from('pos_tickets')
+      .select('total_cents')
+      .eq('cash_register_session_id', session.id)
+      .eq('status', 'paid');
+    const sales = (tickets || []).reduce((sum, t) => sum + (t.total_cents || 0), 0);
+
+    const { data: cashier } = await this.db.from('profiles').select('full_name, email').eq('id', session.cashier_user_id).maybeSingle();
+    const { data: org } = merchant.organization_id
+      ? await this.db.from('organizations').select('owner_id').eq('id', merchant.organization_id).maybeSingle()
+      : { data: null };
+    const managers = await stationStaffWithRoles(this.db, merchant.id, ['gerant']);
+    const recipients = [...new Set([org?.owner_id || merchant.owner_id, ...managers].filter(Boolean))].filter((id) => id !== closedBy);
+    if (!recipients.length) return;
+
+    const c = session.currency;
+    const fmt = (cents: number) => formatMoney(cents, c);
+    const gap = session.discrepancy_cents || 0;
+    const who = cashier?.full_name || cashier?.email || 'Un caissier';
+    const body = `${who} · ${merchant.name} : ${tickets?.length || 0} ticket(s), ventes ${fmt(sales)}, espèces ${fmt(cashSales)}. `
+      + (gap === 0 ? 'Caisse juste.' : `Écart ${gap > 0 ? '+' : ''}${fmt(gap)} (attendu ${fmt(session.expected_cents)}, compté ${fmt(session.closing_counted_cents)}).`);
+
+    await Promise.all(recipients.map((userId) => this.notificationsService.create({
+      user_id: userId,
+      type: gap === 0 ? 'cash_session_closed' : 'cash_discrepancy',
+      title: gap === 0 ? 'Clôture de caisse' : 'Écart de caisse',
+      body,
+      data: { merchant_id: merchant.id, session_id: session.id },
+    }).catch(() => undefined)));
+  }
+}
+
+/** "12 500 FC" / "12.50 $" — for notification texts (amounts are in cents). */
+function formatMoney(cents: number, currency: string) {
+  const units = (cents || 0) / 100;
+  return currency === 'USD'
+    ? `${units.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`
+    : `${Math.round(units).toLocaleString('fr-FR')} FC`;
 }

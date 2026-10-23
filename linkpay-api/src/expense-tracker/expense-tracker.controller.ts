@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Put, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsOptional, IsIn, IsString, IsInt, Min, MaxLength, Length } from 'class-validator';
+import { IsNumber, IsOptional, IsIn, IsString, IsInt, Min, MaxLength, Length, IsUUID, IsISO8601 } from 'class-validator';
 import { ExpenseTrackerService } from './expense-tracker.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -29,6 +29,16 @@ class AddExpenseEntryDto {
   @IsString()
   @MaxLength(500)
   description?: string;
+
+  @ApiPropertyOptional({ description: 'Id made on the phone for a note written offline: the same note sent twice is kept once' })
+  @IsOptional()
+  @IsUUID()
+  client_ref?: string;
+
+  @ApiPropertyOptional({ description: 'When the note was written (offline notes reach the server later); at most 30 days back' })
+  @IsOptional()
+  @IsISO8601()
+  noted_at?: string;
 }
 
 class ActivateProWalletDto {
@@ -125,14 +135,14 @@ export class ExpenseTrackerController {
     return this.expenseTrackerService.activateProViaWallet(userId, dto.pin);
   }
 
-  @Post('pro/activate/cinetpay')
-  @ApiOperation({ summary: 'Activate/renew unlimited access via CinetPay — returns a checkout URL (or completes immediately with the mock PSP)' })
-  async activateProViaCinetPay(@CurrentUser('id') userId: string) {
-    return this.expenseTrackerService.activateProViaCinetPay(userId);
+  @Post('pro/activate/mobile-money')
+  @ApiOperation({ summary: 'Activate/renew unlimited access, paid by Mobile Money through the payment provider (FlexPaie)' })
+  async activateProViaMobileMoney(@CurrentUser('id') userId: string) {
+    return this.expenseTrackerService.activateProViaMobileMoney(userId);
   }
 
   @Get('pro/payments/:reference/status')
-  @ApiOperation({ summary: 'Poll a CinetPay Pro-activation payment by reference' })
+  @ApiOperation({ summary: 'Poll a Mobile Money Pro-activation payment by reference' })
   async getProPaymentStatus(@CurrentUser('id') userId: string, @Param('reference') reference: string) {
     return this.expenseTrackerService.getProPaymentStatus(userId, reference);
   }

@@ -11,12 +11,18 @@ import { Switch } from '@/components/ui/switch';
 import { Logo } from '@/components/Logo';
 import { PageHeader } from '@/components/PageHeader';
 import { CurrencySelector } from '@/components/CurrencySelector';
-import { Building2, HelpCircle, FileText, ChevronRight, Store, Loader2, Bell, Moon, Fingerprint } from 'lucide-react';
+import { Building2, HelpCircle, FileText, ChevronRight, Store, Loader2, Bell, Moon, Fingerprint, CloudUpload, Trash2, KeyRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getCurrentPushPermission, hasActiveSubscription, subscribeToPush, unsubscribeFromPush, type PushPermissionStatus } from '@/lib/app-push';
 import { useTheme } from '@/hooks/useTheme';
+import { SupportContactList } from '@/components/SupportContactList';
+import { openOnWebsite } from '@/lib/open-site';
+import { SupportContactsCard } from '@/components/admin/SupportContactsCard';
 import { AccessCodeSettings } from '@/components/AccessCodeSettings';
+import { RecoveryCodeSettings } from '@/components/RecoveryCodeSettings';
+import { useFailedCount, usePendingCount } from '@/lib/outbox';
 import { isAppLockSupported, isAppLockEnabled, enableAppLock, disableAppLock } from '@/lib/app-lock';
+import { isPinSessionDisabled, setPinSessionDisabled, appCodeApplies } from '@/lib/app-lock-store';
 
 export default function SettingsPage() {
   const user = useAuthStore((s) => s.user);
@@ -27,14 +33,18 @@ export default function SettingsPage() {
   const [showOrgForm, setShowOrgForm] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
+  const canDeleteAccount = !!user?.acting_as_org_id || ['client', 'merchant', 'enterprise'].includes(user?.role ?? '');
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushPermission, setPushPermission] = useState<PushPermissionStatus>('unsupported');
   const [pushBusy, setPushBusy] = useState(false);
   const { toggleTheme, effectiveTheme } = useTheme();
+  const pendingOps = usePendingCount();
+  const failedOps = useFailedCount();
   const [appLockSupported, setAppLockSupported] = useState(false);
   const [appLockEnabled, setAppLockEnabledState] = useState(isAppLockEnabled());
   const [appLockBusy, setAppLockBusy] = useState(false);
   const [appLockError, setAppLockError] = useState('');
+  const [pinSessionOff, setPinSessionOff] = useState(isPinSessionDisabled());
 
   useEffect(() => {
     isAppLockSupported().then(setAppLockSupported);
@@ -51,9 +61,6 @@ export default function SettingsPage() {
       }
       setAppLockEnabledState(checked);
     } catch (err: any) {
-      // Ceremony cancelled or failed (user dismissed the OS prompt, a
-      // network error, etc.) — leave the toggle in its previous state, but
-      // actually say why instead of failing silently.
       if (err?.name === 'NotAllowedError') {
         setAppLockError('Annulé.');
       } else {
@@ -62,6 +69,12 @@ export default function SettingsPage() {
     } finally {
       setAppLockBusy(false);
     }
+  };
+
+  const handleTogglePinSession = (checked: boolean) => {
+    // checked = "PIN de session activé" → disabled = !checked
+    setPinSessionDisabled(!checked);
+    setPinSessionOff(!checked);
   };
 
   useEffect(() => {
@@ -117,229 +130,286 @@ export default function SettingsPage() {
     },
   });
 
+  const hasPinCode = appCodeApplies(user?.role) && user?.has_app_code;
+
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="mx-auto max-w-5xl space-y-5 px-4 py-5 pb-28 md:p-6">
       <PageHeader title="Paramètres" />
 
       <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start space-y-6 lg:space-y-0">
+
+        {/* ── Colonne gauche : identité & sécurité ── */}
         <div className="space-y-6 min-w-0">
-      {/* Become a merchant */}
-      {user?.role === 'client' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Store className="w-4 h-4 text-primary" />
-              Devenir marchand
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {!showUpgradeForm ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  Créez votre boutique pour recevoir des paiements via lien et QR code.
-                </p>
-                <Button className="w-full" onClick={() => setShowUpgradeForm(true)}>
-                  Créer ma boutique
-                </Button>
-              </>
-            ) : (
-              <>
-                {upgradeError && (
-                  <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
-                    {upgradeError}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sécurité</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-slate-500/10 text-slate-500 dark:text-slate-300"><Moon className="h-[18px] w-[18px]" /></span>
+                <div className="flex-1">
+                  <p className="font-medium text-sm text-foreground">Thème sombre</p>
+                  <p className="text-xs text-muted-foreground">Réduit la luminosité de l'interface.</p>
+                </div>
+                <Switch checked={effectiveTheme === 'dark'} onCheckedChange={toggleTheme} />
+              </div>
+              <AccessCodeSettings />
+              <RecoveryCodeSettings />
+              {hasPinCode && (
+                <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
+                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><KeyRound className="h-[18px] w-[18px]" /></span>
+                  <div className="flex-1">
+                    <p className="font-medium text-sm text-foreground">Code PIN de session</p>
+                    <p className="text-xs text-muted-foreground">
+                      {pinSessionOff
+                        ? "Désactivé — l'app s'ouvre sans code."
+                        : 'Demandé à chaque ouverture et après inactivité.'}
+                    </p>
                   </div>
-                )}
-                <div className="space-y-2">
-                  <Label htmlFor="store_name">Nom de la boutique</Label>
-                  <Input
-                    id="store_name"
-                    placeholder="Boutique Mukendi"
-                    value={store.name}
-                    onChange={(e) => setStore({ ...store, name: e.target.value })}
-                  />
+                  <Switch checked={!pinSessionOff} onCheckedChange={handleTogglePinSession} />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="store_phone">Téléphone</Label>
-                  <Input
-                    id="store_phone"
-                    placeholder="+243 8XX XXX XXX"
-                    value={store.phone}
-                    onChange={(e) => setStore({ ...store, phone: e.target.value })}
-                  />
+              )}
+              <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-success/10 text-success"><Fingerprint className="h-[18px] w-[18px]" /></span>
+                <div className="flex-1">
+                  <p className="font-medium text-sm text-foreground">Déverrouillage biométrique</p>
+                  <p className="text-xs text-muted-foreground">
+                    {!appLockSupported
+                      ? 'Non disponible sur cet appareil/navigateur.'
+                      : "Raccourci : empreinte ou visage à la place du code d'accès."}
+                  </p>
+                  {appLockError && (
+                    <p className="text-xs text-destructive mt-1">{appLockError}</p>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="store_city">Ville</Label>
-                  <Input
-                    id="store_city"
-                    placeholder="Kinshasa"
-                    value={store.city}
-                    onChange={(e) => setStore({ ...store, city: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Devise par défaut</Label>
-                  <CurrencySelector value={store.default_currency} onChange={(c) => setStore({ ...store, default_currency: c })} />
-                </div>
-                <Button
-                  className="w-full"
-                  disabled={!store.name || upgradeMutation.isPending}
-                  onClick={() => upgradeMutation.mutate()}
+                {appLockBusy && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />}
+                <Switch
+                  checked={appLockEnabled}
+                  disabled={appLockBusy || !appLockSupported}
+                  onCheckedChange={handleToggleAppLock}
+                />
+              </div>
+              {canDeleteAccount && (
+                <button
+                  onClick={() => { if (!openOnWebsite('/supprimer-mon-compte')) navigate('/supprimer-mon-compte'); }}
+                  className="flex items-center gap-3 w-full px-6 py-3.5 hover:bg-destructive/5 transition-colors text-left border-t border-border"
                 >
-                  {upgradeMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
-                  Confirmer
-                </Button>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Create an organization */}
-      {user?.role === 'client' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-primary" />
-              Créer mon organisation
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {!showOrgForm ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  Pour une entreprise qui gère plusieurs comptes. La gestion multi-boutiques n'est pas encore disponible.
-                </p>
-                <Button variant="outline" className="w-full" onClick={() => setShowOrgForm(true)}>
-                  Créer mon organisation
-                </Button>
-              </>
-            ) : (
-              <>
-                {orgError && (
-                  <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
-                    {orgError}
+                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive"><Trash2 className="h-[18px] w-[18px]" /></span>
+                  <div className="flex-1">
+                    <p className="font-medium text-sm text-destructive">Supprimer mon compte</p>
+                    <p className="text-xs text-muted-foreground">Sur le site ScanLinkPay : dites-nous pourquoi, puis confirmez.</p>
                   </div>
-                )}
-                <div className="space-y-2">
-                  <Label htmlFor="org_name_settings">Nom de l'organisation</Label>
-                  <Input
-                    id="org_name_settings"
-                    placeholder="Tech Solutions SARL"
-                    value={orgForm.name}
-                    onChange={(e) => setOrgForm({ ...orgForm, name: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="org_legal_name_settings">Raison sociale (optionnel)</Label>
-                  <Input
-                    id="org_legal_name_settings"
-                    value={orgForm.legal_name}
-                    onChange={(e) => setOrgForm({ ...orgForm, legal_name: e.target.value })}
-                  />
-                </div>
-                <Button
-                  className="w-full"
-                  disabled={!orgForm.name || orgMutation.isPending}
-                  onClick={() => orgMutation.mutate()}
-                >
-                  {orgMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
-                  Confirmer
-                </Button>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                </button>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
+        {/* ── Colonne droite : app, données, rôle ── */}
         <div className="space-y-6 min-w-0">
-      {/* General settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Général</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
-            <Moon className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-            <div className="flex-1">
-              <p className="font-medium text-sm text-foreground">Thème sombre</p>
-              <p className="text-xs text-muted-foreground">Réduit la luminosité de l'interface.</p>
-            </div>
-            <Switch checked={effectiveTheme === 'dark'} onCheckedChange={toggleTheme} />
-          </div>
-          <AccessCodeSettings />
-          <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
-            <Fingerprint className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-            <div className="flex-1">
-              <p className="font-medium text-sm text-foreground">Déverrouillage biométrique</p>
-              <p className="text-xs text-muted-foreground">
-                {!appLockSupported
-                  ? 'Non disponible sur cet appareil/navigateur.'
-                  : "Raccourci : empreinte ou visage à la place du code d'accès."}
-              </p>
-              {appLockError && (
-                <p className="text-xs text-destructive mt-1">{appLockError}</p>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Application</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-sky-500/10 text-sky-500"><Bell className="h-[18px] w-[18px]" /></span>
+                <div className="flex-1">
+                  <p className="font-medium text-sm text-foreground">Notifications push</p>
+                  <p className="text-xs text-muted-foreground">
+                    {pushPermission === 'unsupported'
+                      ? "Non disponible sur cet appareil/navigateur."
+                      : pushPermission === 'denied'
+                      ? 'Bloquées — réactivez-les depuis les réglages de votre navigateur.'
+                      : 'Recevez une alerte même quand l\'app est fermée.'}
+                  </p>
+                </div>
+                {pushBusy && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />}
+                <Switch
+                  checked={pushEnabled}
+                  disabled={pushBusy || pushPermission === 'unsupported' || pushPermission === 'denied'}
+                  onCheckedChange={handleTogglePush}
+                />
+              </div>
+              <button
+                onClick={() => navigate('/dashboard/sync')}
+                className="flex items-center gap-3 w-full px-6 py-3.5 hover:bg-accent transition-colors text-left border-b border-border"
+              >
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><CloudUpload className="h-[18px] w-[18px]" /></span>
+                <div className="flex-1">
+                  <p className="font-medium text-sm text-foreground">Synchronisation</p>
+                  <p className={cn('text-xs', failedOps ? 'text-destructive' : 'text-muted-foreground')}>
+                    {failedOps
+                      ? `${failedOps} opération${failedOps > 1 ? 's' : ''} refusée${failedOps > 1 ? 's' : ''} : à vérifier`
+                      : pendingOps
+                      ? `${pendingOps} opération${pendingOps > 1 ? 's' : ''} en attente d'envoi`
+                      : 'Tout ce qui a été fait hors ligne est envoyé.'}
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              </button>
+              <button
+                onClick={() => setShowHelp(!showHelp)}
+                className="flex items-center gap-3 w-full px-6 py-3.5 hover:bg-accent transition-colors text-left border-b border-border"
+              >
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><HelpCircle className="h-[18px] w-[18px]" /></span>
+                <span className="flex-1 font-medium text-sm text-foreground">Aide & support</span>
+                <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition-transform', showHelp && 'rotate-90')} />
+              </button>
+              {showHelp && (
+                <div className="px-6 py-3.5 border-b border-border bg-secondary/50 space-y-2.5">
+                  <p className="text-sm text-muted-foreground">Besoin d'aide ? Contactez le support ScanLinkPay :</p>
+                  <SupportContactList />
+                </div>
               )}
-            </div>
-            {appLockBusy && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />}
-            <Switch
-              checked={appLockEnabled}
-              disabled={appLockBusy || !appLockSupported}
-              onCheckedChange={handleToggleAppLock}
-            />
-          </div>
-          <div className="flex items-center gap-3 w-full px-6 py-3.5 border-b border-border">
-            <Bell className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-            <div className="flex-1">
-              <p className="font-medium text-sm text-foreground">Notifications push</p>
-              <p className="text-xs text-muted-foreground">
-                {pushPermission === 'unsupported'
-                  ? "Non disponible sur cet appareil/navigateur."
-                  : pushPermission === 'denied'
-                  ? 'Bloquées — réactivez-les depuis les réglages de votre navigateur.'
-                  : 'Recevez une alerte même quand l\'app est fermée.'}
-              </p>
-            </div>
-            {pushBusy && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />}
-            <Switch
-              checked={pushEnabled}
-              disabled={pushBusy || pushPermission === 'unsupported' || pushPermission === 'denied'}
-              onCheckedChange={handleTogglePush}
-            />
-          </div>
-          <button
-            onClick={() => setShowHelp(!showHelp)}
-            className="flex items-center gap-3 w-full px-6 py-3.5 hover:bg-accent transition-colors text-left border-b border-border"
-          >
-            <HelpCircle className="w-5 h-5 text-muted-foreground" />
-            <span className="flex-1 font-medium text-sm text-foreground">Aide & support</span>
-            <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition-transform', showHelp && 'rotate-90')} />
-          </button>
-          {showHelp && (
-            <p className="px-6 py-3.5 text-sm text-muted-foreground border-b border-border bg-secondary/50">
-              Besoin d'aide ? Contactez-nous à support@linkpay.cd ou au +243 800 000 000.
-            </p>
+              <button
+                onClick={() => setShowTerms(!showTerms)}
+                className="flex items-center gap-3 w-full px-6 py-3.5 hover:bg-accent transition-colors text-left"
+              >
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground"><FileText className="h-[18px] w-[18px]" /></span>
+                <span className="flex-1 font-medium text-sm text-foreground">Conditions générales</span>
+                <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition-transform', showTerms && 'rotate-90')} />
+              </button>
+              {showTerms && (
+                <p className="px-6 py-3.5 text-sm text-muted-foreground bg-secondary/50">
+                  En utilisant ScanLinkPay, vous acceptez nos conditions d'utilisation et notre{' '}
+                  <button type="button" className="font-semibold text-primary underline underline-offset-2" onClick={() => navigate('/confidentialite')}>politique de confidentialité</button>.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {user?.role === 'super_admin' && <SupportContactsCard />}
+
+          {user?.role === 'client' && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Store className="w-4 h-4 text-primary" />
+                  Devenir marchand
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {!showUpgradeForm ? (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      Créez votre boutique pour recevoir des paiements via lien et QR code.
+                    </p>
+                    <Button className="w-full" onClick={() => setShowUpgradeForm(true)}>
+                      Créer ma boutique
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {upgradeError && (
+                      <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
+                        {upgradeError}
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <Label htmlFor="store_name">Nom de la boutique</Label>
+                      <Input
+                        id="store_name"
+                        placeholder="Boutique Mukendi"
+                        value={store.name}
+                        onChange={(e) => setStore({ ...store, name: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="store_phone">Téléphone</Label>
+                      <Input
+                        id="store_phone"
+                        placeholder="+243 8XX XXX XXX"
+                        value={store.phone}
+                        onChange={(e) => setStore({ ...store, phone: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="store_city">Ville</Label>
+                      <Input
+                        id="store_city"
+                        placeholder="Kinshasa"
+                        value={store.city}
+                        onChange={(e) => setStore({ ...store, city: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Devise par défaut</Label>
+                      <CurrencySelector value={store.default_currency} onChange={(c) => setStore({ ...store, default_currency: c })} />
+                    </div>
+                    <Button
+                      className="w-full"
+                      disabled={!store.name || upgradeMutation.isPending}
+                      onClick={() => upgradeMutation.mutate()}
+                    >
+                      {upgradeMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
+                      Confirmer
+                    </Button>
+                  </>
+                )}
+              </CardContent>
+            </Card>
           )}
-          <button
-            onClick={() => setShowTerms(!showTerms)}
-            className="flex items-center gap-3 w-full px-6 py-3.5 hover:bg-accent transition-colors text-left"
-          >
-            <FileText className="w-5 h-5 text-muted-foreground" />
-            <span className="flex-1 font-medium text-sm text-foreground">Conditions générales</span>
-            <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition-transform', showTerms && 'rotate-90')} />
-          </button>
-          {showTerms && (
-            <p className="px-6 py-3.5 text-sm text-muted-foreground bg-secondary/50">
-              En utilisant ScanLinkPay, vous acceptez nos conditions d'utilisation et notre politique de confidentialité.
-            </p>
+
+          {user?.role === 'client' && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-primary" />
+                  Créer mon organisation
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {!showOrgForm ? (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      Pour une entreprise qui gère plusieurs comptes. La gestion multi-boutiques n'est pas encore disponible.
+                    </p>
+                    <Button variant="outline" className="w-full" onClick={() => setShowOrgForm(true)}>
+                      Créer mon organisation
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {orgError && (
+                      <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
+                        {orgError}
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <Label htmlFor="org_name_settings">Nom de l'organisation</Label>
+                      <Input
+                        id="org_name_settings"
+                        placeholder="Tech Solutions SARL"
+                        value={orgForm.name}
+                        onChange={(e) => setOrgForm({ ...orgForm, name: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="org_legal_name_settings">Raison sociale (optionnel)</Label>
+                      <Input
+                        id="org_legal_name_settings"
+                        value={orgForm.legal_name}
+                        onChange={(e) => setOrgForm({ ...orgForm, legal_name: e.target.value })}
+                      />
+                    </div>
+                    <Button
+                      className="w-full"
+                      disabled={!orgForm.name || orgMutation.isPending}
+                      onClick={() => orgMutation.mutate()}
+                    >
+                      {orgMutation.isPending && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
+                      Confirmer
+                    </Button>
+                  </>
+                )}
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
         </div>
       </div>
 
-      {/* Footer logo */}
       <div className="flex justify-center pt-4">
         <Logo size="sm" />
       </div>

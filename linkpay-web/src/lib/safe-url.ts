@@ -12,7 +12,7 @@ export function checkoutUrl(url: unknown): string {
 }
 
 /** Our own "payment result" pages: they only ask the API what happened, so they can be shown inside the app. */
-const OWN_RESULT_PAGES = ['/dashboard/wallet/topup/result', '/dashboard/expenses/pro/result', '/payment/result'];
+const OWN_RESULT_PAGES = ['/dashboard/wallet/topup/result', '/dashboard/wallet/send/result', '/dashboard/expenses/pro/result', '/payment/result'];
 
 /**
  * Where to go after the API returned a payment address. Mobile Money has no payment page of the provider: the address

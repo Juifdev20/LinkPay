@@ -9,36 +9,60 @@ import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { FormSheet } from '@/components/FormSheet';
-import { shareOrCopy } from '@/lib/share';
+import { shareOrCopy, publicOrigin } from '@/lib/share';
+import { useAuthStore } from '@/lib/auth-store';
 import { Loader2, Copy, Check, Share2, Download } from 'lucide-react';
 
 /**
- * The symmetric counterpart to Send.tsx: shows this user's own ScanLinkPay
- * wallet number as a QR (scanned by ScanQr.tsx, which routes a recognized
- * wallet number into Send.tsx pre-filled) plus the number itself for
- * manual entry — same "scan, or type the code" pattern already used for
- * merchant payment requests (see PaymentRequestShareCard.tsx).
+ * The symmetric counterpart to Send.tsx — shows this account's payable code
+ * (scanned by ScanQr.tsx or typed manually):
+ *  - client: their personal wallet number (SLP-CLI-…), paid via a wallet
+ *    transfer.
+ *  - merchant: their business ScanLinkPay number (SLP-…, migration 061),
+ *    encoded as the public /pay/{number} link — the customer pays through
+ *    the real payment-request flow (quick-pay), so the sale counts in the
+ *    store's stats and the commission applies, exactly like paying an
+ *    organization. The plain wallet transfer number deliberately isn't
+ *    shown here anymore: it skipped all of that.
  */
 export default function ReceivePage() {
   const navigate = useNavigate();
+  const merchantId = useAuthStore((s) => s.user?.merchant_id);
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const { data: wallet, isLoading } = useQuery({
+  const { data: wallet, isLoading: walletLoading } = useQuery({
     queryKey: ['wallet'],
     queryFn: async () => (await api.get('/wallet')).data,
   });
 
+  const { data: merchant, isLoading: merchantLoading } = useQuery({
+    queryKey: ['merchant-me'],
+    queryFn: async () => (await api.get('/merchants/me')).data,
+    enabled: !!merchantId,
+  });
+
+  const isMerchant = !!merchantId;
+  // Merchants get the business number; if migration 061 hasn't run yet the
+  // column is absent and the wallet number keeps the screen usable.
+  const businessNumber = merchant?.scanlinkpay_number;
+  const number = businessNumber || wallet?.wallet_number;
+  // The QR carries the full /pay/… URL for a business number (same content
+  // as the server-generated scanlinkpay_qr_url) and the bare number for a
+  // personal wallet — each matches what ScanQr.tsx expects.
+  const qrPayload = businessNumber ? `${publicOrigin()}/pay/${businessNumber}` : number;
+  const isLoading = isMerchant ? merchantLoading || walletLoading : walletLoading;
+
   useEffect(() => {
-    if (!wallet?.wallet_number) return;
-    QRCode.toDataURL(wallet.wallet_number, { width: 320, margin: 2, color: { dark: '#0F172A', light: '#FFFFFF' } })
+    if (!qrPayload) return;
+    QRCode.toDataURL(qrPayload, { width: 320, margin: 2, color: { dark: '#0F172A', light: '#FFFFFF' } })
       .then(setQrDataUrl)
       .catch(() => setQrDataUrl(''));
-  }, [wallet?.wallet_number]);
+  }, [qrPayload]);
 
   const copyNumber = () => {
-    if (!wallet?.wallet_number) return;
-    navigator.clipboard.writeText(wallet.wallet_number);
+    if (!number) return;
+    navigator.clipboard.writeText(number);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -68,15 +92,14 @@ export default function ReceivePage() {
   };
 
   const share = async () => {
-    if (!wallet?.wallet_number) return;
-    const text = `Envoyez-moi de l'argent sur ScanLinkPay avec mon numéro : ${wallet.wallet_number}`;
+    if (!number) return;
+    const text = businessNumber
+      ? `Payez ${merchant?.name || 'ma boutique'} via ScanLinkPay avec le numéro : ${number}`
+      : `Envoyez-moi de l'argent sur ScanLinkPay avec mon numéro : ${number}`;
 
     if (Capacitor.isNativePlatform()) {
       // Native share sheet — reliable regardless of the WebView's
       // navigator.share support, and can attach the QR image directly.
-      // No `url` here: window.location.origin inside the app is
-      // "https://localhost" (Capacitor's internal bridge host), not a real
-      // address — sharing it would hand the recipient a dead link.
       const files = qrDataUrl ? [await writeQrToCache()] : undefined;
       await Share.share({ title: 'Mon numéro ScanLinkPay', text, files });
       return;
@@ -85,7 +108,7 @@ export default function ReceivePage() {
     const method = await shareOrCopy({
       title: 'Mon numéro ScanLinkPay',
       text,
-      url: window.location.origin,
+      url: businessNumber ? `${publicOrigin()}/pay/${number}` : window.location.origin,
     });
     if (method === 'copy') {
       setCopied(true);
@@ -94,17 +117,25 @@ export default function ReceivePage() {
   };
 
   return (
-    <FormSheet onClose={() => navigate(-1)} title="Recevoir de l'argent">
+    <FormSheet fullPage onClose={() => navigate(-1)} title={isMerchant ? 'Encaisser' : "Recevoir de l'argent"}>
       <div className="p-6 max-w-md mx-auto text-center">
-        <h2 className="text-xl font-bold text-foreground mb-1">Recevoir de l'argent</h2>
+        <h2 className="text-xl font-bold text-foreground mb-1">
+          {isMerchant ? 'Encaisser un paiement' : "Recevoir de l'argent"}
+        </h2>
         <p className="text-sm text-muted-foreground mb-6">
-          Montrez ce QR ou communiquez votre numéro pour recevoir un virement
+          {businessNumber
+            ? 'Le client scanne ce QR ou saisit ce numéro, choisit le montant, et vous êtes payé — compté comme une vente'
+            : 'Montrez ce QR ou communiquez votre numéro pour recevoir un paiement'}
         </p>
 
         {isLoading ? (
           <div className="py-16">
             <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
           </div>
+        ) : !number ? (
+          <p className="text-sm text-muted-foreground py-16">
+            Votre numéro ScanLinkPay n'est pas encore disponible.
+          </p>
         ) : (
           <Card>
             <CardContent className="pt-6">
@@ -114,8 +145,10 @@ export default function ReceivePage() {
                 </div>
               )}
               <div className="mb-4">
-                <p className="text-xs text-muted-foreground mb-1">Votre numéro ScanLinkPay</p>
-                <p className="font-mono text-xl font-bold tracking-wider text-foreground">{wallet?.wallet_number}</p>
+                <p className="text-xs text-muted-foreground mb-1">
+                  {businessNumber ? 'Numéro ScanLinkPay de votre boutique' : 'Votre numéro ScanLinkPay'}
+                </p>
+                <p className="font-mono text-xl font-bold tracking-wider text-foreground">{number}</p>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" className="flex-1" onClick={copyNumber}>

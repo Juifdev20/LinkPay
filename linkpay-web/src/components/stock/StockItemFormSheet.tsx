@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { FormSheet } from '@/components/FormSheet';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,8 @@ import { getSectorConfig } from '@/lib/stock-categories';
 import { BarcodeScannerView } from '@/components/BarcodeScannerView';
 import { beepOk, generateInStoreEan13, isInStoreEan13 } from '@/lib/barcode';
 import { ProductLabelSheet, clampLabels, MAX_LABELS } from './ProductLabelSheet';
+import { formatCurrency } from '@/lib/utils';
+import { marginOf, formatPercent } from '@/lib/margin';
 
 const CONDITIONS = [
   { value: 'neuf', label: 'Neuf' },
@@ -18,7 +20,7 @@ const CONDITIONS = [
   { value: 'reconditionne', label: 'Reconditionné' },
 ];
 
-/** Category select value meaning "type my own". */
+/** Category / supplier select value meaning "type my own". */
 const OTHER = '__autre__';
 
 export type StockItemFormValues = {
@@ -36,8 +38,14 @@ export type StockItemFormValues = {
   description: string;
   quantity: string;
   unit_price: string;
+  /** Purchase price (optional) — the margin is worked out from it. Never shown to sellers. */
+  cost_price: string;
   currency: 'CDF' | 'USD';
   low_stock_threshold: string;
+  /** Supplier picked from the enterprise's list ('' = none). */
+  supplier_id: string;
+  /** Supplier typed by hand (added to the list on save). */
+  supplier_name: string;
 };
 
 export const emptyStockItemForm: StockItemFormValues = {
@@ -55,8 +63,11 @@ export const emptyStockItemForm: StockItemFormValues = {
   description: '',
   quantity: '',
   unit_price: '',
+  cost_price: '',
   currency: 'CDF',
   low_stock_threshold: '5',
+  supplier_id: '',
+  supplier_name: '',
 };
 
 /**
@@ -117,6 +128,15 @@ export function StockItemFormSheet({
   const knownCategory = !form.category || config.categories.some((c) => c.value === form.category);
   const [customCategory, setCustomCategory] = useState(!knownCategory);
 
+  // Suppliers of the enterprise (all sectors, optional). Typing a new one adds it to the list on save.
+  const { data: suppliers } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['org-suppliers', orgId],
+    queryFn: async () => (await api.get(`/organizations/${orgId}/suppliers`)).data,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const [customSupplier, setCustomSupplier] = useState(false);
+
   const set = <K extends keyof StockItemFormValues>(key: K, value: StockItemFormValues[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
@@ -128,6 +148,9 @@ export function StockItemFormSheet({
   // product is complete: the save button then saves AND prints, so a label
   // never comes out for a product without a price or not yet saved.
   const priceCents = form.unit_price ? Math.round(parseFloat(form.unit_price) * 100) : 0;
+  const costCents = form.cost_price.trim() === '' ? null : Math.round(parseFloat(form.cost_price) * 100);
+  const costValid = costCents === null || (Number.isFinite(costCents) && costCents >= 0);
+  const margin = costValid ? marginOf(priceCents, costCents) : null;
   const needsLabel = isInStoreEan13(form.barcode) && form.barcode !== initial.barcode;
   const labelOnSave = needsLabel && !!form.name && priceCents > 0;
   const qtyNumber = Math.max(0, Math.floor(Number(form.quantity) || 0));
@@ -154,6 +177,14 @@ export function StockItemFormSheet({
         unit_price_cents: priceCents,
         currency: form.currency,
         low_stock_threshold: form.low_stock_threshold ? Number(form.low_stock_threshold) : 5,
+        // Optional purchase price: emptied while editing → removed (null), never 0.
+        ...(costCents !== null ? { cost_price_cents: costCents } : isEditing && initial.cost_price !== '' ? { cost_price_cents: null } : {}),
+        // Optional supplier: typed by hand, picked from the list, or removed while editing.
+        ...(customSupplier
+          ? (form.supplier_name.trim() ? { supplier_name: form.supplier_name.trim() } : {})
+          : form.supplier_id
+            ? { supplier_id: form.supplier_id }
+            : isEditing && initial.supplier_id ? { supplier_id: null } : {}),
         // Electronics-only fields — never sent for other sectors.
         ...(technical && {
           item_type: form.item_type || undefined,
@@ -176,6 +207,7 @@ export function StockItemFormSheet({
       queryClient.invalidateQueries({ queryKey: ['org-stock-summary', orgId] });
       // The till's catalog must show the new/changed product right away.
       queryClient.invalidateQueries({ queryKey: ['pos-catalog'] });
+      queryClient.invalidateQueries({ queryKey: ['org-suppliers', orgId] });
       if (labelOnSave) {
         // Print from what the server actually saved — never from a draft.
         setSavedLabel({
@@ -194,7 +226,7 @@ export function StockItemFormSheet({
     },
   });
 
-  const canSave = !!form.name.trim() && !!effectiveMerchantId && priceCents > 0 && !saveMutation.isPending;
+  const canSave = !!form.name.trim() && !!effectiveMerchantId && priceCents > 0 && costValid && !saveMutation.isPending;
 
   return (
     <FormSheet onClose={onClose} title={isEditing ? "Modifier l'article" : 'Nouvel article'}>
@@ -203,7 +235,7 @@ export function StockItemFormSheet({
 
         {merchants.length > 1 && (
           <div className="space-y-1.5">
-            <Label>Boutique</Label>
+            <Label>Station</Label>
             <Select value={form.merchant_id} onChange={(e) => set('merchant_id', e.target.value)}>
               <option value="">Sélectionner…</option>
               {merchants.map((m) => (
@@ -324,6 +356,61 @@ export function StockItemFormSheet({
               <option value="USD">USD</option>
             </Select>
           </div>
+        </div>
+
+        {/* Purchase price (optional), same currency — the margin follows as it is typed. */}
+        <div className="space-y-1.5">
+          <Label htmlFor="stock_cost">Prix d'achat <span className="text-muted-foreground font-normal">(facultatif)</span></Label>
+          <Input id="stock_cost" type="number" inputMode="decimal" min={0} placeholder="0" value={form.cost_price} onChange={(e) => set('cost_price', e.target.value)} />
+          <p className={`text-xs ${margin && margin.cents < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+            {!costValid
+              ? "Prix d'achat invalide."
+              : margin
+                ? `Marge : ${formatCurrency(margin.cents, form.currency)} par unité (${formatPercent(margin.percent)} du prix de vente)${margin.cents < 0 ? ' — vendu à perte' : ''}.`
+                : "Ce que l'article vous coûte, en " + form.currency + ' : la marge est calculée toute seule. Les vendeurs et caissiers ne le voient pas.'}
+          </p>
+        </div>
+
+        {/* Supplier (optional) — from the enterprise's list, or typed by hand. */}
+        <div className="space-y-1.5">
+          <Label htmlFor="stock_supplier">Fournisseur <span className="text-muted-foreground font-normal">(facultatif)</span></Label>
+          <Select
+            id="stock_supplier"
+            value={customSupplier ? OTHER : form.supplier_id}
+            onChange={(e) => {
+              if (e.target.value === OTHER) {
+                setCustomSupplier(true);
+                set('supplier_id', '');
+                set('supplier_name', '');
+              } else {
+                setCustomSupplier(false);
+                set('supplier_name', '');
+                set('supplier_id', e.target.value);
+              }
+            }}
+          >
+            <option value="">Aucun fournisseur</option>
+            {(suppliers || []).map((sup) => (
+              <option key={sup.id} value={sup.id}>{sup.name}</option>
+            ))}
+            {/* A product's supplier taken off the list stays shown while editing. */}
+            {form.supplier_id && !(suppliers || []).some((sup) => sup.id === form.supplier_id) && initial.supplier_name && (
+              <option value={form.supplier_id}>{initial.supplier_name}</option>
+            )}
+            <option value={OTHER}>Nouveau fournisseur…</option>
+          </Select>
+          {customSupplier && (
+            <Input
+              placeholder="Nom du fournisseur"
+              maxLength={120}
+              value={form.supplier_name}
+              onChange={(e) => set('supplier_name', e.target.value)}
+              autoFocus
+            />
+          )}
+          {customSupplier && (
+            <p className="text-xs text-muted-foreground">Il sera ajouté à la liste de vos fournisseurs.</p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">

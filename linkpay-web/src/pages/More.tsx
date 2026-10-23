@@ -4,10 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, LogOut } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
-import { navItemsFor } from '@/lib/nav-items';
+import { groupNavItems, menuFor, navItemsFor, SYNC_NAV_ITEM } from '@/lib/nav-items';
+import { usePendingCount } from '@/lib/outbox';
 import { computeVisibleTabs } from '@/components/BottomNav';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
 import { SECTORS } from '@/pages/organization/OnboardingWizard';
+import { UserAvatar } from '@/components/UserAvatar';
+import { ROLE_LABELS } from '@/lib/permissions';
 
 /**
  * The "Plus" tab's destination — a plain page (not a modal or drawer) that
@@ -17,47 +20,6 @@ import { SECTORS } from '@/pages/organization/OnboardingWizard';
  * stays out of this list. Profile card on top, sectioned rows with
  * chevrons below — the classic mobile "More" screen.
  */
-
-// Sections keep the navItems order; each item lands in the FIRST section
-// it matches only — otherwise the same entry renders twice. Grouped by
-// business domain so a rich module (enterprise) stays scannable.
-const SECTIONS: { title: string; match: (to: string) => boolean }[] = [
-  {
-    title: 'Ventes & stock',
-    match: (to) =>
-      to.startsWith('/dashboard/organization/sales') ||
-      to === '/dashboard/organization/stock' ||
-      to === '/dashboard/organization/inventory' ||
-      to === '/dashboard/pos',
-  },
-  {
-    title: 'Rapports',
-    match: (to) =>
-      to === '/dashboard/organization/stats' ||
-      to === '/dashboard/organization/audit' ||
-      to === '/dashboard/organization/transactions',
-  },
-  {
-    title: 'Services',
-    match: (to) =>
-      to.startsWith('/dashboard/tontines') ||
-      to.startsWith('/dashboard/savings') ||
-      to.startsWith('/dashboard/expenses') ||
-      to.startsWith('/dashboard/payment-requests') ||
-      to.startsWith('/dashboard/team') ||
-      to.startsWith('/dashboard/wallet') ||
-      to.startsWith('/dashboard/card') ||
-      to.startsWith('/dashboard/client/'),
-  },
-  {
-    title: 'Organisation',
-    match: (to) =>
-      to === '/dashboard/organization/profile' ||
-      to === '/dashboard/organization/stores' ||
-      to === '/dashboard/organization/staff',
-  },
-  { title: 'Compte', match: () => true },
-];
 
 export default function MorePage() {
   const user = useAuthStore((s) => s.user);
@@ -85,19 +47,19 @@ export default function MorePage() {
   ]);
 
   const moreItems = role
-    ? navItemsFor(role, org?.sector).filter((i) => !visiblePaths.has(i.to))
+    ? // A group stays even when its first page is in the bottom bar: its other pages are only reachable through it.
+      menuFor(role, navItemsFor(role, org?.sector)).filter((i) => i.children || !(visiblePaths.has(i.to) || (i.to === '/dashboard/admin' && visiblePaths.has('/dashboard'))))
     : [];
 
-  const sections = SECTIONS.map((s) => ({ ...s, items: [] as typeof moreItems }));
-  for (const item of moreItems) {
-    sections.find((s) => s.match(item.to))?.items.push(item);
-  }
-  const filledSections = sections.filter((s) => s.items.length > 0);
+  // Same sections as the computer's sidebar (lib/nav-items.ts); Synchronisation only while something waits.
+  const pendingOps = usePendingCount();
+  const filledSections = groupNavItems(pendingOps && moreItems.length ? [...moreItems, SYNC_NAV_ITEM] : moreItems)
+    .map((s) => ({ ...s, title: s.title || (s.id === 'system' ? 'Application' : 'Accueil') }));
 
   const displayName = org?.name || user?.full_name || user?.email || '?';
   const displaySub = org
-    ? SECTORS.find((s) => s.value === org.sector)?.label || org.sector
-    : role;
+    ? user?.station_name || SECTORS.find((s) => s.value === org.sector)?.label || org.sector
+    : (role && ROLE_LABELS[role]) || role;
   const initial = displayName.charAt(0).toUpperCase();
 
   return (
@@ -105,17 +67,21 @@ export default function MorePage() {
       {/* Profile card — same leading slot as the reference "More" screens:
           org identity for business accounts, user identity otherwise. */}
       <div className="rounded-2xl border border-border bg-card p-5 flex items-center gap-4">
-        <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-          <span className="text-xl font-bold text-primary">{initial}</span>
-        </div>
+        {org ? (
+          <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <span className="text-xl font-bold text-primary">{initial}</span>
+          </div>
+        ) : (
+          <UserAvatar className="w-14 h-14" />
+        )}
         <div className="min-w-0">
           <p className="font-bold text-foreground truncate">{displayName}</p>
-          <p className="text-sm text-muted-foreground capitalize truncate">{displaySub}</p>
+          <p className="text-sm text-muted-foreground truncate">{displaySub}</p>
         </div>
       </div>
 
       {filledSections.map((section) => (
-        <div key={section.title}>
+        <div key={section.id}>
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 px-1">
             {section.title}
           </p>
@@ -132,6 +98,9 @@ export default function MorePage() {
               >
                 <item.icon className="w-5 h-5 text-muted-foreground flex-shrink-0" />
                 <span className="flex-1 text-sm font-medium">{item.label}</span>
+                {item.to === SYNC_NAV_ITEM.to && (
+                  <span className="rounded-full bg-destructive px-2 py-0.5 text-[11px] font-bold text-destructive-foreground">{pendingOps}</span>
+                )}
                 <ChevronRight className="w-4 h-4 text-muted-foreground" />
               </NavLink>
             ))}

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
-import { User } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import { NotificationsBell } from '@/components/NotificationsBell';
+import { UserAvatar } from '@/components/UserAvatar';
 
 /**
  * Fixed (not just sticky) top bar for mobile — stays perfectly still while
@@ -23,19 +23,15 @@ export function TopBar() {
     // phones, extra space above the notch/status bar otherwise), the inner
     // div carries the actual visual padding so the bar never looks cramped
     // on ordinary devices.
-    <div className="md:hidden fixed top-0 left-0 right-0 z-50 border-b border-border bg-card shadow-nav rounded-b-3xl safe-area-top">
-      <div className="flex items-center justify-between px-4 py-3">
+    <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-b border-border safe-area-top">
+      <div className="flex items-center justify-between px-5 py-3">
         <div className="flex items-center gap-2">
           <Logo size="sm" />
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <NotificationsBell />
-          <Link
-            to="/dashboard/profile"
-            className="w-10 h-10 rounded-xl hover:bg-accent flex items-center justify-center transition-colors"
-            aria-label="Profil"
-          >
-            <User className="w-5 h-5 text-muted-foreground" />
+          <Link to="/dashboard/profile" className="rounded-full transition-transform active:scale-95" aria-label="Profil">
+            <UserAvatar />
           </Link>
         </div>
       </div>

@@ -15,6 +15,18 @@ export const BACKGROUND_LOCK_MS = 15_000;
 export const IDLE_CHOICES_MIN = [1, 3, 5, 15] as const;
 export const DEFAULT_IDLE_MIN = 3;
 const IDLE_KEY = 'linkpay_idle_lock_min';
+const PIN_SESSION_KEY = 'linkpay_pin_session_disabled';
+
+/** True when the user has chosen to skip the PIN on launch/background/idle. */
+export function isPinSessionDisabled(): boolean {
+  try { return localStorage.getItem(PIN_SESSION_KEY) === '1'; } catch { return false; }
+}
+export function setPinSessionDisabled(disabled: boolean) {
+  try {
+    if (disabled) localStorage.setItem(PIN_SESSION_KEY, '1');
+    else localStorage.removeItem(PIN_SESSION_KEY);
+  } catch { /* storage unavailable */ }
+}
 
 export function getIdleLockMinutes(): number {
   try {
@@ -38,7 +50,7 @@ export function setIdleLockMinutes(min: number) {
  * administrators: they have the authenticator-app login instead.
  * Employees are never interrupted mid-work: see SALES_ROUTE_PREFIXES below.
  */
-export const APP_CODE_ROLES = ['client', 'merchant', 'enterprise', 'cashier', 'vendeur', 'caissier', 'magasinier', 'comptable'];
+export const APP_CODE_ROLES = ['client', 'merchant', 'enterprise', 'cashier', 'gerant', 'vendeur', 'caissier', 'magasinier', 'comptable'];
 export const appCodeApplies = (role?: string) => !!role && APP_CODE_ROLES.includes(role);
 
 /**

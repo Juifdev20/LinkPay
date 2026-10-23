@@ -109,16 +109,6 @@ const SUPERMARKET_CATEGORIES: StockCategory[] = [
   aisle('Autre', Package),
 ];
 
-const FOOD_CATEGORIES: StockCategory[] = [
-  aisle('Alimentation', ShoppingBasket),
-  aisle('Boissons', CupSoda),
-  aisle('Boulangerie', Croissant),
-  aisle('Produits frais & laitiers', Milk),
-  aisle('Fruits & légumes', Apple),
-  aisle('Viande & poisson', Beef),
-  aisle('Autre', Package),
-];
-
 export type SectorConfig = {
   categories: StockCategory[];
   /** Electronics-only spec fields: brand, model, serial/IMEI, condition,
@@ -133,10 +123,7 @@ export function getSectorConfig(sector?: string | null): SectorConfig {
   if (sector === 'electronique') {
     return { categories: STOCK_CATEGORIES, technicalFields: true, namePlaceholder: 'Samsung Galaxy A54' };
   }
-  if (sector === 'alimentation') {
-    return { categories: FOOD_CATEGORIES, technicalFields: false, namePlaceholder: 'Farine de maïs 25 kg' };
-  }
-  // Supermarket — also the default: the simplest sheet.
+  // Supermarket & food shops (one sector, see lib/sectors.ts) — also the default: the simplest sheet.
   return { categories: SUPERMARKET_CATEGORIES, technicalFields: false, namePlaceholder: 'Riz parfumé 5 kg' };
 }
 

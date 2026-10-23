@@ -61,10 +61,10 @@ export default function ExpenseTrackerSettingsPage() {
   }
 
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-xl mx-auto">
+    <div className="p-4 pb-28 md:p-6 md:pb-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader title="Gestion de dépenses — Configuration" />
 
-      <Card>
+      <Card className="lg:max-w-2xl">
         <CardHeader>
           <CardTitle className="text-base">Essai gratuit et abonnement Pro</CardTitle>
         </CardHeader>
@@ -96,7 +96,7 @@ export default function ExpenseTrackerSettingsPage() {
               onChange={(e) => setForm({ ...form, monthly_price: e.target.value })}
             />
           </div>
-          <Button className="w-full" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+          <Button className="w-full sm:w-auto" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
             {saveMutation.isPending ? (
               <Loader2 className="mr-2 w-4 h-4 animate-spin" />
             ) : saved ? (

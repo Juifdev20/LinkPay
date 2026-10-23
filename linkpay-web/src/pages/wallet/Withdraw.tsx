@@ -9,21 +9,21 @@ import { Card, CardContent } from '@/components/ui/card';
 import { PinInput } from '@/components/PinInput';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { MobileMoneyFields } from '@/components/payment/MobileMoneyFields';
-import { displayPhone, isNumberReady, operatorById, toApiPhone } from '@/lib/mobile-money';
+import { MOBILE_MONEY_OPERATORS, displayPhone, isNumberReady, operatorById, toApiPhone } from '@/lib/mobile-money';
 import { ACCOUNT_DIGITS, BANK_DELAY_HOURS, accountDigits, formatAccountInput, isAccountComplete, isHolderName } from '@/lib/banks';
 import { useAuthStore } from '@/lib/auth-store';
 import { Select } from '@/components/ui/select';
 import { formatCurrency, cn } from '@/lib/utils';
 import { FormSheet } from '@/components/FormSheet';
-import { Loader2, Check, Clock, ArrowLeft, ArrowUpFromLine, Smartphone, Landmark } from 'lucide-react';
+import { Loader2, Check, Clock, ArrowLeft, Smartphone, Landmark, ChevronRight } from 'lucide-react';
 
-type Step = 'amount' | 'destination' | 'confirm' | 'pin' | 'processing' | 'success';
+type Step = 'point' | 'amount' | 'destination' | 'confirm' | 'pin' | 'processing' | 'success';
 
 export default function WithdrawPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
-  const [step, setStep] = useState<Step>('amount');
+  const [step, setStep] = useState<Step>('point');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState<'CDF' | 'USD'>(
     searchParams.get('currency') === 'USD' ? 'USD' : 'CDF',
@@ -316,41 +316,85 @@ export default function WithdrawPage() {
     );
   }
 
-  return (
-    <div className="p-6 max-w-md mx-auto">
-      <Card>
-        <CardContent className="pt-6">
-          <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-            <ArrowUpFromLine className="w-7 h-7 text-primary" />
-          </div>
-          <h2 className="text-xl font-bold text-foreground mb-1 text-center">Retirer de l'argent</h2>
-          <p className="text-sm text-muted-foreground mb-6 text-center">
-            {wallet ? `Solde disponible : ${formatCurrency(wallet.balances?.[currency] || 0, currency)}` : 'Vers Mobile Money ou compte bancaire'}
-          </p>
-          <form onSubmit={handleAmountContinue} className="space-y-4">
-            {error && (
-              <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
-                {error}
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label className="font-semibold">Devise</Label>
-              <CurrencySelector value={currency} onChange={setCurrency} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="amount" className="font-semibold">Montant ({currency})</Label>
-              <Input id="amount" type="number" step="0.01" placeholder="50000" value={amount} onChange={(e) => setAmount(e.target.value)} required autoFocus />
-            </div>
-            <Button type="submit" className="w-full" size="lg">Continuer</Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+  // Where the money goes, chosen first (as in the design): one Mobile Money network or a bank.
+  const chosenPoint = channel === 'bank'
+    ? { label: 'Agence bancaire', logo: null as string | null }
+    : { label: operatorById(operator)?.label ?? 'Mobile Money', logo: operatorById(operator)?.logo ?? null };
+
+  if (step === 'point') {
+    const points = [
+      ...MOBILE_MONEY_OPERATORS.map((o) => ({ key: o.id, label: o.label, logo: o.logo as string | null, pick: () => { setChannel('mobile_money'); setOperator(o.id); } })),
+      { key: 'bank', label: 'Agence bancaire', logo: null as string | null, pick: () => setChannel('bank') },
+    ];
+    return (
+      <div className="px-5 pt-2 pb-6 max-w-md mx-auto space-y-4">
+        <div>
+          <p className="font-semibold text-foreground">Choisir un point de retrait</p>
+          {wallet && <p className="text-xs text-muted-foreground mt-0.5">Solde disponible : {formatCurrency(wallet.balances?.[currency] || 0, currency)}</p>}
+        </div>
+        <div className="rounded-2xl border border-border bg-card shadow-soft divide-y divide-border overflow-hidden">
+          {points.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              onClick={() => { p.pick(); setError(''); setStep('amount'); }}
+              className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-accent active:bg-accent"
+            >
+              {p.logo ? (
+                <img src={p.logo} alt="" className="h-9 w-9 rounded-xl object-cover" />
+              ) : (
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary"><Landmark className="h-5 w-5" /></span>
+              )}
+              <span className="flex-1 text-sm font-semibold text-foreground">{p.label}</span>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </button>
+          ))}
+        </div>
+      </div>
     );
   }
 
   return (
-    <FormSheet onClose={() => navigate(-1)} title="Retirer de l'argent">
+    <form onSubmit={handleAmountContinue} className="px-5 pt-2 pb-6 max-w-md mx-auto space-y-5">
+      <button type="button" onClick={() => setStep('point')} className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card p-3 text-left shadow-soft">
+        {chosenPoint.logo ? (
+          <img src={chosenPoint.logo} alt="" className="h-10 w-10 rounded-xl object-cover" />
+        ) : (
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">{channel === 'bank' ? <Landmark className="h-5 w-5" /> : <Smartphone className="h-5 w-5" />}</span>
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block text-xs text-muted-foreground">Point de retrait</span>
+          <span className="block truncate font-semibold text-foreground">{chosenPoint.label}</span>
+        </span>
+        <span className="text-xs font-semibold text-primary">Changer</span>
+      </button>
+      {error && (
+        <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
+          {error}
+        </div>
+      )}
+      <div className="space-y-2">
+        <Label className="font-semibold">Devise</Label>
+        <CurrencySelector value={currency} onChange={setCurrency} />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="amount" className="font-semibold">Montant</Label>
+        <div className="flex h-14 items-center rounded-2xl border border-border bg-card px-4 shadow-soft focus-within:ring-2 focus-within:ring-ring">
+          <input id="amount" type="number" inputMode="decimal" step="0.01" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} required autoFocus className="min-w-0 flex-1 bg-transparent text-2xl font-bold text-foreground outline-none placeholder:text-muted-foreground/50" />
+          <span className="text-sm font-semibold text-muted-foreground">{currency}</span>
+        </div>
+        {wallet && <p className="text-xs text-muted-foreground">Solde disponible : {formatCurrency(wallet.balances?.[currency] || 0, currency)}</p>}
+      </div>
+      <Button type="submit" className="w-full h-12 rounded-2xl text-base">
+        Continuer
+        <ChevronRight className="ml-1 h-4 w-4" />
+      </Button>
+    </form>
+    );
+  }
+
+  return (
+    <FormSheet fullPage onClose={() => navigate(-1)} title="Retrait d'argent">
       {renderStep()}
     </FormSheet>
   );

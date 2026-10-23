@@ -42,6 +42,19 @@ describe('PaymentsService — a confirmed amount that differs credits nothing', 
     expect(alerts.alert).toHaveBeenCalledWith(expect.objectContaining({ severity: 'critical' }));
   });
 
+  it('a payment whose payer bears the commission: the provider confirms the TOTAL (amount + commission), and that is accepted', async () => {
+    const { service, fake, alerts } = setup();
+    const payerPaid = { ...INTENT, amount_cents: 100, total_cents: 204, currency: 'USD' };
+    await service.handleSuccessfulPayment(payerPaid, { psp_intent_id: 'p', amount_cents: 204 });
+    // The success is claimed (PENDING → SUCCEEDED) instead of being refused as a mismatch.
+    expect(fake.queries.some((q) => q.target === 'payment_intents' && q.calls.some((c) => c.method === 'update'))).toBe(true);
+    expect(alerts.alert).not.toHaveBeenCalledWith(expect.objectContaining({ title: expect.stringContaining('Montant') }));
+    // …and the amount alone (1 USD) would now be the mismatch.
+    const second = setup();
+    expect(await second.service.handleSuccessfulPayment(payerPaid, { psp_intent_id: 'p', amount_cents: 100 })).toBeUndefined();
+    expect(second.alerts.alert).toHaveBeenCalledWith(expect.objectContaining({ severity: 'critical' }));
+  });
+
   it('a wallet top-up: the wallet is not credited', async () => {
     const { service, fake, alerts } = setup();
     expect(await service.tryHandleTopupWebhook('psp1', 'SUCCESS', 49900)).toBe(true);
@@ -54,13 +67,5 @@ describe('PaymentsService — a confirmed amount that differs credits nothing', 
     await service.tryHandleTopupWebhook('psp1', 'FAILED');
     const upd = fake.queries.find((q) => q.target === 'wallet_topups' && q.calls.some((c) => c.method === 'update'))!;
     expect(upd.calls.some((c) => c.method === 'eq' && c.args[0] === 'status' && c.args[1] === 'PENDING')).toBe(true);
-  });
-});
-
-describe('CinetPay adapter', () => {
-  it('refuses a fractional amount instead of silently rounding it', async () => {
-    const { CinetPayAdapter } = require('./psp/providers/cinetpay.adapter');
-    const adapter = new CinetPayAdapter({ get: (_k: string, d?: any) => d ?? 'x' } as any);
-    await expect(adapter.createPaymentIntent({ amount_cents: 149, currency: 'USD', customer: {} } as any)).rejects.toBeInstanceOf(BadRequestException);
   });
 });

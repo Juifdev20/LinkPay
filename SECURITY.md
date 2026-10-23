@@ -39,7 +39,7 @@ Ce document décrit les défenses en place et ce qu'il reste à faire. Il est te
   - paiement par portefeuille : le payeur n'est remboursé que si le marchand n'a pas été crédité ; une clé d'idempotence ne « rejoue » jamais l'opération d'un autre ni une autre opération ; une cotisation de tontine n'est « payée » que par un transfert réussi ;
   - remboursements refusés sur un portefeuille suspendu/gelé ou avant le crédit du marchand (migration `058`) ; plafonds comptés dans la devise concernée uniquement.
 - Limites et frais de portefeuille configurables (`wallet_limits`).
-- Webhooks PSP rejouables sans effet, fournisseur vérifié. CinetPay et FlexPaie **ne signent pas** leur rappel : il n'est jamais cru, le statut et le montant sont relus chez le fournisseur avec le numéro de transaction que nous avons enregistré (`flexpaie_orders`, migration `060`) ; une tâche relit chaque minute les paiements restés en attente (rappel perdu). Détail dans `docs/FLEXPAIE.md`.
+- Webhooks PSP rejouables sans effet, fournisseur vérifié. FlexPaie **ne signe pas** son rappel : il n'est jamais cru, le statut et le montant sont relus chez le fournisseur avec le numéro de transaction que nous avons enregistré (`flexpaie_orders`, migration `060`) ; une tâche relit chaque minute les paiements restés en attente (rappel perdu). Détail dans `docs/FLEXPAIE.md`.
 - Journal d'audit (`audit_logs`) sur les actions sensibles.
 - Documentation Swagger désactivée en production (`ENABLE_SWAGGER=true` pour la réactiver).
 
@@ -60,7 +60,7 @@ Ce document décrit les défenses en place et ce qu'il reste à faire. Il est te
 ## À faire (priorité décroissante)
 
 1. **Appliquer les migrations `040` à `058`**, puis lancer `linkpay-api/supabase/verify_security.sql` (voir `docs/LAUNCH_CHECKLIST.md`) dans le SQL Editor de Supabase, dans l'ordre, puis lancer le *Security Advisor* de Supabase.
-2. **Changer toutes les clés déjà partagées** : `service_role` Supabase, `JWT_SECRET`, mot de passe CinetPay, clé FCM.
+2. **Changer toutes les clés déjà partagées** : `service_role` Supabase, `JWT_SECRET`, token FlexPaie, clé FCM.
 3. Vérifier `ledger_entries` (types `ADJUSTMENT` et `TOPUP`) pour détecter un éventuel abus avant la migration `043`.
 4. Fermer ou contrôler l'inscription publique de Supabase Auth (l'inscription doit passer par `/auth/register`).
 5. **Jetons de session** : le mode « cookies HttpOnly » est écrit et testé, mais **désactivé par défaut** ; il demande que le site web et l'API soient sur le même site (relais `/api/*` de `render.yaml` ou sous-domaines) et une vérification de l'IP vue par l'API : suivre `docs/COOKIES_HTTPONLY.md`. L'application Android garde ses jetons en stockage applicatif.

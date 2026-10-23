@@ -18,16 +18,10 @@ export function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`animate-pulse rounded-xl bg-muted ${className}`} />;
 }
 
-function greeting() {
-  const h = new Date().getHours();
-  return h < 12 ? 'Bonjour' : h < 18 ? 'Bon après-midi' : 'Bonsoir';
-}
-
 // ------------------------------------------------------------------
 // Hero — today's sales, the first thing an owner wants to know.
 // ------------------------------------------------------------------
 export function HomeHero({
-  firstName,
   orgName,
   currency,
   onCurrency,
@@ -35,41 +29,60 @@ export function HomeHero({
   yesterday,
   loading,
   onOpenTill,
+  heroLabel,
+  firstName,
+  userRole,
+  storeIcon: _storeIcon,
 }: {
   firstName?: string;
   orgName?: string;
+  userRole?: string;
   currency: Currency;
   onCurrency: (c: Currency) => void;
   today: { revenue: number; count: number | null };
   yesterday: { revenue: number };
   loading: boolean;
   onOpenTill: () => void;
+  heroLabel?: string;
+  storeIcon?: boolean;
 }) {
-  const date = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
   const trend = yesterday.revenue > 0 ? Math.round(((today.revenue - yesterday.revenue) / yesterday.revenue) * 100) : null;
   const noSaleYet = !loading && today.revenue === 0;
 
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-indigo-600 to-violet-700 p-6 text-white shadow-xl shadow-primary/25">
-      {/* Soft light blobs for depth */}
-      <div className="pointer-events-none absolute -top-16 -right-10 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
-      <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-violet-300/20 blur-2xl" />
+    <div className="relative overflow-hidden rounded-3xl bg-brand-gradient p-5 text-primary-foreground shadow-brand">
+      {/* Same SVG decoration as BalanceCard — identical card shell across all modules. */}
+      <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 400 240" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="hw-wave" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#ffffff" stopOpacity="0.18" />
+            <stop offset="1" stopColor="#7cc8ff" stopOpacity="0.05" />
+          </linearGradient>
+        </defs>
+        <circle cx="360" cy="-10" r="120" fill="#ffffff" fillOpacity="0.08" />
+        <circle cx="395" cy="40" r="70" fill="#7cc8ff" fillOpacity="0.16" />
+        <path d="M0 175 C 90 135, 170 215, 260 170 S 380 120, 400 145 L 400 240 L 0 240 Z" fill="url(#hw-wave)" />
+        <path d="M0 205 C 110 170, 200 240, 300 200 S 380 175, 400 190 L 400 240 L 0 240 Z" fill="#ffffff" fillOpacity="0.06" />
+      </svg>
 
+      {/* Mirrors BalanceCard layout: label/subtitle row → amount → stats */}
       <div className="relative">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm text-white/80">
-              {greeting()}{firstName ? ` ${firstName}` : ''} 👋
-            </p>
-            <h1 className="mt-0.5 text-xl font-bold leading-tight break-words">{orgName}</h1>
-            <p className="mt-0.5 text-xs capitalize text-white/70">{date}</p>
+            <p className="text-[13px] font-semibold text-primary-foreground/90">{heroLabel ?? 'Ventes du jour'}</p>
+            {orgName && <p className="mt-0.5 text-[11px] text-primary-foreground/70 truncate tracking-wide">{orgName}</p>}
+            {(firstName || userRole) && (
+              <p className="mt-0.5 text-[11px] text-primary-foreground/70 truncate tracking-wide">
+                {[firstName, userRole].filter(Boolean).join(' · ')}
+              </p>
+            )}
           </div>
           <div className="flex flex-shrink-0 rounded-full bg-white/15 p-0.5 text-xs font-semibold">
             {(['CDF', 'USD'] as const).map((c) => (
               <button
                 key={c}
                 onClick={() => onCurrency(c)}
-                className={`rounded-full px-2.5 py-1 transition-colors ${currency === c ? 'bg-white text-primary' : 'text-white/80'}`}
+                className={`rounded-full px-2.5 py-1 transition-colors ${currency === c ? 'bg-white text-primary' : 'text-primary-foreground/80'}`}
               >
                 {c}
               </button>
@@ -77,42 +90,39 @@ export function HomeHero({
           </div>
         </div>
 
-        <div className="mt-6">
-          <p className="text-sm text-white/80">Ventes du jour</p>
-          {loading ? (
-            <div className="mt-2 h-10 w-48 animate-pulse rounded-lg bg-white/20" />
-          ) : noSaleYet ? (
-            <div className="mt-2 space-y-3">
-              <p className="text-2xl font-bold">Prêt pour votre première vente ?</p>
+        {loading ? (
+          <div className="mt-3 h-9 w-44 animate-pulse rounded-lg bg-white/20" />
+        ) : noSaleYet ? (
+          <>
+            <p className="mt-3 text-[30px] leading-tight font-extrabold tracking-tight">0 {currency}</p>
+            <div className="mt-3">
               <button
                 onClick={onOpenTill}
-                className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-primary shadow-lg active:scale-95 transition-transform"
+                className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-primary shadow-lg active:scale-95 transition-transform"
               >
                 <ShoppingCart className="h-4 w-4" /> Ouvrir la caisse
               </button>
             </div>
-          ) : (
-            <>
-              <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1">
-                <p className="text-4xl font-extrabold tracking-tight">{money(today.revenue, currency)}</p>
-                {trend !== null && (
-                  <span
-                    className={`mb-1.5 inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${trend >= 0 ? 'bg-emerald-400/25 text-emerald-50' : 'bg-rose-400/25 text-rose-50'}`}
-                  >
-                    {trend >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-                    {trend >= 0 ? '+' : ''}{trend} % vs hier
-                  </span>
-                )}
-              </div>
-              {today.count !== null && (
-                <p className="mt-2 text-sm text-white/80">
-                  {today.count} vente{today.count > 1 ? 's' : ''}
-                  {today.count > 0 && <> · panier moyen {money(Math.round(today.revenue / today.count), currency)}</>}
-                </p>
+          </>
+        ) : (
+          <>
+            <div className="mt-3 flex flex-wrap items-end gap-x-3 gap-y-1">
+              <p className="text-[30px] leading-tight font-extrabold tracking-tight">{money(today.revenue, currency)}</p>
+              {trend !== null && (
+                <span className={`mb-1 inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${trend >= 0 ? 'bg-emerald-400/25 text-emerald-50' : 'bg-rose-400/25 text-rose-50'}`}>
+                  {trend >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
+                  {trend >= 0 ? '+' : ''}{trend} % vs hier
+                </span>
               )}
-            </>
-          )}
-        </div>
+            </div>
+            {today.count !== null && (
+              <p className="mt-1.5 text-[11px] text-primary-foreground/70 tracking-wide">
+                {today.count} vente{today.count > 1 ? 's' : ''}
+                {today.count > 0 && <> · panier moyen {money(Math.round(today.revenue / today.count), currency)}</>}
+              </p>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -125,13 +135,14 @@ export type QuickAction = { label: string; icon: LucideIcon; onClick: () => void
 
 export function QuickActions({ actions }: { actions: QuickAction[] }) {
   return (
-    <div className="grid grid-cols-4 gap-2">
+    // Phone: round icons with their label under. Computer: compact cards side by side, icon and label on one line.
+    <div className="grid grid-cols-4 gap-2 md:gap-3">
       {actions.map((a) => (
-        <button key={a.label} onClick={a.onClick} className="group flex flex-col items-center gap-1.5 rounded-2xl py-2 active:scale-95 transition-transform">
-          <span className={`flex h-14 w-14 items-center justify-center rounded-2xl shadow-sm ${a.tone}`}>
-            <a.icon className="h-6 w-6" />
+        <button key={a.label} onClick={a.onClick} className="group flex flex-col items-center gap-1.5 rounded-2xl py-2 active:scale-95 transition-all md:flex-row md:gap-3 md:border md:border-border md:bg-card md:px-4 md:py-3 md:shadow-soft md:hover:-translate-y-0.5 md:hover:shadow-md">
+          <span className={`flex h-14 w-14 items-center justify-center rounded-2xl shadow-sm md:h-11 md:w-11 md:rounded-xl ${a.tone}`}>
+            <a.icon className="h-6 w-6 md:h-5 md:w-5" />
           </span>
-          <span className="text-xs font-medium text-foreground">{a.label}</span>
+          <span className="text-xs font-medium text-foreground md:text-sm md:font-semibold">{a.label}</span>
         </button>
       ))}
     </div>
@@ -139,13 +150,26 @@ export function QuickActions({ actions }: { actions: QuickAction[] }) {
 }
 
 // ------------------------------------------------------------------
-// 7-day bars — plain CSS, today highlighted, tap a bar for its amount.
+// Sales chart — plain CSS bars, today highlighted, tap a bar for its amount.
+// Supports variable number of days (7, 14, 30): labels adapt automatically.
 // ------------------------------------------------------------------
-export function SalesChart({ days, currency, loading }: { days: HomeDay[]; currency: Currency; loading: boolean }) {
+export function SalesChart({
+  days,
+  currency,
+  loading,
+  periodLabel,
+}: {
+  days: HomeDay[];
+  currency: Currency;
+  loading: boolean;
+  periodLabel?: string;
+}) {
   const [picked, setPicked] = useState<number>(days.length - 1);
+  const safePicked = Math.min(picked, days.length - 1);
   const max = Math.max(1, ...days.map((d) => d.revenue));
   const total = days.reduce((s, d) => s + d.revenue, 0);
-  const sel = days[picked] || days[days.length - 1];
+  const sel = days[safePicked] || days[days.length - 1];
+  const manyBars = days.length > 14;
   const label = (date: string) =>
     new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '');
 
@@ -153,7 +177,7 @@ export function SalesChart({ days, currency, loading }: { days: HomeDay[]; curre
     <div className="rounded-2xl border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-foreground">7 derniers jours</p>
+          <p className="text-sm font-semibold text-foreground">{periodLabel ?? '7 derniers jours'}</p>
           <p className="text-xs text-muted-foreground">Total {money(total, currency)}</p>
         </div>
         {!loading && sel && (
@@ -165,17 +189,19 @@ export function SalesChart({ days, currency, loading }: { days: HomeDay[]; curre
           </div>
         )}
       </div>
-      <div className="mt-4 flex h-32 items-end gap-2">
+      <div className="mt-4 flex h-32 items-end gap-1">
         {days.map((d, i) => {
           const isToday = i === days.length - 1;
           const h = loading ? 20 + ((i * 37) % 60) : Math.max(4, Math.round((d.revenue / max) * 100));
+          // For many bars: only show label for today and every 7th bar
+          const showLabel = !manyBars || isToday || i % 7 === 0;
           return (
-            <button key={d.date} onClick={() => setPicked(i)} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5">
+            <button key={d.date} onClick={() => setPicked(i)} className="flex h-full flex-1 flex-col items-center justify-end gap-1">
               <div
                 style={{ height: `${h}%` }}
-                className={`w-full rounded-lg transition-all ${loading ? 'animate-pulse bg-muted' : isToday ? 'bg-gradient-to-t from-primary to-violet-500' : i === picked ? 'bg-primary/40' : 'bg-primary/15'}`}
+                className={`w-full rounded-md transition-all ${loading ? 'animate-pulse bg-muted' : isToday ? 'bg-gradient-to-t from-primary to-sky-500' : i === safePicked ? 'bg-primary/40' : 'bg-primary/15'}`}
               />
-              <span className={`text-[11px] capitalize ${isToday ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
+              <span className={`text-[10px] capitalize leading-none ${isToday ? 'font-semibold text-foreground' : 'text-muted-foreground'} ${!showLabel ? 'invisible' : ''}`}>
                 {isToday ? 'Auj.' : label(d.date)}
               </span>
             </button>
@@ -255,30 +281,51 @@ export function TopProducts({ top, currency, loading }: { top: HomeTop[]; curren
   );
 }
 
-export function RecentSales({ sales, currency, loading, moreTo }: { sales: HomeSale[]; currency: Currency; loading: boolean; moreTo?: string }) {
+export function RecentSales({
+  sales,
+  currency,
+  loading,
+  moreTo,
+  title,
+}: {
+  sales: HomeSale[];
+  currency: Currency;
+  loading: boolean;
+  moreTo?: string;
+  title?: string;
+}) {
   return (
-    <ListCard title="Dernières ventes" action={moreTo ? { label: 'Tout voir', to: moreTo } : undefined}>
+    <ListCard title={title ?? 'Dernières ventes'} action={moreTo ? { label: 'Tout voir', to: moreTo } : undefined}>
       {loading ? (
         <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10" />)}</div>
       ) : !sales.length ? (
-        <p className="py-4 text-center text-sm text-muted-foreground">Aucune vente ces 7 derniers jours.</p>
+        <p className="py-4 text-center text-sm text-muted-foreground">Aucune vente sur cette période.</p>
       ) : (
         <div className="divide-y divide-border">
-          {sales.map((s) => (
-            <div key={s.id} className="flex items-center gap-3 py-2.5">
-              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-success/10 text-success">
-                <ShoppingCart className="h-4 w-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">{s.label}</p>
-                <p className="text-xs text-muted-foreground">
-                  {s.at ? new Date(s.at).toLocaleString('fr-FR', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
-                  {s.method ? ` · ${METHOD_LABELS[s.method] || s.method}` : ''}
-                </p>
+          {sales.map((s) => {
+            // Use the sale's own currency if available, otherwise fall back to the global toggle
+            const saleCurrency = (s.currency as Currency) || currency;
+            return (
+              <div key={s.id} className="flex items-center gap-3 py-2.5">
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-success/10 text-success">
+                  <ShoppingCart className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{s.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {s.at ? new Date(s.at).toLocaleString('fr-FR', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+                    {s.method ? ` · ${METHOD_LABELS[s.method] || s.method}` : ''}
+                  </p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-sm font-semibold text-foreground">{money(s.amount, saleCurrency)}</p>
+                  {s.currency && s.currency !== currency && (
+                    <p className="text-[10px] text-muted-foreground">{s.currency}</p>
+                  )}
+                </div>
               </div>
-              <span className="text-sm font-semibold text-foreground">{money(s.amount, currency)}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </ListCard>

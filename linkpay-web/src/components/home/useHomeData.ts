@@ -1,3 +1,4 @@
+import { isSupermarket } from '@/lib/sectors';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 
@@ -5,7 +6,7 @@ export type Currency = 'CDF' | 'USD';
 
 export type HomeDay = { date: string; revenue: number };
 export type HomeTop = { name: string; qty: number; revenue: number };
-export type HomeSale = { id: string; label: string; at: string; method?: string | null; amount: number };
+export type HomeSale = { id: string; label: string; at: string; method?: string | null; amount: number; currency?: string };
 
 export type HomeData = {
   /** First load with nothing cached yet — show skeletons. */
@@ -47,7 +48,7 @@ function weekRange() {
  * cache, so on launch the last figures show at once and then refresh.
  */
 export function useHomeData(org: any, merchants: any[] | undefined, currency: Currency): HomeData {
-  const usesPos = org?.sector === 'supermarche';
+  const usesPos = isSupermarket(org?.sector);
   const { from, to, keys } = weekRange();
   // Recomputed every render; the query keys use the day, not the instant,
   // so the cache stays stable within a day.
@@ -79,24 +80,19 @@ export function useHomeData(org: any, merchants: any[] | undefined, currency: Cu
   });
 
   // ---------------- Ventes module (other sectors) ----------------
+  // The server cuts the days (business timezone) and answers "today" itself: the phone's clock is never used here.
   const salesWeek = useQuery({
-    queryKey: ['home-sales-week', org?.id, today],
-    queryFn: async () => (await api.get(`/organizations/${org.id}/sales/stats`, { params: { from, to } })).data,
+    queryKey: ['home-sales-week', org?.id],
+    queryFn: async () => (await api.get(`/organizations/${org.id}/sales/stats`, { params: { days: 7 } })).data,
     enabled: !!org?.id && !usesPos,
-  });
-  const salesToday = useQuery({
-    queryKey: ['home-sales-today', org?.id, today],
-    queryFn: async () => {
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-      return (await api.get(`/organizations/${org.id}/sales/stats`, { params: { from: start.toISOString(), to } })).data;
-    },
-    enabled: !!org?.id && !usesPos,
+    refetchOnMount: 'always',
   });
   const salesRecent = useQuery({
-    queryKey: ['home-sales-recent', org?.id, today],
-    queryFn: async () => (await api.get(`/organizations/${org.id}/sales/history`, { params: { from, to } })).data,
+    queryKey: ['home-sales-recent', org?.id],
+    // No date window: the newest sales come first, and the phone's clock must not hide any.
+    queryFn: async () => (await api.get(`/organizations/${org.id}/sales/history`)).data,
     enabled: !!org?.id && !usesPos,
+    refetchOnMount: 'always',
   });
 
   const byDay: Record<string, number> = Object.fromEntries(keys.map((k) => [k, 0]));
@@ -105,6 +101,9 @@ export function useHomeData(org: any, merchants: any[] | undefined, currency: Cu
   let recent: HomeSale[] = [];
   let held = 0;
   let loading: boolean;
+  let dayKeys = keys;
+  let todayKey = today;
+  let todayCount: number | null = null;
 
   if (usesPos) {
     loading = !merchants || posQueries.some((q) => q.isLoading && !q.data);
@@ -130,21 +129,30 @@ export function useHomeData(org: any, merchants: any[] | undefined, currency: Cu
           at: t.paid_at || t.updated_at,
           method: t.payment_method,
           amount: t.total_cents,
+          currency: t.currency,
         });
       }
       held += (heldQ?.data as any)?.total || 0;
     }
   } else {
-    loading = (salesWeek.isLoading && !salesWeek.data) || (salesToday.isLoading && !salesToday.data);
+    loading = salesWeek.isLoading && !salesWeek.data;
+    // Days and "today" come from the server (see getStats `days`): same cut as the station chips.
+    const serverKeys: string[] | undefined = salesWeek.data?.day_keys;
+    if (serverKeys?.length) {
+      dayKeys = serverKeys;
+      todayKey = salesWeek.data.today_key ?? serverKeys[serverKeys.length - 1];
+      for (const k of Object.keys(byDay)) delete byDay[k];
+      for (const k of serverKeys) byDay[k] = 0;
+    }
     for (const d of (salesWeek.data?.daily || []) as any[]) {
       if (d.day in byDay) byDay[d.day] += d[currency] || 0;
     }
-    for (const p of (salesWeek.data?.top_products || []) as any[]) {
+    todayCount = salesWeek.data ? salesWeek.data.today?.sales_count ?? null : null;    for (const p of (salesWeek.data?.top_products || []) as any[]) {
       top.set(p.name, { name: p.name, qty: p.quantity, revenue: p.revenue?.[currency] || 0 });
     }
     recent = ((Array.isArray(salesRecent.data) ? salesRecent.data : salesRecent.data?.data) || [])
-      .filter((s: any) => s.status === 'paid' && s.currency === currency)
-      .map((s: any) => ({ id: s.id, label: s.reference || 'Vente', at: s.paid_at || s.created_at, method: s.payment_method, amount: s.total_cents }));
+      .filter((s: any) => String(s.status).toUpperCase() === 'PAID' && s.currency === currency)
+      .map((s: any) => ({ id: s.id, label: s.reference || 'Vente', at: s.paid_at || s.created_at, method: s.payment_method, amount: s.total_cents, currency: s.currency }));
   }
 
   recent = recent.sort((a, b) => (b.at || '').localeCompare(a.at || '')).slice(0, 5);
@@ -152,11 +160,11 @@ export function useHomeData(org: any, merchants: any[] | undefined, currency: Cu
   return {
     loading,
     today: {
-      revenue: byDay[today],
-      count: usesPos ? countByDay[today] || 0 : salesToday.data?.sales_count ?? null,
+      revenue: byDay[todayKey] ?? 0,
+      count: usesPos ? countByDay[todayKey] || 0 : todayCount,
     },
-    yesterday: { revenue: byDay[keys[5]] },
-    days: keys.map((date) => ({ date, revenue: byDay[date] })),
+    yesterday: { revenue: byDay[dayKeys[dayKeys.length - 2]] ?? 0 },
+    days: dayKeys.map((date) => ({ date, revenue: byDay[date] ?? 0 })),
     top: [...top.values()].sort((a, b) => b.qty - a.qty || b.revenue - a.revenue).slice(0, 3),
     recent,
     held,

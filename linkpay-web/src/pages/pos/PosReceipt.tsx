@@ -16,7 +16,7 @@ export function PosReceipt({ ticket, onClose }: { ticket: any; onClose: () => vo
   const flow = usePrintFlow();
 
   return (
-    <FormSheet onClose={onClose} title="Reçu de vente">
+    <FormSheet onClose={onClose} title="Reçu de vente" size="narrow">
       <div className="p-6 space-y-4">
         <div className="flex justify-center">
           <CheckCircle className="w-10 h-10 text-success" />

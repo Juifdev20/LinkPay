@@ -3,13 +3,14 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/PageHeader';
 import { BalanceCard } from '@/components/BalanceCard';
 import { WalletActions } from '@/components/WalletActions';
-import { TransactionItem } from '@/components/TransactionItem';
-import { DualCurrencyStat } from '@/components/DualCurrencyStat';
+import { RecentLedger } from '@/components/RecentLedger';
+import { StatTile } from '@/components/StatTile';
+import { ShortcutButton } from '@/components/ShortcutButton';
 import { Plus, TrendingUp, Receipt, Wallet, QrCode, RefreshCcw, PiggyBank, Wallet2 } from 'lucide-react';
+import { FEATURES } from '@/lib/features';
 import { useNavigate } from 'react-router-dom';
 
 export default function MerchantDashboard() {
@@ -33,18 +34,10 @@ export default function MerchantDashboard() {
     },
   });
 
-  const { data: recentTx } = useQuery({
-    queryKey: ['recent-transactions'],
-    queryFn: async () => {
-      const { data } = await api.get('/transactions?limit=5');
-      return data;
-    },
-  });
-
   useRealtimeInvalidate(
     'transactions',
     merchantId ? `merchant_id=eq.${merchantId}` : undefined,
-    [['merchant-stats'], ['recent-transactions']],
+    [['merchant-stats'], ['wallet-transactions']],
     !!merchantId,
   );
 
@@ -63,103 +56,42 @@ export default function MerchantDashboard() {
 
   // Extra bottom padding on mobile clears PageHeader's floating action button
   return (
-    <div className="p-6 pb-28 md:pb-6 space-y-6 max-w-4xl mx-auto">
+    <div className="px-4 pt-2 pb-28 md:p-6 space-y-5 max-w-6xl mx-auto">
       <PageHeader
         title="Tableau de bord"
         hideBack
         action={{ label: 'Nouvelle demande', icon: Plus, to: '/dashboard/payment-requests/new' }}
       />
 
-      <BalanceCard
-        balances={wallet?.balances || { CDF: 0, USD: 0 }}
-        label="Solde ScanLinkPay"
-        subtitle={wallet?.wallet_number}
-        maskable
-        onCurrencyChange={setWalletCurrency}
-        actions={<WalletActions currency={walletCurrency} />}
-      />
+      {/* Computer: balance, figures and shortcuts on the left, the latest movements beside them — the phone keeps
+          its single column. */}
+      <div className="space-y-5 lg:grid lg:grid-cols-5 lg:items-start lg:gap-6 lg:space-y-0">
+        <div className="space-y-5 lg:col-span-3">
+          <BalanceCard
+            balances={wallet?.balances || { CDF: 0, USD: 0 }}
+            label="Solde ScanLinkPay"
+            subtitle={wallet?.wallet_number}
+            maskable
+            onCurrencyChange={setWalletCurrency}
+            actions={<WalletActions currency={walletCurrency} />}
+          />
 
-      <button
-        onClick={() => navigate('/dashboard/tontines')}
-        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
-      >
-        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
-          <RefreshCcw className="w-5 h-5 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-foreground">Tontines</p>
-          <p className="text-sm text-muted-foreground">Épargnez en groupe, à tour de rôle</p>
-        </div>
-      </button>
+          <div className="grid grid-cols-2 gap-3 [&>*:last-child:nth-child(odd)]:col-span-2">
+            {FEATURES.tontines && <ShortcutButton icon={RefreshCcw} label="Tontines" onClick={() => navigate('/dashboard/tontines')} />}
+            {FEATURES.savings && <ShortcutButton icon={PiggyBank} label="Épargne" onClick={() => navigate('/dashboard/savings')} />}
+            <ShortcutButton icon={Wallet2} label="Mes dépenses" onClick={() => navigate('/dashboard/expenses')} />
+          </div>
 
-      <button
-        onClick={() => navigate('/dashboard/savings')}
-        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
-      >
-        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
-          <PiggyBank className="w-5 h-5 text-primary" />
+          <div className="grid grid-cols-2 gap-3">
+            {cards.map((c) => (
+              <StatTile key={c.label} icon={c.icon} label={c.label} money={c.money} value={c.value} />
+            ))}
+          </div>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-foreground">Épargne par arrondi</p>
-          <p className="text-sm text-muted-foreground">Épargnez sans y penser, à chaque paiement</p>
+        <div className="lg:col-span-2">
+          <RecentLedger />
         </div>
-      </button>
-
-      <button
-        onClick={() => navigate('/dashboard/expenses')}
-        className="w-full flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left hover:bg-primary/10 transition-colors"
-      >
-        <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
-          <Wallet2 className="w-5 h-5 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-foreground">Mes dépenses</p>
-          <p className="text-sm text-muted-foreground">Suivez vos dépenses au jour le jour</p>
-        </div>
-      </button>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {cards.map((c) => (
-          <Card key={c.label}>
-            <CardContent className="pt-5">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-3">
-                <c.icon className="w-5 h-5 text-primary" />
-              </div>
-              {c.money ? (
-                <DualCurrencyStat amounts={c.money} />
-              ) : (
-                <p className="text-xl font-bold text-foreground">{c.value}</p>
-              )}
-              <p className="text-sm text-muted-foreground">{c.label}</p>
-            </CardContent>
-          </Card>
-        ))}
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base font-bold">Transactions récentes</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {recentTx?.data?.length ? (
-            <div>
-              {recentTx.data.map((tx: any) => (
-                <TransactionItem
-                  key={tx.id}
-                  name={tx.reference}
-                  amountCents={tx.amount_cents}
-                  currency={tx.currency}
-                  status={tx.status}
-                  date={tx.created_at}
-                  type="in"
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-center py-6">Aucune transaction pour le moment</p>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

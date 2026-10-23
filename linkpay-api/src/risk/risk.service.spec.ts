@@ -55,8 +55,15 @@ describe('RiskService.assessOutflow', () => {
     expect(logged(fake)).toHaveLength(1);
   });
 
-  it('lets the operation through if the history cannot be read (other defences still apply)', async () => {
+  it('history unreadable: a transfer goes through (other defences still apply), a withdrawal does NOT', async () => {
     const { service } = setup({ failRead: true });
-    await expect(service.assessOutflow({ ...base, kind: 'WITHDRAWAL', amountCents: 100 })).resolves.toBeUndefined();
+    await expect(service.assessOutflow({ ...base, kind: 'TRANSFER', amountCents: 100, recipientWalletId: 'b' })).resolves.toBeUndefined();
+    await expect(service.assessOutflow({ ...base, kind: 'WITHDRAWAL', amountCents: 100 })).rejects.toBeInstanceOf(HttpException);
+  });
+
+  it('a read that returns an error is not taken as "no recent activity" for a withdrawal', async () => {
+    const fake = createFakeSupabase((q: RecordedQuery) => (q.target === 'withdrawals' ? { error: { message: 'timeout' } } : q.target === 'wallets' ? { data: { created_at: ago(1e10) } } : { data: [] }));
+    const service = new RiskService(fake.service, { alert: jest.fn() } as any);
+    await expect(service.assessOutflow({ ...base, kind: 'WITHDRAWAL', amountCents: 100 })).rejects.toBeInstanceOf(HttpException);
   });
 });

@@ -2,12 +2,12 @@ import { ForbiddenException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
-function run(user: any, opts: { ips?: string; ip?: string; allow?: boolean; isPublic?: boolean } = {}) {
+function run(user: any, opts: { ips?: string; ip?: string; allow?: boolean; isPublic?: boolean; paused?: boolean } = {}) {
   const reflector = {
     getAllAndOverride: (key: string) => (key === 'isPublic' ? !!opts.isPublic : key === 'allowWithoutMfa' ? !!opts.allow : undefined),
   } as any;
   const config = { get: (k: string) => (k === 'ADMIN_ALLOWED_IPS' ? opts.ips : undefined) } as any;
-  const guard = new JwtAuthGuard(reflector, config);
+  const guard = new JwtAuthGuard(reflector, config, { isAdminRequirementPaused: async () => !!opts.paused } as any);
   // The passport strategy itself is not under test: pretend it authenticated `user`.
   jest.spyOn(AuthGuard('jwt').prototype, 'canActivate').mockResolvedValue(true as any);
   const req: any = { user, ip: opts.ip };
@@ -29,6 +29,11 @@ describe('JwtAuthGuard — administrator protection', () => {
   it('lets a verified admin through, and an unverified one reach the endpoints marked for setup', async () => {
     await expect(run({ id: 'a', role: 'admin', mfa: true })).resolves.toBe(true);
     await expect(run({ id: 'a', role: 'admin', mfa: false }, { allow: true })).resolves.toBe(true);
+  });
+
+  it('lets an unverified admin through while the super admin suspended the second factor, never past the network list', async () => {
+    await expect(run({ id: 'a', role: 'admin', mfa: false }, { paused: true })).resolves.toBe(true);
+    await expect(run({ id: 'a', role: 'admin', mfa: false }, { paused: true, ips: '1.1.1.1', ip: '2.2.2.2' })).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('enforces the optional admin network list', async () => {
