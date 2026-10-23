@@ -63,6 +63,23 @@ listes communes (`ProductTable`). Ordre de travail : A → B → C, puis le fich
   code-barres, sinon il est créé (avec le fournisseur rempli).
 - Côté fournisseur, la livraison validée sort la marchandise de son stock (mouvement `sale`).
 
+### Phase C — le réseau de fournisseurs est payant (décision du propriétaire, 23/10)
+- **Abonnement « Fournisseur » mensuel, payé par l'entreprise fournisseur.** C'est la seule recette sûre : beaucoup de
+  commandes seront payées hors application (espèces, Mobile Money), où un frais par commande serait impossible à
+  prélever et facile à contourner.
+- **Plus la commission ScanLinkPay habituelle** sur les commandes payées par portefeuille : elles passent par une
+  demande de paiement normale, rien de plus à construire.
+- **L'acheteur ne paie rien de plus** : plus il y a d'acheteurs, plus les fournisseurs ont intérêt à s'abonner.
+- **Tout est réglé par le super admin, depuis son interface, jamais écrit dans le code** :
+  - le prix mensuel en CDF et en USD (départ proposé : 10 $ par mois, ou l'équivalent) ;
+  - la durée de l'**essai gratuit** en jours (2, 3, 30… ou 0 = pas d'essai) ;
+  - l'**abonnement annuel** : 12 mois pour le prix de (12 − N) mois, N (les mois offerts) fixé par le super admin.
+- **L'utilisateur est prévenu** : dès qu'il ouvre « Devenir fournisseur », l'écran dit « Essai gratuit de X jours »
+  (X du super admin) ; pendant l'essai, « Il vous reste X jours d'essai » ; puis le prix mensuel et annuel.
+- **Sans abonnement actif** (essai fini, non payé) : le fournisseur reste visible pour ses clients, mais ne reçoit
+  plus de nouvelles commandes ni de nouvelles invitations. Les commandes déjà en cours vont jusqu'au bout (on ne bloque
+  jamais une livraison déjà payée).
+
 ### État
 - **Phase A : faite** (23/10). Où regarder :
   - A1 : `StockItemFormSheet` (« Prix d'achat », marge en direct), `ProductTable` (`showPurchase` : colonnes Prix d'achat,
@@ -85,7 +102,25 @@ listes communes (`ProductTable`). Ordre de travail : A → B → C, puis le fich
     celui qui a validé.
   - Web : page Demandes d'achat (texte par rôle, boutons Valider/Refuser pour le gérant), Inventaire ouvert au gérant,
     Stock limité à sa station, explication du rôle dans le formulaire « Nouvel utilisateur » (`Staff.tsx`, `ROLES.help`).
-- Phase C : à faire.
+- **Phase C : en cours.**
+  - **Fait — API** (migration `084_supplier_network.sql`, dossier `linkpay-api/src/supplier-network/`) :
+    - `supplier-plan.service.ts` : abonnement Fournisseur (essai fixé à l'activation, mensuel × N, annuel = 12 mois pour
+      12 − N, rappels quotidiens, écran super admin `GET/PUT /admin/supplier-plan…`), paiement par
+      `purchase_supplier_plan` (portefeuille du patron + PIN, idempotent ; payer pendant l'essai ajoute les mois après
+      la fin de l'essai). La trésorerie (079, redéfinie dans 084) compte cette recette avec les abonnements.
+    - `supplier-network.service.ts` : devenir fournisseur (numéro `F-xxxxxx`, station d'expédition), catalogue (articles
+      de cette station + prix aux entreprises), invitations par numéro (accepter / refuser / mettre fin), catalogue vu
+      par le client. Le fournisseur accepté entre dans la liste `suppliers` du client.
+    - `supplier-orders.service.ts` : commande → confirmation avec frais de livraison de la commande → paiement
+      (lien ScanLinkPay = demande de paiement ordinaire vers la station du fournisseur, marquée payée par
+      `PaymentsService.markSupplierOrderPaid` via le ModuleRef ; ou espèces / Mobile Money confirmés par le
+      fournisseur) → livraison (sortie de stock, idempotente par `out_ref`) → réception (entrée de stock par `in_ref`,
+      produit trouvé par code-barres ou créé avec son prix de vente, prix d'achat = prix de la commande).
+    - Testé : `supplier-plan.service.spec.ts`, `supplier-orders.service.spec.ts`, et la fonction SQL sur un Postgres
+      local (débit unique, prolongation après l'essai, refus d'un non-propriétaire, trésorerie).
+  - **À faire — écrans** : page « Fournisseur » (devenir fournisseur avec l'essai annoncé, abonnement, catalogue,
+    clients, commandes reçues), page « Commandes fournisseurs » (mes fournisseurs, inviter, commander, payer, réception),
+    écran super admin de l'abonnement Fournisseur, tickets imprimables.
 - Fichier Excel du modèle économique : après C.
 
 ## 22/10/2026 (après-midi) — Deux secteurs seulement ; les Ventes électronique sur le modèle de la Caisse
