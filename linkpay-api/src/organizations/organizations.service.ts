@@ -5,6 +5,8 @@ import { AuthService } from '../auth/auth.service';
 import { MerchantsService } from '../merchants/merchants.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { sumByCurrency } from '../common/utils/currency';
+import { businessDayKey, startOfBusinessDay } from '../common/utils/business-day';
+import { trustedNow } from '../common/utils/trusted-clock';
 import { requireStaffStation } from '../common/org-access';
 import * as QRCode from 'qrcode';
 
@@ -268,28 +270,33 @@ export class OrganizationsService {
   async getOrganizationStoresBreakdown(orgId: string, stationId?: string) {
     const merchants = await this.getOrganizationMerchants(orgId, stationId);
     const client = this.supabaseService.getClient();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const weekStart = new Date(today);
-    weekStart.setDate(weekStart.getDate() - 6); // today and the 6 days before, like the home chart
+    // "Today" is the business day (fixed timezone), the same cut as the home hero and chart.
+    const now = trustedNow();
+    const todayKey = businessDayKey(now);
+    const weekStart = new Date(startOfBusinessDay(now).getTime() - 6 * 24 * 60 * 60 * 1000); // today and the 6 days before, like the home chart
+    // A payment can't be later than now (older sales were stamped by a host clock that ran ahead): clamp, like the hero.
+    const dayOf = (paidAt: string) => businessDayKey(new Date(Math.min(new Date(paidAt).getTime(), now.getTime())));
 
     const breakdown = await Promise.all(
       merchants.map(async (m) => {
-        const [stats, { data: tickets }, { count: staffCount }] = await Promise.all([
+        const [stats, { data: tickets }, { data: sales }, { count: staffCount }] = await Promise.all([
           this.merchantsService.getMerchantStats(m.id),
           // The till's paid tickets (cash and ScanLinkPay) of the last 7 days — a cash sale never
           // becomes a wallet transaction, so `volume` alone would miss most of a station's takings.
           client.from('pos_tickets').select('total_cents, currency, paid_at').eq('merchant_id', m.id).eq('status', 'paid').gte('paid_at', weekStart.toISOString()),
+          // The Ventes module's paid sales (businesses that sell without a till) count as station takings too.
+          client.from('sales').select('total_cents, currency, paid_at').eq('merchant_id', m.id).eq('status', 'PAID').gte('paid_at', weekStart.toISOString()),
           client.from('organization_staff').select('id', { count: 'exact', head: true }).eq('merchant_id', m.id).is('deactivated_at', null),
         ]);
-        const todays = (tickets || []).filter((t) => t.paid_at && new Date(t.paid_at) >= today);
+        const takings = [...(tickets || []), ...(sales || [])];
+        const todays = takings.filter((t) => t.paid_at && dayOf(t.paid_at) === todayKey);
         return {
           merchant_id: m.id,
           merchant_name: m.name,
           city: m.city ?? null,
           staff_count: staffCount || 0,
           today_pos_sales: sumByCurrency(todays, 'total_cents'),
-          week_pos_sales: sumByCurrency(tickets, 'total_cents'),
+          week_pos_sales: sumByCurrency(takings, 'total_cents'),
           ...stats,
         };
       }),

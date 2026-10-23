@@ -8,6 +8,7 @@ import * as express from 'express';
 import { AppModule } from './app.module';
 import { createCsrfMiddleware } from './auth/csrf.middleware';
 import { configureTrustProxy, resolveTrustProxyHops } from './common/utils/trust-proxy';
+import { startTrustedClock } from './common/utils/trusted-clock';
 
 /**
  * FlexPaie is reached at the addresses its own contract gives (Mobile Money, card and status check can be different
@@ -133,6 +134,9 @@ async function bootstrap() {
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('api/v1/docs', app, document);
   }
+
+  // Dating (paid_at, "today" on the dashboards) follows the cloud's clock, not a possibly wrong host clock.
+  await startTrustedClock(configService.get<string>('SUPABASE_URL'), configService.get<string>('SUPABASE_SERVICE_ROLE_KEY'));
 
   const port = configService.get<number>('PORT', 3000);
   await app.listen(port);
