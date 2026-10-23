@@ -5,6 +5,7 @@ import { OrganizationsService } from '../organizations/organizations.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { requireStaffStation, stationStaffWithRoles } from '../common/org-access';
 import { SupplierPlanService } from './supplier-plan.service';
+import { sameName } from '../stock/suppliers.service';
 
 export type Caller = { id: string; role?: string; organization_id?: string };
 
@@ -248,7 +249,8 @@ export class SupplierNetworkService {
   }
 
   async listLinks(orgId: string, caller: Caller) {
-    await this.member(orgId, caller, ['gerant', 'magasinier']);
+    const { isOwner } = await this.member(orgId, caller, ['gerant', 'magasinier']);
+    const seesClients = isOwner || caller.role === 'gerant';
     const [{ data: asClient, error }, { data: asSupplier }] = await Promise.all([
       this.db.from('supplier_links').select('*').eq('client_org_id', orgId).order('created_at', { ascending: false }),
       this.db.from('supplier_links').select('*').eq('supplier_org_id', orgId).order('created_at', { ascending: false }),
@@ -274,7 +276,8 @@ export class SupplierNetworkService {
           takes_orders: !!p && p.active && this.plan.stateOf(p).can_sell,
         };
       }),
-      clients: (asSupplier || []).map((l: any) => ({ ...l, client_name: orgName.get(l.client_org_id) || 'Entreprise' })),
+      // Who buys from us is for the owner and the managers, not the stock keeper.
+      clients: seesClients ? (asSupplier || []).map((l: any) => ({ ...l, client_name: orgName.get(l.client_org_id) || 'Entreprise' })) : [],
     };
   }
 
@@ -358,10 +361,10 @@ export class SupplierNetworkService {
   private async addToClientList(clientOrgId: string, profile: any, callerId: string) {
     const { data: linked } = await this.db.from('suppliers').select('id').eq('organization_id', clientOrgId).eq('supplier_org_id', profile.organization_id).is('archived_at', null).maybeSingle();
     if (linked) return;
-    const { data: sameName } = await this.db.from('suppliers').select('id').eq('organization_id', clientOrgId).is('archived_at', null)
-      .ilike('name', profile.display_name.replace(/[\\%_]/g, (c: string) => `\\${c}`)).maybeSingle();
-    if (sameName) {
-      await this.db.from('suppliers').update({ supplier_org_id: profile.organization_id, updated_at: new Date().toISOString() }).eq('id', sameName.id);
+    const { data: active } = await this.db.from('suppliers').select('id, name').eq('organization_id', clientOrgId).is('archived_at', null);
+    const typed = sameName(active || [], profile.display_name);
+    if (typed) {
+      await this.db.from('suppliers').update({ supplier_org_id: profile.organization_id, updated_at: new Date().toISOString() }).eq('id', typed.id);
       return;
     }
     await this.db.from('suppliers').insert({

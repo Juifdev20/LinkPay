@@ -59,6 +59,13 @@ describe('suppliers (all sectors)', () => {
     await expect(setup().service.resolveForProduct('org1', 'boss', {})).resolves.toBeUndefined();
   });
 
+  it('a name with a wildcard is a new supplier, never another one ("Bra*" is not "Bralima")', async () => {
+    const { service, inserts } = setup({ existing: [{ id: 's1', name: 'Bralima' }] });
+    const s = await service.create('org1', boss, { name: 'Bra*' });
+    expect(s.id).toBe('s-new');
+    expect(inserts[0].name).toBe('Bra*');
+  });
+
   it('an empty name is refused', async () => {
     await expect(setup().service.create('org1', boss, { name: '   ' })).rejects.toBeInstanceOf(BadRequestException);
   });

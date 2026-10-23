@@ -10,6 +10,12 @@ const SUPPLIER_READ_ROLES = [...SUPPLIER_MANAGE_ROLES, 'comptable'];
 type Caller = { id: string; role?: string; organization_id?: string };
 export type SupplierInput = { name?: string; phone?: string | null; email?: string | null; address?: string | null; notes?: string | null };
 
+/** The row whose name is `name`, ignoring case and spaces around it. */
+export const sameName = <T extends { name: string }>(rows: T[], name: string): T | null => {
+  const key = name.trim().replace(/\s+/g, ' ').toLowerCase();
+  return rows.find((r) => r.name.trim().replace(/\s+/g, ' ').toLowerCase() === key) || null;
+};
+
 const clean = (v: string | null | undefined, max: number) => (v == null ? null : v.trim().replace(/\s+/g, ' ').slice(0, max) || null);
 
 /**
@@ -66,16 +72,18 @@ export class SuppliersService {
     return rows.map((r) => ({ ...r, product_count: count.get(r.id) || 0 }));
   }
 
-  /** The active supplier of this name ("bralima " = "Bralima"), or null. */
+  /**
+   * The active supplier of this name ("bralima " = "Bralima"), or null. Compared here, not with a pattern: in a
+   * PostgREST pattern '*' and '%' are wildcards, so "Bra*" would have matched "Bralima".
+   */
   private async findByName(orgId: string, name: string) {
     const { data, error } = await this.db
       .from('suppliers')
       .select('*')
       .eq('organization_id', orgId)
-      .is('archived_at', null)
-      .ilike('name', name.replace(/[\\%_]/g, (c) => `\\${c}`));
+      .is('archived_at', null);
     if (error) this.fail(error);
-    return (data || [])[0] || null;
+    return sameName(data || [], name);
   }
 
   /** Adds a supplier — or gives back the one already called so (typing the same name twice never makes two). */

@@ -156,6 +156,7 @@ export class SupplierOrdersService {
     if (currencies.size > 1) throw new BadRequestException('Une commande se fait dans une seule devise : séparez les produits en CDF et en USD.');
     const currency = lines[0].c.currency;
     const subtotal = lines.reduce((sum, l) => sum + l.c.price_cents * l.quantity, 0);
+    if (!Number.isSafeInteger(subtotal) || subtotal > 1_000_000_000_000_000) throw new BadRequestException('Montant de commande trop élevé : séparez-la en plusieurs commandes.');
 
     const { data: order, error } = await this.db
       .from('supplier_orders')
@@ -257,7 +258,8 @@ export class SupplierOrdersService {
     if (order.status !== 'submitted') throw new BadRequestException('Cette commande a déjà été traitée');
     const fee = order.delivery_requested ? Number(input.delivery_fee_cents ?? 0) : 0;
     if (!Number.isInteger(fee) || fee < 0) throw new BadRequestException('Frais de livraison invalides.');
-    const total = order.subtotal_cents + fee;
+    const total = Number(order.subtotal_cents) + fee;
+    if (!Number.isSafeInteger(total)) throw new BadRequestException('Montant trop élevé.');
 
     const reference = `REQ-${order.number}-${randomBytes(2).toString('hex').toUpperCase()}`;
     const { data: request, error: reqErr } = await this.db

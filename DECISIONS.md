@@ -132,6 +132,23 @@ listes communes (`ProductTable`). Ordre de travail : A → B → C, puis le fich
     - Une notification annonce l'essai dès que l'entreprise devient fournisseur ; des rappels suivent avant la fin.
   - **À faire côté Supabase** : migrations `083` puis `084` (LinkPay Test puis production), puis fixer le prix CDF de
     l'abonnement Fournisseur dans l'écran super admin (seul le prix USD de 10 $ est mis par la migration).
+- **Revue de sécurité des phases A, B, C (23/10)** — corrigé :
+  - noms de fournisseurs comparés exactement (dans un motif PostgREST, `*` et `%` sont des jokers : « Bra* » aurait
+    été pris pour « Bralima ») — `sameName` dans `suppliers.service.ts` ;
+  - montants et quantités bornés (10 milliards par prix ou frais, 1 million d'unités par ligne) et totaux vérifiés
+    entiers exacts, côté commande et confirmation ;
+  - devenir fournisseur, modifier le catalogue, inviter et commander demandent l'abonnement entreprise actif ; la suite
+    d'une commande en cours (paiement, livraison, réception) ne l'exige jamais ;
+  - recherche d'un fournisseur par numéro limitée à 20 par minute (pas d'essai de tous les numéros) ;
+  - le magasinier voit les fournisseurs de l'entreprise, pas ses clients.
+  - Vérifié sans changement : chaque route contrôle l'entreprise et la station de l'appelant ; les prix d'une commande
+    viennent du catalogue, jamais de la requête ; le montant de l'abonnement Fournisseur est calculé par l'API et payé
+    par une fonction SQL réservée au service (propriétaire seul, son portefeuille, idempotente) ; un lien de paiement
+    en cours n'est jamais fermé (annuler / refuser / paiement hors application refusés pendant un paiement) ; les
+    nouvelles tables sont fermées à la clé publique (RLS, `REVOKE`).
+  - **Risque accepté, à suivre** : une commande payée puis jamais livrée n'a pas de remboursement automatique ; le
+    fournisseur rembourse (ou le support tranche). Un paiement espèces / Mobile Money reste déclaratif (hors
+    application) : seul le fournisseur le confirme.
 - Fichier Excel du modèle économique : après C.
 
 ## 22/10/2026 (après-midi) — Deux secteurs seulement ; les Ventes électronique sur le modèle de la Caisse

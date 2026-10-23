@@ -11,9 +11,15 @@ import { OtpStepUpGuard, RequireOtp } from '../security/otp-step-up.guard';
 import { SecurityAlertsService } from '../security/security-alerts.service';
 import { AuditService } from '../audit/audit.service';
 import { RequireDeviceIntegrity } from '../integrity/device-integrity.guard';
+import { RequireSubscription } from '../subscriptions/subscription.guard';
+import { Throttle } from '@nestjs/throttler';
 import { SupplierNetworkService } from './supplier-network.service';
 import { SupplierOrdersService } from './supplier-orders.service';
 import { MAX_SUPPLIER_PLAN_MONTHS, SUPPLIER_PLAN_CURRENCIES, SupplierPlanService } from './supplier-plan.service';
+
+/** Upper bounds: 10 billion (in the currency) per price or fee, 1 million units per line — totals stay exact integers. */
+const MAX_AMOUNT_CENTS = 1_000_000_000_000;
+const MAX_QUANTITY = 1_000_000;
 
 class ProfileDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) display_name?: string;
@@ -23,7 +29,7 @@ class ProfileDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) description?: string | null;
   @ApiPropertyOptional({ description: "La station d'où partent les marchandises" }) @IsOptional() @IsUUID() merchant_id?: string;
   @ApiPropertyOptional({ description: 'Frais de livraison proposés par défaut (centimes), modifiables à chaque commande' })
-  @IsOptional() @IsInt() @Min(0) default_delivery_fee_cents?: number | null;
+  @IsOptional() @IsInt() @Min(0) @Max(MAX_AMOUNT_CENTS) default_delivery_fee_cents?: number | null;
   @ApiPropertyOptional({ enum: ['CDF', 'USD'] }) @IsOptional() @IsIn(['CDF', 'USD']) default_delivery_currency?: 'CDF' | 'USD' | null;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
 }
@@ -39,8 +45,8 @@ class PlanSubscribeDto extends PlanQuoteDto {
 }
 
 class CatalogItemDto {
-  @ApiProperty({ description: 'Prix de vente aux entreprises (centimes), dans la devise de l’article' }) @IsInt() @Min(1) price_cents!: number;
-  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) min_quantity?: number;
+  @ApiProperty({ description: 'Prix de vente aux entreprises (centimes), dans la devise de l’article' }) @IsInt() @Min(1) @Max(MAX_AMOUNT_CENTS) price_cents!: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Max(MAX_QUANTITY) min_quantity?: number;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
 }
 
@@ -55,7 +61,7 @@ class LinkActionDto {
 
 class OrderLineDto {
   @ApiProperty() @IsUUID() catalog_item_id!: string;
-  @ApiProperty() @IsInt() @Min(1) quantity!: number;
+  @ApiProperty() @IsInt() @Min(1) @Max(MAX_QUANTITY) quantity!: number;
 }
 
 class CreateOrderDto {
@@ -72,7 +78,7 @@ class NoteDto {
 }
 
 class ConfirmOrderDto extends NoteDto {
-  @ApiPropertyOptional({ description: 'Frais de livraison de cette commande (centimes, devise de la commande)' }) @IsOptional() @IsInt() @Min(0) delivery_fee_cents?: number;
+  @ApiPropertyOptional({ description: 'Frais de livraison de cette commande (centimes, devise de la commande)' }) @IsOptional() @IsInt() @Min(0) @Max(MAX_AMOUNT_CENTS) delivery_fee_cents?: number;
 }
 
 class OfflinePaymentDto {
@@ -83,7 +89,7 @@ class OfflinePaymentDto {
 class ReceiveLineDto {
   @ApiProperty() @IsUUID() order_item_id!: string;
   @ApiPropertyOptional({ description: 'Le produit de la station qui reçoit cette ligne' }) @IsOptional() @IsUUID() stock_item_id?: string;
-  @ApiPropertyOptional({ description: 'Prix de vente d’un produit nouveau (centimes)' }) @IsOptional() @IsInt() @Min(1) sale_price_cents?: number;
+  @ApiPropertyOptional({ description: 'Prix de vente d’un produit nouveau (centimes)' }) @IsOptional() @IsInt() @Min(1) @Max(MAX_AMOUNT_CENTS) sale_price_cents?: number;
 }
 
 class ReceiveDto {
@@ -107,6 +113,7 @@ export class SupplierNetworkController {
   }
 
   @Post('supplier-profile')
+  @RequireSubscription('org')
   @ApiOperation({ summary: 'Become a supplier (owner): a supplier number, the shipping station, the free trial starts' })
   become(@Param('id') id: string, @Body() dto: ProfileDto, @CurrentUser() caller: any) {
     return this.network.becomeSupplier(id, caller, dto);
@@ -141,6 +148,7 @@ export class SupplierNetworkController {
   }
 
   @Put('supplier-catalog/:stockItemId')
+  @RequireSubscription('org')
   @ApiOperation({ summary: 'Put an article in the catalog / change its business price / take it out (active false)' })
   setCatalogItem(@Param('id') id: string, @Param('stockItemId') stockItemId: string, @Body() dto: CatalogItemDto, @CurrentUser() caller: any) {
     return this.network.setCatalogItem(id, caller, stockItemId, dto);
@@ -148,6 +156,8 @@ export class SupplierNetworkController {
 
   // ---- links
   @Get('supplier-lookup')
+  // Numbers are short: no trying them one after the other.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @ApiOperation({ summary: "A supplier's public card from its number (before inviting it)" })
   lookup(@Param('id') id: string, @Query('number') number: string, @CurrentUser() caller: any) {
     return this.network.lookup(id, caller, number);
@@ -160,6 +170,7 @@ export class SupplierNetworkController {
   }
 
   @Post('supplier-links')
+  @RequireSubscription('org')
   @ApiOperation({ summary: 'Invite a supplier by its number' })
   invite(@Param('id') id: string, @Body() dto: InviteDto, @CurrentUser() caller: any) {
     return this.network.invite(id, caller, dto);
@@ -190,6 +201,7 @@ export class SupplierNetworkController {
   }
 
   @Post('supplier-orders')
+  @RequireSubscription('org')
   @ApiOperation({ summary: 'Order from the catalog of a supplier (owner, manager)' })
   createOrder(@Param('id') id: string, @Body() dto: CreateOrderDto, @CurrentUser() caller: any) {
     return this.orders.create(id, caller, dto);
