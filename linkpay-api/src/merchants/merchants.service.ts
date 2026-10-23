@@ -131,10 +131,13 @@ export class MerchantsService {
   async getMerchantByScanLinkPayNumber(scanlinkpayNumber: string) {
     const { data, error } = await this.supabaseService.getClient()
       .from('merchants')
-      .select('id, name, legal_name, logo_url, scanlinkpay_number, organization:organizations(name)')
+      .select('id, name, legal_name, logo_url, scanlinkpay_number, organization:organizations!organization_id(name)')
       .eq('scanlinkpay_number', scanlinkpayNumber)
       .maybeSingle();
 
+    // NB: `organizations!organization_id` names the foreign key on purpose. Since migrations 084/085 (supplier_profiles, supplier_stations) link
+    // merchants and organizations a second way, an unnamed embed is ambiguous for PostgREST ("more than one relationship") and the whole
+    // lookup failed — which used to be reported as "Numéro ScanLinkPay introuvable" (23/10/2026).
     // A database failure (e.g. a relation that no longer resolves after a deploy) must not look like "this number does not exist".
     if (error) {
       this.logger.error(`Lookup of the ScanLinkPay number ${scanlinkpayNumber} (merchants) failed: ${error.message}`);

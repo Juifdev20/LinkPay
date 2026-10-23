@@ -114,7 +114,7 @@ export class PosService {
   private async getReceiptMerchant(merchantId: string) {
     const { data } = await this.db
       .from('merchants')
-      .select('name, phone, address, logo_url, pos_tva_rate_pct, organizations(name)')
+      .select('name, phone, address, logo_url, pos_tva_rate_pct, organizations!organization_id(name)')
       .eq('id', merchantId)
       .single();
     const merchant: any = data || null;
