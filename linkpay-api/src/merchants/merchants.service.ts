@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger, Optional } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { BankSettingsService } from '../platform-settings/bank-settings.service';
 import { validateBankDestination } from '../wallets/bank-account';
 import { ConfigService } from '@nestjs/config';
@@ -135,7 +135,12 @@ export class MerchantsService {
       .eq('scanlinkpay_number', scanlinkpayNumber)
       .maybeSingle();
 
-    if (error || !data) {
+    // A database failure (e.g. a relation that no longer resolves after a deploy) must not look like "this number does not exist".
+    if (error) {
+      this.logger.error(`Lookup of the ScanLinkPay number ${scanlinkpayNumber} (merchants) failed: ${error.message}`);
+      throw new ServiceUnavailableException('Le service est momentanément indisponible. Réessayez dans un instant.');
+    }
+    if (!data) {
       throw new NotFoundException('Numéro ScanLinkPay introuvable');
     }
 

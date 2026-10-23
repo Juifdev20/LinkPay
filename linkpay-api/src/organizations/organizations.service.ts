@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import { AuthService } from '../auth/auth.service';
@@ -146,9 +146,15 @@ export class OrganizationsService {
       .from('organizations')
       .select('id, name, legal_name, scanlinkpay_number')
       .eq('scanlinkpay_number', scanlinkpayNumber)
-      .single();
+      .maybeSingle();
 
-    if (error || !data) {
+    // A database failure must not look like "this number does not exist": the payer (or an integrator such as HotelSaver) would
+    // blame the number. Only an empty answer is "introuvable".
+    if (error) {
+      this.logger.error(`Lookup of the ScanLinkPay number ${scanlinkpayNumber} (organizations) failed: ${error.message}`);
+      throw new ServiceUnavailableException('Le service est momentanément indisponible. Réessayez dans un instant.');
+    }
+    if (!data) {
       throw new NotFoundException('Numéro ScanLinkPay introuvable');
     }
 
