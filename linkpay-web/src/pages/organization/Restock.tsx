@@ -24,10 +24,12 @@ const STATUS: Record<string, { label: string; variant: 'warning' | 'success' | '
 };
 
 /**
- * Restock requests. A station's manager or stock keeper asks the owner to buy
+ * Restock requests (DECISIONS.md 23/10, phase B). The stock keeper asks to buy
  * what runs low (the form starts with the articles under their alert level);
- * the owner approves or refuses; the station marks the goods received. The
- * stock itself is then entered by the stock keeper, as usual.
+ * the station's MANAGER approves or refuses and buys — the owner only when the
+ * station has no manager (and they can always decide). A manager's own
+ * request is approved at once. The station marks the goods received; the
+ * stock itself is then entered as usual.
  * ?nouvelle=1 opens the form (from the low-stock alert).
  */
 export default function RestockPage() {
@@ -64,10 +66,19 @@ export default function RestockPage() {
   });
 
   const canRequest = !isOwner || (stations?.length ?? 0) > 0;
+  // The station's manager decides (the API checks it is their station); the owner can too. Never the stock keeper.
+  const canDecide = isOwner || user?.role === 'gerant';
 
   return (
     <div className="p-4 md:p-6 pb-28 md:pb-6 space-y-5 max-w-6xl mx-auto">
       <PageHeader title="Demandes d'achat" />
+      <p className="-mt-3 text-sm text-muted-foreground">
+        {user?.role === 'magasinier'
+          ? 'Vos demandes vont au gérant de la station, qui valide et achète (au patron si la station n\'a pas de gérant).'
+          : user?.role === 'gerant'
+            ? 'Vous validez les demandes du magasinier et passez les commandes. Vos propres demandes sont validées directement.'
+            : 'Le gérant de chaque station valide les demandes de son magasinier. Celles des stations sans gérant arrivent chez vous.'}
+      </p>
 
       <div className="flex flex-wrap items-center gap-2">
         {[['', 'Toutes'], ['pending', 'En attente'], ['approved', 'Validées'], ['received', 'Reçues'], ['rejected', 'Refusées']].map(([k, label]) => (
@@ -111,7 +122,7 @@ export default function RestockPage() {
                 {r.note && <p className="text-sm text-muted-foreground">« {r.note} »</p>}
                 {r.decision_note && <p className="text-sm">Réponse : « {r.decision_note} »</p>}
 
-                {isOwner && r.status === 'pending' && (
+                {canDecide && r.status === 'pending' && (
                   <div className="flex gap-2">
                     <Button size="sm" className="flex-1" disabled={update.isPending} onClick={() => update.mutate({ id: r.id, status: 'approved' })}>
                       <Check className="mr-1 h-4 w-4" /> Valider

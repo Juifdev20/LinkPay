@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { ROLE_LABELS } from '@/lib/permissions';
 import { useHomeData } from '@/components/home/useHomeData';
 import type { Currency } from '@/components/home/useHomeData';
 import { HomeHero, RecentSales } from '@/components/home/HomeWidgets';
@@ -29,14 +30,14 @@ const SHORTCUTS = [
     label: 'Équipe',
     sub: 'Vendeurs et activité',
     icon: Users,
-    to: '/dashboard/organization/team',
+    to: '/dashboard/organization/staff',
     tone: 'bg-emerald-500/10 text-emerald-600',
   },
   {
     label: 'Caisses',
     sub: 'Encaissements et clôtures',
     icon: Vault,
-    to: '/dashboard/organization/caisses',
+    to: '/dashboard/pos',
     tone: 'bg-amber-500/10 text-amber-600',
   },
 ] as const;
@@ -106,9 +107,10 @@ export default function GerantHome() {
         today={homeData.today}
         yesterday={homeData.yesterday}
         loading={homeData.loading}
-        onOpenTill={() => navigate('/dashboard/organization/sales')}
+        onOpenTill={() => navigate('/dashboard/organization/sales/dashboard')}
         heroLabel="Chiffre d'affaires du jour"
         storeIcon
+        userRole={user?.role ? ROLE_LABELS[user.role] ?? user.role : undefined}
       />
 
       {/* ── 2×2 shortcut cards ── */}

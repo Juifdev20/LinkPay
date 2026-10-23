@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/lib/auth-store';
-import { useAppLock, BACKGROUND_LOCK_MS, getIdleLockMinutes, appCodeApplies, isSalesRoute } from '@/lib/app-lock-store';
+import { useAppLock, BACKGROUND_LOCK_MS, getIdleLockMinutes, appCodeApplies, isSalesRoute, isPinSessionDisabled } from '@/lib/app-lock-store';
 import { isAppLockEnabled, verifyAppLock } from '@/lib/app-lock';
 import { weakAppCodeReason } from '@/lib/code-strength';
 import api from '@/lib/api';
@@ -41,7 +41,7 @@ export function AppLockGate() {
   // Clients, merchants, business owners and their employees (not administrators).
   // An employee's first login starts with the forced change of the temporary
   // password; the access code is chosen right after, not on top of it.
-  const applies = isAuthenticated && appCodeApplies(user?.role) && !user?.must_change_password;
+  const applies = isAuthenticated && appCodeApplies(user?.role) && !user?.must_change_password && !isPinSessionDisabled();
   const onSalesScreen = isSalesRoute(pathname);
   // A lock request while a sales/stock screen is open is dropped, not postponed:
   // the code is never asked later, mid-navigation, because of something that

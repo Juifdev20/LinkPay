@@ -3,7 +3,8 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { IsString, IsOptional, IsNumber, IsIn, IsObject, IsBoolean, MaxLength, Min, MinLength, IsUUID } from 'class-validator';
-import { StockService } from './stock.service';
+import { StockService, STOCK_STAFF_ROLES } from './stock.service';
+import { SuppliersService } from './suppliers.service';
 import { StockPasswordService } from './stock-password.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -112,6 +113,17 @@ class CreateStockItemDto {
   @IsNumber()
   @Min(0)
   low_stock_threshold?: number;
+
+  @ApiPropertyOptional({ description: "Fournisseur choisi dans la liste de l'entreprise ; null pour l'enlever" })
+  @IsOptional()
+  @IsUUID()
+  supplier_id?: string | null;
+
+  @ApiPropertyOptional({ example: 'Bralima', description: 'Fournisseur tapé à la main : retrouvé par son nom, sinon ajouté à la liste' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  supplier_name?: string | null;
 }
 
 // Editing is gated behind the module's shared stock password — see
@@ -202,7 +214,7 @@ export function assertStockPasswordAccess(
   if (level === 'member' && sameOrg) return;
   // Trying the password counts toward a lockout of the whole company's stock edits: only people who actually manage
   // stock may try it (a seller or cashier guessing could otherwise lock the stock keeper out).
-  if (level === 'manager' && sameOrg && caller.role === 'magasinier') return;
+  if (level === 'manager' && sameOrg && STOCK_STAFF_ROLES.includes(caller.role || '')) return;
   throw new ForbiddenException(
     level === 'owner'
       ? "Seul le patron peut définir ou modifier le mot de passe de gestion de stock."
@@ -463,5 +475,45 @@ export class OrganizationStockController {
     }
     await this.stockPasswordService.resetPassword(orgId, dto.new_password);
     return { success: true };
+  }
+}
+
+class SupplierDto {
+  @ApiPropertyOptional({ example: 'Bralima' }) @IsOptional() @IsString() @MaxLength(120) name?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(30) phone?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(160) email?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(255) address?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) notes?: string | null;
+}
+
+/** An enterprise's suppliers (migration 083) — optional on every product, all sectors. */
+@ApiTags('Stock')
+@ApiBearerAuth()
+@Controller('organizations')
+export class SuppliersController {
+  constructor(private suppliers: SuppliersService) {}
+
+  @Get(':id/suppliers')
+  @ApiOperation({ summary: "The enterprise's suppliers (owner, manager, stock keeper, accountant)" })
+  list(@Param('id') orgId: string, @CurrentUser() caller: any) {
+    return this.suppliers.list(orgId, caller);
+  }
+
+  @Post(':id/suppliers')
+  @ApiOperation({ summary: 'Add a supplier — gives back the existing one when the name is already on the list' })
+  create(@Param('id') orgId: string, @Body() dto: SupplierDto, @CurrentUser() caller: any) {
+    return this.suppliers.create(orgId, caller, dto);
+  }
+
+  @Put(':id/suppliers/:supplierId')
+  @ApiOperation({ summary: 'Change a supplier (name, contact, notes)' })
+  update(@Param('id') orgId: string, @Param('supplierId') supplierId: string, @Body() dto: SupplierDto, @CurrentUser() caller: any) {
+    return this.suppliers.update(orgId, supplierId, caller, dto);
+  }
+
+  @Delete(':id/suppliers/:supplierId')
+  @ApiOperation({ summary: 'Take a supplier off the list (archived: products keep showing it)' })
+  archive(@Param('id') orgId: string, @Param('supplierId') supplierId: string, @CurrentUser() caller: any) {
+    return this.suppliers.archive(orgId, supplierId, caller);
   }
 }

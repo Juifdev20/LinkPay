@@ -20,10 +20,16 @@ import { Loader2, Plus, X, Printer, KeyRound, Warehouse, ShoppingBag, Calculator
 // One person sells AND takes the money, in every sector (our shops don't split seller and cashier): a single
 // « Vendeur / caissier » role (slug 'caissier'). A vendeur from before migration 077 is shown as one.
 const ROLES = [
-  { slug: 'caissier', label: 'Vendeur / caissier', icon: ShoppingBag },
-  { slug: 'gerant', label: 'Gérant', icon: BadgeCheck },
-  { slug: 'magasinier', label: 'Magasinier', icon: Warehouse },
-  { slug: 'comptable', label: 'Comptable', icon: Calculator },
+  { slug: 'caissier', label: 'Vendeur / caissier', icon: ShoppingBag, help: 'Vend et encaisse. Ne voit ni les prix d\'achat ni les marges.' },
+  {
+    slug: 'gerant', label: 'Gérant', icon: BadgeCheck,
+    help: 'Dirige sa station : équipe, ventes, rapports, et tout le stock (articles, inventaire, commandes). Il valide les demandes d\'achat du magasinier et achète. Pas de magasinier ? Le gérant s\'occupe du stock et des commandes.',
+  },
+  {
+    slug: 'magasinier', label: 'Magasinier', icon: Warehouse,
+    help: 'Gère le stock de sa station (articles, entrées, inventaire) et fait les demandes d\'achat au gérant. Il ne valide rien et ne gère pas l\'équipe.',
+  },
+  { slug: 'comptable', label: 'Comptable', icon: Calculator, help: 'Consulte les ventes, les rapports et le journal. Ne modifie rien.' },
 ];
 const roleOf = (member: any) => (member.role === 'vendeur' ? 'caissier' : member.role);
 
@@ -410,6 +416,12 @@ export default function StaffPage() {
                     </div>
                   )}
                 </div>
+                {/* What the chosen role may do — and the manager / stock keeper rule (DECISIONS.md 23/10). */}
+                <p className="rounded-xl bg-secondary px-3 py-2 text-xs text-muted-foreground">
+                  {ROLES.find((r) => r.slug === form.role_slug)?.help}
+                  {(form.role_slug === 'gerant' || form.role_slug === 'magasinier') &&
+                    ' Un gérant peut faire tout le travail du magasinier, mais un magasinier ne remplace jamais le gérant.'}
+                </p>
               </div>
 
               {createMutation.isError && (

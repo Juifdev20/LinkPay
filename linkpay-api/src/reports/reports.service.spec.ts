@@ -47,7 +47,7 @@ function setup(opts: { callerStation?: string } = {}) {
         return { data: null };
     }
   });
-  const stock = new StockService(fake.service, {} as any, {} as any, {} as any, {} as any);
+  const stock = new StockService(fake.service, {} as any, {} as any, {} as any, {} as any, {} as any);
   const orgs = { getOrganizationById: jest.fn(async () => ({ id: 'org1', owner_id: 'boss' })), getOrganizationMerchants: jest.fn(async () => [{ id: 'm1', name: 'Station Goma' }]) };
   return new ReportsService(fake.service, stock, orgs as any);
 }

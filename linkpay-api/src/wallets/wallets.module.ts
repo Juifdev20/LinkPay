@@ -14,9 +14,10 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { AuditModule } from '../audit/audit.module';
 import { RiskModule } from '../risk/risk.module';
 import { SavingsModule } from '../savings/savings.module';
+import { PlatformSettingsModule } from '../platform-settings/platform-settings.module';
 
 @Module({
-  imports: [SupabaseModule, PaymentsModule, NotificationsModule, AuditModule, SavingsModule, RiskModule],
+  imports: [SupabaseModule, PaymentsModule, NotificationsModule, AuditModule, SavingsModule, RiskModule, PlatformSettingsModule],
   controllers: [WalletsController, WalletLimitsController, ManualWithdrawalsController, WithdrawalCallbacksController],
   providers: [WalletsService, WalletPinService, WalletLimitsService, WithdrawalPayoutService, ManualWithdrawalsService],
   exports: [WalletsService, WalletPinService, WalletLimitsService],

@@ -10,6 +10,9 @@ import { PinInput } from '@/components/PinInput';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { MobileMoneyFields } from '@/components/payment/MobileMoneyFields';
 import { MOBILE_MONEY_OPERATORS, displayPhone, isNumberReady, operatorById, toApiPhone } from '@/lib/mobile-money';
+import { ACCOUNT_DIGITS, BANK_DELAY_HOURS, accountDigits, formatAccountInput, isAccountComplete, isHolderName } from '@/lib/banks';
+import { useAuthStore } from '@/lib/auth-store';
+import { Select } from '@/components/ui/select';
 import { formatCurrency, cn } from '@/lib/utils';
 import { FormSheet } from '@/components/FormSheet';
 import { Loader2, Check, Clock, ArrowLeft, Smartphone, Landmark, ChevronRight } from 'lucide-react';
@@ -29,9 +32,19 @@ export default function WithdrawPage() {
   const [operator, setOperator] = useState('airtel');
   // The 9 national digits of the Mobile Money number ("828497218"), see lib/mobile-money.
   const [phone, setPhone] = useState('');
+  // Bank: picked ONLY in the list the super admin switched on (never typed), the account number written XXXXX-XXXXX-XXXXXXXXXXX-XX and typed twice.
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
-  const [accountName, setAccountName] = useState('');
+  const [accountConfirm, setAccountConfirm] = useState('');
+  // The account title: the name registered AT THE BANK. Offered with the name of the ScanLinkPay account, which the person corrects if the bank has it otherwise.
+  const ownName = useAuthStore((s) => s.user?.full_name) ?? '';
+  const [accountName, setAccountName] = useState(ownName);
+  const { data: bankList } = useQuery<{ banks: string[] }>({
+    queryKey: ['platform-banks'],
+    queryFn: async () => (await api.get('/platform/banks')).data,
+    staleTime: 60_000,
+  });
+  const banks = bankList?.banks ?? [];
   const [fee, setFee] = useState<any>(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -62,9 +75,11 @@ export default function WithdrawPage() {
       setError('Numéro Mobile Money incomplet ou ne correspondant pas à l\'opérateur choisi.');
       return;
     }
-    if (channel === 'bank' && (!bankName || !accountNumber || !accountName)) {
-      setError('Informations bancaires incomplètes');
-      return;
+    if (channel === 'bank') {
+      if (!bankName) return setError('Choisissez votre banque.');
+      if (!isAccountComplete(accountNumber)) return setError(`Le numéro de compte doit comporter ${ACCOUNT_DIGITS} chiffres (exemple : 00017-00001-12345678901-23). Vous le trouvez sur votre relevé ou dans l'application de votre banque.`);
+      if (accountDigits(accountConfirm) !== accountDigits(accountNumber)) return setError('Les deux numéros de compte ne sont pas identiques. Vérifiez-les.');
+      if (!isHolderName(accountName)) return setError('Saisissez l\'intitulé du compte, tel qu\'il apparaît à la banque.');
     }
     setDestinationLoading(true);
     try {
@@ -122,7 +137,7 @@ export default function WithdrawPage() {
             <h2 className="text-xl font-bold text-foreground mb-1">{done ? 'Retrait effectué !' : manual ? 'Demande enregistrée' : 'Retrait en cours'}</h2>
             <p className="text-sm text-muted-foreground mb-6">
               {formatCurrency(amountCents, currency)} vers {channel === 'mobile_money' ? operatorById(operator)?.label : bankName}
-              {!done && <><br />{manual ? 'Notre équipe va envoyer l\'argent. Vous serez notifié dès que c\'est fait.' : 'Vous serez notifié dès que l\'argent est envoyé.'}</>}
+              {!done && <><br />{manual ? `Notre équipe va envoyer l'argent${channel === 'bank' ? ` sous ${result?.expected_hours ?? BANK_DELAY_HOURS} h` : ''}. Vous serez notifié dès que c'est fait.` : 'Vous serez notifié dès que l\'argent est envoyé.'}</>}
             </p>
             <div className="rounded-xl bg-secondary p-4 text-left space-y-2">
               <div className="flex justify-between text-sm">
@@ -262,17 +277,31 @@ export default function WithdrawPage() {
                 />
               ) : (
                 <>
+                  <div className="rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-sm text-foreground">
+                    <p className="font-semibold">Virement bancaire</p>
+                    <p className="text-muted-foreground">Notre équipe envoie le virement sous {BANK_DELAY_HOURS} h. Vous êtes averti dès que c'est fait. Si la banque refuse le compte, votre argent vous est rendu en entier, frais compris.</p>
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="bank" className="font-semibold">Banque</Label>
-                    <Input id="bank" placeholder="Equity BCDC" value={bankName} onChange={(e) => setBankName(e.target.value)} autoFocus />
+                    <Select id="bank" value={bankName} onChange={(e) => setBankName(e.target.value)} autoFocus>
+                      <option value="">{banks.length ? 'Choisissez votre banque' : 'Chargement des banques…'}</option>
+                      {banks.map((b) => <option key={b} value={b}>{b}</option>)}
+                    </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="accnum" className="font-semibold">Numéro de compte</Label>
-                    <Input id="accnum" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} />
+                    <Label htmlFor="accnum" className="font-semibold">Numéro de compte (RIB)</Label>
+                    <Input id="accnum" inputMode="numeric" autoComplete="off" placeholder="00017-00001-12345678901-23" value={accountNumber} onChange={(e) => setAccountNumber(formatAccountInput(e.target.value))} />
+                    <p className="text-xs text-muted-foreground">{ACCOUNT_DIGITS} chiffres : code banque, code agence, numéro de compte et clé. Vous les trouvez sur votre relevé ou dans l'application de votre banque.</p>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="accname" className="font-semibold">Titulaire du compte</Label>
-                    <Input id="accname" value={accountName} onChange={(e) => setAccountName(e.target.value)} />
+                    <Label htmlFor="accnum2" className="font-semibold">Confirmez le numéro de compte</Label>
+                    <Input id="accnum2" inputMode="numeric" autoComplete="off" placeholder="Saisissez-le encore une fois" value={accountConfirm} onChange={(e) => setAccountConfirm(formatAccountInput(e.target.value))} />
+                    {accountConfirm && accountDigits(accountConfirm) === accountDigits(accountNumber) && isAccountComplete(accountNumber) && <p className="text-xs text-success font-medium">Les deux numéros sont identiques.</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="accname" className="font-semibold">Intitulé du compte (nom à la banque)</Label>
+                    <Input id="accname" value={accountName} onChange={(e) => setAccountName(e.target.value)} maxLength={100} />
+                    <p className="text-xs text-muted-foreground">Le nom enregistré à la banque, pas celui de ScanLinkPay : corrigez-le s'il est différent. Un compte au nom d'une autre personne peut retarder le traitement.</p>
                   </div>
                 </>
               )}

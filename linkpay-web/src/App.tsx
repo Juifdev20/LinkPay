@@ -72,6 +72,9 @@ const StaffWalletPage = lazyPage(() => import('@/pages/staff/StaffWallet'));
 const BusinessWalletPage = lazyPage(() => import('@/pages/organization/BusinessWallet'));
 const OrgTreasuryPage = lazyPage(() => import('@/pages/organization/Treasury'));
 const ReportsPage = lazyPage(() => import('@/pages/organization/Reports'));
+const SellerReportPage = lazyPage(() => import('@/pages/organization/SellerReport'));
+const SupplierSpacePage = lazyPage(() => import('@/pages/organization/SupplierSpace'));
+const SupplierOrdersPage = lazyPage(() => import('@/pages/organization/SupplierOrders'));
 const MySalesPage = lazyPage(() => import('@/pages/staff/MySales'));
 const RestockPage = lazyPage(() => import('@/pages/organization/Restock'));
 const AdminRiskLogsPage = lazyPage(() => import('@/pages/admin/RiskLogs'));
@@ -79,6 +82,7 @@ const AdminTwoFactorSetupPage = lazyPage(() => import('@/pages/auth/AdminTwoFact
 const AdminWalletLimitsPage = lazyPage(() => import('@/pages/admin/WalletLimits'));
 const ExpenseTrackerSettingsPage = lazyPage(() => import('@/pages/admin/ExpenseTrackerSettings'));
 const AppSecurityPage = lazyPage(() => import('@/pages/admin/AppSecurity'));
+const AdminBanksPage = lazyPage(() => import('@/pages/admin/Banks'));
 const AdminOrganizationsPage = lazyPage(() => import('@/pages/admin/Organizations'));
 import OrganizationProfilePage from '@/pages/OrganizationProfile';
 const StaffPage = lazyPage(() => import('@/pages/organization/Staff'));
@@ -379,6 +383,14 @@ export default function App() {
           }
         />
         <Route
+          path="admin/banks"
+          element={
+            <ProtectedRoute roles={['super_admin']}>
+              <AdminBanksPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="admin/app-security"
           element={
             <ProtectedRoute roles={['super_admin']}>
@@ -535,6 +547,30 @@ export default function App() {
           element={
             <ProtectedRoute roles={rolesFor('/dashboard/organization/treasury')}>
               <OrgTreasuryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/supplier"
+          element={
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/supplier')}>
+              <SupplierSpacePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/supplier-orders"
+          element={
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/supplier-orders')}>
+              <SupplierOrdersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/reports/sellers"
+          element={
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/reports/sellers')}>
+              <SellerReportPage />
             </ProtectedRoute>
           }
         />

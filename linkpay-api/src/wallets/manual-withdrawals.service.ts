@@ -7,12 +7,17 @@ import { AuditService } from '../audit/audit.service';
 import { WithdrawalPayoutService } from './withdrawal-payout.service';
 import { JobLockService } from '../common/job-lock/job-lock.service';
 import { SecurityAlertsService } from '../security/security-alerts.service';
+import { holderMatchesOwner } from './bank-account';
 
 const MAX_REFERENCE = 80;
 const MAX_REASON = 300;
 /** A withdrawal waiting longer than this is reminded to the administrators, every hour; after URGENT it is critical (SMS + e-mail). */
 const OVERDUE_MS = 2 * 3_600_000;
 const URGENT_MS = 6 * 3_600_000;
+/** A bank transfer is promised within BANK_DELAY_HOURS (24 h): the reminder starts at 12 h and turns critical at 20 h, while it can still be kept. */
+const BANK_OVERDUE_MS = 12 * 3_600_000;
+const BANK_URGENT_MS = 20 * 3_600_000;
+const limitsOf = (w: { channel?: string | null }) => (w.channel === 'bank' ? { overdue: BANK_OVERDUE_MS, urgent: BANK_URGENT_MS, hours: 12 } : { overdue: OVERDUE_MS, urgent: URGENT_MS, hours: 2 });
 
 /**
  * Withdrawals that wait for an admin: those the provider cannot send (a bank account with FlexPaie, whose PayoutService
@@ -94,6 +99,7 @@ export class ManualWithdrawalsService {
         psp_reference: w.psp_reference ?? null,
         created_at: w.created_at,
         updated_at: w.updated_at,
+        holder_matches_owner: w.channel === 'bank' ? holderMatchesOwner(w.destination?.account_name, owners.get(w.wallet_id)?.full_name) : null,
         owner: owners.get(w.wallet_id) ? { name: owners.get(w.wallet_id).full_name ?? null, email: owners.get(w.wallet_id).email ?? null, phone: owners.get(w.wallet_id).phone ?? null, wallet_number: owners.get(w.wallet_id).wallet_number ?? null } : null,
       })),
     };
@@ -121,14 +127,15 @@ export class ManualWithdrawalsService {
         this.logger.error(`Could not look for overdue withdrawals: ${error.message}`);
         return 0;
       }
-      const overdue = await this.manualOnly(data || []);
+      const overdue = (await this.manualOnly(data || [])).filter((w: any) => now - new Date(w.created_at).getTime() >= limitsOf(w).overdue);
       if (overdue.length === 0) return 0;
       const hours = Math.floor((now - new Date(overdue[0].created_at).getTime()) / 3_600_000);
-      const urgent = now - new Date(overdue[0].created_at).getTime() >= URGENT_MS;
+      const urgent = overdue.some((w: any) => now - new Date(w.created_at).getTime() >= limitsOf(w).urgent);
+      const waited = limitsOf(overdue[0]).hours;
       void this.alerts?.alert({
         severity: urgent ? 'critical' : 'warning',
         audience: 'admins',
-        title: overdue.length === 1 ? 'Un retrait attend depuis plus de 2 h' : `${overdue.length} retraits attendent depuis plus de 2 h`,
+        title: overdue.length === 1 ? `Un retrait attend depuis plus de ${waited} h` : `${overdue.length} retraits attendent depuis plus de ${waited} h`,
         body: `Le plus ancien attend depuis ${hours} h. Administration → Retraits à traiter.`,
         dedupeKey: `withdrawal-overdue:${Math.floor(now / 3_600_000)}`,
         data: { kind: 'manual_withdrawal_overdue', count: overdue.length },

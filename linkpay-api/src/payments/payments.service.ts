@@ -1,5 +1,7 @@
 import { SecurityAlertsService } from '../security/security-alerts.service';
-import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException, ServiceUnavailableException, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import { SupplierOrdersService } from '../supplier-network/supplier-orders.service';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import { PspFactory } from './psp/psp.factory';
@@ -44,7 +46,21 @@ export class PaymentsService {
     private salesService: SalesService,
     private merchantWalletCredit: MerchantWalletCreditService,
     private securityAlerts: SecurityAlertsService,
+    @Optional() private moduleRef?: ModuleRef,
   ) {}
+
+  /**
+   * An order between enterprises paid through its payment request (supplier network, DECISIONS.md 23/10): marked paid.
+   * Reached through the ModuleRef — importing that module here would close a module loop (Wallets → Payments).
+   */
+  private async markSupplierOrderPaid(requestId: string, transactionId: string | undefined, intentId: string) {
+    try {
+      const orders = this.moduleRef?.get(SupplierOrdersService, { strict: false });
+      await orders?.markPaidByPaymentRequest(requestId, transactionId);
+    } catch (err: any) {
+      this.logger.error(`Payment ${intentId} is paid but its supplier order could not be marked paid: ${err.message}`);
+    }
+  }
 
   async createPayment(data: {
     link_token: string;
@@ -395,6 +411,7 @@ export class PaymentsService {
     }
     await this.salesService.markPaidByPaymentRequest(request.id, transaction.id)
       .catch((err: any) => this.logger.error(`Wallet payment ${intent.id} is paid but its sale could not be marked paid: ${err.message}`));
+    await this.markSupplierOrderPaid(request.id, transaction.id, intent.id);
 
     await this.auditService.log({
       user_id: userId,
@@ -610,7 +627,10 @@ export class PaymentsService {
   }
 
   private async handleSuccessfulPayment(intent: any, event: any): Promise<any> {
-    if (!this.amountAccepted('paiement', intent.id, intent.amount_cents, event?.amount_cents)) return undefined;
+    // The provider was asked for total_cents (the amount plus the commission when the payer bears it, see createPayment): that is
+    // what it confirms. Comparing with amount_cents alone refused every payer-paid payment — money taken, nothing credited, the
+    // payer's screen waiting for ever (HotelSaver subscription, 22/10/2026: 1 USD + commission = 2.04 USD debited).
+    if (!this.amountAccepted('paiement', intent.id, Number(intent.total_cents ?? intent.amount_cents), event?.amount_cents)) return undefined;
 
     // Atomically claim the PENDING -> SUCCEEDED transition before doing any
     // work: a webhook delivery and a concurrent status-check poll (GET
@@ -701,6 +721,7 @@ export class PaymentsService {
     // A Ventes sale paid by Mobile Money / card through its QR: paid, its stock leaves the shelf (as for a wallet payment).
     await this.salesService.markPaidByPaymentRequest(request.id, transaction.id)
       .catch((err: any) => this.logger.error(`Payment ${intent.id} is paid but its sale could not be marked paid: ${err.message}`));
+    await this.markSupplierOrderPaid(request.id, transaction.id, intent.id);
 
     await this.generateReceipt(transaction, request.merchant);
 

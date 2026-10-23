@@ -1,4 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { BankSettingsService } from '../platform-settings/bank-settings.service';
+import { validateBankDestination } from '../wallets/bank-account';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import { AuthService } from '../auth/auth.service';
@@ -13,6 +15,7 @@ export class MerchantsService {
     private supabaseService: SupabaseService,
     private authService: AuthService,
     private configService: ConfigService,
+    @Optional() private bankSettings?: BankSettingsService,
   ) {}
 
   async createMerchant(
@@ -128,11 +131,19 @@ export class MerchantsService {
   async getMerchantByScanLinkPayNumber(scanlinkpayNumber: string) {
     const { data, error } = await this.supabaseService.getClient()
       .from('merchants')
-      .select('id, name, legal_name, logo_url, scanlinkpay_number, organization:organizations(name)')
+      .select('id, name, legal_name, logo_url, scanlinkpay_number, organization:organizations!organization_id(name)')
       .eq('scanlinkpay_number', scanlinkpayNumber)
       .maybeSingle();
 
-    if (error || !data) {
+    // NB: `organizations!organization_id` names the foreign key on purpose. Since migrations 084/085 (supplier_profiles, supplier_stations) link
+    // merchants and organizations a second way, an unnamed embed is ambiguous for PostgREST ("more than one relationship") and the whole
+    // lookup failed — which used to be reported as "Numéro ScanLinkPay introuvable" (23/10/2026).
+    // A database failure (e.g. a relation that no longer resolves after a deploy) must not look like "this number does not exist".
+    if (error) {
+      this.logger.error(`Lookup of the ScanLinkPay number ${scanlinkpayNumber} (merchants) failed: ${error.message}`);
+      throw new ServiceUnavailableException('Le service est momentanément indisponible. Réessayez dans un instant.');
+    }
+    if (!data) {
       throw new NotFoundException('Numéro ScanLinkPay introuvable');
     }
 
@@ -202,6 +213,13 @@ export class MerchantsService {
       if (updates[key] !== undefined) {
         filtered[key] = updates[key];
       }
+    }
+
+    // A bank account for the settlements is paid by hand: refuse a malformed one (or a bank not offered) now and keep it in its clean form.
+    const account = filtered.settlement_account;
+    if (account?.method === 'bank') {
+      const bank = validateBankDestination({ bank: account.bank_name, account_number: account.number, account_name: account.holder_name }, await this.bankSettings?.enabledBanks());
+      filtered.settlement_account = { ...account, bank_name: bank.bank, number: bank.account_number, holder_name: bank.account_name };
     }
 
     const { data, error } = await this.supabaseService.getClient()

@@ -5,6 +5,172 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 23/10/2026 — Achats et fournisseurs, rapport par vendeur, rôles du stock, réseau de fournisseurs
+
+Demande du propriétaire, valable pour **tous les secteurs** du module entreprise (`supermarche` et `electronique`) : rien
+n'est propre à un secteur, tout passe par `stock_items`, le formulaire produit commun (`StockItemFormSheet`) et les
+listes communes (`ProductTable`). Ordre de travail : A → B → C, puis le fichier Excel du modèle économique.
+**Un agent qui reprend lit cette section et la case « État » de chaque phase** (mise à jour à chaque étape poussée).
+
+### Phase A — prix d'achat, marge, fournisseur, rapport par vendeur
+- **A1. Prix d'achat et marge.** La colonne `stock_items.cost_price_cents` existe depuis la migration 031 et l'API
+  l'accepte déjà ; il manquait l'écran. Le formulaire produit a « Prix d'achat » (facultatif) à côté de « Prix de
+  vente », dans la même devise, et affiche la marge en direct (montant et %). La liste du stock a les colonnes
+  « Prix d'achat » et « Marge ». Les statistiques de marge existantes (caisse : `cost_price_cents_snapshot`,
+  ventes : `unit_cost_cents`) le reprennent sans changement.
+  - **Le vendeur et le caissier ne voient jamais le prix d'achat ni la marge** (`redactForRole` côté API, déjà en
+    place) : l'écran n'affiche ces colonnes que si le prix d'achat est présent dans les données reçues.
+  - Un produit sans prix d'achat a une marge « — » (jamais 100 %).
+- **A2. Fournisseur facultatif** (migration 083). Table `suppliers` par entreprise (nom, téléphone, e-mail, adresse,
+  notes ; archivage au lieu de suppression) et `stock_items.supplier_id`. Dans le formulaire : choisir dans la liste
+  ou « Nouveau fournisseur… » (nom tapé → le fournisseur est créé et ajouté à la liste). Colonne « Fournisseur »
+  dans la liste du stock. Masqué au vendeur et au caissier comme le prix d'achat (information d'achat).
+  - La même table servira à la phase C : un fournisseur « du réseau » est une ligne avec `supplier_org_id`
+    (l'entreprise fournisseur sur ScanLinkPay) ; un fournisseur tapé à la main n'en a pas.
+- **A3. Rapport par vendeur sur une période choisie.** Date de début et date de fin → pour chaque vendeur/caissier :
+  nombre de ventes, chiffre d'affaires par devise, marge (si prix d'achat connu). Il réunit la **caisse**
+  (`pos_tickets`, supermarché) et les **Ventes** (`sales`, électronique) : un seul rapport pour tous les secteurs.
+
+### Phase B — qui gère le stock et les achats
+- Le **magasinier** voit le stock, fait l'inventaire et **demande** un réapprovisionnement. La demande va au
+  **gérant** de sa station, qui l'approuve ou la refuse et passe la commande.
+- **S'il n'y a pas de gérant actif dans la station, la demande remonte au patron** (décision du 23/10). Le patron
+  peut toujours consulter l'historique des demandes ; il n'est plus notifié quand un gérant existe.
+- Le **gérant a tous les droits du magasinier** (stock, inventaire, demandes, commandes) ; l'inverse n'est jamais
+  vrai : un magasinier n'approuve rien, ne gère pas l'équipe, ne voit pas les rapports du gérant.
+- À la création d'un employé, le choix du rôle explique : « Pas de magasinier ? Le gérant s'occupe du stock et des
+  commandes. » et « Le magasinier gère le stock et fait des demandes au gérant. »
+
+### Phase C — réseau de fournisseurs
+- **Devenir fournisseur** (le patron l'active) : fiche (nom affiché, téléphone, adresse, zone de livraison, frais de
+  livraison par défaut facultatifs), un **numéro de fournisseur** unique, un **catalogue** (produits de son stock
+  qu'il accepte de vendre, avec son prix de vente aux entreprises).
+- Une entreprise **invite** un fournisseur par son numéro ; le fournisseur (patron ou gérant) **accepte** ou refuse.
+  Une fois acceptée, la relation ajoute ce fournisseur à la liste de A2 (`suppliers.supplier_org_id`).
+- **Commande** : le client (patron, gérant) choisit un fournisseur lié, puis les produits de **son** catalogue et les
+  quantités, et coche « Livraison » s'il veut être livré.
+- Le fournisseur (patron ou gérant, notifiés) **confirme** la commande et fixe les **frais de livraison de cette
+  commande** : les frais par défaut de sa fiche sont proposés, mais il peut les changer à chaque commande (la
+  distance varie — décision du 23/10). Les frais s'ajoutent au total quand le client a demandé la livraison.
+- **Paiement, deux voies (décision du 23/10)** : par portefeuille ScanLinkPay (paiement d'entreprise à entreprise,
+  avec les règles de commission habituelles), ou **hors application** (espèces, Mobile Money) noté à la main par le
+  fournisseur, qui confirme l'avoir reçu. Aucun argent n'est jamais créé ni déplacé hors du grand livre.
+- Chaque étape produit un **ticket** (bon de commande, reçu de paiement, bon de livraison). Le fournisseur valide le
+  paiement, puis la livraison ; le client confirme la **réception**.
+- **À la réception, le stock du client augmente tout seul** (mouvement `restock` dans `stock_movements`, jamais une
+  quantité écrite directement) et le **prix d'achat du produit devient le prix unitaire de la commande** (frais de
+  livraison non inclus) : la marge du client reste juste sans rien retaper. Le produit du client est retrouvé par son
+  code-barres, sinon il est créé (avec le fournisseur rempli).
+- Côté fournisseur, la livraison validée sort la marchandise de son stock (mouvement `sale`).
+
+### Phase C — le réseau de fournisseurs est payant (décision du propriétaire, 23/10)
+- **Abonnement « Fournisseur » mensuel, payé par l'entreprise fournisseur.** C'est la seule recette sûre : beaucoup de
+  commandes seront payées hors application (espèces, Mobile Money), où un frais par commande serait impossible à
+  prélever et facile à contourner.
+- **Plus la commission ScanLinkPay habituelle** sur les commandes payées par portefeuille : elles passent par une
+  demande de paiement normale, rien de plus à construire.
+- **L'acheteur ne paie rien de plus** : plus il y a d'acheteurs, plus les fournisseurs ont intérêt à s'abonner.
+- **Tout est réglé par le super admin, depuis son interface, jamais écrit dans le code** :
+  - le prix mensuel en CDF et en USD (départ proposé : 10 $ par mois, ou l'équivalent) ;
+  - la durée de l'**essai gratuit** en jours (2, 3, 30… ou 0 = pas d'essai) ;
+  - l'**abonnement annuel** : 12 mois pour le prix de (12 − N) mois, N (les mois offerts) fixé par le super admin.
+- **L'utilisateur est prévenu** : dès qu'il ouvre « Devenir fournisseur », l'écran dit « Essai gratuit de X jours »
+  (X du super admin) ; pendant l'essai, « Il vous reste X jours d'essai » ; puis le prix mensuel et annuel.
+- **Sans abonnement actif** (essai fini, non payé) : le fournisseur reste visible pour ses clients, mais ne reçoit
+  plus de nouvelles commandes ni de nouvelles invitations. Les commandes déjà en cours vont jusqu'au bout (on ne bloque
+  jamais une livraison déjà payée).
+
+### État
+- **Phase A : faite** (23/10). Où regarder :
+  - A1 : `StockItemFormSheet` (« Prix d'achat », marge en direct), `ProductTable` (`showPurchase` : colonnes Prix d'achat,
+    Marge, Fournisseur), `StockItemDetailDialog`, `lib/margin.ts` (marge = vente − achat, % du prix de vente).
+  - A2 : migration `083_suppliers.sql`, `stock/suppliers.service.ts` (+ routes `GET/POST/PUT/DELETE
+    /organizations/:id/suppliers` dans `stock.controller.ts`), champs `supplier_id` / `supplier_name` du produit
+    (`StockService.supplierOf`, nom ajouté aux listes par `withSupplierNames`, masqués au vendeur et au caissier).
+    Pas encore d'écran pour renommer ou archiver un fournisseur : il viendra avec l'écran « Fournisseurs » de la phase C.
+  - A3 : `reports/seller-report.service.ts`, route `GET /organizations/:id/reports/sellers?from&to&merchant_id`, page
+    `pages/organization/SellerReport.tsx` (menu « Rapport des vendeurs »). Une ligne de vente électronique enregistrée
+    avec un coût 0 (produit sans prix d'achat) compte comme « coût inconnu », jamais comme 100 % de marge.
+  - À faire côté Supabase : migration `083` (LinkPay Test puis production). Sans elle, le formulaire marche (sans
+    fournisseur) et la liste des fournisseurs répond « appliquez la migration 083 ».
+- **Phase B : faite** (23/10). Où regarder :
+  - API : `STOCK_STAFF_ROLES = ['magasinier', 'gerant']` (`stock.service.ts`) : le gérant crée et modifie les articles,
+    fait les mouvements, essaie le mot de passe de stock et fait l'inventaire (`inventory.controller.ts`).
+  - `reports/restock.service.ts` : demande du magasinier → notifiée aux gérants actifs de la station
+    (`stationStaffWithRoles`), au patron seulement s'il n'y en a pas ; demande du gérant (ou du patron) validée
+    d'office ; validation/refus par le gérant de la station ou le patron, jamais le magasinier ; « reçue » notifiée à
+    celui qui a validé.
+  - Web : page Demandes d'achat (texte par rôle, boutons Valider/Refuser pour le gérant), Inventaire ouvert au gérant,
+    Stock limité à sa station, explication du rôle dans le formulaire « Nouvel utilisateur » (`Staff.tsx`, `ROLES.help`).
+- **Phase C : faite** (23/10).
+  - **Fait — API** (migration `084_supplier_network.sql`, dossier `linkpay-api/src/supplier-network/`) :
+    - `supplier-plan.service.ts` : abonnement Fournisseur (essai fixé à l'activation, mensuel × N, annuel = 12 mois pour
+      12 − N, rappels quotidiens, écran super admin `GET/PUT /admin/supplier-plan…`), paiement par
+      `purchase_supplier_plan` (portefeuille du patron + PIN, idempotent ; payer pendant l'essai ajoute les mois après
+      la fin de l'essai). La trésorerie (079, redéfinie dans 084) compte cette recette avec les abonnements.
+    - `supplier-network.service.ts` : devenir fournisseur (numéro `F-xxxxxx`, station d'expédition), catalogue (articles
+      de cette station + prix aux entreprises), invitations par numéro (accepter / refuser / mettre fin), catalogue vu
+      par le client. Le fournisseur accepté entre dans la liste `suppliers` du client.
+    - `supplier-orders.service.ts` : commande → confirmation avec frais de livraison de la commande → paiement
+      (lien ScanLinkPay = demande de paiement ordinaire vers la station du fournisseur, marquée payée par
+      `PaymentsService.markSupplierOrderPaid` via le ModuleRef ; ou espèces / Mobile Money confirmés par le
+      fournisseur) → livraison (sortie de stock, idempotente par `out_ref`) → réception (entrée de stock par `in_ref`,
+      produit trouvé par code-barres ou créé avec son prix de vente, prix d'achat = prix de la commande).
+    - Testé : `supplier-plan.service.spec.ts`, `supplier-orders.service.spec.ts`, et la fonction SQL sur un Postgres
+      local (débit unique, prolongation après l'essai, refus d'un non-propriétaire, trésorerie).
+  - **Fait — écrans** (web, Android et Windows) :
+    - `pages/organization/SupplierSpace.tsx` (menu « Espace fournisseur », patron et gérant) : sans fiche, l'offre avec
+      « Essai gratuit de X jours » et les prix du super admin, puis le formulaire (patron) ; avec fiche, un bandeau
+      (« il vous reste X jours d'essai », fin d'abonnement), l'abonnement mensuel ou annuel payé par PIN, la fiche,
+      le catalogue, les clients (accepter / refuser) et les commandes reçues.
+    - `pages/organization/SupplierOrders.tsx` (menu « Mes fournisseurs », patron, gérant, magasinier) : inviter par
+      numéro, commander (quantités, livraison), payer par ScanLinkPay (lien `/p/:token`) ou annoncer un paiement
+      espèces / Mobile Money, confirmer la réception (produit retrouvé par code-barres ou créé avec son prix de vente).
+    - `components/supplier/OrderCard.tsx` (une commande vue des deux côtés, boutons de l'étape), `lib/supplier-order.ts`
+      (libellés, ticket A4 de chaque étape : bon de commande, reçu de paiement, bon de livraison).
+    - Super admin : carte « Abonnement Fournisseur » dans Tarifs → Abonnements (`pages/admin/SupplierPlanAdmin.tsx`).
+    - Une notification annonce l'essai dès que l'entreprise devient fournisseur ; des rappels suivent avant la fin.
+  - **À faire côté Supabase** : migrations `083` puis `084` (LinkPay Test puis production), puis fixer le prix CDF de
+    l'abonnement Fournisseur dans l'écran super admin (seul le prix USD de 10 $ est mis par la migration).
+- **Plusieurs stations par fournisseur (23/10, décision du propriétaire)** — migration `085_supplier_stations.sql` :
+  - un seul espace fournisseur par entreprise, **un seul numéro et un seul abonnement pour toutes ses stations** ;
+  - le patron coche les stations qui vendent (Goma, Beni…) — au moins une — et règle pour chacune sa zone et ses frais
+    de livraison par défaut (`PUT /organizations/:id/supplier-stations/:merchantId`) ;
+  - **un catalogue par station**, tiré de son propre stock, à ses propres prix (`supplier_catalog_items.merchant_id`) ;
+    le patron passe d'un catalogue à l'autre, le gérant ne gère que celui de sa station ;
+  - **le client choisit la station qui le sert** en commandant (`supplier_merchant_id`) ; la commande va au patron et
+    aux gérants de cette station, sort de son stock et lui est payée. Une commande = une station (deux stations =
+    deux commandes) ;
+  - les invitations sont annoncées au patron et aux gérants de toutes les stations qui vendent ; le gérant de
+    n'importe laquelle peut les accepter ;
+  - sans la migration 085, l'API se comporte comme avant (la station unique du profil).
+  - **Une nouvelle station n'est jamais cochée toute seule** : quand un fournisseur crée une station, le patron reçoit
+    une notification et, sur la page Stations, la question « voulez-vous qu'elle vende aussi aux entreprises ? »
+    (« Oui » la coche et ouvre son catalogue ; « Plus tard » la laisse non cochée).
+- **Revue de sécurité des phases A, B, C (23/10)** — corrigé :
+  - noms de fournisseurs comparés exactement (dans un motif PostgREST, `*` et `%` sont des jokers : « Bra* » aurait
+    été pris pour « Bralima ») — `sameName` dans `suppliers.service.ts` ;
+  - montants et quantités bornés (10 milliards par prix ou frais, 1 million d'unités par ligne) et totaux vérifiés
+    entiers exacts, côté commande et confirmation ;
+  - devenir fournisseur, modifier le catalogue, inviter et commander demandent l'abonnement entreprise actif ; la suite
+    d'une commande en cours (paiement, livraison, réception) ne l'exige jamais ;
+  - recherche d'un fournisseur par numéro limitée à 20 par minute (pas d'essai de tous les numéros) ;
+  - le magasinier voit les fournisseurs de l'entreprise, pas ses clients.
+  - Vérifié sans changement : chaque route contrôle l'entreprise et la station de l'appelant ; les prix d'une commande
+    viennent du catalogue, jamais de la requête ; le montant de l'abonnement Fournisseur est calculé par l'API et payé
+    par une fonction SQL réservée au service (propriétaire seul, son portefeuille, idempotente) ; un lien de paiement
+    en cours n'est jamais fermé (annuler / refuser / paiement hors application refusés pendant un paiement) ; les
+    nouvelles tables sont fermées à la clé publique (RLS, `REVOKE`).
+  - **Risque accepté, à suivre** : une commande payée puis jamais livrée n'a pas de remboursement automatique ; le
+    fournisseur rembourse (ou le support tranche). Un paiement espèces / Mobile Money reste déclaratif (hors
+    application) : seul le fournisseur le confirme.
+- **Fichier Excel du modèle économique : fait** (23/10) — `docs/modele-economique/ScanLinkPay_Modele_Economique.xlsx`,
+  régénérable avec `construire_modele.py`. Tout est formule : on change une hypothèse (onglet Hypothèses, texte bleu)
+  ou le scénario (Pessimiste / Réaliste / Optimiste) et tout se recalcule. Onglets : Accueil, Hypothèses (tarifs du
+  code, coûts, applications partenaires de l'API dont HotelSaver), Scénarios, Prévisions (36 mois), Synthèse
+  (graphiques), Dépenses (toutes les charges par an, démarrage, taxes, répartition), Prix (abonnements), Rentabilité (seuil, objectif 1 000 £, nombre d'applications API), Retraits
+  (frais 1 % < coût FlexPaie 2 % : perte), Sensibilité (commission × volume).
+
 ## 22/10/2026 (soir) — Accueil patron : dépenses par station, courbe rouge et Trésorerie protégée (migration 083)
 
 - **Dépenses par station** : `organization_expenses.merchant_id` (NULL = « Sans station », comptée dans « Toutes »).
@@ -209,6 +375,36 @@ Fonctionnement :
 - Sur les écrans où le code est saisi dans la page, un refus efface les cases et rouvre directement le clavier de code,
   avec le motif. Les cases ne sont rouges que tant que rien n'a été retapé.
 - Fait une seule fois dans `PinKeypadScreen` et `PinInput` : tous les écrans en profitent.
+
+### 18. Alléger ce que paie le client (23/10/2026)
+- **Constat** : abonnement de 1 USD, commission payée par le client.
+  - La vraie commission (2,5 %, minimum 0,05 USD) était **arrondie au dollar supérieur**, parce que Mobile Money n'accepte que des
+    unités entières : 1 USD de commission.
+  - FlexPaie ajoutait ses ~2 % : 2,04 USD débités pour 1 USD.
+  - Et 1,5 % « frais du fournisseur » étaient en plus retenus au marchand, alors que FlexPaie les fait déjà payer au client.
+- **Désormais** :
+  - la part du client est arrondie **vers le bas** à l'unité entière ; les centimes restants sont retenus au marchand ;
+  - le client ne paie jamais plus que la vraie commission, et la commission de ScanLinkPay ne change pas ;
+  - plus de retenue « frais du fournisseur » (`estimatePspFee` = 0) : FlexPaie facture ses frais au payeur et crédite le montant
+    demandé ;
+  - le grand livre n'écrit plus de ligne de frais à zéro.
+- **Exemples** (commission payée par le client) :
+
+  | Paiement | Débité avant | Débité désormais | Le marchand reçoit |
+  |---|---|---|---|
+  | 1 USD | 2,04 USD | 1,02 USD | 0,95 USD |
+  | 59 USD | 61 USD + frais FlexPaie | 60 USD + frais FlexPaie | 58,53 USD |
+
+### 17. Paiement avec commission à la charge du payeur : débité, jamais crédité (corrigé)
+- **Constat** : abonnement HotelSaver de 1 USD, commission payée par le client.
+  - FlexPaie a débité 2,04 USD, le total demandé.
+  - Mais `handleSuccessfulPayment` comparait la confirmation au montant SANS commission (`amount_cents`).
+  - Résultat : « montant différent », rien de crédité, le paiement resté en attente et l'écran du payeur figé.
+- **Correction** : la confirmation se compare à `total_cents`, ce qui a été demandé au fournisseur, comme les transferts le faisaient
+  déjà avec montant + frais.
+- **Le paiement déjà bloqué se rattrape tout seul** après le déploiement :
+  - ScanLinkPay relit ses paiements en attente pendant 72 h ;
+  - HotelSaver attend 24 h avant d'abandonner.
 
 ### 16. Supprimer son compte : sur le site, avec la raison du départ (migration 082, exigence Google Play)
 - Dans Paramètres, le bouton « Supprimer mon compte » ouvre la page `/supprimer-mon-compte` du site (le navigateur du téléphone dans

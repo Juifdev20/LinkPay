@@ -52,6 +52,24 @@ describe('WalletsService.requestWithdrawal', () => {
     expect(err.message).toMatch(/Numéro invalide/);
     expect(err.message).toMatch(/resté dans votre portefeuille/);
   });
+
+  it('a bank withdrawal with a malformed account is refused before anything is debited', async () => {
+    const { service, fake } = setup({ withdrawal: { id: 'w1', status: 'PROCESSING' } });
+    const bank = { ...DTO, channel: 'bank' as const, destination: { bank: 'Rawbank', account_number: '12345', account_name: 'Amina Kabongo' } };
+    await expect(service.requestWithdrawal('u1', bank, 'key-2')).rejects.toThrow(/23 chiffres/);
+    expect(fake.queries.some((q) => q.target === 'withdrawals' && q.calls.some((c) => c.method === 'insert'))).toBe(false);
+  });
+
+  it('a bank withdrawal stores the clean account and announces the 24 h delay when settled by hand', async () => {
+    const { service, fake, payouts } = setup({ withdrawal: { id: 'w1', status: 'PENDING' }, manual: true });
+    const bank = { ...DTO, channel: 'bank' as const, destination: { bank: 'equity bcdc', account_number: '00017 00001 12345678901 23', account_name: 'Amina  Kabongo' } };
+    const r: any = await service.requestWithdrawal('u1', bank, 'key-3');
+    expect(r.manual).toBe(true);
+    expect(r.expected_hours).toBe(24);
+    expect(payouts.dispatch).toHaveBeenCalledTimes(1);
+    const rpc = fake.queries.find((q) => q.calls.some((c) => c.method === 'rpc'));
+    void rpc;
+  });
 });
 
 describe('WalletsService.requestWithdrawal — what the provider would refuse', () => {

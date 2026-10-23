@@ -55,6 +55,18 @@ describe('withdrawals the provider cannot send', () => {
     });
   });
 
+  describe('list (bank)', () => {
+    it('tells the admin whether the account holder looks like the owner of the ScanLinkPay account', async () => {
+      const bank = (holder: string) => W({ channel: 'bank', destination: { bank: 'Rawbank', account_number: '00017-00001-12345678901-23', account_name: holder } });
+      const same = await setupService([bank('KABONGO Amina')]).service.list();
+      expect(same.data[0].holder_matches_owner).toBe(true);
+      const other = await setupService([bank('Jean Mukendi')]).service.list();
+      expect(other.data[0].holder_matches_owner).toBe(false);
+      const mobile = await setupService([W()]).service.list();
+      expect(mobile.data[0].holder_matches_owner).toBeNull();
+    });
+  });
+
   describe('list', () => {
     it('shows only the manual ones, with who asked and where to send', async () => {
       const { service } = setupService([W(), W({ id: '22222222-2222-4222-8222-222222222222', psp_provider: 'mock' })]);
@@ -144,6 +156,17 @@ describe('alerts to the administrators', () => {
       const { service, alerts } = reminder([W({ created_at: at(7) })]);
       await service.remindOverdue(now);
       expect(alerts.alert).toHaveBeenCalledWith(expect.objectContaining({ severity: 'critical', title: 'Un retrait attend depuis plus de 2 h' }));
+    });
+    it('a bank transfer is promised within 24 h: no reminder before 12 h, a warning at 12 h, critical from 20 h', async () => {
+      const bank = (h: number) => W({ channel: 'bank', created_at: at(h) });
+      let r = reminder([bank(5)]);
+      expect(await r.service.remindOverdue(now)).toBe(0);
+      r = reminder([bank(13)]);
+      expect(await r.service.remindOverdue(now)).toBe(1);
+      expect(r.alerts.alert).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warning', title: 'Un retrait attend depuis plus de 12 h' }));
+      r = reminder([bank(21)]);
+      await r.service.remindOverdue(now);
+      expect(r.alerts.alert).toHaveBeenCalledWith(expect.objectContaining({ severity: 'critical' }));
     });
     it('only counts the ones settled by hand', async () => {
       const { service, alerts } = reminder([W({ psp_provider: 'mock', created_at: at(9) })]);

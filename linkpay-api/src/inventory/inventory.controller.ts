@@ -46,7 +46,8 @@ class SaveLinesDto {
 @ApiBearerAuth()
 @Controller('merchants/:id/inventory-counts')
 @RequireSubscription('merchant')
-@Roles('enterprise', 'magasinier', 'admin', 'super_admin')
+// The manager counts too: they can do all a stock keeper does (DECISIONS.md 23/10).
+@Roles('enterprise', 'gerant', 'magasinier', 'admin', 'super_admin')
 @UseGuards(RolesGuard)
 export class InventoryController {
   constructor(private inventoryService: InventoryService) {}

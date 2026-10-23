@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Copy, Loader2, Send, XCircle } from 'lucide-react';
+import { AlertTriangle, Check, Copy, Loader2, Send, XCircle } from 'lucide-react';
 import api from '@/lib/api';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
 import { operatorById, displayPhone, toNationalDigits } from '@/lib/mobile-money';
+import { BANK_DELAY_HOURS } from '@/lib/banks';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -24,6 +25,22 @@ interface Row {
   created_at: string;
   updated_at: string;
   owner: { name: string | null; email: string | null; phone: string | null; wallet_number: string | null } | null;
+  /** Bank only: does the account holder's name look like the name on the ScanLinkPay account? (null = unknown) */
+  holder_matches_owner?: boolean | null;
+}
+
+/** Where the money goes, in words: for the confirmation. */
+const destinationText = (w: Row): string =>
+  w.channel === 'bank'
+    ? `${String(w.destination?.bank ?? 'la banque')} — compte ${String(w.destination?.account_number ?? '')} (${String(w.destination?.account_name ?? '')})`
+    : displayPhone(toNationalDigits(String(w.destination?.phone ?? '')));
+
+/** Ready-made reasons for a bank that refuses the transfer: one tap instead of typing. */
+const BANK_REJECT_REASONS = ['Compte introuvable à la banque', 'Le nom du titulaire ne correspond pas au compte', 'Compte bloqué ou clôturé'];
+
+/** A bank transfer is promised within BANK_DELAY_HOURS: how much of that time is left (negative = late). */
+function hoursLeft(createdAt: string): number {
+  return BANK_DELAY_HOURS - (Date.now() - new Date(createdAt).getTime()) / 3_600_000;
 }
 
 const msg = (e: any) => e?.response?.data?.message || 'Une erreur est survenue.';
@@ -109,7 +126,7 @@ export default function WithdrawalsPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-foreground">{w.owner?.name || w.owner?.email || 'Client'}</p>
-                      <p className="text-xs text-muted-foreground">{w.owner?.wallet_number} · demandé le {formatDate(w.created_at)}</p>
+                      <p className="text-xs text-muted-foreground">{[w.owner?.wallet_number, w.owner?.phone].filter(Boolean).join(' · ')} · demandé le {formatDate(w.created_at)}</p>
                     </div>
                     {w.status !== 'PENDING' && (
                       <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-xs font-bold', w.status === 'SUCCESS' ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive')}>
@@ -139,9 +156,33 @@ export default function WithdrawalsPage() {
                       {w.status === 'PENDING' && <CopyButton text={national ? `+243${national}` : String(w.destination?.phone ?? '')} label="le numéro" />}
                     </div>
                   ) : (
-                    <div className="text-sm text-foreground">
-                      <p className="font-semibold">{String(w.destination?.bank ?? 'Banque')}</p>
-                      <p className="text-muted-foreground">{String(w.destination?.account_name ?? '')} — {String(w.destination?.account_number ?? '')}</p>
+                    <div className="space-y-2 text-sm text-foreground">
+                      <p className="font-semibold">Virement bancaire — {String(w.destination?.bank ?? 'Banque')}</p>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs text-muted-foreground">Numéro de compte</p>
+                          <p className="font-semibold tabular-nums">{String(w.destination?.account_number ?? '')}</p>
+                        </div>
+                        {w.status === 'PENDING' && <CopyButton text={String(w.destination?.account_number ?? '').replace(/\D/g, '')} label="le numéro de compte" />}
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs text-muted-foreground">Intitulé du compte</p>
+                          <p className="truncate font-semibold">{String(w.destination?.account_name ?? '')}</p>
+                        </div>
+                        {w.status === 'PENDING' && <CopyButton text={String(w.destination?.account_name ?? '')} label="l'intitulé du compte" />}
+                      </div>
+                      {w.status === 'PENDING' && w.holder_matches_owner === false && (
+                        <p className="flex items-start gap-2 rounded-xl bg-warning/10 px-3 py-2 text-xs font-medium text-warning">
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                          L'intitulé du compte est différent du nom du compte ScanLinkPay ({w.owner?.name || 'inconnu'}). Normal pour une entreprise ou un proche ; sinon vérifiez avant d'envoyer.
+                        </p>
+                      )}
+                      {w.status === 'PENDING' && (
+                        <p className={cn('text-xs font-medium', hoursLeft(w.created_at) < 4 ? 'text-destructive' : 'text-muted-foreground')}>
+                          {hoursLeft(w.created_at) >= 0 ? `À envoyer avant ${formatDate(new Date(new Date(w.created_at).getTime() + BANK_DELAY_HOURS * 3_600_000).toISOString())} (il reste ${Math.floor(hoursLeft(w.created_at))} h sur les ${BANK_DELAY_HOURS} h annoncées au client).` : `En retard de ${Math.ceil(-hoursLeft(w.created_at))} h sur les ${BANK_DELAY_HOURS} h annoncées au client.`}
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -171,12 +212,12 @@ export default function WithdrawalsPage() {
           <DialogHeader>
             <DialogTitle>Confirmer l'envoi</DialogTitle>
             <DialogDescription>
-              Vous confirmez avoir envoyé {sendFor && formatCurrency(sendFor.amount_cents, sendFor.currency)} à {sendFor && displayPhone(toNationalDigits(String(sendFor.destination?.phone ?? '')))}. Le client sera averti.
+              Vous confirmez avoir envoyé {sendFor && formatCurrency(sendFor.amount_cents, sendFor.currency)} à {sendFor && destinationText(sendFor)}. Le client sera averti.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             <Label className="text-xs">Référence du transfert (facultatif)</Label>
-            <Input value={reference} onChange={(e) => setReference(e.target.value)} maxLength={80} placeholder="Numéro de transaction" />
+            <Input value={reference} onChange={(e) => setReference(e.target.value)} maxLength={80} placeholder={sendFor?.channel === 'bank' ? 'Référence du virement (relevé de votre banque)' : 'Numéro de transaction'} />
           </div>
           {error && <p className="text-sm font-medium text-destructive" role="alert">{error}</p>}
           <Button className="mt-2 w-full" disabled={sent.isPending} onClick={() => { setError(''); sent.mutate(); }}>
@@ -193,7 +234,14 @@ export default function WithdrawalsPage() {
           </DialogHeader>
           <div className="space-y-2">
             <Label className="text-xs">Raison du refus</Label>
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} placeholder="Ex. numéro Mobile Money incorrect" />
+            {rejectFor?.channel === 'bank' && (
+              <div className="flex flex-wrap gap-2">
+                {BANK_REJECT_REASONS.map((r) => (
+                  <button key={r} type="button" onClick={() => setReason(r)} className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted-foreground hover:border-primary/40 hover:text-primary">{r}</button>
+                ))}
+              </div>
+            )}
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} placeholder={rejectFor?.channel === 'bank' ? 'Ex. compte introuvable à la banque' : 'Ex. numéro Mobile Money incorrect'} />
           </div>
           {error && <p className="text-sm font-medium text-destructive" role="alert">{error}</p>}
           <Button className="mt-2 w-full" variant="destructive" disabled={rejected.isPending || reason.trim().length < 3} onClick={() => { setError(''); rejected.mutate(); }}>

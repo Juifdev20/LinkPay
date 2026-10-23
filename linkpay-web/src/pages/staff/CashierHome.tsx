@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { ROLE_LABELS } from '@/lib/permissions';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { HomeHero, QuickActions, SalesChart, RecentSales, Skeleton, type QuickAction } from '@/components/home/HomeWidgets';
@@ -163,6 +164,7 @@ export default function CashierHome() {
         yesterday={{ revenue: byDay[yesterdayKey]?.revenue ?? 0 }}
         loading={loading}
         onOpenTill={() => navigate('/dashboard/pos')}
+        userRole={user?.role ? ROLE_LABELS[user.role] ?? user.role : undefined}
       />
 
       <QuickActions actions={actions} />

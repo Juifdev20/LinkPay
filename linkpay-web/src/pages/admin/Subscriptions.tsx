@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { PageHeader } from '@/components/PageHeader';
 import { Loader2, Check } from 'lucide-react';
+import { SupplierPlanAdmin } from './SupplierPlanAdmin';
 
 const CURRENCIES = ['CDF', 'USD'] as const;
 const MODES = [
@@ -140,6 +141,7 @@ export default function AdminSubscriptionsPage() {
       <div className="space-y-6">
       <PriceCard prices={data.prices} />
       <SettingsCard settings={data.settings} />
+      <SupplierPlanAdmin />
       </div>
 
       <Card>

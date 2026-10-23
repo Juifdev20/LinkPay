@@ -1,5 +1,5 @@
 import { isSupermarket } from '@/lib/sectors';
-import { ArrowLeftRight, LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, FileBarChart, Truck, CloudUpload, Landmark, type LucideIcon } from 'lucide-react';
+import { ArrowLeftRight, LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, FileBarChart, Truck, CloudUpload, Landmark, PackageSearch, Handshake, type LucideIcon } from 'lucide-react';
 
 import { FEATURES } from '@/lib/features';
 import { ALL_ROLES, STAFF_ROLES, PERSONAL_ROLES, rolesFor } from '@/lib/permissions';
@@ -74,12 +74,15 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, roles: ['merchant', 'cashier'], labelFor: { merchant: 'Paiements reçus' }, section: 'follow' },
   { to: '/dashboard/organization/stats', label: 'Statistiques', icon: BarChart3, roles: rolesFor('/dashboard/organization/stats'), section: 'follow' },
   { to: '/dashboard/organization/reports', label: 'Rapports', icon: FileBarChart, roles: rolesFor('/dashboard/organization/reports'), section: 'follow' },
+  { to: '/dashboard/organization/reports/sellers', label: 'Rapport des vendeurs', icon: Users, roles: rolesFor('/dashboard/organization/reports/sellers'), section: 'follow' },
   { to: '/dashboard/organization/audit', label: 'Journal', icon: ScrollText, roles: rolesFor('/dashboard/organization/audit'), section: 'follow' },
 
   // ---- Stock.
   { to: '/dashboard/organization/stock', label: 'Stock', icon: Boxes, roles: rolesFor('/dashboard/organization/stock'), section: 'stock' },
   { to: '/dashboard/organization/inventory', label: 'Inventaire', icon: ClipboardList, roles: rolesFor('/dashboard/organization/inventory'), section: 'stock' },
   { to: '/dashboard/organization/restock', label: "Demandes d'achat", icon: Truck, roles: rolesFor('/dashboard/organization/restock'), section: 'stock' },
+  { to: '/dashboard/organization/supplier-orders', label: 'Mes fournisseurs', icon: PackageSearch, roles: rolesFor('/dashboard/organization/supplier-orders'), section: 'stock' },
+  { to: '/dashboard/organization/supplier', label: 'Espace fournisseur', icon: Handshake, roles: rolesFor('/dashboard/organization/supplier'), section: 'business' },
 
   // ---- Entreprise: business modules, not account config, so they live in the nav rather than Settings.
   { to: '/dashboard/organization/treasury', label: 'Trésorerie', icon: Landmark, roles: rolesFor('/dashboard/organization/treasury'), section: 'business' },
@@ -118,6 +121,7 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/admin/commissions', label: 'Commissions', icon: Percent, roles: ['super_admin'], section: 'admin' },
   { to: '/dashboard/admin/wallet-limits', label: 'Frais et limites', icon: SlidersHorizontal, roles: ['super_admin'], section: 'admin' },
   { to: '/dashboard/admin/expense-tracker-settings', label: 'Config. des dépenses', icon: Receipt, roles: ['super_admin'], section: 'admin' },
+  { to: '/dashboard/admin/banks', label: 'Banques de retrait', icon: Landmark, roles: ['super_admin'], section: 'admin' },
   { to: '/dashboard/admin/app-security', label: "Sécurité de l'application", icon: ShieldCheck, roles: ['super_admin'], section: 'admin' },
 
   // ---- Always last. Synchronisation (what waits to be sent after working offline) is in Paramètres; the sidebar
@@ -177,6 +181,7 @@ const ADMIN_HUBS: { label: string; icon: LucideIcon; section: NavSection; pages:
       { to: '/dashboard/admin/treasury', tab: 'Trésorerie' },
       { to: '/dashboard/admin/withdrawals', tab: 'Retraits à traiter' },
       { to: '/dashboard/admin/settlements', tab: 'Règlements' },
+      { to: '/dashboard/admin/banks', tab: 'Banques de retrait' },
     ],
   },
   {
