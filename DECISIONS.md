@@ -149,7 +149,12 @@ listes communes (`ProductTable`). Ordre de travail : A → B → C, puis le fich
   - **Risque accepté, à suivre** : une commande payée puis jamais livrée n'a pas de remboursement automatique ; le
     fournisseur rembourse (ou le support tranche). Un paiement espèces / Mobile Money reste déclaratif (hors
     application) : seul le fournisseur le confirme.
-- Fichier Excel du modèle économique : après C.
+- **Fichier Excel du modèle économique : fait** (23/10) — `docs/modele-economique/ScanLinkPay_Modele_Economique.xlsx`,
+  régénérable avec `construire_modele.py`. Tout est formule : on change une hypothèse (onglet Hypothèses, texte bleu)
+  ou le scénario (Pessimiste / Réaliste / Optimiste) et tout se recalcule. Onglets : Accueil, Hypothèses (tarifs du
+  code, coûts, applications partenaires de l'API dont HotelSaver), Scénarios, Prévisions (36 mois), Synthèse
+  (graphiques), Prix (abonnements), Rentabilité (seuil, objectif 1 000 £, nombre d'applications API), Retraits
+  (frais 1 % < coût FlexPaie 2 % : perte), Sensibilité (commission × volume).
 
 ## 22/10/2026 (après-midi) — Deux secteurs seulement ; les Ventes électronique sur le modèle de la Caisse
 
