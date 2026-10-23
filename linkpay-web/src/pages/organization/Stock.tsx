@@ -41,10 +41,10 @@ export default function StockPage() {
     enabled: !!org?.id,
   });
 
-  // A magasinier is always scoped to their own station; only admins and
+  // A magasinier or a gérant is always scoped to their own station; only admins and
   // patrons (enterprise role, no merchant_id) can see all stations.
   // Fallback to merchants[0].id because station_id may not be in the session cache.
-  const lockedMerchantId: string | null = user?.role === 'magasinier'
+  const lockedMerchantId: string | null = user?.role === 'magasinier' || user?.role === 'gerant'
     ? (user?.station_id ?? user?.merchant_id ?? (merchants as any[])?.[0]?.id ?? null)
     : null;
 

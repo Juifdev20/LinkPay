@@ -62,7 +62,7 @@ export function PosTill({
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   // Same roles as the stock write endpoints (StockService STOCK_STAFF_ROLES).
-  const canCreateProducts = ['enterprise', 'magasinier'].includes(user?.role || '');
+  const canCreateProducts = ['enterprise', 'gerant', 'magasinier'].includes(user?.role || '');
   const navigate = useNavigate();
   const [error, setError] = useState('');
   // Without network and with no ticket on the server, the till sells on its own: the lines stay on the device, the

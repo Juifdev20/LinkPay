@@ -76,7 +76,15 @@ listes communes (`ProductTable`). Ordre de travail : A → B → C, puis le fich
     avec un coût 0 (produit sans prix d'achat) compte comme « coût inconnu », jamais comme 100 % de marge.
   - À faire côté Supabase : migration `083` (LinkPay Test puis production). Sans elle, le formulaire marche (sans
     fournisseur) et la liste des fournisseurs répond « appliquez la migration 083 ».
-- Phase B : à faire.
+- **Phase B : faite** (23/10). Où regarder :
+  - API : `STOCK_STAFF_ROLES = ['magasinier', 'gerant']` (`stock.service.ts`) : le gérant crée et modifie les articles,
+    fait les mouvements, essaie le mot de passe de stock et fait l'inventaire (`inventory.controller.ts`).
+  - `reports/restock.service.ts` : demande du magasinier → notifiée aux gérants actifs de la station
+    (`stationStaffWithRoles`), au patron seulement s'il n'y en a pas ; demande du gérant (ou du patron) validée
+    d'office ; validation/refus par le gérant de la station ou le patron, jamais le magasinier ; « reçue » notifiée à
+    celui qui a validé.
+  - Web : page Demandes d'achat (texte par rôle, boutons Valider/Refuser pour le gérant), Inventaire ouvert au gérant,
+    Stock limité à sa station, explication du rôle dans le formulaire « Nouvel utilisateur » (`Staff.tsx`, `ROLES.help`).
 - Phase C : à faire.
 - Fichier Excel du modèle économique : après C.
 

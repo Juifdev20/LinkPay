@@ -3,7 +3,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { StockService } from '../stock/stock.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { requireStaffStation } from '../common/org-access';
+import { requireStaffStation, stationStaffWithRoles } from '../common/org-access';
 
 /** Station staff who ask for a restock and confirm its arrival (with the owner). */
 export const RESTOCK_ROLES = ['gerant', 'magasinier'];
@@ -12,10 +12,14 @@ const MAX_ITEMS = 50;
 type Caller = { id: string; role?: string; organization_id?: string };
 
 /**
- * Restock requests: a station's manager or stock keeper asks the owner to buy
- * what runs low; the owner approves or refuses; the station then marks the
+ * Restock requests (DECISIONS.md 23/10, phase B): the stock keeper asks; the
+ * station's MANAGER approves or refuses and buys — the owner is no longer
+ * troubled with them, except when the station has no active manager: then the
+ * request goes up to the owner. A manager's own request is approved at once
+ * (they are the one who buys). The owner can still decide any request and
+ * sees them all. A stock keeper never approves. The station then marks the
  * goods received. Each step tells the other side (notifications). Stock
- * itself is still entered by the stock keeper when the goods arrive.
+ * itself is still entered when the goods arrive.
  */
 @Injectable()
 export class RestockService {
@@ -60,7 +64,19 @@ export class RestockService {
       .map((i) => ({ stock_item_id: i.stock_item_id, name: byId.get(i.stock_item_id)!.name, current_qty: byId.get(i.stock_item_id)!.quantity, wanted_qty: Math.min(i.wanted_qty, 1_000_000) }));
     if (!items.length) throw new BadRequestException("Ces produits n'appartiennent pas à cette station.");
 
-    const row: Record<string, unknown> = { organization_id: merchant.organization_id, merchant_id: merchantId, requested_by: caller.id, items, note: input.note?.trim().slice(0, 500) || null };
+    const org = await this.organizationsService.getOrganizationById(merchant.organization_id);
+    const isOwner = org.owner_id === caller.id;
+    // The manager (or the owner) is the one who buys: their own request needs nobody's approval.
+    const selfApproved = isOwner || caller.role === 'gerant';
+    const now = new Date().toISOString();
+    const row: Record<string, unknown> = {
+      organization_id: merchant.organization_id,
+      merchant_id: merchantId,
+      requested_by: caller.id,
+      items,
+      note: input.note?.trim().slice(0, 500) || null,
+      ...(selfApproved ? { status: 'approved', decided_by: caller.id, decided_at: now } : {}),
+    };
     if (input.client_ref) row.client_ref = input.client_ref;
     let { data: request, error } = await this.db.from('restock_requests').insert(row).select().single();
     if (error && input.client_ref && (error as any).code === '23505') {
@@ -74,17 +90,27 @@ export class RestockService {
     }
     if (error || !request) throw new Error(`Failed to create restock request: ${error?.message}`);
 
-    const org = await this.organizationsService.getOrganizationById(merchant.organization_id);
-    if (org.owner_id !== caller.id) {
-      await this.notifications.create({
-        user_id: org.owner_id,
-        type: 'restock_request',
-        title: `Demande de réapprovisionnement — ${merchant.name}`,
-        body: `${items.length} produit(s) : ${items.slice(0, 4).map((i) => `${i.name} × ${i.wanted_qty}`).join(', ')}${items.length > 4 ? '…' : ''}.`,
-        data: { request_id: request.id, merchant_id: merchantId, url: '/dashboard/organization/restock' },
-      }).catch(() => undefined);
+    if (!selfApproved) {
+      // To the station's managers; to the owner only when the station has none.
+      const deciders = await this.decidersOf(merchantId, org.owner_id);
+      const body = `${items.length} produit(s) : ${items.slice(0, 4).map((i) => `${i.name} × ${i.wanted_qty}`).join(', ')}${items.length > 4 ? '…' : ''}.`;
+      for (const userId of deciders) {
+        await this.notifications.create({
+          user_id: userId,
+          type: 'restock_request',
+          title: `Demande de réapprovisionnement — ${merchant.name}`,
+          body,
+          data: { request_id: request.id, merchant_id: merchantId, url: '/dashboard/organization/restock' },
+        }).catch(() => undefined);
+      }
     }
     return request;
+  }
+
+  /** Who decides a station's requests: its active managers, or the owner when it has none. */
+  private async decidersOf(merchantId: string, ownerId: string): Promise<string[]> {
+    const managers = await stationStaffWithRoles(this.db, merchantId, ['gerant']);
+    return managers.length ? managers : [ownerId];
   }
 
   /** The owner sees every station's requests; a manager or stock keeper, their station's. */
@@ -123,7 +149,7 @@ export class RestockService {
   }
 
   /**
-   * pending → approved | rejected: the owner decides.
+   * pending → approved | rejected: the station's manager decides (the owner too, always).
    * approved → received: the owner, or the station's manager / stock keeper, once the goods are in.
    */
   async update(orgId: string, requestId: string, caller: Caller, input: { status: string; note?: string }) {
@@ -135,7 +161,13 @@ export class RestockService {
     let changes: Record<string, any>;
 
     if (input.status === 'approved' || input.status === 'rejected') {
-      if (!isOwner) throw new ForbiddenException("Seul le responsable de l'entreprise valide ou refuse une demande");
+      if (!isOwner) {
+        if (caller.organization_id !== orgId || caller.role !== 'gerant') {
+          throw new ForbiddenException('Seul le gérant de la station (ou le patron) valide ou refuse une demande');
+        }
+        const station = await requireStaffStation(this.db, caller.id, orgId);
+        if (station !== request.merchant_id) throw new ForbiddenException("Cette demande n'est pas celle de votre station");
+      }
       if (request.status !== 'pending') throw new BadRequestException('Cette demande a déjà été traitée');
       changes = { status: input.status, decided_by: caller.id, decided_at: now, decision_note: input.note?.trim().slice(0, 500) || null };
     } else if (input.status === 'received') {
@@ -164,9 +196,11 @@ export class RestockService {
     const { data: station } = await this.db.from('merchants').select('name').eq('id', request.merchant_id).maybeSingle();
     const where = station?.name || 'la station';
     if (changes.status === 'received') {
-      if (!isOwner) {
+      // Told to whoever approved the purchase (the manager, or the owner when they decided it).
+      const approver = request.decided_by || org.owner_id;
+      if (approver !== caller.id) {
         await this.notifications.create({
-          user_id: org.owner_id, type: 'restock_request', title: `Marchandise reçue — ${where}`,
+          user_id: approver, type: 'restock_request', title: `Marchandise reçue — ${where}`,
           body: 'La station a confirmé la réception de la commande.', data: { request_id: requestId, url: '/dashboard/organization/restock' },
         }).catch(() => undefined);
       }

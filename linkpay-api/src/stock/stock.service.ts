@@ -12,11 +12,11 @@ import { SuppliersService } from './suppliers.service';
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
-// Only 'magasinier' can manage stock today — the other enterprise-staff
-// roles (vendeur/caissier/comptable) get their own gate once their modules
-// (ventes, caisse) land, same reasoning as elsewhere in this codebase of
-// only building the access path a real feature needs right now.
-const STOCK_STAFF_ROLES = ['magasinier'];
+// Who manages a station's stock (with the owner): the stock keeper, and the
+// manager — a manager can do everything a stock keeper does (stock, inventory,
+// requests, orders), never the other way round (DECISIONS.md 23/10, phase B).
+// Some businesses have no stock keeper: then the manager keeps the stock.
+export const STOCK_STAFF_ROLES = ['magasinier', 'gerant'];
 // Read-only stock access (lists, movement history, org summary) — vendeur and
 // caissier need it to know what they can sell, but never to change anything.
 const STOCK_READ_ROLES = ['magasinier', 'vendeur', 'caissier', 'gerant'];

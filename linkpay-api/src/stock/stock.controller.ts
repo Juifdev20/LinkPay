@@ -3,7 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { IsString, IsOptional, IsNumber, IsIn, IsObject, IsBoolean, MaxLength, Min, MinLength, IsUUID } from 'class-validator';
-import { StockService } from './stock.service';
+import { StockService, STOCK_STAFF_ROLES } from './stock.service';
 import { SuppliersService } from './suppliers.service';
 import { StockPasswordService } from './stock-password.service';
 import { OrganizationsService } from '../organizations/organizations.service';
@@ -214,7 +214,7 @@ export function assertStockPasswordAccess(
   if (level === 'member' && sameOrg) return;
   // Trying the password counts toward a lockout of the whole company's stock edits: only people who actually manage
   // stock may try it (a seller or cashier guessing could otherwise lock the stock keeper out).
-  if (level === 'manager' && sameOrg && caller.role === 'magasinier') return;
+  if (level === 'manager' && sameOrg && STOCK_STAFF_ROLES.includes(caller.role || '')) return;
   throw new ForbiddenException(
     level === 'owner'
       ? "Seul le patron peut définir ou modifier le mot de passe de gestion de stock."

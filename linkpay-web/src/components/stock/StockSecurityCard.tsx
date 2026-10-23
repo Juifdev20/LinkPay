@@ -58,7 +58,7 @@ export function StockSecurityCard({ orgId }: { orgId: string }) {
             <p className="mt-1 text-xs text-muted-foreground">
               {status?.required
                 ? 'Activé : le mot de passe est demandé pour ajouter, modifier ou supprimer un article, enregistrer un mouvement, valider un inventaire ou archiver une vente.'
-                : 'Désactivé : seuls vous et le magasinier pouvez modifier le stock, sans mot de passe. Tout est noté dans le Journal.'}
+                : 'Désactivé : seuls vous, le gérant et le magasinier pouvez modifier le stock, sans mot de passe. Tout est noté dans le Journal.'}
             </p>
           </div>
           {isLoading || saving ? (

@@ -53,8 +53,9 @@ export const ROUTE_ROLES = {
   '/dashboard/organization/sales/history': ['enterprise', 'gerant', 'vendeur', 'caissier', 'comptable'],
   '/dashboard/organization/sales/dashboard': ['enterprise', 'gerant', 'vendeur', 'caissier', 'comptable'],
   '/dashboard/organization/stock': ['enterprise', 'gerant', 'magasinier'],
-  '/dashboard/organization/inventory': ['enterprise', 'magasinier'],
-  // Restock requests: the station asks, the owner decides.
+  // The manager can do all the stock keeper does (DECISIONS.md 23/10): stock, inventory, requests.
+  '/dashboard/organization/inventory': ['enterprise', 'gerant', 'magasinier'],
+  // Restock requests: the stock keeper asks, the station manager decides (the owner when there is no manager).
   '/dashboard/organization/restock': ['enterprise', 'gerant', 'magasinier'],
   // The manager has « Rapports » (same figures and more): no duplicate screen for them.
   '/dashboard/organization/stats': ['enterprise', 'comptable'],
