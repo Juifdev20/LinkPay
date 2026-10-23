@@ -2,6 +2,7 @@ import { isSupermarket } from '@/lib/sectors';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/lib/auth-store';
+import { ROLE_LABELS } from '@/lib/permissions';
 import { FormSheet } from '@/components/FormSheet';
 import { useHomeData, type Currency } from '@/components/home/useHomeData';
 import {
@@ -226,6 +227,11 @@ export default function OrganizationProfilePage() {
         yesterday={home.yesterday}
         loading={home.loading}
         onOpenTill={() => navigate(sellPath)}
+        userRole={
+          user?.acting_as_org_id
+            ? 'Responsable · en station'
+            : (user?.role ? ROLE_LABELS[user.role] ?? user.role : undefined)
+        }
       />
 
       <QuickActions actions={actions} />
