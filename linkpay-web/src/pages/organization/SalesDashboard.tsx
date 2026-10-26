@@ -131,22 +131,26 @@ export default function SalesDashboardPage({ variant = 'full' }: { variant?: 'fu
         const topData: any[] | undefined = posQueries[topIdx]?.data;
 
         if (Array.isArray(dailyData)) {
+          // API returns: { date: '2024-01-15', tickets: 5, revenue_cents: 150000 }
           dailyData.forEach((d: any) => {
-            if (!dailyMap[d.day]) dailyMap[d.day] = {};
-            const amount = d.amount ?? d[cur] ?? 0;
-            dailyMap[d.day][cur] = (dailyMap[d.day][cur] || 0) + amount;
+            const day: string = d.date || d.day || '';
+            if (!day) return;
+            if (!dailyMap[day]) dailyMap[day] = {};
+            const amount = (d.revenue_cents ?? d.amount ?? 0) / (d.revenue_cents !== undefined ? 100 : 1);
+            dailyMap[day][cur] = (dailyMap[day][cur] || 0) + amount;
             revenue[cur] = (revenue[cur] || 0) + amount;
             // Count tickets only once (from CDF to avoid double-counting split payments)
-            if (ci === 0) sales_count += d.count ?? d.sales_count ?? 0;
+            if (ci === 0) sales_count += d.tickets ?? d.count ?? 0;
           });
         }
 
         if (Array.isArray(topData)) {
+          // API returns: { name: '...', qty: 10, revenue_cents: 200000, margin_cents: 50000 }
           topData.forEach((p: any) => {
-            const name: string = p.name || p.product_name || '?';
-            if (!topByCur[cur][name]) topByCur[cur][name] = { name, quantity: 0, revenue: 0, category: p.category };
-            topByCur[cur][name].quantity += p.quantity || 0;
-            topByCur[cur][name].revenue += p.revenue ?? p.amount ?? 0;
+            const name: string = p.name || p.product_name_snapshot || '?';
+            if (!topByCur[cur][name]) topByCur[cur][name] = { name, quantity: 0, revenue: 0 };
+            topByCur[cur][name].quantity += p.qty ?? p.quantity ?? 0;
+            topByCur[cur][name].revenue += (p.revenue_cents ?? p.revenue ?? 0) / (p.revenue_cents !== undefined ? 100 : 1);
           });
         }
       });
