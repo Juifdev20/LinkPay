@@ -68,7 +68,7 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/organization/sales/history', label: 'Historique des ventes', icon: History, roles: rolesFor('/dashboard/organization/sales/history'), section: 'follow' },
   { to: '/dashboard/organization/my-sales', label: 'Mes ventes', icon: History, roles: rolesFor('/dashboard/organization/my-sales'), section: 'follow' },
   // Staff-only (the enterprise owner reaches it from its own home), so it isn't duplicated for enterprise.
-  { to: '/dashboard/organization/sales/dashboard', label: 'Tableau de bord ventes', icon: BarChart3, roles: rolesFor('/dashboard/organization/sales/dashboard').filter((r) => r !== 'enterprise'), section: 'follow' },
+  { to: '/dashboard/organization/sales/dashboard', label: 'Tableau de bord ventes', icon: BarChart3, roles: rolesFor('/dashboard/organization/sales/dashboard'), section: 'follow' },
   { to: '/dashboard/organization/transactions', label: 'Transactions', icon: Receipt, roles: rolesFor('/dashboard/organization/transactions'), section: 'follow' },
   // For a merchant, "Transactions" (bottom bar) is the wallet's history; this list is the customers' payments (with refunds).
   { to: '/dashboard/transactions', label: 'Transactions', icon: Receipt, roles: ['merchant', 'cashier'], labelFor: { merchant: 'Paiements reçus' }, section: 'follow' },
@@ -153,7 +153,6 @@ const SECTOR_HIDDEN: Record<string, string[]> = {
   supermarche: [
     '/dashboard/organization/sales',
     '/dashboard/organization/sales/history',
-    '/dashboard/organization/sales/dashboard',
   ],
   electronique: [
     '/dashboard/pos',
