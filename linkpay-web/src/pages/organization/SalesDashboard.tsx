@@ -60,6 +60,13 @@ export default function SalesDashboardPage({ variant = 'full' }: { variant?: 'fu
   const isPos = isSupermarket(org?.sector);
   const showMargins = variant === 'full' && !isPos;
 
+  // L'API POS exige from/to. La période "Tout" renvoie undefined/undefined :
+  // on substitue une plage couvrant toute l'activité possible.
+  const posRange = useMemo(() => {
+    if (range.from && range.to) return range;
+    return { from: new Date('2020-01-01').toISOString(), to: new Date(Date.now() + 86400000).toISOString() };
+  }, [range]);
+
   // --- Mode Ventes (électronique, etc.) ---
   const { data: ventesStats, isLoading: ventesLoading } = useQuery({
     queryKey: ['org-sales-stats', org?.id, range.from, range.to],
@@ -91,14 +98,14 @@ export default function SalesDashboardPage({ variant = 'full' }: { variant?: 'fu
       ? storeIds.flatMap((id) =>
           CURRENCIES.flatMap((cur) => [
             {
-              queryKey: ['pos-dash-daily', id, cur, range.from, range.to],
+              queryKey: ['pos-dash-daily', id, cur, posRange.from, posRange.to],
               queryFn: async () =>
-                (await api.get(`/merchants/${id}/pos/stats/daily`, { params: { from: range.from, to: range.to, currency: cur } })).data,
+                (await api.get(`/merchants/${id}/pos/stats/daily`, { params: { from: posRange.from, to: posRange.to, currency: cur } })).data,
             },
             {
-              queryKey: ['pos-dash-top', id, cur, range.from, range.to],
+              queryKey: ['pos-dash-top', id, cur, posRange.from, posRange.to],
               queryFn: async () =>
-                (await api.get(`/merchants/${id}/pos/stats/top-products`, { params: { from: range.from, to: range.to, currency: cur, limit: 10 } })).data,
+                (await api.get(`/merchants/${id}/pos/stats/top-products`, { params: { from: posRange.from, to: posRange.to, currency: cur, limit: 10 } })).data,
             },
           ])
         )
