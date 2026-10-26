@@ -152,7 +152,6 @@ const SECTOR_HIDDEN: Record<string, string[]> = {
   supermarche: [
     '/dashboard/organization/sales',
     '/dashboard/organization/sales/history',
-    '/dashboard/organization/sales/dashboard',
   ],
   electronique: [
     '/dashboard/pos',
