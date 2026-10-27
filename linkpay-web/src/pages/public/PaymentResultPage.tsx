@@ -88,7 +88,7 @@ export default function PaymentResultPage() {
             tone="error"
             title="Paiement non abouti"
             amount={amount}
-            message={<>{message || 'Le paiement n\'a pas pu être effectué.'} <span className="font-medium text-foreground">Aucun montant n'a été débité.</span></>}
+            message={<>{message || "Le paiement n'a pas pu être effectué. Vérifiez que votre solde est suffisant (frais de l'opérateur compris) et que vous avez saisi le bon code PIN, puis réessayez."} <span className="font-medium text-foreground">Aucun montant n'a été débité.</span></>}
             rows={rows}
           >
             {/* Back to the payment link page only when we came from it in this tab (not from the provider's page). */}
