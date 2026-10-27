@@ -656,3 +656,14 @@ Si le code part avant les migrations : 067 → la page manuelle reste correcte ;
 - Ancien retrait déjà payé à la main mais non marqué, renvoyé à l'activation (d'où « vider la page »).
 - Statut de vérification : si FlexPaie utilisait un autre code que 2 pour « en cours », un retrait serait remboursé à
   tort ; les tests réels de 100 CDF le montreraient tout de suite.
+
+## Sons et voix : bip de scan, voix de femme, alertes de stock répétées, messages Mobile Money (27/10/2026)
+
+- **Voix** : clips enregistrés (ElevenLabs, voix « Delphine ») dans `linkpay-web/public/sounds/voice` — « Please try again » en anglais, le reste en français ; même voix sur tous les téléphones, hors ligne (préchargés par le
+  service worker). Le nom du produit d'une alerte de stock est lu par la voix de l'appareil. Bip et voix suivent le volume média ; chacun se coupe dans Paramètres › Application. « Votre solde est suffisant » n'est PAS annoncé :
+  la réussite d'un paiement a déjà son message, seul l'échec (« Solde insuffisant », « Paiement échoué ») mérite la voix.
+- **Alerte de stock** : un article qui franchit son seuil est annoncé (déjà le cas), puis rappelé toutes les 24 h par un cron horaire (`StockService.sendLowStockReminders`, colonne `stock_items.low_alert_sent_at`)
+  tant que le stock n'est pas rechargé. Chaque utilisateur peut la couper pour un article ou en bloc (`stock_alert_mutes`, migration 087 à appliquer sur Test puis Prod). Application fermée : push FCM avec canaux Android
+  `stock_alert` / `stock_out` (sonnerie = la voix, `res/raw`).
+- **Messages d'échec Mobile Money** : `explainMobileMoneyRefusal` traduit le refus du fournisseur (solde, PIN, limite, numéro, réseau) en phrase claire avec l'opérateur du numéro ; un message qui parle du solde MARCHAND n'est pas
+  attribué au payeur. Après un paiement lancé puis échoué, FlexPaie ne dit jamais POURQUOI : l'écran liste les causes usuelles, la plus probable d'abord (`mobileMoneyFailedAdvice`).
