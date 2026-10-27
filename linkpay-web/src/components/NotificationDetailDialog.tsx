@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -14,7 +15,7 @@ interface NotificationItem {
   body: string;
   created_at: string;
   /** url: an in-app page this notification opens (daily report, restock request…). */
-  data?: { organization_id?: string; url?: string };
+  data?: { organization_id?: string; url?: string; stock_item_id?: string };
 }
 
 /**
@@ -36,6 +37,19 @@ export function NotificationDetailDialog({ notification, onClose }: { notificati
   // Only in-app pages: a notification never sends anyone off the app.
   const link = notification?.data?.url?.startsWith('/dashboard') ? notification.data.url : null;
   const orgId = notification?.type === 'org_submitted' ? notification.data?.organization_id : undefined;
+  // A stock alert repeats every 24 h until the stock is refilled: the user can switch it off for this one article, himself.
+  const stockItemId = notification?.type === 'stock_low' ? notification.data?.stock_item_id : undefined;
+  const [muted, setMuted] = useState<'idle' | 'busy' | 'done'>('idle');
+  useEffect(() => setMuted('idle'), [notification?.id]);
+  const muteItem = async () => {
+    setMuted('busy');
+    try {
+      await api.put('/stock-alerts/mutes', { stock_item_id: stockItemId });
+      setMuted('done');
+    } catch {
+      setMuted('idle');
+    }
+  };
 
   const { data: org, isLoading } = useQuery({
     queryKey: ['org-detail', orgId],
@@ -73,6 +87,12 @@ export function NotificationDetailDialog({ notification, onClose }: { notificati
             )
           ) : (
             <p className="text-sm text-foreground whitespace-pre-wrap">{notification.body}</p>
+          )}
+
+          {stockItemId && (
+            <Button variant="outline" className="mt-4 w-full" disabled={muted !== 'idle'} onClick={muteItem}>
+              {muted === 'done' ? "C'est coupé : cet article ne vous sera plus annoncé" : 'Ne plus me prévenir pour cet article'}
+            </Button>
           )}
 
           {link && (

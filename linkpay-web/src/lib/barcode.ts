@@ -68,32 +68,5 @@ export function listenForScannerBursts(onScan: (code: string) => void, opts: { m
   return () => window.removeEventListener('keydown', onKeyDown, true);
 }
 
-// ------------------------------------------------------------------
-// Audible feedback — the cashier looks at the product, not the screen.
-// Generated with WebAudio: no sound file to ship.
-// ------------------------------------------------------------------
-let audio: AudioContext | null = null;
-
-function tone(freq: number, ms: number) {
-  try {
-    audio ??= new (window.AudioContext || (window as any).webkitAudioContext)();
-    const osc = audio.createOscillator();
-    const gain = audio.createGain();
-    osc.frequency.value = freq;
-    osc.type = 'square';
-    gain.gain.value = 0.08;
-    osc.connect(gain).connect(audio.destination);
-    osc.start();
-    osc.stop(audio.currentTime + ms / 1000);
-  } catch { /* no audio — silent */ }
-}
-
-export function beepOk() {
-  tone(1800, 90);
-  try { navigator.vibrate?.(40); } catch { /* ignore */ }
-}
-
-export function beepError() {
-  tone(300, 300);
-  try { navigator.vibrate?.([80, 60, 80]); } catch { /* ignore */ }
-}
+// Audible feedback (beep + voice) lives in ./sound.ts; re-exported here so the scanning screens keep one import.
+export { beepOk, beepError } from './sound';

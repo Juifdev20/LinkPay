@@ -4,6 +4,7 @@ import QrScanner from 'qr-scanner';
 import QrScannerWorkerPath from 'qr-scanner/qr-scanner-worker.min.js?url';
 import { Button } from '@/components/ui/button';
 import { X, Keyboard, AlertCircle } from 'lucide-react';
+import { beepError, beepOk } from '@/lib/sound';
 
 QrScanner.WORKER_PATH = QrScannerWorkerPath;
 
@@ -64,12 +65,14 @@ export default function ScanQrPage() {
         const token = extractPaymentToken(result.data);
         if (token) {
           scanner.stop();
+          beepOk();
           navigate(`/p/${token}`);
           return;
         }
         const cardToken = extractCardToken(result.data);
         if (cardToken) {
           scanner.stop();
+          beepOk();
           // The landing page sends a seller to the till and anybody else to "send money to this card's holder".
           navigate(`/c/${cardToken}`);
           return;
@@ -77,15 +80,18 @@ export default function ScanQrPage() {
         const payNumber = extractPayNumber(result.data);
         if (payNumber) {
           scanner.stop();
+          beepOk();
           navigate(`/pay/${payNumber}`);
           return;
         }
         const walletNumber = extractWalletNumber(result.data);
         if (walletNumber) {
           scanner.stop();
+          beepOk();
           navigate(`/dashboard/wallet/send?to=${encodeURIComponent(walletNumber)}`);
           return;
         }
+        beepError();
         setError('QR non reconnu — ce code ne correspond pas à un lien de paiement ou un numéro ScanLinkPay.');
       },
       {

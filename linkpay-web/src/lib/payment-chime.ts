@@ -1,4 +1,5 @@
 import { formatCurrency } from './utils';
+import { announce, getSoundPrefs } from './sound';
 
 /**
  * Synthesized "cha-ching" — a short ascending arpeggio via raw oscillators,
@@ -10,6 +11,7 @@ import { formatCurrency } from './utils';
  */
 export function playChime() {
   try {
+    if (!getSoundPrefs().beep) return;
     const Ctx = window.AudioContext || (window as any).webkitAudioContext;
     if (!Ctx) return;
     const ctx = new Ctx();
@@ -38,17 +40,11 @@ export function playChime() {
   }
 }
 
-/** Speaks the amount aloud in French via the device's own TTS voice —
- * best-effort: silently does nothing if speechSynthesis or a French voice
- * isn't available (never surfaced as an error to the user). */
+/** "Paiement reçu" in the recorded female voice, then the amount read by the phone — best-effort, never an error for the caller. */
 export function announceAmount(amountCents: number, currency: string) {
   try {
-    if (!('speechSynthesis' in window)) return;
-    const amount = formatCurrency(amountCents, currency).replace(/ /g, ' ');
-    const utterance = new SpeechSynthesisUtterance(`Paiement reçu de ${amount}`);
-    utterance.lang = 'fr-FR';
-    utterance.rate = 1;
-    window.speechSynthesis.speak(utterance);
+    const amount = formatCurrency(amountCents, currency).replace(/\u00a0/g, ' ');
+    announce.paymentReceived(amount);
   } catch {
     // Best-effort only.
   }

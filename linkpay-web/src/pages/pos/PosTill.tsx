@@ -22,6 +22,7 @@ import { PosOfflinePaymentSheet } from './PosOfflinePayment';
 import { useNavigate } from 'react-router-dom';
 import { BarcodeScannerView } from '@/components/BarcodeScannerView';
 import { beepError, beepOk, listenForScannerBursts } from '@/lib/barcode';
+import { announceStock } from '@/lib/sound';
 
 
 /**
@@ -353,7 +354,7 @@ export function PosTill({
       return;
     }
     if (item.quantity <= 0) {
-      beepError();
+      announceStock(item.name, true);
       setError(`« ${item.name} » est en rupture de stock.`);
       return;
     }

@@ -20,6 +20,7 @@ import { openOnWebsite } from '@/lib/open-site';
 import { SupportContactsCard } from '@/components/admin/SupportContactsCard';
 import { AccessCodeSettings } from '@/components/AccessCodeSettings';
 import { RecoveryCodeSettings } from '@/components/RecoveryCodeSettings';
+import { SoundSettings } from '@/components/SoundSettings';
 import { useFailedCount, usePendingCount } from '@/lib/outbox';
 import { isAppLockSupported, isAppLockEnabled, enableAppLock, disableAppLock } from '@/lib/app-lock';
 import { isPinSessionDisabled, setPinSessionDisabled, appCodeApplies } from '@/lib/app-lock-store';
@@ -232,6 +233,7 @@ export default function SettingsPage() {
                   onCheckedChange={handleTogglePush}
                 />
               </div>
+              <SoundSettings showStockAlerts={!['client', 'admin', 'super_admin'].includes(user?.role ?? 'client')} />
               <button
                 onClick={() => navigate('/dashboard/sync')}
                 className="flex items-center gap-3 w-full px-6 py-3.5 hover:bg-accent transition-colors text-left border-b border-border"

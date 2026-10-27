@@ -524,7 +524,7 @@ export class StockService {
    * be busy elsewhere, the people on the floor see the shelf and remind them.
    * Best effort — never blocks the sale or the movement.
    */
-  private async notifyLowStock(merchant: any, itemId: string, item: { name: string; quantity: number }) {
+  async notifyLowStock(merchant: any, itemId: string, item: { name: string; quantity: number }, reminder = false) {
     const client = this.supabaseService.getClient();
     const organization = await this.organizationsService.getOrganizationById(merchant.organization_id).catch(() => null);
 
@@ -541,8 +541,17 @@ export class StockService {
       .filter((r: any) => LOW_STOCK_ALERT_ROLES.includes(r.role?.slug))
       .map((r: any) => r.user_id as string);
 
-    const recipients = [...new Set([organization?.owner_id, ...onTheFloor].filter(Boolean))] as string[];
+    // Whoever switched this alert off (every stock alert, or this article only) is left out.
+    const { data: mutes } = await client
+      .from('stock_alert_mutes')
+      .select('user_id, stock_item_id')
+      .or(`stock_item_id.is.null,stock_item_id.eq.${itemId}`);
+    const muted = new Set((mutes || []).map((m: any) => m.user_id as string));
+
+    const recipients = ([...new Set([organization?.owner_id, ...onTheFloor].filter(Boolean))] as string[]).filter((id) => !muted.has(id));
     const out = item.quantity <= 0;
+    // The 24 h repeat counts from the last alert, muted or not (a muted article is simply not announced to that user).
+    await client.from('stock_items').update({ low_alert_sent_at: new Date().toISOString() }).eq('id', itemId);
     await Promise.all(recipients.map((userId) => this.notificationsService.create({
       user_id: userId,
       type: 'stock_low',
@@ -550,8 +559,72 @@ export class StockService {
       body: out
         ? `${item.name} (${merchant.name}) — il n'en reste plus. À réapprovisionner.`
         : `${item.name} (${merchant.name}) — il ne reste que ${item.quantity} unité(s). Pensez à réapprovisionner.`,
-      data: { merchant_id: merchant.id, stock_item_id: itemId },
+      // item_name / out: the app reads them to announce the product by voice; reminder: sent again after 24 h.
+      data: { merchant_id: merchant.id, stock_item_id: itemId, item_name: item.name, out, reminder },
     }).catch(() => undefined)));
+  }
+
+  // ---------------------------------------------------------------------
+  // Muting stock alerts (each user, for himself)
+  // ---------------------------------------------------------------------
+
+  /** The articles this user muted, and whether he muted every stock alert. */
+  async listAlertMutes(userId: string) {
+    const { data, error } = await this.supabaseService.getClient()
+      .from('stock_alert_mutes')
+      .select('stock_item_id')
+      .eq('user_id', userId);
+    if (error) throw new Error(`Failed to read stock alert mutes: ${error.message}`);
+    const rows = data || [];
+    return {
+      all: rows.some((r: any) => r.stock_item_id === null),
+      item_ids: rows.map((r: any) => r.stock_item_id as string | null).filter((id): id is string => !!id),
+    };
+  }
+
+  /** Mutes every stock alert (`itemId` null) or one article's, for this user only. */
+  async muteAlerts(userId: string, itemId: string | null) {
+    const { error } = await this.supabaseService.getClient()
+      .from('stock_alert_mutes')
+      .insert({ user_id: userId, stock_item_id: itemId });
+    // 23505: already muted — the result the user wanted.
+    if (error && error.code !== '23505') throw new Error(`Failed to mute stock alert: ${error.message}`);
+    return this.listAlertMutes(userId);
+  }
+
+  async unmuteAlerts(userId: string, itemId: string | null) {
+    let query = this.supabaseService.getClient().from('stock_alert_mutes').delete().eq('user_id', userId);
+    query = itemId ? query.eq('stock_item_id', itemId) : query.is('stock_item_id', null);
+    const { error } = await query;
+    if (error) throw new Error(`Failed to unmute stock alert: ${error.message}`);
+    return this.listAlertMutes(userId);
+  }
+
+  /**
+   * The 24 h repeat: every article that is STILL at or below its threshold and was last announced more than 24 h ago is announced again
+   * (to everyone who hasn't muted it), until it is refilled — the quantity above the threshold stops it by itself — or muted.
+   * Returns how many articles were announced.
+   */
+  async sendLowStockReminders(now = new Date()): Promise<number> {
+    const limit = new Date(now.getTime() - 24 * 3_600_000).toISOString();
+    const { data, error } = await this.supabaseService.getClient()
+      .from('stock_items')
+      .select('id, name, quantity, low_stock_threshold, merchants!inner(id, name, organization_id)')
+      .or(`low_alert_sent_at.is.null,low_alert_sent_at.lt.${limit}`)
+      .limit(500);
+    if (error) {
+      this.logger.error(`Low stock reminders: ${error.message}`);
+      return 0;
+    }
+    let announced = 0;
+    for (const row of (data || []) as any[]) {
+      if (row.quantity > row.low_stock_threshold) continue;
+      const merchant = Array.isArray(row.merchants) ? row.merchants[0] : row.merchants;
+      if (!merchant?.organization_id) continue;
+      await this.notifyLowStock(merchant, row.id, { name: row.name, quantity: row.quantity }, true).catch(() => undefined);
+      announced += 1;
+    }
+    return announced;
   }
 
   /** POS barcode scan lookup — read-level access, caissier included

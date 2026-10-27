@@ -3,20 +3,23 @@ import { supabase } from '@/lib/supabase';
 import api from '@/lib/api';
 import { COOKIE_AUTH } from '@/lib/auth-mode';
 import { playChime, announceAmount } from '@/lib/payment-chime';
+import { announceStock } from '@/lib/sound';
 
 const ALERT_TYPES = new Set(['payment_received', 'transfer_received']);
 /** Cookie mode has no realtime session: look for new notifications every few seconds instead. */
 const POLL_MS = 8_000;
 
-type Row = { id?: string; type?: string; data?: { amount_cents?: number; currency?: string } };
+type Row = { id?: string; type?: string; data?: { amount_cents?: number; currency?: string; item_name?: string; out?: boolean } };
 function chimeFor(row: Row) {
+  // Stock alert (first alert, or the daily reminder the server sends until the user mutes it): the voice names the product.
+  if (row.type === 'stock_low') { announceStock(row.data?.item_name, row.data?.out === true || String(row.data?.out) === 'true'); return; }
   if (!row.type || !ALERT_TYPES.has(row.type)) return;
   playChime();
   if (row.data?.amount_cents != null && row.data?.currency) announceAmount(row.data.amount_cents, row.data.currency);
 }
 
 /**
- * Plays a chime + speaks the amount the instant a "you just received money"
+ * Plays a chime + says "Paiement reçu" and the amount (and, for stock alerts, names the product) the instant a "you just received money"
  * notification lands for the current user — merchant checkout payments and
  * P2P wallet transfers alike. Hooks the same Realtime channel pattern
  * useRealtimeInvalidate already proves works (see NotificationsBell), but

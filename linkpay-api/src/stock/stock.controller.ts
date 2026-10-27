@@ -517,3 +517,37 @@ export class SuppliersController {
     return this.suppliers.archive(orgId, supplierId, caller);
   }
 }
+
+class MuteStockAlertDto {
+  @ApiPropertyOptional({ description: "L'article à ne plus annoncer ; absent = toutes les alertes de stock" })
+  @IsOptional()
+  @IsUUID()
+  stock_item_id?: string;
+}
+
+/** A user's own switches for the stock alerts (voice in the app, sound notification) — nobody's but his. */
+@ApiTags('Stock')
+@ApiBearerAuth()
+@Controller('stock-alerts')
+export class StockAlertsController {
+  constructor(private stockService: StockService) {}
+
+  @Get('mutes')
+  @ApiOperation({ summary: 'Alertes de stock que je ne veux plus entendre' })
+  list(@CurrentUser('id') userId: string) {
+    return this.stockService.listAlertMutes(userId);
+  }
+
+  @Put('mutes')
+  @ApiOperation({ summary: "Couper une alerte de stock (un article, ou toutes) pour moi seul" })
+  mute(@CurrentUser('id') userId: string, @Body() dto: MuteStockAlertDto) {
+    return this.stockService.muteAlerts(userId, dto.stock_item_id ?? null);
+  }
+
+  @Delete('mutes')
+  @ApiOperation({ summary: 'Réactiver une alerte de stock (un article, ou toutes)' })
+  unmute(@CurrentUser('id') userId: string, @Query('stock_item_id') itemId?: string) {
+    if (itemId !== undefined && !/^[0-9a-f-]{36}$/i.test(itemId)) throw new BadRequestException('stock_item_id invalide');
+    return this.stockService.unmuteAlerts(userId, itemId ?? null);
+  }
+}

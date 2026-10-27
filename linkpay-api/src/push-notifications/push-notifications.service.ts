@@ -179,6 +179,11 @@ export class PushNotificationsService {
       await getMessaging(this.fcmApp).send({
         token: sub.fcm_token,
         notification: { title: payload.title, body: payload.body },
+        // Stock alerts ring with the recorded female voice ("Stock bas…" / "Stock épuisé…"), even with the app closed. On Android 8+ the
+        // sound belongs to the notification CHANNEL, created by the app at start (native-push.ts, same ids) with the file in res/raw.
+        ...(payload.type === 'stock_low'
+          ? { android: { priority: 'high' as const, notification: { channelId: payload.data?.out ? 'stock_out' : 'stock_alert', sound: payload.data?.out ? 'stock_out' : 'stock_alert' } } }
+          : {}),
         // FCM data payload values must all be strings.
         data: { type: payload.type, ...Object.fromEntries(Object.entries(payload.data || {}).map(([k, v]) => [k, String(v)])) },
       });

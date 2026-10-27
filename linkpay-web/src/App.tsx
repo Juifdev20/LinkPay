@@ -14,7 +14,7 @@ import { useEffect, Suspense } from 'react';
 import { lazyPage, prefetchPages, PageFallback } from '@/lib/lazy-page';
 import { startScreenProtection } from '@/lib/screen-protection';
 import { runDeviceCheck } from '@/lib/device-integrity';
-import { initNativePushNavigation } from '@/lib/native-push';
+import { initNativePushNavigation, createStockAlertChannels } from '@/lib/native-push';
 
 import LoginPage from '@/pages/auth/LoginPage';
 const RegisterPage = lazyPage(() => import('@/pages/auth/RegisterPage'));
@@ -203,6 +203,7 @@ export default function App() {
   // service worker already owns this.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
+    void createStockAlertChannels();
     return initNativePushNavigation(navigate);
   }, [navigate]);
 

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { AmountEntry } from '@/components/payment/AmountEntry';
 import { ResultView } from '@/components/ResultView';
 import { cn } from '@/lib/utils';
+import { announce, beepError, beepOk } from '@/lib/sound';
 
 QrScanner.WORKER_PATH = QrScannerWorkerPath;
 
@@ -56,10 +57,12 @@ export default function ChargeCardPage() {
         const t = tokenOf(r.data);
         if (/^[0-9A-Z]{12}$/.test(t) && /\/c\//.test(r.data)) {
           scanner.stop();
+          beepOk();
           setScanning(false);
           setQrToken(t);
           setStep('amount');
         } else {
+          beepError();
           setError("Ce QR code n'est pas une carte ScanLinkPay.");
         }
       },
@@ -79,6 +82,7 @@ export default function ChargeCardPage() {
         if (!alive) return;
         if (data.status !== 'pending' && data.status !== 'processing') {
           setOutcome(data.status as Outcome);
+          if (data.status === 'approved') announce.paymentReceived(); else if (data.status === 'declined' || data.status === 'expired') announce.paymentFailed();
           setStep('done');
         }
       } catch {

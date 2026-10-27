@@ -125,6 +125,36 @@ function urlForNotification(data: Record<string, any> | undefined): string {
   return '/dashboard';
 }
 
+/**
+ * Android 8+: a notification sound is a property of its CHANNEL, fixed when the channel is created. These two ring with the recorded
+ * voice (files in android/app/src/main/res/raw), even with the app closed. Same ids as the server (push-notifications.service.ts).
+ * Safe to call at every start: creating an existing channel changes nothing.
+ */
+export async function createStockAlertChannels(): Promise<void> {
+  try {
+    await PushNotifications.createChannel({
+      id: 'stock_alert',
+      name: 'Alertes de stock',
+      description: 'Stock bas : la voix vous prévient, même application fermée.',
+      sound: 'stock_alert.mp3',
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+    });
+    await PushNotifications.createChannel({
+      id: 'stock_out',
+      name: 'Ruptures de stock',
+      description: 'Stock épuisé : la voix vous prévient, même application fermée.',
+      sound: 'stock_out.mp3',
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+    });
+  } catch {
+    // Channels need Android 8+ and the native plugin: nowhere else, nothing to do.
+  }
+}
+
 /** Call once at app root (native platforms only) — wires notification taps
  * to in-app navigation. Returns a cleanup function. */
 export function initNativePushNavigation(navigate: (path: string) => void): () => void {

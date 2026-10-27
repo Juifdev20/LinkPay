@@ -82,7 +82,8 @@ export default defineConfig(({ mode }) => ({
         ],
       },
       injectManifest: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // The voice clips (public/sounds/voice) are precached so the announcements also work offline in the web app.
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}', 'sounds/**/*.mp3'],
       },
       devOptions: {
         // The custom SW isn't built/served under plain `vite dev` — test
