@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { announcePaymentError } from '@/lib/sound';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -191,7 +192,9 @@ export default function SendPage() {
         setStep('pending');
         return;
       }
-      setError(err.response?.data?.message || 'Le transfert a échoué');
+      const message = err.response?.data?.message || 'Le transfert a échoué';
+      announcePaymentError(message);
+      setError(message);
       setStep('confirm');
     }
   };
@@ -211,7 +214,9 @@ export default function SendPage() {
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
       setStep('success');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Le transfert a échoué');
+      const message = err.response?.data?.message || 'Le transfert a échoué';
+      announcePaymentError(message);
+      setError(message);
       setPin('');
       setStep('pin');
     }

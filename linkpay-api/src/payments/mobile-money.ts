@@ -53,3 +53,48 @@ export function assertNumberMatchesOperator(operator: string | undefined | null,
     throw new BadRequestException(`Ce numéro est un numéro ${found.label}, pas ${chosen.label}. Choisissez ${found.label} ou saisissez un numéro ${chosen.label}.`);
   }
 }
+
+/**
+ * Turns what the payment provider (FlexPaie / the operator) said when it REFUSED to start a Mobile Money payment into a sentence that tells
+ * the payer what to do. The provider's own wording is technical, in French or English, and often just "failed": the person only needs to
+ * know whether it is his balance, his PIN, his number, a limit, or the operator's network. Order matters: balance first (the most common).
+ * What we cannot recognise is passed through unchanged (it is usually already a readable French sentence, e.g. the minimum amount).
+ */
+export function explainMobileMoneyRefusal(providerMessage: string | undefined | null, phone?: unknown): string {
+  const raw = String(providerMessage ?? '').trim();
+  const operator = operatorOfNumber(phone);
+  const account = operator ? MOBILE_MONEY_OPERATORS[operator].label : 'Mobile Money';
+  const m = raw.toLowerCase();
+
+  // About OUR merchant account at the provider, not the payer's: the payer can do nothing about it, so his balance is not blamed.
+  if (/marchand|merchant/.test(m)) return raw;
+  if (/insuffisan|insufficient|not enough|solde|balance|fonds|funds|low credit|crédit/.test(m)) {
+    return `Solde insuffisant : votre compte ${account} n'a pas assez d'argent pour ce paiement (le montant et les frais de l'opérateur sont à prévoir). Rechargez votre compte ${account} ou choisissez un montant plus petit, puis réessayez.`;
+  }
+  if (/\bpin\b|code secret|mot de passe|password|wrong code|invalid code|code incorrect|code erron/.test(m)) {
+    return `Le code PIN ${account} n'est pas correct. Vérifiez-le puis réessayez ; après plusieurs erreurs, l'opérateur bloque le compte quelques minutes.`;
+  }
+  if (/limit|plafond|maximum|exceed|dépass|depass/.test(m) && !/minimal|minimum|inférieur|inferieur/.test(m)) {
+    return `Ce paiement dépasse la limite de votre compte ${account} (par opération ou par jour). Essayez un montant plus petit, ou contactez ${account}.`;
+  }
+  if (/not registered|unregistered|inconnu|unknown|non enregistr|invalid (number|account|msisdn|subscriber)|numéro invalide|numero invalide|subscriber|inactive|inactif|blocked|bloqu|suspend|barred/.test(m)) {
+    return `Ce numéro n'est pas reconnu comme un compte ${account} actif. Vérifiez le numéro (c'est celui de votre compte ${account}) et que votre compte n'est pas bloqué ou suspendu.`;
+  }
+  if (/timeout|time out|timed out|délai|delai|expired|expir|busy|occup|indisponible|unavailable|try again|réessay|reessay|network|réseau|reseau/.test(m)) {
+    return `Le réseau ${account} est momentanément occupé ou n'a pas répondu à temps. Patientez une minute puis réessayez.`;
+  }
+  return raw || `Le paiement ${account} n'a pas pu être lancé. Vérifiez votre solde ${account}, votre numéro, puis réessayez.`;
+}
+
+/**
+ * Said when a Mobile Money payment that WAS started comes back as failed: the status check only says "failed", never why. So the message
+ * lists the usual causes, most likely first, and states that nothing was debited.
+ */
+export function mobileMoneyFailedAdvice(phone?: unknown): string {
+  const operator = operatorOfNumber(phone);
+  const account = operator ? MOBILE_MONEY_OPERATORS[operator].label : 'Mobile Money';
+  return (
+    `Le paiement ${account} n'a pas abouti. Aucun montant n'a été débité. Vérifiez : 1) que votre solde ${account} est suffisant (montant + frais de l'opérateur) ; ` +
+    `2) que vous avez saisi le bon code PIN, dans le délai demandé ; 3) que le numéro est bien celui de votre compte ${account}. Puis réessayez.`
+  );
+}

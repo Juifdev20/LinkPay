@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { announcePaymentError } from '@/lib/sound';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -131,7 +132,9 @@ export default function TopupPage() {
         setStep('pending');
         return;
       }
-      setError(err.response?.data?.message || 'Erreur lors de la recharge');
+      const message = err.response?.data?.message || 'Erreur lors de la recharge';
+      announcePaymentError(message);
+      setError(message);
       setStep('confirm');
     }
   };

@@ -16,6 +16,7 @@ import {
   PayoutRetryLaterError,
 } from '../psp.adapter';
 import { isWholeCurrencyUnits } from '../amount-check';
+import { explainMobileMoneyRefusal } from '../../mobile-money';
 
 /**
  * FlexPaie (Infoset) — "API de Paiement", corporate v2.0.
@@ -248,7 +249,7 @@ export class FlexPaieAdapter implements PspAdapter {
       // the payer as a 400. Every caller lets BadRequestException through;
       // hiding it behind the generic "service unavailable" made a fixable
       // problem (an amount below their ~100 CDF minimum) look like an outage.
-      throw new BadRequestException(String(answer?.message ?? 'Paiement refusé par le fournisseur').slice(0, 200));
+      throw new BadRequestException((card ? String(answer?.message ?? 'Paiement refusé par le fournisseur') : explainMobileMoneyRefusal(String(answer?.message ?? ''), base.phone)).slice(0, 400));
     }
     const orderNumber = String(answer.orderNumber);
 

@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { assertNumberMatchesOperator, nationalNumber, operatorOfNumber } from './mobile-money';
+import { assertNumberMatchesOperator, explainMobileMoneyRefusal, mobileMoneyFailedAdvice, nationalNumber, operatorOfNumber } from './mobile-money';
 
 describe('nationalNumber', () => {
   it.each([['+243 828 497 218'], ['0828497218'], ['243828497218'], ['828497218'], ['00243828497218'], ['+243-828-497-218'], ['(0828) 497 218']])('%s → 828497218', (input) => {
@@ -43,5 +43,53 @@ describe('assertNumberMatchesOperator', () => {
     expect(() => assertNumberMatchesOperator('airtel', '0863456789')).not.toThrow();
     expect(() => assertNumberMatchesOperator(undefined, '0828497218')).not.toThrow();
     expect(() => assertNumberMatchesOperator('mtn', '0828497218')).not.toThrow();
+  });
+});
+
+describe('explainMobileMoneyRefusal', () => {
+  const airtel = '0973456789';
+  it.each([
+    'Insufficient funds',
+    'Solde insuffisant',
+    'The balance is not enough',
+    'Fonds insuffisants sur le compte',
+  ])('"%s" → says the balance is the cause, and names the operator', (said) => {
+    const out = explainMobileMoneyRefusal(said, airtel);
+    expect(out).toMatch(/^Solde insuffisant/);
+    expect(out).toContain('Airtel Money');
+  });
+
+  it('recognises a wrong PIN, a limit, an unknown number and a busy network', () => {
+    expect(explainMobileMoneyRefusal('Wrong PIN entered', airtel)).toMatch(/code PIN/);
+    expect(explainMobileMoneyRefusal('Transaction limit exceeded', airtel)).toMatch(/dépasse la limite/);
+    expect(explainMobileMoneyRefusal('Subscriber not registered', airtel)).toMatch(/pas reconnu/);
+    expect(explainMobileMoneyRefusal('Request timeout', airtel)).toMatch(/occupé/);
+  });
+
+  it("does not blame the payer's balance when the provider talks about the merchant's own account", () => {
+    expect(explainMobileMoneyRefusal('Solde marchand insuffisant', airtel)).toBe('Solde marchand insuffisant');
+  });
+
+  it('never calls the minimum amount a "limit": the provider\'s own sentence is already the right one', () => {
+    const said = 'Le montant est inférieur au montant minimal pour le CDF';
+    expect(explainMobileMoneyRefusal(said, airtel)).toBe(said);
+  });
+
+  it('passes an unrecognised French sentence through, and gives advice when the provider said nothing', () => {
+    expect(explainMobileMoneyRefusal('Opération non autorisée pour ce marchand', airtel)).toBe('Opération non autorisée pour ce marchand');
+    expect(explainMobileMoneyRefusal('', '0813456789')).toContain('M-Pesa (Vodacom)');
+  });
+
+  it('uses a generic account name when the number is of no known network', () => {
+    expect(explainMobileMoneyRefusal('insufficient funds', '0863456789')).toContain('compte Mobile Money');
+  });
+});
+
+describe('mobileMoneyFailedAdvice', () => {
+  it('lists the usual causes, says nothing was debited, and names the operator of the number', () => {
+    const out = mobileMoneyFailedAdvice('0823456789');
+    expect(out).toContain('M-Pesa (Vodacom)');
+    expect(out).toContain('Aucun montant n\'a été débité');
+    expect(out).toMatch(/solde.*PIN.*numéro/s);
   });
 });

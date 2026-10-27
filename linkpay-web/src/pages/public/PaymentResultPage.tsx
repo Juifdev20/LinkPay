@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useLocation, useSearchParams, Link } from 'react-router-dom';
 import api from '@/lib/api';
 import { usePaymentStatusPoll } from '@/hooks/usePaymentStatusPoll';
@@ -6,6 +7,7 @@ import { PublicShell, PublicCard } from '@/components/public/PublicShell';
 import { ResultView, type ResultRow } from '@/components/ResultView';
 import { useAuthStore } from '@/lib/auth-store';
 import { formatCurrency } from '@/lib/utils';
+import { announce, announcePaymentError } from '@/lib/sound';
 
 interface PaymentStatusResponse {
   reference: string;
@@ -57,6 +59,12 @@ export default function PaymentResultPage() {
   } else {
     view = 'pending';
   }
+
+  // Voice, once per outcome: "Paiement réussi", or "Solde insuffisant" / "Paiement échoué" according to the reason given.
+  useEffect(() => {
+    if (view === 'success') announce.paymentSuccess();
+    else if (view === 'failed') announcePaymentError(message);
+  }, [view, message]);
 
   const amount = data?.amount_cents ? formatCurrency(data.amount_cents, data.currency) : undefined;
   const rows: ResultRow[] = reference ? [{ label: 'Référence', value: reference, copy: reference }] : [];

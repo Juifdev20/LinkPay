@@ -1,6 +1,8 @@
 import { Button } from '@/components/ui/button';
 import { ResultView, ResultCard } from '@/components/ResultView';
+import { useEffect } from 'react';
 import { formatCurrency } from '@/lib/utils';
+import { announce } from '@/lib/sound';
 
 export type TopupCardStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'TIMEDOUT';
 
@@ -32,6 +34,12 @@ export function TopupStatusCard({ status, amountCents, currency, extraRows = [],
   const isPending = status === 'PENDING' || status === 'TIMEDOUT';
   const isTransfer = kind === 'transfer';
 
+  // The voice says it once when the card shows a failure (never on a re-render).
+  useEffect(() => {
+    if (status === 'FAILED') announce.paymentFailed();
+    else if (status === 'SUCCESS') announce.paymentSuccess();
+  }, [status]);
+
   const title = isFailed
     ? (isTransfer ? 'Envoi échoué' : 'Recharge échouée')
     : status === 'TIMEDOUT'
@@ -41,7 +49,9 @@ export function TopupStatusCard({ status, amountCents, currency, extraRows = [],
     : (isTransfer ? 'Envoi réussi' : 'Recharge réussie');
 
   const description = isFailed
-    ? (isTransfer ? "Cet envoi n'a pas abouti — aucun montant n'a été débité. Vous pouvez réessayer." : "Cette recharge n'a pas abouti. Vous pouvez réessayer depuis votre tableau de bord.")
+    ? (isTransfer
+      ? "Cet envoi n'a pas abouti — aucun montant n'a été débité. Vérifiez votre solde et votre connexion, puis réessayez."
+      : "Cette recharge n'a pas abouti. Aucun montant n'a été débité. Vérifiez : 1) que votre solde Mobile Money est suffisant (montant + frais de l'opérateur) ; 2) que vous avez saisi le bon code PIN, dans le délai demandé ; 3) que le numéro est bien celui de votre compte Mobile Money. Puis réessayez.")
     : status === 'TIMEDOUT'
     ? (isTransfer ? 'Cet envoi met plus de temps que prévu à se confirmer. Il pourra tout de même aboutir — le destinataire sera crédité dès que ce sera fait.' : 'Cette recharge met plus de temps que prévu à se confirmer. Elle pourra tout de même aboutir — votre solde sera mis à jour dès que ce sera fait.')
     : status === 'PENDING'
