@@ -319,10 +319,10 @@ export class OrganizationsService {
           client.from('sales').select('total_cents, currency, paid_at').eq('merchant_id', m.id).eq('status', 'PAID').gte('paid_at', weekStart.toISOString()),
           client.from('organization_staff').select('id', { count: 'exact', head: true }).eq('merchant_id', m.id).is('deactivated_at', null),
           // The station's recorded expenses of the week (table missing before migration 019/083: no expenses).
-          client.from('organization_expenses').select('amount_cents, currency, created_at').eq('organization_id', orgId).eq('merchant_id', m.id).gte('created_at', weekStart.toISOString()),
+          client.from('organization_expenses').select('amount_cents, currency, created_at, approved_at').eq('organization_id', orgId).eq('merchant_id', m.id).eq('status', 'approved').or(`created_at.gte.${weekStart.toISOString()},approved_at.gte.${weekStart.toISOString()}`),
         ]);
         const outgoings = spent || [];
-        const todaysSpent = outgoings.filter((e: any) => e.created_at && dayOf(e.created_at) === todayKey);
+        const todaysSpent = outgoings.filter((e: any) => (e.approved_at || e.created_at) && dayOf(e.approved_at || e.created_at) === todayKey);
         const takings = [...(tickets || []), ...(sales || [])];
         const todays = takings.filter((t) => t.paid_at && dayOf(t.paid_at) === todayKey);
         return {
@@ -632,7 +632,8 @@ export class OrganizationsService {
       const { data, error } = await this.supabaseService.getClient()
         .from('organization_expenses')
         .select('amount_cents, currency')
-        .eq('organization_id', orgId);
+        .eq('organization_id', orgId)
+        .eq('status', 'approved');
 
       if (error) throw error;
       return sumByCurrency(data, 'amount_cents');
@@ -673,15 +674,16 @@ export class OrganizationsService {
     try {
       let query = this.supabaseService.getClient()
         .from('organization_expenses')
-        .select('amount_cents, currency, created_at')
+        .select('amount_cents, currency, created_at, approved_at')
         .eq('organization_id', orgId)
-        .gte('created_at', from.toISOString());
+        .eq('status', 'approved')
+        .or(`created_at.gte.${from.toISOString()},approved_at.gte.${from.toISOString()}`);
       if (stationId) query = query.eq('merchant_id', stationId);
       const { data, error } = await query;
       if (error) throw error;
       for (const e of data || []) {
         // An expense can't be dated after now: clamp, like sales.
-        const day = businessDayKey(new Date(Math.min(new Date(e.created_at).getTime(), now.getTime())));
+        const day = businessDayKey(new Date(Math.min(new Date(e.approved_at || e.created_at).getTime(), now.getTime())));
         const slot = byDay.get(day);
         if (slot) slot[e.currency === 'USD' ? 'USD' : 'CDF'] += e.amount_cents || 0;
       }

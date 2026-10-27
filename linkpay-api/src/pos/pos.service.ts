@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, Optional } from '@nestjs/common';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { writeFile, unlink } from 'fs/promises';
@@ -8,6 +8,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { StockService, POS_SALE_ROLES } from '../stock/stock.service';
 import { PaymentRequestsService } from '../payment-requests/payment-requests.service';
 import { AuditService } from '../audit/audit.service';
+import { CashDayLockService } from '../cash-book/cash-day-lock.service';
 import { OWN_TILL_ONLY_ROLES } from '../common/org-access';
 
 /**
@@ -38,6 +39,7 @@ export class PosService {
     private stockService: StockService,
     private paymentRequestsService: PaymentRequestsService,
     private auditService: AuditService,
+    @Optional() private cashDayLock?: CashDayLockService,
   ) {}
 
   private get db() {
@@ -315,10 +317,11 @@ export class PosService {
     currency: string,
     firstStockItemId?: string,
   ) {
-    // Access check and open-session lookup are independent — one round-trip.
+    // Access check, open-session lookup and closed-day check are independent — one round-trip.
     const [, session] = await Promise.all([
       this.assertAccess(merchantId, callerId, callerRole, callerOrgId),
       this.findOpenSession(merchantId, currency),
+      this.cashDayLock?.assertDayOpen(merchantId, currency),
     ]);
     if (!session) {
       throw new BadRequestException(`Aucune session de caisse ouverte en ${currency} pour cette boutique — ouvrez la caisse avant de vendre.`);
@@ -762,6 +765,8 @@ export class PosService {
     const ctx = await this.loadOpenTicket(merchantId, ticketId, callerId, callerRole, callerOrgId);
     const { items, payments, merchant } = ctx;
     const ticket = await this.syncTotals(ctx.ticket, items, merchant?.pos_tva_rate_pct);
+    // A ticket started before the closing cannot be cashed once the day is closed (or while an earlier day is still open).
+    await this.cashDayLock?.assertDayOpen(merchantId, ticket.currency);
 
     const remaining = this.remainingCents(ticket, payments);
     const amount = data.amount_cents ?? remaining;

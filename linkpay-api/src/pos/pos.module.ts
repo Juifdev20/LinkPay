@@ -3,6 +3,7 @@ import { PosController } from './pos.controller';
 import { PosStatsController } from './pos-stats.controller';
 import { PosService } from './pos.service';
 import { PosStatsService } from './pos-stats.service';
+import { CashDayLockModule } from '../cash-book/cash-day-lock.module';
 import { SupabaseModule } from '../supabase/supabase.module';
 import { StockModule } from '../stock/stock.module';
 import { PaymentRequestsModule } from '../payment-requests/payment-requests.module';
@@ -10,7 +11,7 @@ import { AuditModule } from '../audit/audit.module';
 import { OrganizationStaffModule } from '../organization-staff/organization-staff.module';
 
 @Module({
-  imports: [SupabaseModule, StockModule, PaymentRequestsModule, AuditModule, OrganizationStaffModule],
+  imports: [SupabaseModule, StockModule, PaymentRequestsModule, AuditModule, OrganizationStaffModule, CashDayLockModule],
   controllers: [PosController, PosStatsController],
   providers: [PosService, PosStatsService],
   exports: [PosService],

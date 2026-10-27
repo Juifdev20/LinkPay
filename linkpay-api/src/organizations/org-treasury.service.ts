@@ -109,7 +109,7 @@ export class OrgTreasuryService {
         ? this.fetchAll((from, to) => this.db().from('pos_tickets').select('merchant_id, total_cents, currency').in('merchant_id', ids).eq('status', 'paid').range(from, to))
         : Promise.resolve([] as any[]),
       this.fetchAll((from, to) => this.db().from('sales').select('merchant_id, total_cents, currency').eq('organization_id', orgId).eq('status', 'PAID').range(from, to)),
-      this.fetchAll((from, to) => this.db().from('organization_expenses').select('merchant_id, amount_cents, currency').eq('organization_id', orgId).range(from, to)),
+      this.fetchAll((from, to) => this.db().from('organization_expenses').select('merchant_id, amount_cents, currency').eq('organization_id', orgId).eq('status', 'approved').range(from, to)),
     ]);
 
     const rowFor = (merchantId: string | null, name: string): TreasuryStationRow => {

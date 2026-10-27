@@ -12,7 +12,7 @@ function setup() {
     return { data: null };
   });
   // (supabase, stockPasswordService, ...) — only the first matters for createSale
-  const service: any = new (SalesService as any)(fake.service, {}, {}, {}, {});
+  const service: any = new (SalesService as any)(fake.service, {}, {});
   jest.spyOn(service, 'assertOrgAccess').mockResolvedValue(undefined);
   jest.spyOn(service, 'getOrgMerchant').mockResolvedValue({ id: 'm1' });
   jest.spyOn(service, 'ownerSaleStation').mockResolvedValue({ id: 'm1' });
@@ -71,7 +71,7 @@ describe('cost prices are never sent to sellers and cashiers', () => {
       if (q.target === 'sales') return { data: [{ id: 's1', currency: 'CDF', total_cents: 100000, paid_at: '2026-06-01', transaction_id: null, sale_items: SALE.sale_items }] };
       return { data: null };
     });
-    const service: any = new (SalesService as any)(fake.service, {}, {}, {}, {});
+    const service: any = new (SalesService as any)(fake.service, {}, {});
     jest.spyOn(service, 'assertOrgAccess').mockResolvedValue(undefined);
     return service;
   }

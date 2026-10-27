@@ -1,8 +1,9 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException, Optional } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
 import { StockPasswordService } from '../stock/stock-password.service';
 import { AuditService } from '../audit/audit.service';
+import { CashDayLockService } from '../cash-book/cash-day-lock.service';
 import { requireStaffStation } from '../common/org-access';
 import { businessDayKey, startOfBusinessDay, lastBusinessDays } from '../common/utils/business-day';
 import { trustedNow } from '../common/utils/trusted-clock';
@@ -51,6 +52,7 @@ export class SalesService {
     private supabaseService: SupabaseService,
     private stockPasswordService: StockPasswordService,
     private auditService: AuditService,
+    @Optional() private cashDayLock?: CashDayLockService,
   ) {}
 
   private db() {
@@ -175,6 +177,9 @@ export class SalesService {
         },
       };
     });
+
+    // Closed day = closed shop: no new sale until the cash is unlocked (emergency code) or reopened by the manager.
+    await this.cashDayLock?.assertDayOpen(merchant.id, currency || undefined);
 
     const reference = `SALE-${randomBytes(6).toString('hex').toUpperCase()}`;
     const description = snapshot.map((s) => `${s.quantity} x ${s.name}`).join(', ');
@@ -466,13 +471,14 @@ export class SalesService {
     const station = await this.assertOrgAccess(orgId, callerId, callerOrgId, callerRole, SELLER_ROLES);
     const { data: sale, error } = await this.db()
       .from('sales')
-      .select('id, reference, merchant_id, created_by, status, payment_request_id')
+      .select('id, reference, merchant_id, created_by, status, payment_request_id, currency')
       .eq('id', saleId)
       .eq('organization_id', orgId)
       .single();
     if (station && sale && sale.merchant_id !== station) throw new NotFoundException('Vente introuvable');
     if (error || !sale) throw new NotFoundException('Vente introuvable');
     if (sale.status !== 'PENDING') throw new BadRequestException('Cette vente a déjà été traitée');
+    await this.cashDayLock?.assertDayOpen(sale.merchant_id, sale.currency);
     if (await this.expireSale(sale.id, sale.payment_request_id)) {
       throw new BadRequestException('Cette vente a expiré (15 minutes sans paiement) : relancez-la.');
     }

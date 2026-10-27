@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger, Optional } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { StockService, POS_SALE_ROLES } from '../stock/stock.service';
 import { AuditService } from '../audit/audit.service';
 import { OWN_TILL_ONLY_ROLES, stationStaffWithRoles } from '../common/org-access';
 import { NotificationsService } from '../notifications/notifications.service';
+import { CashDayLockService } from '../cash-book/cash-day-lock.service';
 
 /**
  * One open session per (store, currency) at a time — a till is opened with
@@ -23,6 +24,7 @@ export class CashRegisterService {
     private stockService: StockService,
     private auditService: AuditService,
     private notificationsService: NotificationsService,
+    @Optional() private cashDayLock?: CashDayLockService,
   ) {}
 
   private readonly logger = new Logger(CashRegisterService.name);
@@ -163,6 +165,8 @@ export class CashRegisterService {
     data: { currency: string; opening_float_cents: number },
   ) {
     await this.assertAccess(merchantId, callerId, callerRole, callerOrgId);
+    // The till of a closed day stays shut: unlock the day first.
+    await this.cashDayLock?.assertDayOpen(merchantId, data.currency);
 
     const existing = await this.db
       .from('cash_register_sessions')
@@ -235,6 +239,7 @@ export class CashRegisterService {
     if (session.status !== 'open') {
       throw new BadRequestException('Cette session de caisse est déjà clôturée.');
     }
+    await this.cashDayLock?.assertDayOpen(merchantId, session.currency);
 
     const row: Record<string, unknown> = {
       session_id: sessionId,

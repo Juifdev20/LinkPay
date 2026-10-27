@@ -16,6 +16,7 @@ import { PosModule } from './pos/pos.module';
 import { ReportsModule } from './reports/reports.module';
 import { SupplierNetworkModule } from './supplier-network/supplier-network.module';
 import { CashRegisterModule } from './cash-register/cash-register.module';
+import { CashBookModule } from './cash-book/cash-book.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { PaymentRequestsModule } from './payment-requests/payment-requests.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -77,6 +78,7 @@ import { createThrottlerStorage } from './common/throttler/redis-throttler.stora
     ReportsModule,
     SupplierNetworkModule,
     CashRegisterModule,
+    CashBookModule,
     InventoryModule,
     PaymentRequestsModule,
     PaymentsModule,
