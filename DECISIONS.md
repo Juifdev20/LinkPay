@@ -5,6 +5,58 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 26/10/2026 — Caisse de station : clôture quotidienne, livre de caisse, rapports (migration 087)
+
+Demande du propriétaire : le vendeur et le caissier étant un seul rôle, chaque station a sa **caisse** tenue par son
+vendeur/caissier, avec clôture chaque jour, rapports (jour, semaine, mois, année) et **livre de caisse mensuel**
+(encaissements et décaissements chronologiques, solde d'ouverture et de clôture). Valable pour les deux secteurs.
+
+- **Comptable seulement** : le module lit les ventes (tickets de caisse, module Ventes), les mouvements du tiroir et les
+  dépenses, et enregistre le **comptage** de la caisse. Il n'écrit jamais dans `ledger_entries` ni dans un portefeuille.
+- **Ce qui est « dans la caisse »** : espèces des tickets (paiements `cash` confirmés), ventes `cash` du module Ventes,
+  entrées de caisse (`cash_in`) ; sorties = dépenses de la station (hors rejetées) + sorties de caisse (`cash_out`).
+  ScanLinkPay / wallet sont listés à part, jamais dans les espèces. CDF et USD ne se mélangent jamais.
+- **Jour** : fuseau de l'entreprise (`business-day.ts`, + `businessWeek/Month/YearRange`), horloge de confiance.
+- **Solde d'ouverture** d'un jour = espèces comptées de la dernière journée clôturée (0 avant la première clôture, que la
+  première clôture peut déclarer). Les jours se clôturent **dans l'ordre**. Écart = compté − théorique ; le livre ajoute une
+  ligne « Écart de caisse » pour que le solde de clôture soit le compté.
+- **Clôture** (`cash_day_closings`, une ligne par station, jour et devise) : refusée pour un jour futur, tant qu'une session de
+  tiroir est ouverte, ou si un jour antérieur avec activité n'est pas clôturé. Code d'accès demandé (comme la clôture de
+  session). Notification au gérant/patron (écart = « Écart à la clôture de caisse »). Rappel à 21 h 30 (Kinshasa).
+- **Réouverture** : gérant ou patron seulement, motif obligatoire et tracé, uniquement la journée clôturée la plus récente.
+  La clôture suivante remplace les chiffres (`version` + 1).
+- **Dépenses de station** (`organization_expenses` + `category`, `status`) : saisies par le vendeur/caissier (catégorie et motif
+  obligatoires) → `pending`, **PAS une sortie** tant que le gérant/patron ne les a pas validées (ou rejetées, motif). À la validation elles deviennent une sortie datée de la validation (`approved_at`), déduite de la caisse, et le vendeur reçoit une notification claire ; le
+  patron/gérant saisit directement en `approved`. Refusées si la journée du jour est clôturée.
+- **Journée clôturée = boutique fermée** (migration 088) : plus de nouvelle vente (Ventes : création et paiement espèces ; caisse :
+  ouverture de session et mouvements) tant que la journée du jour est clôturée dans la devise concernée (`CashDayLockService`,
+  erreur 403 `CASH_DAY_CLOSED`). Les ventes hors ligne déjà faites avant sont toujours acceptées (elles portent leur date).
+- **Classeurs d'archives** (onglet « Classeurs » de la Caisse) : un classeur à levier **par année** (couleurs de l'image du patron :
+  jaune, noir, violet, vert, rouge, `année % 5`), qui range chronologiquement les rapports journaliers, hebdomadaires (lun.→dim.),
+  mensuels et annuel de la station, dans la devise choisie. Rien n'est stocké : tout est recalculé depuis les ventes, la caisse, les
+  dépenses validées et les clôtures (`GET …/cash-book/archive` ne donne que la liste des années). Impression d'une période quelconque
+  (jour/semaine/mois/année), du **classeur complet** d'une année (couverture, sommaire, annuel, puis chaque mois : rapport + livre de
+  caisse) et de l'**étiquette de dos** à coller sur un vrai classeur. Seule la couverture reprend la couleur du classeur ; les pages
+  gardent la charte de marque.
+- **Journée précédente d'abord** : si une journée passée a eu de l'activité sans être clôturée, **toute opération du jour est
+  refusée** (vente, paiement espèces, dépense, ouverture/mouvement de caisse ; erreur 403 `CASH_PREVIOUS_DAY_UNCLOSED`) jusqu'à sa
+  clôture, que l'on peut faire le lendemain (écran Caisse : bouton « Clôturer la journée du … »). Sans aucune clôture encore, la
+  dernière journée active des 7 derniers jours sert de base (la 1re clôture déclare l'ouverture) ; les plus anciennes sont ignorées.
+- **Session de caisse (till) ouverte** : ne bloque la clôture que pour les secteurs qui vendent à la caisse (supermarché, alimentation) ;
+  une session héritée dans une entreprise « Ventes » (électronique…) est ignorée (aucun écran pour la fermer).
+- **Déverrouillage d'urgence par le vendeur/caissier** : code secret **personnel** (bcrypt, 6 caractères min., refus des codes
+  triviaux), **obligatoire avant la 1re clôture**, redemandé **à chaque** déverrouillage avec un **motif** (10 caractères min.).
+  5 mauvais codes bloquent 15 min. Seule la journée **en cours** est déverrouillable ainsi (une journée passée : gérant/patron).
+  La journée repasse « rouverte », il faut la **reclôturer**. Tout est historisé dans `cash_unlock_events` (création/changement
+  du code, essais ratés, blocage, déverrouillage) avec la date et l'heure précises ; le gérant/patron est notifié.
+  Le gérant/patron garde la réouverture sans code (motif seul).
+- **Écrans** : « Caisse & clôture » (`/dashboard/organization/cash`) : Aujourd'hui, Livre de caisse, Rapports, Dépenses ;
+  PDF (livre mensuel, rapport, reçu de clôture) et CSV via le partage Android. Bandeau « Caisse du jour à clôturer » sur les accueils.
+- **Migrations 087 puis 088 à exécuter** (LinkPay Test d'abord, puis production), puis `node supabase/construire-base-test.js` et commit de
+  `supabase/base_test.sql`.
+
+---
+
 ## 23/10/2026 — Achats et fournisseurs, rapport par vendeur, rôles du stock, réseau de fournisseurs
 
 Demande du propriétaire, valable pour **tous les secteurs** du module entreprise (`supermarche` et `electronique`) : rien

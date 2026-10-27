@@ -6,6 +6,17 @@ Décisions et raisons : `DECISIONS.md` (racine). Repères pour les agents : `AGE
 suppression de l'argent fictif et de CinetPay, base de test). Ordre : migrations `067` → `071` en production, puis fusion
 dans `main` (voir `DECISIONS.md`, « Déploiement »).
 
+## Caisse de station (26–27/10) — à valider par le collègue
+Caisse par station pour le vendeur/caissier (un seul rôle), tous secteurs : clôture quotidienne avec comptage et écart, journée
+verrouillée après clôture (déverrouillage d'urgence par code secret personnel + motif, tout historisé), obligation de clôturer la
+journée précédente avant d'opérer, dépenses du vendeur à valider par le gérant/patron (sortie de caisse seulement à la validation),
+livre de caisse mensuel, rapports jour/semaine/mois/année, classeurs d'archives par année (PDF professionnels signés).
+Détail et raisons : `DECISIONS.md`, section « Caisse de station » (26/10). Écran : `/dashboard/organization/cash`.
+- **Migrations 087 puis 088 à exécuter en production** (déjà passées sur la base de développement) ; `supabase/base_test.sql` régénéré.
+- **Secteurs** : électronique testé sur téléphone (station Kasindi) ; supermarché/alimentation couvert par les tests jest et la
+  lecture du code (caisse, tickets, sessions) mais **pas encore testé sur un compte réel** — à faire avant la fusion.
+- Le patron a un bouton « Caisse » et un bandeau « à clôturer » sur son accueil ; gérant et vendeur/caissier ont les leurs.
+
 ## En cours (23/10) — achats, fournisseurs, rapport des vendeurs, rôles, réseau de fournisseurs
 Plan, décisions et **état de chaque phase** : `DECISIONS.md`, section du 23/10. Phases A, B et C faites (prix d'achat
 et marge, fournisseurs, rapport des vendeurs, rôles du stock, réseau de fournisseurs payant). Reste : le fichier Excel
