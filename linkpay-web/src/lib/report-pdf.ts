@@ -23,7 +23,7 @@ export async function deliverPdf(doc: jsPDF, filename: string, dialogTitle = 'Pa
 }
 
 /** A small table writer: columns at fixed x, a new page when the bottom is reached. */
-function table(doc: jsPDF, y: number, columns: { title: string; x: number }[], rows: string[][]): number {
+export function table(doc: jsPDF, y: number, columns: { title: string; x: number }[], rows: string[][]): number {
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   columns.forEach((c) => doc.text(c.title, c.x, y));
@@ -37,7 +37,7 @@ function table(doc: jsPDF, y: number, columns: { title: string; x: number }[], r
   return y + 4;
 }
 
-function heading(doc: jsPDF, y: number, text: string): number {
+export function heading(doc: jsPDF, y: number, text: string): number {
   if (y > 265) { doc.addPage(); y = 18; }
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
@@ -174,3 +174,6 @@ export function buildOrganizationReportPdf(report: any, meta: { orgName?: string
   doc.text(`Total : ${money(report.totals.revenue_cents, c)} · ${report.totals.tickets} tickets · écart ${money(report.totals.discrepancy_cents, c)}`, 14, y);
   return doc;
 }
+
+/** For the other PDF builders (cash book): same money and date formats. */
+export { money as pdfMoney, dateTime as pdfDateTime };

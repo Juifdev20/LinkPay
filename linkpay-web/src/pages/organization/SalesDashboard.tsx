@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { CashClosingBanner } from '@/components/cash/CashClosingBanner';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
@@ -187,6 +188,8 @@ export default function SalesDashboardPage({ variant = 'full' }: { variant?: 'fu
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 pb-28 md:pb-6 space-y-5">
+
+      <CashClosingBanner />
 
       {/* En-tête */}
       <div>

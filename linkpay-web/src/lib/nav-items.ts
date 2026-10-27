@@ -1,5 +1,5 @@
 import { isSupermarket } from '@/lib/sectors';
-import { ArrowLeftRight, LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, FileBarChart, Truck, CloudUpload, Landmark, PackageSearch, Handshake, type LucideIcon } from 'lucide-react';
+import { ArrowLeftRight, LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, FileBarChart, Truck, CloudUpload, Landmark, PackageSearch, Handshake, Vault, type LucideIcon } from 'lucide-react';
 
 import { FEATURES } from '@/lib/features';
 import { ALL_ROLES, STAFF_ROLES, PERSONAL_ROLES, rolesFor } from '@/lib/permissions';
@@ -83,6 +83,8 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/organization/restock', label: "Demandes d'achat", icon: Truck, roles: rolesFor('/dashboard/organization/restock'), section: 'stock' },
   { to: '/dashboard/organization/supplier-orders', label: 'Mes fournisseurs', icon: PackageSearch, roles: rolesFor('/dashboard/organization/supplier-orders'), section: 'stock' },
   { to: '/dashboard/organization/supplier', label: 'Espace fournisseur', icon: Handshake, roles: rolesFor('/dashboard/organization/supplier'), section: 'business' },
+
+  { to: '/dashboard/organization/cash', label: 'Caisse & clôture', icon: Vault, roles: rolesFor('/dashboard/organization/cash'), section: 'follow' },
 
   // ---- Entreprise: business modules, not account config, so they live in the nav rather than Settings.
   { to: '/dashboard/organization/treasury', label: 'Trésorerie', icon: Landmark, roles: rolesFor('/dashboard/organization/treasury'), section: 'business' },

@@ -6,6 +6,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { ROLE_LABELS } from '@/lib/permissions';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { CashClosingBanner } from '@/components/cash/CashClosingBanner';
 import { HomeHero, QuickActions, SalesChart, RecentSales, Skeleton, type QuickAction } from '@/components/home/HomeWidgets';
 import type { Currency, HomeDay, HomeSale } from '@/components/home/useHomeData';
 import { ShoppingCart, PauseCircle, ScanLine, QrCode, Vault, ChevronRight, AlertTriangle } from 'lucide-react';
@@ -168,6 +169,7 @@ export default function CashierHome() {
       />
 
       <QuickActions actions={actions} />
+      <CashClosingBanner />
 
       {/* My till */}
       <div className="rounded-2xl border border-border bg-card p-4">

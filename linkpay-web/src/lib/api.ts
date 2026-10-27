@@ -2,6 +2,7 @@ import axios from 'axios';
 import { useNetwork } from './network';
 import { useOtpPrompt } from './otp-prompt';
 import { useAppCodePrompt } from './app-code-prompt';
+import { useCashUnlockPrompt } from './cash-unlock-prompt';
 import { useStockPasswordPrompt, rememberStockPassword, recalledStockPassword, forgetStockPassword } from './stock-password-prompt';
 import { getConfirmToken, setConfirmToken, clearConfirmToken } from './confirm-token';
 import { useSubscriptionPrompt } from './subscription-prompt';
@@ -96,6 +97,13 @@ api.interceptors.response.use(
             if (confirmErr?.response?.status === 429) break; // locked: the error below tells the user
           }
         }
+      }
+      // The day's cash is closed (shop closed): offer the emergency unlock (secret code + reason), then repeat the request once.
+      if (code === 'CASH_DAY_CLOSED' && !error.config._unlockAsked && error.response.data?.closing_id) {
+        error.config._unlockAsked = true;
+        const d = error.response.data;
+        const unlocked = await useCashUnlockPrompt.getState().ask({ merchantId: d.merchant_id, closingId: d.closing_id, message: d.message });
+        if (unlocked) return api(error.config);
       }
       // Android app: money can't leave without a recent device verification. Do it, then repeat the request once.
       if (code === 'DEVICE_INTEGRITY_REQUIRED' && !error.config._attested) {

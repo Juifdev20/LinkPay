@@ -3,6 +3,7 @@ import { SubscriptionPromptDialog } from '@/components/SubscriptionPromptDialog'
 import { DeviceUntrustedDialog } from '@/components/DeviceUntrustedDialog';
 import { SubscriptionGate } from '@/components/SubscriptionGate';
 import { AppCodeConfirmDialog } from '@/components/AppCodeConfirmDialog';
+import { CashUnlockDialog } from '@/components/cash/CashUnlockDialog';
 import { StockPasswordGate } from '@/components/stock/StockPasswordGate';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
@@ -71,6 +72,7 @@ const AdminCommissionsPage = lazyPage(() => import('@/pages/admin/Commissions'))
 const StaffWalletPage = lazyPage(() => import('@/pages/staff/StaffWallet'));
 const BusinessWalletPage = lazyPage(() => import('@/pages/organization/BusinessWallet'));
 const OrgTreasuryPage = lazyPage(() => import('@/pages/organization/Treasury'));
+const CaissePage = lazyPage(() => import('@/pages/staff/Caisse'));
 const ReportsPage = lazyPage(() => import('@/pages/organization/Reports'));
 const SellerReportPage = lazyPage(() => import('@/pages/organization/SellerReport'));
 const SupplierSpacePage = lazyPage(() => import('@/pages/organization/SupplierSpace'));
@@ -216,6 +218,7 @@ export default function App() {
       <SubscriptionPromptDialog />
       <DeviceUntrustedDialog />
       <AppCodeConfirmDialog />
+      <CashUnlockDialog />
       <StockPasswordGate />
       <Suspense fallback={<PageFallback fullScreen />}>
       <Routes>
@@ -539,6 +542,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={rolesFor('/dashboard/organization/reports')}>
               <ReportsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/cash"
+          element={
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/cash')}>
+              <CaissePage />
             </ProtectedRoute>
           }
         />

@@ -51,6 +51,8 @@ export const ROUTE_ROLES = {
   '/dashboard/organization/wallet': ['enterprise'],
   // The owner's general cash desk (collected, spent, real cash), behind its own password.
   '/dashboard/organization/treasury': ['enterprise'],
+  // The station's cash book: today's journal, daily closing, monthly book and reports (seller / cashier, manager, owner; accountant reads).
+  '/dashboard/organization/cash': ['enterprise', 'gerant', 'vendeur', 'caissier', 'comptable'],
   '/dashboard/organization/sales': ['enterprise', 'gerant', 'vendeur', 'caissier'],
   '/dashboard/organization/sales/history': ['enterprise', 'gerant', 'vendeur', 'caissier', 'comptable'],
   '/dashboard/organization/sales/dashboard': ['enterprise', 'gerant', 'vendeur', 'caissier', 'comptable'],

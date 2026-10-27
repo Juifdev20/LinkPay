@@ -19,10 +19,11 @@ import { CurrencySelector } from '@/components/CurrencySelector';
 import { DualCurrencyStat } from '@/components/DualCurrencyStat';
 import OnboardingWizard from '@/pages/organization/OnboardingWizard';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
-import { Building2, Loader2, QrCode, X, Copy, Check, Trophy, MinusCircle, Landmark, Clock, AlertTriangle, ShoppingCart, PackagePlus, PauseCircle } from 'lucide-react';
+import { Building2, Loader2, QrCode, X, Copy, Check, Trophy, MinusCircle, Landmark, Clock, AlertTriangle, ShoppingCart, PackagePlus, PauseCircle, Vault } from 'lucide-react';
 import { shareOrCopy, publicOrigin } from '@/lib/share';
 import { StationSwitcher } from '@/components/StationSwitcher';
 import { useStationScope, resolveStation } from '@/lib/station-scope';
+import { CashClosingBanner } from '@/components/cash/CashClosingBanner';
 
 /** Shown once the KYB onboarding is submitted, while status is still
  * 'pending' — distinct from the wizard itself (onboarding_completed_at is
@@ -185,6 +186,8 @@ export default function OrganizationProfilePage() {
       : []),
     // An expense starts on the station the owner is looking at (or none when every station is shown).
     ...(isOwner ? [{ label: 'Dépense', icon: MinusCircle, onClick: () => { setNewExpense((e) => ({ ...e, merchant_id: stationId ?? '' })); setShowAddExpense(true); }, tone: 'bg-rose-500/15 text-rose-600' }] : []),
+    // The station's cash: daily closing, cash book, reports and binders (every sector).
+    ...(isOwner ? [{ label: 'Caisse', icon: Vault, onClick: () => navigate('/dashboard/organization/cash'), tone: 'bg-indigo-500/15 text-indigo-600' }] : []),
     ...(isOwner ? [{ label: 'Trésorerie', icon: Landmark, onClick: () => navigate('/dashboard/organization/treasury'), tone: 'bg-amber-500/15 text-amber-600' }] : []),
   ];
 
@@ -243,6 +246,7 @@ export default function OrganizationProfilePage() {
       />
 
       <QuickActions actions={actions} />
+      {isOwner && stationId && <CashClosingBanner stationId={stationId} />}
 
       <AlertsList alerts={alerts} />
 

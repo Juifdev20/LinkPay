@@ -13,6 +13,13 @@ import {
 
 const SHORTCUTS = [
   {
+    label: 'Caisse & clôture',
+    sub: 'Journal du jour, clôture, rapports',
+    icon: Receipt,
+    to: '/dashboard/organization/cash',
+    tone: 'bg-emerald-500/10 text-emerald-600',
+  },
+  {
     label: 'Historique des ventes',
     sub: 'Consulter les transactions',
     icon: Receipt,
