@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ResultView, ResultCard } from '@/components/ResultView';
-import { formatLastOnline, useNetwork } from '@/lib/network';
+import { formatLastOnline, useNetwork, OFFLINE_FALLBACK_TIMEOUT_MS } from '@/lib/network';
 import api from '@/lib/api';
 
 /**
@@ -33,7 +33,7 @@ export function RequireOnline({ children, what = 'Cette opération' }: { childre
           </>
         }
       >
-        <Button className="h-[52px] w-full rounded-xl text-base font-semibold" onClick={() => { api.get('/platform/settings').catch(() => undefined); }}>
+        <Button className="h-[52px] w-full rounded-xl text-base font-semibold" onClick={() => { api.get('/platform/settings', { timeout: OFFLINE_FALLBACK_TIMEOUT_MS }).catch(() => undefined); }}>
           Réessayer
         </Button>
         <Button variant="ghost" className="h-12 w-full rounded-xl" onClick={() => navigate(-1)}>Retour</Button>

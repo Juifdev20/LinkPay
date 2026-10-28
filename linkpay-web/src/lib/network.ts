@@ -54,6 +54,14 @@ if (typeof window !== 'undefined') {
   window.addEventListener('online', () => useNetwork.setState({ online: true }));
 }
 
+/**
+ * How long a request that can fall back to working offline (a till ticket, a sale, the "is the server back?" probe)
+ * waits for an answer. A Wi-Fi without Internet or a very weak 2G does not refuse the connection: it stays silent,
+ * and without a limit the cashier would watch a spinner while the customer waits. After this delay the request counts
+ * as "no network" (the app goes offline mode, the sale goes on in cash and is sent later).
+ */
+export const OFFLINE_FALLBACK_TIMEOUT_MS = 10_000;
+
 /** The error of a request that never reached the server (as opposed to a refusal by the server). */
 export const isNetworkError = (err: any): boolean => !!err && !err.response && err.code !== 'ERR_CANCELED';
 

@@ -15,6 +15,8 @@ const API_URL = rawUrl.endsWith('/api/v1') ? rawUrl : `${rawUrl}/api/v1`;
 const api = axios.create({
   baseURL: API_URL,
   headers: { 'Content-Type': 'application/json' },
+  // No request waits for ever on a silent network (the longest one, a Mobile Money initiation, answers within seconds).
+  timeout: 45_000,
   // Cookie mode: the browser attaches the HttpOnly session cookies; our headers tell the API so (and satisfy its CSRF check).
   ...(COOKIE_AUTH ? { withCredentials: true } : {}),
 });

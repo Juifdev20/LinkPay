@@ -153,7 +153,9 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
       setOpeningFloat('');
       queryClient.invalidateQueries({ queryKey: ['cash-session', merchantId, currency] });
     } catch (err: any) {
-      setError(posErrorMessage(err, "Impossible d'ouvrir la caisse"));
+      setError(isNetworkError(err)
+        ? "Pas de réseau : l'ouverture de la caisse a besoin du serveur (le fond de caisse est enregistré chez lui). Réessayez dès que la connexion revient."
+        : posErrorMessage(err, "Impossible d'ouvrir la caisse"));
     } finally {
       setOpening(false);
     }

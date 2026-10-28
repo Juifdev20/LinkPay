@@ -5,6 +5,25 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 28/10/2026 (nuit) — Audit du hors ligne : réseau muet, cache de 14 jours
+
+Audit demandé par le propriétaire (« le hors ligne est notre point fort »). Vérifié dans un vrai navigateur sur le site
+construit (service worker compris), avec un faux serveur qu'on peut couper : Caisse supermarché et Ventes électronique,
+patron, caissier et vendeur, ordinateur et téléphone ; vente sans réseau, rechargement de la page sans réseau, retour du
+réseau (chaque vente reçue une seule fois, file vidée). Cela marchait. Trois défauts trouvés et corrigés :
+- **Réseau « muet »** (Wi-Fi sans Internet, 2G très faible : la connexion n'est pas refusée, elle ne répond jamais) :
+  « Encaisser » tournait sans fin, aucune bascule en hors ligne. Maintenant : les appels de la caisse et des Ventes
+  attendent 10 s au plus (`OFFLINE_FALLBACK_TIMEOUT_MS`, `lib/network.ts`), puis l'application passe en hors ligne et
+  propose l'encaissement en espèces ; plus aucune requête n'attend plus de 45 s (`lib/api.ts`). Le sondage « le serveur
+  est-il revenu ? » a la même limite.
+- **Cache gardé 24 h seulement** : un magasin coupé tout un week-end retrouvait un écran vide. Maintenant 14 jours
+  (`QUERY_CACHE_MAX_AGE`) ; le bandeau dit toujours l'âge des données ; le cache part à la déconnexion.
+- **Ouvrir la caisse sans réseau** : message clair (« l'ouverture a besoin du serveur ») au lieu d'une erreur muette.
+Limites connues, non traitées : ouvrir / fermer une caisse, créer ou modifier un produit, mettre un ticket en attente
+restent en ligne ; au-delà d'environ 8 000 produits le cache (localStorage, ~5 Mo) ne tient plus et le catalogue n'est
+pas gardé pour le hors ligne ; un appel qui expire alors que le serveur l'a quand même traité peut laisser un ticket
+ouvert orphelin côté serveur (sans effet sur le stock ni l'argent).
+
 ## 28/10/2026 (soir) — « Annuler » sur l'écran de code PIN ramène à l'étape précédente
 
 Constat du propriétaire : sur l'écran bleu du clavier numérique, « Annuler » refermait seulement le clavier et laissait la

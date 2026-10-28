@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useAuthStore } from '@/lib/auth-store';
-import { useNetwork } from '@/lib/network';
+import { useNetwork, OFFLINE_FALLBACK_TIMEOUT_MS } from '@/lib/network';
 import { flushOutbox, useOutbox } from '@/lib/outbox';
 import api from '@/lib/api';
 
@@ -25,7 +25,7 @@ export function useOutboxRunner() {
   // Offline: knock on the server every 15 s (a tiny public request); its answer flips the app back online.
   useEffect(() => {
     if (online) return;
-    const t = window.setInterval(() => { api.get('/platform/settings').catch(() => undefined); }, 15_000);
+    const t = window.setInterval(() => { api.get('/platform/settings', { timeout: OFFLINE_FALLBACK_TIMEOUT_MS }).catch(() => undefined); }, 15_000);
     return () => window.clearInterval(t);
   }, [online]);
 

@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { formatCurrency } from '@/lib/utils';
 import { Search, ShoppingCart, Plus, Minus, Trash2, Loader2, BarChart3, ListOrdered, ScanBarcode, X, WifiOff, Clock } from 'lucide-react';
 import { beepError, beepOk, listenForScannerBursts } from '@/lib/barcode';
-import { isNetworkError, useNetwork, useOnline } from '@/lib/network';
+import { isNetworkError, useNetwork, useOnline, OFFLINE_FALLBACK_TIMEOUT_MS } from '@/lib/network';
 import { enqueue, newClientRef } from '@/lib/outbox';
 import type { OrgOfflineSalePayload } from '@/lib/outbox-handlers';
 
@@ -224,7 +224,7 @@ export default function SalesPage() {
       try {
         return (await api.post(`/organizations/${org.id}/sales`, {
           items: items ?? lines.map(({ item, qty }) => ({ stock_item_id: item.id, quantity: qty })),
-        })).data;
+        }, { timeout: OFFLINE_FALLBACK_TIMEOUT_MS })).data;
       } catch (err) {
         if (isNetworkError(err)) return 'offline' as const;
         throw err;
@@ -258,7 +258,7 @@ export default function SalesPage() {
     };
     try {
       if (!useNetwork.getState().online) throw Object.assign(new Error('offline'), { offline: true });
-      await api.post(`/organizations/${org.id}/sales/${sale.id}/cash`);
+      await api.post(`/organizations/${org.id}/sales/${sale.id}/cash`, undefined, { timeout: OFFLINE_FALLBACK_TIMEOUT_MS });
       paidHere(false);
     } catch (err: any) {
       if (err?.offline || isNetworkError(err)) {
