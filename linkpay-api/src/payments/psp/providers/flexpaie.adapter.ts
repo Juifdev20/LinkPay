@@ -288,7 +288,19 @@ export class FlexPaieAdapter implements PspAdapter {
   /** Asks FlexPaie about one order. `transaction` is null when they know no such order. */
   private async check(orderNumber: string): Promise<{ transaction: any | null }> {
     const answer = await this.call('GET', `${this.checkUrl()}/${encodeURIComponent(orderNumber)}`);
-    return { transaction: answer?.transaction ?? null };
+    const transaction = answer?.transaction ?? null;
+    // "FlexPaie knows no such order" is useless without WHAT they answered: an unknown order, the wrong environment
+    // (test host asked about a production order), a refusal… Only the shape and their message are logged (no number).
+    if (!transaction) {
+      this.logger.warn(`FlexPaie check ${orderNumber}: no transaction in the answer (code=${String(answer?.code)}, message=${String(answer?.message ?? '').slice(0, 160)}, fields=${Object.keys(answer ?? {}).join(',') || 'none'})`);
+    }
+    return { transaction };
+  }
+
+  /** What FlexPaie says about a transaction that did not succeed, for the logs: their status and message, never numbers. */
+  private describeTransaction(transaction: any): string {
+    const message = transaction?.message ?? transaction?.description ?? transaction?.reason ?? transaction?.statusMessage ?? '';
+    return `status=${String(transaction?.status)}, message=${String(message).slice(0, 160)}, fields=${Object.keys(transaction ?? {}).join(',')}`;
   }
 
   async getTransactionStatus(psp_intent_id: string): Promise<TransactionStatusResult> {
@@ -300,7 +312,9 @@ export class FlexPaieAdapter implements PspAdapter {
     try {
       const { transaction } = await this.check(orderNumber);
       if (!transaction) return { status: 'PENDING', amount_cents: 0, currency: 'CDF' };
-      return { status: mapFlexPaieStatus(transaction.status), amount_cents: toCents(transaction.amount), currency: String(transaction.currency || 'CDF') };
+      const status = mapFlexPaieStatus(transaction.status);
+      if (status === 'FAILED') this.logger.warn(`FlexPaie says ${psp_intent_id} (order ${orderNumber}) did not succeed: ${this.describeTransaction(transaction)}`);
+      return { status, amount_cents: toCents(transaction.amount), currency: String(transaction.currency || 'CDF') };
     } catch (err: any) {
       // A hiccup is never a verdict: the payment stays open and is asked about again.
       this.logger.warn(`FlexPaie check failed for ${psp_intent_id}: ${err.message}`);
@@ -348,10 +362,13 @@ export class FlexPaieAdapter implements PspAdapter {
     const { transaction } = await this.check(orderNumber);
     if (!transaction || String(transaction.reference) !== reference) {
       this.logger.warn(`FlexPaie callback for ${reference}: FlexPaie knows no such order (or one with another reference) — refused`);
+      // Which one? (the line above this one, "FlexPaie check …", says what they answered when there was no transaction)
+      if (transaction) this.logger.warn(`FlexPaie callback for ${reference}: order ${orderNumber} belongs to reference "${String(transaction.reference)}", not ours`);
       throw new BadRequestException('Invalid webhook');
     }
 
     const status = mapFlexPaieStatus(transaction.status);
+    if (status === 'FAILED') this.logger.warn(`FlexPaie says ${reference} (order ${orderNumber}) did not succeed: ${this.describeTransaction(transaction)}`);
     return {
       event_id: `${orderNumber}:${status}`,
       event_type: status === 'SUCCESS' ? 'payment.succeeded' : status === 'FAILED' ? 'payment.failed' : 'payment.pending',

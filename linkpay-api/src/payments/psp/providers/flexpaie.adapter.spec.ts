@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
 import { FlexPaieAdapter, mapFlexPaieStatus, toFlexPaieMsisdn } from './flexpaie.adapter';
 import { PayoutNotSentError } from '../psp.adapter';
 import { createFakeSupabase, has, RecordedQuery } from '../../../test-utils/fake-supabase';
@@ -180,6 +180,51 @@ describe('asking FlexPaie about a payment', () => {
     expect((await adapter.getTransactionStatus(BASE.reference)).status).toBe('PENDING');
     fetchMock.mockResolvedValue(reply({}, 500));
     expect((await adapter.getTransactionStatus(BASE.reference)).status).toBe('PENDING');
+  });
+});
+
+describe('what the logs say when a payment does not succeed (so the cause can be read, not guessed)', () => {
+  let warn: jest.SpyInstance;
+  beforeEach(() => { warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined); });
+  afterEach(() => warn.mockRestore());
+  const lines = () => warn.mock.calls.map((c) => String(c[0]));
+
+  it('a payment FlexPaie reports as failed: their status and message are logged, never the customer number or the token', async () => {
+    const { adapter } = setup({ recorded: 'ORD-9' });
+    fetchMock.mockResolvedValue(reply({ code: '0', transaction: { reference: BASE.reference, amount: '5000.0', currency: 'CDF', status: '1', message: 'Solde insuffisant', phone: '243891234567' } }));
+    expect((await adapter.getTransactionStatus(BASE.reference)).status).toBe('FAILED');
+    const text = lines().join('\n');
+    expect(text).toContain('did not succeed');
+    expect(text).toContain('status=1');
+    expect(text).toContain('message=Solde insuffisant');
+    expect(text).toContain('fields=reference,amount,currency,status,message,phone'); // the shape, so an unexpected field name shows up
+    expect(text).not.toContain('243891234567');
+    expect(text).not.toContain(TOKEN);
+  });
+
+  it('"FlexPaie knows no such order": what they answered is logged (an unknown order, a wrong environment, a refusal…)', async () => {
+    const { adapter } = setup({ recorded: 'ORD-1' });
+    fetchMock.mockResolvedValue(reply({ code: '1', message: 'Aucune transaction trouvée', transaction: null }));
+    await expect(adapter.parseWebhookEvent(Buffer.from(JSON.stringify({ reference: BASE.reference, orderNumber: 'ORD-1' })), {})).rejects.toThrow(BadRequestException);
+    const text = lines().join('\n');
+    expect(text).toContain('FlexPaie check ORD-1: no transaction in the answer');
+    expect(text).toContain('code=1');
+    expect(text).toContain('message=Aucune transaction trouvée');
+    expect(text).toContain('knows no such order');
+  });
+
+  it('an order that belongs to ANOTHER reference says which one (told apart from "unknown order")', async () => {
+    const { adapter } = setup({ recorded: 'ORD-1' });
+    fetchMock.mockResolvedValue(reply({ code: '0', transaction: { reference: 'topup-20261009-ab12cd', amount: '5000.0', currency: 'CDF', status: '0' } }));
+    await expect(adapter.parseWebhookEvent(Buffer.from(JSON.stringify({ reference: BASE.reference, orderNumber: 'ORD-1' })), {})).rejects.toThrow(BadRequestException);
+    expect(lines().join('\n')).toContain('belongs to reference "topup-20261009-ab12cd", not ours');
+  });
+
+  it('a successful payment adds no warning', async () => {
+    const { adapter } = setup({ recorded: 'ORD-1' });
+    fetchMock.mockResolvedValue(reply({ code: '0', transaction: { reference: BASE.reference, amount: '5000.0', currency: 'CDF', status: '0' } }));
+    expect((await adapter.getTransactionStatus(BASE.reference)).status).toBe('SUCCESS');
+    expect(lines()).toEqual([]);
   });
 });
 
