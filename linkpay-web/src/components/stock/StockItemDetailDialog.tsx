@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { enqueue, newClientRef } from '@/lib/outbox';
-import { isNetworkError, useNetwork } from '@/lib/network';
+import { isNetworkError, useNetwork, OFFLINE_FALLBACK } from '@/lib/network';
 import type { StockMovementPayload } from '@/lib/outbox-handlers';
 import { useAuthStore } from '@/lib/auth-store';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -75,7 +75,7 @@ export function StockItemDetailDialog({
           quantity_delta,
           reason: payload.reason,
           client_ref: clientRef,
-        })).data;
+        }, OFFLINE_FALLBACK)).data;
       } catch (err) {
         if (isNetworkError(err)) return queue();
         throw err;

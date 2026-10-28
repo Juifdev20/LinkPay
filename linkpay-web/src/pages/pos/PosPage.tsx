@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import api from '@/lib/api';
-import { isNetworkError } from '@/lib/network';
+import { isNetworkError, OFFLINE_FALLBACK } from '@/lib/network';
 import { useAuthStore } from '@/lib/auth-store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -149,7 +149,7 @@ function PosScreen({ onLock }: { onLock?: () => void }) {
       await api.post(`/merchants/${merchantId}/cash-register/sessions`, {
         currency,
         opening_float_cents: Math.round(parseFloat(openingFloat || '0') * 100),
-      });
+      }, OFFLINE_FALLBACK); // its own message below says why it needs the network
       setOpeningFloat('');
       queryClient.invalidateQueries({ queryKey: ['cash-session', merchantId, currency] });
     } catch (err: any) {

@@ -12,7 +12,7 @@ import api from '@/lib/api';
  * opened online it is never swapped out mid-way (a short drop must not wipe what the person typed): the request
  * itself then tells.
  */
-export function RequireOnline({ children, what = 'Cette opération' }: { children: ReactNode; what?: string }) {
+export function RequireOnline({ children, what = 'Cette opération', why = 'seul le serveur connaît votre solde réel, rien ne part sans lui' }: { children: ReactNode; what?: string; why?: string }) {
   const online = useNetwork((s) => s.online);
   const lastOnlineAt = useNetwork((s) => s.lastOnlineAt);
   const navigate = useNavigate();
@@ -28,7 +28,7 @@ export function RequireOnline({ children, what = 'Cette opération' }: { childre
         title="Connexion nécessaire"
         message={
           <>
-            {what} a besoin d'Internet : seul le serveur connaît votre solde réel, rien ne part sans lui.
+            {what} a besoin d'Internet : {why}.
             <span className="mt-2 block">Dernière connexion {formatLastOnline(lastOnlineAt)}. L'écran s'ouvrira dès le retour du réseau.</span>
           </>
         }

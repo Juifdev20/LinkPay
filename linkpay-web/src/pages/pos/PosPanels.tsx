@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { isNetworkError, useOnline } from '@/lib/network';
+import { isNetworkError, useOnline, OFFLINE_FALLBACK } from '@/lib/network';
 import { enqueue, newClientRef, useOutbox } from '@/lib/outbox';
 import { useAuthStore } from '@/lib/auth-store';
 import { STAFF_ROLES } from '@/lib/permissions';
@@ -305,7 +305,7 @@ export function PosSessionPanel({ merchantId, session, onClosed }: { merchantId:
     setBusy(true);
     setError('');
     try {
-      await api.post(`/merchants/${merchantId}/cash-register/sessions/${session.id}/movements`, body);
+      await api.post(`/merchants/${merchantId}/cash-register/sessions/${session.id}/movements`, body, OFFLINE_FALLBACK);
       setMovement({ type: 'cash_out', amount: '', reason: '' });
       queryClient.invalidateQueries({ queryKey: ['cash-session-detail', session.id] });
     } catch (err: any) {

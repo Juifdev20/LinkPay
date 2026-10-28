@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { isNetworkError, useNetwork, useOnline } from '@/lib/network';
+import { isNetworkError, useNetwork, useOnline, OFFLINE_FALLBACK } from '@/lib/network';
 import { enqueue, useOutbox } from '@/lib/outbox';
 import { useAuthStore } from '@/lib/auth-store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -254,7 +254,7 @@ function CountingView({ merchantId, countId }: { merchantId: string; countId: st
     setBusy(true);
     setError('');
     try {
-      await api.patch(`/merchants/${merchantId}/inventory-counts/${countId}/lines`, { lines: counted });
+      await api.patch(`/merchants/${merchantId}/inventory-counts/${countId}/lines`, { lines: counted }, OFFLINE_FALLBACK);
       setDraft({});
       queryClient.invalidateQueries({ queryKey: ['inventory-count', countId] });
     } catch (err: any) {

@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight } from 'lucide-react';
 import { ShortcutButton } from '@/components/ShortcutButton';
 import { useExchangeState } from '@/hooks/useExchangeState';
+import { useOnline } from '@/lib/network';
 
 /**
  * « Bureau d'échange » on the home screen: the same solid button as « Mes dépenses », OUTSIDE the balance card (so the
@@ -11,6 +12,8 @@ import { useExchangeState } from '@/hooks/useExchangeState';
 export function ExchangeEntry() {
   const navigate = useNavigate();
   const { visible } = useExchangeState();
+  const online = useOnline();
   if (!visible) return null;
-  return <ShortcutButton icon={ArrowLeftRight} label="Bureau d'échange" onClick={() => navigate('/dashboard/exchange')} />;
+  // Needs the server (guaranteed rate, two balances at once): without network the button still opens, and says why.
+  return <ShortcutButton icon={ArrowLeftRight} label="Bureau d'échange" hint={online ? undefined : 'Internet requis'} onClick={() => navigate('/dashboard/exchange')} />;
 }

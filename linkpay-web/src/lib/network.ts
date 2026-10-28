@@ -62,6 +62,26 @@ if (typeof window !== 'undefined') {
  */
 export const OFFLINE_FALLBACK_TIMEOUT_MS = 10_000;
 
+/** What waits in the outbox is sent with this patience: a silent network must not keep the sending locked for long. */
+export const OUTBOX_SEND_TIMEOUT_MS = 20_000;
+
+/**
+ * Passed as the config of a request that has its own offline path (the till, the sales): it waits only
+ * OFFLINE_FALLBACK_TIMEOUT_MS, and a failure for lack of network is handled by the screen — no general
+ * "this needs the Internet" message on top.
+ */
+export const OFFLINE_FALLBACK = { timeout: OFFLINE_FALLBACK_TIMEOUT_MS, offlineFallback: true } as const;
+
+/**
+ * The general message for an action that needs the network and did not get it: "Cette action a besoin d'Internet".
+ * Every action of the app either works offline (the outbox) or says so — see scripts/offline-manifest.mjs.
+ */
+export const useNeedsNetwork = create<{ notice: { id: number; text: string } | null; show: (text: string) => void; hide: () => void }>((set, get) => ({
+  notice: null,
+  show: (text) => set({ notice: { id: (get().notice?.id ?? 0) + 1, text } }),
+  hide: () => set({ notice: null }),
+}));
+
 /** The error of a request that never reached the server (as opposed to a refusal by the server). */
 export const isNetworkError = (err: any): boolean => !!err && !err.response && err.code !== 'ERR_CANCELED';
 

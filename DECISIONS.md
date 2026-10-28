@@ -19,6 +19,13 @@ réseau (chaque vente reçue une seule fois, file vidée). Cela marchait. Trois 
 - **Cache gardé 24 h seulement** : un magasin coupé tout un week-end retrouvait un écran vide. Maintenant 14 jours
   (`QUERY_CACHE_MAX_AGE`) ; le bandeau dit toujours l'âge des données ; le cache part à la déconnexion.
 - **Ouvrir la caisse sans réseau** : message clair (« l'ouverture a besoin du serveur ») au lieu d'une erreur muette.
+- **Garde-fou pour la suite** (demande du propriétaire : toute nouvelle fonctionnalité doit s'adapter au hors ligne) :
+  `linkpay-web/scripts/offline-manifest.mjs` + `npm run check:offline` (avant chaque build, et en CI) — un fichier qui écrit
+  sur le serveur sans être déclaré `offline` / `partial` / `online` (avec la raison) fait échouer la construction. Message
+  général « Cette action a besoin d'Internet » (`NeedsNetworkNotice`) pour toute écriture qui échoue faute de réseau et n'a pas
+  son propre chemin hors ligne. Marche à suivre : `docs/HORS_LIGNE.md` ; règle ajoutée à `AGENTS.md`.
+- **Bureau d'échange** : volontairement **en ligne seulement** (taux garanti 60 s par le serveur, deux soldes touchés à la
+  fois, argent ScanLinkPay). Sans réseau le bouton affiche « Internet requis » et l'écran explique pourquoi.
 Limites connues, non traitées : ouvrir / fermer une caisse, créer ou modifier un produit, mettre un ticket en attente
 restent en ligne ; au-delà d'environ 8 000 produits le cache (localStorage, ~5 Mo) ne tient plus et le catalogue n'est
 pas gardé pour le hors ligne ; un appel qui expire alors que le serveur l'a quand même traité peut laisser un ticket

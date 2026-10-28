@@ -15,7 +15,7 @@ import { ProductTable } from '@/components/stock/ProductTable';
 import { posErrorMessage } from './PosPage';
 import { formatCurrency } from '@/lib/utils';
 import { Search, Trash2, PauseCircle, Loader2, ShieldAlert, Minus, Plus, ScanBarcode, X, ShoppingCart, WifiOff } from 'lucide-react';
-import { isNetworkError, useNetwork, useOnline, OFFLINE_FALLBACK_TIMEOUT_MS } from '@/lib/network';
+import { isNetworkError, useNetwork, useOnline, OFFLINE_FALLBACK } from '@/lib/network';
 import { enqueue } from '@/lib/outbox';
 import type { OfflineSalePayload } from '@/lib/outbox-handlers';
 import { PosOfflinePaymentSheet } from './PosOfflinePayment';
@@ -89,7 +89,7 @@ export function PosTill({
   const creatingTicket = useRef<Promise<any> | null>(null);
   const createTicket = (firstItemId: string) => {
     creatingTicket.current = api
-      .post(`/merchants/${merchantId}/pos/tickets`, { currency, first_stock_item_id: firstItemId }, { timeout: OFFLINE_FALLBACK_TIMEOUT_MS })
+      .post(`/merchants/${merchantId}/pos/tickets`, { currency, first_stock_item_id: firstItemId }, OFFLINE_FALLBACK)
       .then(({ data }) => {
         localStorage.setItem(ticketKey, data.id);
         ticketRef.current = data;
@@ -213,9 +213,9 @@ export function PosTill({
 
       let data: any;
       if (line && want.qty >= 1) {
-        data = (await api.patch(`/merchants/${merchantId}/pos/tickets/${t.id}/items/${line.id}`, { quantity: want.qty }, { timeout: OFFLINE_FALLBACK_TIMEOUT_MS })).data;
+        data = (await api.patch(`/merchants/${merchantId}/pos/tickets/${t.id}/items/${line.id}`, { quantity: want.qty }, OFFLINE_FALLBACK)).data;
       } else if (!line && want.qty >= 1) {
-        data = (await api.post(`/merchants/${merchantId}/pos/tickets/${t.id}/items`, { stock_item_id: pid, quantity: want.qty }, { timeout: OFFLINE_FALLBACK_TIMEOUT_MS })).data;
+        data = (await api.post(`/merchants/${merchantId}/pos/tickets/${t.id}/items`, { stock_item_id: pid, quantity: want.qty }, OFFLINE_FALLBACK)).data;
       } else {
         // 0 on a line the server already has goes through the authorized void.
         return settled();

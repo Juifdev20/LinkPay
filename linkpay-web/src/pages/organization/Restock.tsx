@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { isNetworkError, useNetwork } from '@/lib/network';
+import { isNetworkError, useNetwork, OFFLINE_FALLBACK } from '@/lib/network';
 import { enqueue, newClientRef } from '@/lib/outbox';
 import { useAuthStore } from '@/lib/auth-store';
 import { PageHeader } from '@/components/PageHeader';
@@ -196,7 +196,7 @@ function NewRequestSheet({ stations, isOwner, onClose, onCreated }: { stations: 
       const queue = () => enqueue('restock.request', `Demande d'achat · ${lines.length} produit${lines.length > 1 ? 's' : ''}`, { merchant_id: stationId, body }, undefined, clientRef);
       if (!useNetwork.getState().online) return queue();
       try {
-        return (await api.post(`/merchants/${stationId}/restock-requests`, body)).data;
+        return (await api.post(`/merchants/${stationId}/restock-requests`, body, OFFLINE_FALLBACK)).data;
       } catch (err) {
         if (isNetworkError(err)) return queue();
         throw err;

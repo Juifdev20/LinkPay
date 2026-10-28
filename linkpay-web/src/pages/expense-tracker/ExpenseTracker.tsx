@@ -16,7 +16,7 @@ import { ExpenseProUpgrade } from './ExpenseProUpgrade';
 import { ExpensePlanSelection } from './ExpensePlanSelection';
 import { Loader2, Plus, Lock, Download, Receipt, AlertTriangle, CloudUpload } from 'lucide-react';
 import { enqueue, newClientRef, useOutbox } from '@/lib/outbox';
-import { isNetworkError, useNetwork, useOnline } from '@/lib/network';
+import { isNetworkError, useNetwork, useOnline, OFFLINE_FALLBACK } from '@/lib/network';
 import type { ExpenseEntryPayload } from '@/lib/outbox-handlers';
 
 interface ExpenseEntry {
@@ -110,7 +110,7 @@ export default function ExpenseTrackerPage() {
       const queue = () => { enqueue('expense.entry', `Dépense : ${payload.description || 'sans description'}`, payload, formatCurrency(payload.amount_cents, payload.currency), clientRef); return 'queued' as const; };
       if (!useNetwork.getState().online) return queue();
       try {
-        await api.post(`/expense-tracker/reports/${report.id}/entries`, { ...payload, client_ref: clientRef, report_id: undefined });
+        await api.post(`/expense-tracker/reports/${report.id}/entries`, { ...payload, client_ref: clientRef, report_id: undefined }, OFFLINE_FALLBACK);
         return 'sent' as const;
       } catch (err) {
         if (isNetworkError(err)) return queue();

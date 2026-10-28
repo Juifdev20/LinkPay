@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "build:android": "tsc -b && vite build --mode android",
-    "build:android:local": "tsc -b && vite build --mode android-local",
+    "build": "node scripts/check-offline.mjs && tsc -b && vite build",
+    "build:android": "node scripts/check-offline.mjs && tsc -b && vite build --mode android",
+    "build:android:local": "node scripts/check-offline.mjs && tsc -b && vite build --mode android-local",
     "preview": "vite preview",
+    "check:offline": "node scripts/check-offline.mjs",
     "lint": "eslint ."
   },
   "dependencies": {

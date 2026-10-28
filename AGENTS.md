@@ -32,3 +32,14 @@ reste). Toute décision non triviale ajoute une section à `DECISIONS.md`.
 Jamais dans le dépôt ni dans un message : clés Supabase `service_role`, `FLEXPAIE_TOKEN`, `FLEXPAIE_PAYOUT_PASSWORD`,
 `JWT_SECRET`… Ils vivent dans Render et dans les `.env` locaux (ignorés par Git). La clé `anon` est publique par conception.
 Les documentations FlexPaie sont confidentielles : on les résume dans `docs/FLEXPAIE.md`, on ne les copie pas.
+
+## Hors ligne (règle de conception — la force du produit)
+Les boutiques et supermarchés doivent pouvoir **vendre sans réseau** et synchroniser ensuite. Toute fonctionnalité qui écrit
+sur le serveur répond à la question « et sans réseau ? » **avant d'être finie** :
+- `linkpay-web/scripts/offline-manifest.mjs` déclare chaque fichier qui écrit (`offline`, `partial` ou `online` + la raison).
+  `npm run check:offline` (avant chaque build et en CI) échoue si un fichier qui écrit n'y est pas.
+- Ce qui peut attendre (une vente en espèces, un mouvement de stock, une note) passe par la file `enqueue` et un `client_ref`
+  appliqué **une seule fois** côté serveur. Ce qui déplace de l'argent ScanLinkPay reste en ligne : écran sous `RequireOnline`
+  (qui explique pourquoi), et le message général de `lib/api.ts` prévient si l'appel échoue faute de réseau.
+- Un appel qui peut basculer sur le hors ligne passe `OFFLINE_FALLBACK` (attend 10 s, pas plus).
+La marche à suivre complète, avec exemples : `docs/HORS_LIGNE.md`.

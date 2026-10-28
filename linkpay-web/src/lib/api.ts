@@ -1,5 +1,6 @@
 import axios from 'axios';
-import { useNetwork } from './network';
+import { useNetwork, useNeedsNetwork, OUTBOX_SEND_TIMEOUT_MS } from './network';
+import { useOutbox } from './outbox';
 import { useOtpPrompt } from './otp-prompt';
 import { useAppCodePrompt } from './app-code-prompt';
 import { useStockPasswordPrompt, rememberStockPassword, recalledStockPassword, forgetStockPassword } from './stock-password-prompt';
@@ -22,6 +23,8 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
+  // The outbox is sending: a request that gets no answer gives up sooner, so the next attempt is not far.
+  if (useOutbox.getState().flushing && (!config.timeout || config.timeout > OUTBOX_SEND_TIMEOUT_MS)) config.timeout = OUTBOX_SEND_TIMEOUT_MS;
   // Where this session runs (the API applies its device-integrity rule to Android-app sessions).
   config.headers['x-client-platform'] = clientPlatform();
   if (COOKIE_AUTH) {
@@ -52,6 +55,14 @@ api.interceptors.response.use(
     // Any HTTP answer means the server is reachable; no answer at all means offline.
     if (error?.response) useNetwork.getState().reachable();
     else if (error?.code !== 'ERR_CANCELED') useNetwork.getState().unreachable();
+    // An action that needs the server and could not reach it says so, instead of failing without a word. Not for
+    // reads (the screen keeps what it has), nor for what has its own offline path or is the outbox sending.
+    if (!error?.response && error?.code !== 'ERR_CANCELED' && (error?.config?.method ?? 'get').toLowerCase() !== 'get'
+      && !error?.config?.offlineFallback && !useOutbox.getState().flushing) {
+      useNeedsNetwork.getState().show(error?.code === 'ECONNABORTED'
+        ? "Le serveur n'a pas répondu à temps. Vérifiez dans l'historique si l'action est passée avant de la refaire."
+        : "Pas de connexion : cette action a besoin d'Internet et n'a pas été envoyée. Réessayez dès que le réseau revient.");
+    }
     if (error.response?.status === 403) {
       const code = error.response.data?.code;
       // Sensitive admin action: ask for a fresh authenticator code, then repeat

@@ -10,6 +10,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { FEATURES } from '@/lib/features';
 import { useOutboxRunner } from '@/hooks/useOutboxRunner';
 import { RequireOnline } from '@/components/RequireOnline';
+import { NeedsNetworkNotice } from '@/components/NeedsNetworkNotice';
 import { useEffect, Suspense } from 'react';
 import { lazyPage, prefetchPages, PageFallback } from '@/lib/lazy-page';
 import { startScreenProtection } from '@/lib/screen-protection';
@@ -212,6 +213,7 @@ export default function App() {
   return (
     <>
       <InstallPrompt />
+      <NeedsNetworkNotice />
       <AppLockGate />
       <ForcePasswordChangeGate />
       <OtpPromptDialog />
@@ -297,7 +299,7 @@ export default function App() {
         <Route path="wallet/scan" element={<ScanQrPage />} />
         <Route path="wallet/withdraw" element={<RequireOnline what="Retirer de l'argent"><WithdrawPage /></RequireOnline>} />
         {/* Bureau d'échange: clients, shops and business owners (the server decides again, and hides it until the team switches it on). */}
-        <Route path="exchange" element={<ProtectedRoute roles={rolesFor('/dashboard/exchange')}><RequireOnline what="Le Bureau d'échange"><ExchangePage /></RequireOnline></ProtectedRoute>} />
+        <Route path="exchange" element={<ProtectedRoute roles={rolesFor('/dashboard/exchange')}><RequireOnline what="Le Bureau d'échange" why="le taux est garanti 60 secondes par le serveur, et l'échange touche vos deux soldes à la fois"><ExchangePage /></RequireOnline></ProtectedRoute>} />
         <Route path="wallet/pin" element={<SetPinPage />} />
         <Route path="wallet/transactions" element={<WalletTransactionsPage />} />
         <Route path="card" element={<ProtectedRoute roles={rolesFor('/dashboard/card')}><MyCardPage /></ProtectedRoute>} />
