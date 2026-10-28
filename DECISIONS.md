@@ -5,6 +5,22 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 29/10/2026 (nuit) — L'application restée sur le logo qui tourne : réparation automatique du démarrage
+
+Constat (iPhone, après un déploiement) : l'écran du logo avec le rond qui tourne ne partait plus. C'est la page d'attente de
+`index.html` (`#boot-splash`), remplacée par React dès que le JavaScript démarre : donc le JavaScript ne chargeait pas. Vérifié sur le
+site en ligne : pendant un déploiement, le CDN servait un `index.html` qui pointait vers un fichier (`/assets/index-….js`) déjà
+supprimé (404), puis tout est rentré dans l'ordre quelques minutes plus tard (le site neuf s'ouvre normalement). Un téléphone qui
+avait gardé cette page restait bloqué, et comme c'est le JavaScript qui met l'application à jour, rien ne pouvait la réparer.
+- `public/boot-guard.js` (script classique à part, la CSP interdit l'inline) : si un fichier de l'application ne charge pas, ou si
+  l'application n'a pas démarré après 25 s, il supprime le service worker et ses copies puis recharge — **une fois** (10 minutes) ; au
+  2e échec le rond est remplacé par un message avec « Réessayer » et « Réparer l'application ».
+- Rien de ce qui appartient à la personne n'est touché (connexion, données, ventes en attente : localStorage). **Jamais sans réseau** :
+  la copie hors ligne est alors la seule.
+- Testé : démarrage normal (aucune réparation), script disparu (1 réparation puis message, pas de boucle), connexion et file d'attente
+  intactes, aucun effet hors ligne. Les 404 pendant un déploiement restent possibles (Render + CDN) ; la réparation les rend sans
+  conséquence durable.
+
 ## 29/10/2026 — La barre du bas ne bouge plus quand un clavier s'ouvre
 
 Constat du propriétaire (iPhone, tous les claviers) : la barre de navigation du bas remontait au-dessus du clavier. Règle : elle reste
