@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import api from '@/lib/api';
 import { PageHeader } from '@/components/PageHeader';
 import { BalanceCard } from '@/components/BalanceCard';
+import { ExchangeEntry } from '@/components/exchange/ExchangeEntry';
 import { Card, CardContent } from '@/components/ui/card';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
 import { ArrowDownToLine, ArrowUpFromLine, History, ChevronRight, Sparkles } from 'lucide-react';
@@ -55,6 +56,7 @@ export default function BusinessWalletPage() {
           <ArrowUpFromLine className="w-5 h-5" /> Retirer
         </Link>
       </div>
+      <ExchangeEntry />
       </div>
 
       <div className="space-y-6">

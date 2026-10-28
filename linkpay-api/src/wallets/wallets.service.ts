@@ -139,6 +139,8 @@ export class WalletsService {
     const totals: Record<string, number> = { transfer: 0, merchant_payment: 0, withdrawal: 0, subscription: 0, other: 0 };
     for (const e of data || []) {
       const amount = Number(e.amount_cents) || 0;
+      // Changing dollars into francs (Bureau d'échange) is not spending: the money is still the person's.
+      if (e.entry_type === 'EXCHANGE_OUT') continue;
       if (e.direction === 'debit') totals[CATEGORY[e.entry_type] ?? 'other'] += amount;
       // A failed withdrawal comes back as a credit: it was never spent.
       else if (String(e.reference || '').startsWith('WITHDRAWAL-REVERSAL-')) totals.withdrawal -= amount;

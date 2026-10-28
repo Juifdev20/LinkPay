@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { BalanceCard } from '@/components/BalanceCard';
 import { RecentLedger } from '@/components/RecentLedger';
 import { WalletActions } from '@/components/WalletActions';
+import { ExchangeEntry } from '@/components/exchange/ExchangeEntry';
 import { StatTile } from '@/components/StatTile';
 import { ShortcutButton } from '@/components/ShortcutButton';
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate';
@@ -58,10 +59,14 @@ export default function ClientDashboard() {
             actions={<WalletActions currency={walletCurrency} />}
           />
 
-          <div className="grid grid-cols-2 gap-3 [&>*:last-child:nth-child(odd)]:col-span-2">
-            {FEATURES.tontines && <ShortcutButton icon={RefreshCcw} label="Tontines" onClick={() => navigate('/dashboard/tontines')} />}
-            {FEATURES.savings && <ShortcutButton icon={PiggyBank} label="Épargne" onClick={() => navigate('/dashboard/savings')} />}
-            <ShortcutButton icon={Wallet2} label="Mes dépenses" onClick={() => navigate('/dashboard/expenses')} />
+          {/* The Bureau d'échange sits outside the card, right above the other shortcuts (nothing while the service is off). */}
+          <div className="space-y-3">
+            <ExchangeEntry />
+            <div className="grid grid-cols-2 gap-3 [&>*:last-child:nth-child(odd)]:col-span-2">
+              {FEATURES.tontines && <ShortcutButton icon={RefreshCcw} label="Tontines" onClick={() => navigate('/dashboard/tontines')} />}
+              {FEATURES.savings && <ShortcutButton icon={PiggyBank} label="Épargne" onClick={() => navigate('/dashboard/savings')} />}
+              <ShortcutButton icon={Wallet2} label="Mes dépenses" onClick={() => navigate('/dashboard/expenses')} />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

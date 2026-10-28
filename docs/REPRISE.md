@@ -12,6 +12,7 @@ et marge, fournisseurs, rapport des vendeurs, rôles du stock, réseau de fourni
 du modèle économique. Migrations `083` et `084` à exécuter, puis le prix CDF de l'abonnement Fournisseur.
 
 ## En place
+- **Bureau d'échange CDF ↔ USD** (28/10) — `docs/BUREAU_ECHANGE.md`. Migration `088` à exécuter ; **livré fermé** ; point légal BCC, taux, limites et validation des premiers comptes à faire avant l'ouverture.
 - Nouvelle interface (maquette 2026, clair et sombre) pour client et marchand — `DECISIONS.md` (21/10 soir). Migration `072` (taux indicatif) à exécuter.
 - Carte ScanLinkPay (impression, activation, paiement par scan avec PIN) — `docs/carte/`.
 - FlexPaie : encaissement Mobile Money et carte bancaire, vérification et rattrapage automatiques — `docs/FLEXPAIE.md`.

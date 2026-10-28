@@ -49,12 +49,17 @@ export class TreasuryService {
       .order('noted_at', { ascending: false })
       .limit(50);
 
+    // Bureau d'échange (migration 088): what the exchanges earned, in francs. Nothing before that migration is applied.
+    const { data: exchangeStats } = await this.db.rpc('exchange_stats');
+    const exchangeGainCdf = Number((Array.isArray(exchangeStats) ? exchangeStats[0] : exchangeStats)?.gain_total_cdf_cents) || 0;
+
     return {
       computed_at: new Date().toISOString(),
       currencies: ((data || []) as Row[]).map((r) => {
         const n = (v: unknown) => Number(v) || 0;
         const owed = n(r.owed_wallets) + n(r.owed_savings) + n(r.pending_withdrawals) + n(r.uncredited_payments);
         const flexpaie = (notes || []).find((b: any) => b.currency === r.currency) ?? null;
+        const exchangeGains = r.currency === 'CDF' ? exchangeGainCdf : 0;
         return {
           currency: r.currency,
           owed: {
@@ -71,7 +76,8 @@ export class TreasuryService {
             withdrawal_fees: n(r.withdrawal_fees),
             transfer_fees: n(r.transfer_fees),
             pro_payments: n(r.pro_payments),
-            total: n(r.subscriptions) + n(r.commissions) + n(r.withdrawal_fees) + n(r.transfer_fees) + n(r.pro_payments),
+            exchange_gains: exchangeGains,
+            total: n(r.subscriptions) + n(r.commissions) + n(r.withdrawal_fees) + n(r.transfer_fees) + n(r.pro_payments) + exchangeGains,
           },
           flexpaie_balance: flexpaie ? { amount_cents: Number(flexpaie.amount_cents), noted_at: flexpaie.noted_at, note: flexpaie.note } : null,
           // Never shown as available when the FlexPaie balance was never typed in: nobody can know it then.

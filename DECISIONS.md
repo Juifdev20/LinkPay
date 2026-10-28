@@ -5,6 +5,39 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 28/10/2026 — Bureau d'échange (CDF ↔ USD) et champ de montant commun
+
+Demande du propriétaire : qu'un client change ses francs en dollars (et l'inverse) dans ScanLinkPay, à des taux fixés par
+le super admin, avec un gain pour ScanLinkPay. Détails, mise en service et risques : **`docs/BUREAU_ECHANGE.md`**. Migration `088`.
+
+- **Deux prix, comme un vrai bureau de change** : prix d'achat du dollar (le client donne des dollars) et prix de vente
+  (il donne des francs). Le gain est l'écart, plus mesuré contre un taux du marché facultatif. Remplace l'idée première d'une
+  « marge par sens » que le propriétaire a jugée incompréhensible. **Aucun autre frais** : le client voit un seul taux.
+- **Livré fermé** (`exchange_settings.enabled = false`) : l'échange de devises est encadré par la BCC (même réserve que les
+  portefeuilles, migration `006`). Aucun bouton n'apparaît avant l'ouverture par le super admin.
+- **Qui** : clients, marchands, patrons ; **pas les employés** (décision du propriétaire). Et il faut un **compte validé** : version 1 =
+  demande d'un seul toucher puis validation à la main par l'équipe (aucune photo de pièce dans l'application pour l'instant,
+  elle viendra plus tard).
+- **Où** : bouton « Bureau d'échange » **hors de la carte du solde**, au-dessus de « Mes dépenses » (même composant
+  `ShortcutButton`). Choix du propriétaire : la carte ne doit pas grandir et ses quatre boutons restent identiques ; cinq
+  boutons côte à côte ne tenaient pas (« Recharger » débordait à 360 px, mesuré sur les vrais boutons).
+- **Sécurité de l'argent** : offre garantie 60 s à usage unique, PIN (même écran que les retraits), fonction SQL atomique
+  avec limites revérifiées sous le verrou du portefeuille, idempotence, pause automatique si les taux ont plus de 24 h,
+  confirmation supplémentaire pour un taux très éloigné du précédent, code d'authentification pour changer taux, limites et
+  état du service. Pas de contrôle d'intégrité de l'appareil : l'argent ne quitte pas le portefeuille (ce contrôle est
+  réservé aux envois et retraits).
+- **Un échange n'est pas une dépense** : « Mes dépenses » l'ignore (`EXCHANGE_OUT`).
+- **Trésorerie** : un échange déplace ce que ScanLinkPay doit dans chaque devise, pas l'argent réel : « disponible » peut
+  devenir négatif en francs ; il faut alors convertir de vrais dollars. Les gains (en francs, argent de test exclu) sont
+  ajoutés aux recettes de la page Trésorerie.
+- **Champ de montant commun** : `AmountEntry` (grand champ de « Recharger ») devient réutilisable (centimes pour les
+  dollars, devise fixée ailleurs, « Tout ») ; `AmountInput` (champ nu) remplace le `type="number"` de « Envoyer » et
+  « Retirer » ; règles communes dans `lib/amount.ts`. Tous ouvrent le clavier **numérique du téléphone** ; les écrans de PIN et
+  de code (clavier bleu `PinInput`) n'ont pas changé. Les autres champs de montant (caisse, stock, tontines…) ouvraient déjà
+  un clavier numérique (`type="number"` ou `inputMode`) et n'ont pas été touchés.
+
+---
+
 ## 23/10/2026 — Achats et fournisseurs, rapport par vendeur, rôles du stock, réseau de fournisseurs
 
 Demande du propriétaire, valable pour **tous les secteurs** du module entreprise (`supermarche` et `electronique`) : rien

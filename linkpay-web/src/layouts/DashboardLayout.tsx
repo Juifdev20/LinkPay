@@ -16,6 +16,7 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { useTheme } from '@/hooks/useTheme';
 import { usePaymentReceivedAlert } from '@/hooks/usePaymentReceivedAlert';
+import { useExchangeState } from '@/hooks/useExchangeState';
 import { LogOut, Building2, Sun, Moon, Menu, X, KeyRound } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { SECTORS } from '@/pages/organization/OnboardingWizard';
@@ -70,7 +71,8 @@ export default function DashboardLayout() {
   // keep the enterprise/supermarket menu — they are the owner inside their
   // store, not a standalone merchant.
   const navRole = user?.acting_as_org_id ? 'enterprise' : user?.role;
-  const roleItems = user && navRole ? navItemsFor(navRole, org?.sector) : [];
+  const { visible: exchangeVisible } = useExchangeState();
+  const roleItems = user && navRole ? navItemsFor(navRole, org?.sector, { exchange: exchangeVisible }) : [];
   // Synchronisation lives in Paramètres; it joins the sidebar only while operations made offline wait to be sent.
   const pendingOps = usePendingCount();
   // Administrators see their pages grouped (Argent, Comptes, Tarifs…, lib/nav-items.ts menuFor); the search still

@@ -76,6 +76,8 @@ export const ROUTE_ROLES = {
   '/dashboard/card/charge': ['merchant', 'cashier', 'enterprise', 'gerant', 'caissier', 'vendeur'],
   // Employees' own wallet: where the owner sends their salary and from where they withdraw it.
   '/dashboard/wallet': STAFF_ROLES,
+  // Bureau d'échange (CDF <-> USD): clients, shops and business owners; never an employee (migration 088).
+  '/dashboard/exchange': ['client', 'merchant', 'enterprise'],
   '/dashboard/client/transactions': PERSONAL_ROLES,
   '/dashboard/tontines': PERSONAL_ROLES,
   '/dashboard/savings': PERSONAL_ROLES,

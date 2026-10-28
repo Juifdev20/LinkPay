@@ -19,6 +19,9 @@ export const NAV_SECTIONS: { id: NavSection; title: string }[] = [
   { id: 'system', title: '' },
 ];
 
+/** The Bureau d'échange entry only exists while the service is on: navItemsFor() drops it unless told otherwise. */
+export const EXCHANGE_NAV_PATH = '/dashboard/exchange';
+
 export interface NavItem {
   to: string;
   label: string;
@@ -97,6 +100,9 @@ export const navItems: NavItem[] = [
   // The wallet's history (the "Transactions" tab of the phone's bottom bar); on a computer, this sidebar entry.
   { to: '/dashboard/wallet/transactions', label: 'Transactions', icon: ArrowLeftRight, roles: ['client', 'merchant'], section: 'account' },
   { to: '/dashboard/client/transactions', label: 'Mes paiements', icon: Receipt, roles: PERSONAL_ROLES, section: 'account' },
+  // Change CDF <-> USD. Shown only once the team switched the service on (see EXCHANGE_NAV_PATH / useExchangeState).
+  { to: EXCHANGE_NAV_PATH, label: "Bureau d'échange", icon: ArrowLeftRight, roles: ['client', 'merchant'], section: 'account' },
+  { to: EXCHANGE_NAV_PATH, label: "Bureau d'échange", icon: ArrowLeftRight, roles: ['enterprise'], section: 'business' },
   // Employees' own wallet: where the patron sends their salary and from where they withdraw it — never the station's.
   { to: '/dashboard/wallet', label: 'Mon portefeuille', icon: Wallet, roles: rolesFor('/dashboard/wallet'), section: 'account' },
   // The personal ScanLinkPay card — not on a work (staff) account.
@@ -119,6 +125,8 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/admin/subscriptions', label: 'Abonnements', icon: Sparkles, roles: ['super_admin'], section: 'admin' },
   { to: '/dashboard/admin/commissions', label: 'Commissions', icon: Percent, roles: ['super_admin'], section: 'admin' },
   { to: '/dashboard/admin/wallet-limits', label: 'Frais et limites', icon: SlidersHorizontal, roles: ['super_admin'], section: 'admin' },
+  // Rates, limits and gains of the exchange (super admin); accounts to validate (admins too).
+  { to: '/dashboard/admin/exchange', label: "Bureau d'échange", icon: ArrowLeftRight, roles: ['admin', 'super_admin'], section: 'admin' },
   { to: '/dashboard/admin/expense-tracker-settings', label: 'Config. des dépenses', icon: Receipt, roles: ['super_admin'], section: 'admin' },
   { to: '/dashboard/admin/banks', label: 'Banques de retrait', icon: Landmark, roles: ['super_admin'], section: 'admin' },
   { to: '/dashboard/admin/app-security', label: "Sécurité de l'application", icon: ShieldCheck, roles: ['super_admin'], section: 'admin' },
@@ -159,8 +167,10 @@ const SECTOR_HIDDEN: Record<string, string[]> = {
   ],
 };
 
-export function navItemsFor(role: string, sector?: string): NavItem[] {
+export function navItemsFor(role: string, sector?: string, opts: { exchange?: boolean } = {}): NavItem[] {
   const hidden = new Set(sector ? SECTOR_HIDDEN[isSupermarket(sector) ? 'supermarche' : sector] ?? [] : []);
+  // The Bureau d'échange is listed only while the team has the service on (useExchangeState().visible).
+  if (!opts.exchange) hidden.add(EXCHANGE_NAV_PATH);
   return navItems
     .filter((i) => i.roles.includes(role) && !hidden.has(i.to))
     .map((i) => (i.labelFor?.[role] ? { ...i, label: i.labelFor[role] } : i));
@@ -180,6 +190,7 @@ const ADMIN_HUBS: { label: string; icon: LucideIcon; section: NavSection; pages:
       { to: '/dashboard/admin/withdrawals', tab: 'Retraits à traiter' },
       { to: '/dashboard/admin/settlements', tab: 'Règlements' },
       { to: '/dashboard/admin/banks', tab: 'Banques de retrait' },
+      { to: '/dashboard/admin/exchange', tab: "Bureau d'échange" },
     ],
   },
   {

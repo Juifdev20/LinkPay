@@ -12,7 +12,7 @@ type Cur = {
   currency: 'CDF' | 'USD';
   owed: { wallets: number; savings: number; pending_withdrawals: number; uncredited_payments: number; total: number };
   negative_wallets: number;
-  earned: { subscriptions: number; commissions: number; withdrawal_fees: number; transfer_fees: number; pro_payments: number; total: number };
+  earned: { subscriptions: number; commissions: number; withdrawal_fees: number; transfer_fees: number; pro_payments: number; exchange_gains: number; total: number };
   flexpaie_balance: { amount_cents: number; noted_at: string; note?: string | null } | null;
   available: number | null;
 };
@@ -174,6 +174,7 @@ export default function AdminTreasuryPage() {
                   <Line icon={Receipt} label="Frais de retrait" value={money(c.earned.withdrawal_fees)} />
                   <Line icon={Receipt} label="Frais de transfert" value={money(c.earned.transfer_fees)} />
                   <Line icon={Receipt} label="Mode Pro « Mes dépenses »" value={money(c.earned.pro_payments)} />
+                  {c.earned.exchange_gains > 0 && <Line icon={Receipt} label="Bureau d'échange" value={money(c.earned.exchange_gains)} />}
                   <Line label="Total" value={money(c.earned.total)} strong />
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground">

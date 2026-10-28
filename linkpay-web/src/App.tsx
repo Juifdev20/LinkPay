@@ -54,6 +54,8 @@ const TontineSettingsPage = lazyPage(() => import('@/pages/client/tontines/Tonti
 const PayInvoicePage = lazyPage(() => import('@/pages/wallet/Pay'));
 const ScanQrPage = lazyPage(() => import('@/pages/wallet/ScanQr'));
 const WithdrawPage = lazyPage(() => import('@/pages/wallet/Withdraw'));
+const ExchangePage = lazyPage(() => import('@/pages/wallet/Exchange'));
+const AdminExchangePage = lazyPage(() => import('@/pages/admin/Exchange'));
 const SetPinPage = lazyPage(() => import('@/pages/wallet/SetPin'));
 const WalletTransactionsPage = lazyPage(() => import('@/pages/wallet/Transactions'));
 const MyCardPage = lazyPage(() => import('@/pages/wallet/MyCard'));
@@ -294,6 +296,8 @@ export default function App() {
         <Route path="wallet/pay" element={<RequireOnline what="Payer"><PayInvoicePage /></RequireOnline>} />
         <Route path="wallet/scan" element={<ScanQrPage />} />
         <Route path="wallet/withdraw" element={<RequireOnline what="Retirer de l'argent"><WithdrawPage /></RequireOnline>} />
+        {/* Bureau d'échange: clients, shops and business owners (the server decides again, and hides it until the team switches it on). */}
+        <Route path="exchange" element={<ProtectedRoute roles={rolesFor('/dashboard/exchange')}><RequireOnline what="Le Bureau d'échange"><ExchangePage /></RequireOnline></ProtectedRoute>} />
         <Route path="wallet/pin" element={<SetPinPage />} />
         <Route path="wallet/transactions" element={<WalletTransactionsPage />} />
         <Route path="card" element={<ProtectedRoute roles={rolesFor('/dashboard/card')}><MyCardPage /></ProtectedRoute>} />
@@ -331,6 +335,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={['admin', 'super_admin']}>
               <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/exchange"
+          element={
+            <ProtectedRoute roles={['admin', 'super_admin']}>
+              <AdminExchangePage />
             </ProtectedRoute>
           }
         />

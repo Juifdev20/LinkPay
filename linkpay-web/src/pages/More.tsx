@@ -7,6 +7,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { groupNavItems, menuFor, navItemsFor, SYNC_NAV_ITEM } from '@/lib/nav-items';
 import { usePendingCount } from '@/lib/outbox';
 import { computeVisibleTabs } from '@/components/BottomNav';
+import { useExchangeState } from '@/hooks/useExchangeState';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
 import { SECTORS } from '@/pages/organization/OnboardingWizard';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -40,6 +41,7 @@ export default function MorePage() {
     enabled: user?.role === 'enterprise' || !!user?.organization_id,
   });
 
+  const { visible: exchangeVisible } = useExchangeState();
   const { displayTabs } = computeVisibleTabs(user, org?.sector);
   const visiblePaths = new Set([
     ...displayTabs.map((t) => t.to),
@@ -48,7 +50,7 @@ export default function MorePage() {
 
   const moreItems = role
     ? // A group stays even when its first page is in the bottom bar: its other pages are only reachable through it.
-      menuFor(role, navItemsFor(role, org?.sector)).filter((i) => i.children || !(visiblePaths.has(i.to) || (i.to === '/dashboard/admin' && visiblePaths.has('/dashboard'))))
+      menuFor(role, navItemsFor(role, org?.sector, { exchange: exchangeVisible })).filter((i) => i.children || !(visiblePaths.has(i.to) || (i.to === '/dashboard/admin' && visiblePaths.has('/dashboard'))))
     : [];
 
   // Same sections as the computer's sidebar (lib/nav-items.ts); Synchronisation only while something waits.

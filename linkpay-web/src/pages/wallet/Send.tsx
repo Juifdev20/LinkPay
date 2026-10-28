@@ -12,6 +12,8 @@ import { formatCurrency } from '@/lib/utils';
 import { FormSheet } from '@/components/FormSheet';
 import { PaymentMethodPicker, PaymentMethodId } from '@/components/payment/PaymentMethodPicker';
 import { MobileMoneyFields } from '@/components/payment/MobileMoneyFields';
+import { AmountInput } from '@/components/payment/AmountInput';
+import { ExchangeSuggestion } from '@/components/exchange/ExchangeSuggestion';
 import { MobileMoneyWaiting } from '@/components/payment/MobileMoneyWaiting';
 import { PaymentStep } from '@/components/payment/PaymentStep';
 import { TopupStatusCard } from '@/components/TopupStatusCard';
@@ -471,14 +473,10 @@ export default function SendPage() {
         <div className="space-y-2">
           <Label htmlFor="amount" className="font-semibold">Montant</Label>
           <div className="flex h-14 items-center rounded-2xl border border-border bg-card px-4 shadow-soft focus-within:ring-2 focus-within:ring-ring">
-            <input
+            <AmountInput
               id="amount"
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              placeholder="0"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={setAmount}
               required
               autoFocus
               className="min-w-0 flex-1 bg-transparent text-2xl font-bold text-foreground outline-none placeholder:text-muted-foreground/50"
@@ -512,6 +510,8 @@ export default function SendPage() {
             })}
           </div>
         </div>
+
+        <ExchangeSuggestion currency={currency} amountCents={amountCents} balances={wallet?.balances} />
 
         <div className="space-y-2">
           <Label htmlFor="description" className="font-semibold">Motif (optionnel)</Label>

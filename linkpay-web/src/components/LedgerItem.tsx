@@ -1,4 +1,4 @@
-import { ArrowDownLeft, ArrowDownToLine, ArrowUpFromLine, Send, ShoppingCart, SlidersHorizontal, Store, CreditCard, Sparkles, Undo2, type LucideIcon } from 'lucide-react';
+import { ArrowDownLeft, ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, Send, ShoppingCart, SlidersHorizontal, Store, CreditCard, Sparkles, Undo2, type LucideIcon } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 
 /** How each kind of wallet movement looks (icon, colour, title), as in the design. */
@@ -12,8 +12,18 @@ const KINDS: Record<string, { icon: LucideIcon; tone: string; in: string; out: s
   SUBSCRIPTION: { icon: Sparkles, tone: 'bg-blue-700', in: 'Abonnement', out: 'Abonnement' },
   CARD: { icon: CreditCard, tone: 'bg-blue-900', in: 'Carte', out: 'Carte' },
   SETTLEMENT: { icon: Store, tone: 'bg-sky-500', in: 'Règlement', out: 'Règlement' },
+  EXCHANGE_IN: { icon: ArrowLeftRight, tone: 'bg-indigo-500', in: 'Échange de devises', out: 'Échange de devises' },
+  EXCHANGE_OUT: { icon: ArrowLeftRight, tone: 'bg-indigo-500', in: 'Échange de devises', out: 'Échange de devises' },
 };
 const OTHER = { icon: SlidersHorizontal, tone: 'bg-slate-500', in: 'Ajustement', out: 'Ajustement' };
+
+/** What an exchange line says under its title: where the money went to, or came from. */
+function exchangeDetail(entry: any): string | undefined {
+  const m = entry.metadata || {};
+  if (entry.entry_type === 'EXCHANGE_OUT' && m.to_currency && m.to_cents) return `Contre ${formatCurrency(Number(m.to_cents), m.to_currency).replace(/,00(?=\s)/, '')}`;
+  if (entry.entry_type === 'EXCHANGE_IN' && m.from_currency && m.from_cents) return `Depuis ${formatCurrency(Number(m.from_cents), m.from_currency).replace(/,00(?=\s)/, '')}`;
+  return undefined;
+}
 
 export function ledgerTitle(entry: { entry_type: string; direction: string }) {
   const k = KINDS[entry.entry_type] || OTHER;
@@ -43,7 +53,7 @@ export function LedgerItem({ entry }: { entry: any }) {
       </span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-foreground">{ledgerTitle(entry)}</p>
-        {entry.counterparty && <p className="truncate text-xs text-muted-foreground">{entry.counterparty}</p>}
+        {(entry.counterparty || exchangeDetail(entry)) && <p className="truncate text-xs text-muted-foreground">{entry.counterparty || exchangeDetail(entry)}</p>}
         <p className="text-[11px] text-muted-foreground/80">{when(entry.created_at)}</p>
       </div>
       <span className={cn('flex-shrink-0 text-sm font-bold tabular-nums', credit ? 'text-success' : 'text-destructive')}>

@@ -9,6 +9,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { PinInput } from '@/components/PinInput';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { MobileMoneyFields } from '@/components/payment/MobileMoneyFields';
+import { AmountInput } from '@/components/payment/AmountInput';
+import { ExchangeSuggestion } from '@/components/exchange/ExchangeSuggestion';
 import { MOBILE_MONEY_OPERATORS, displayPhone, isNumberReady, operatorById, toApiPhone } from '@/lib/mobile-money';
 import { ACCOUNT_DIGITS, BANK_DELAY_HOURS, accountDigits, formatAccountInput, isAccountComplete, isHolderName } from '@/lib/banks';
 import { useAuthStore } from '@/lib/auth-store';
@@ -380,11 +382,12 @@ export default function WithdrawPage() {
       <div className="space-y-2">
         <Label htmlFor="amount" className="font-semibold">Montant</Label>
         <div className="flex h-14 items-center rounded-2xl border border-border bg-card px-4 shadow-soft focus-within:ring-2 focus-within:ring-ring">
-          <input id="amount" type="number" inputMode="decimal" step="0.01" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} required autoFocus className="min-w-0 flex-1 bg-transparent text-2xl font-bold text-foreground outline-none placeholder:text-muted-foreground/50" />
+          <AmountInput id="amount" value={amount} onChange={setAmount} required autoFocus className="min-w-0 flex-1 bg-transparent text-2xl font-bold text-foreground outline-none placeholder:text-muted-foreground/50" />
           <span className="text-sm font-semibold text-muted-foreground">{currency}</span>
         </div>
         {wallet && <p className="text-xs text-muted-foreground">Solde disponible : {formatCurrency(wallet.balances?.[currency] || 0, currency)}</p>}
       </div>
+      <ExchangeSuggestion currency={currency} amountCents={amountCents} balances={wallet?.balances} />
       <Button type="submit" className="w-full h-12 rounded-2xl text-base">
         Continuer
         <ChevronRight className="ml-1 h-4 w-4" />
