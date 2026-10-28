@@ -16,6 +16,12 @@ interface PinInputProps {
   hint?: string;
   /** Error text shown on the code screen (e.g. "PIN incorrect"). */
   message?: string;
+  /**
+   * What « Annuler » does on the code screen, besides closing it. On a screen whose only content is this field (the
+   * PIN step of a withdrawal, a send, a payment), cancelling must LEAVE that step — back to the recap — instead of
+   * leaving the person in front of four empty boxes. Forms that have their own buttons around the field leave it out.
+   */
+  onCancel?: () => void;
 }
 
 /**
@@ -24,7 +30,7 @@ interface PinInputProps {
  * card, big numeric keypad — the same one as the lock screen. The screen closes by itself once the code is complete,
  * the value goes up through onChange exactly as before, so callers did not change.
  */
-export function PinInput({ value, onChange, length = 4, autoFocus, error, title, hint, message }: PinInputProps) {
+export function PinInput({ value, onChange, length = 4, autoFocus, error, title, hint, message, onCancel }: PinInputProps) {
   const user = useAuthStore((s) => s.user);
   const [open, setOpen] = useState(() => !!autoFocus && value.length < length);
   const wasComplete = useRef(value.length === length);
@@ -100,7 +106,7 @@ export function PinInput({ value, onChange, length = 4, autoFocus, error, title,
           error={refusal?.message}
           note={identityNote(user)}
           footer={
-            <button type="button" className="py-1 font-semibold hover:text-primary" onClick={() => { onChange(''); setOpen(false); }}>
+            <button type="button" className="py-1 font-semibold hover:text-primary" onClick={() => { onChange(''); setOpen(false); onCancel?.(); }}>
               Annuler
             </button>
           }

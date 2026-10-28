@@ -339,7 +339,7 @@ export default function SendPage() {
             <p className="text-sm text-muted-foreground mb-6">
               Confirmez l'envoi de {formatCurrency(amountCents, currency)} à {recipient?.display_name}
             </p>
-            <PinInput value={pin} onChange={handlePinComplete} length={4} autoFocus title="Confirmer l'envoi" hint={`Envoi de ${formatCurrency(amountCents, currency)} à ${recipient?.display_name}`} message={error} />
+            <PinInput value={pin} onChange={handlePinComplete} length={4} autoFocus title="Confirmer l'envoi" hint={`Envoi de ${formatCurrency(amountCents, currency)} à ${recipient?.display_name}`} message={error} onCancel={() => { setPin(''); setError(''); setStep('confirm'); }} />
           </CardContent>
         </Card>
       </div>

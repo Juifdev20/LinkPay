@@ -213,7 +213,7 @@ export default function PayInvoicePage() {
             <p className="text-sm text-muted-foreground mb-6">
               Confirmez le paiement de {formatCurrency(invoice?.total_cents, invoice?.currency)}
             </p>
-            <PinInput value={pin} onChange={handlePinComplete} length={4} autoFocus title="Confirmer le paiement" hint={`Paiement de ${formatCurrency(invoice?.total_cents, invoice?.currency)}`} message={error} />
+            <PinInput value={pin} onChange={handlePinComplete} length={4} autoFocus title="Confirmer le paiement" hint={`Paiement de ${formatCurrency(invoice?.total_cents, invoice?.currency)}`} message={error} onCancel={() => { setPin(''); setError(''); setStep('method'); }} />
           </CardContent>
         </Card>
       </div>

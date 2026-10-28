@@ -5,6 +5,22 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 28/10/2026 (soir) — « Annuler » sur l'écran de code PIN ramène à l'étape précédente
+
+Constat du propriétaire : sur l'écran bleu du clavier numérique, « Annuler » refermait seulement le clavier et laissait la
+page derrière sur une étape « Code PIN » réduite à quatre cases vides (ni récapitulatif, ni bouton utile : il fallait
+retoucher les cases ou le petit « Retour »). Ce n'était pas un défaut de sécurité, mais une impasse d'ergonomie, répétée
+partout où l'étape de code est une page à elle seule.
+- `PinInput` reçoit `onCancel` : en plus de fermer le clavier, il quitte l'étape. Retrait, envoi, paiement d'une facture et
+  Bureau d'échange reviennent au **récapitulatif**. Création du PIN : « Annuler » quitte la page ; changement du PIN : remonte
+  d'une étape (confirmation → nouveau code → code actuel → sortie).
+- **Pas modifiés** (choix) : les formulaires qui entourent déjà le champ de leurs propres boutons (dialogue de paiement par
+  carte, confirmation du code d'accès, activation de la carte, épargne, tontine, abonnements, mode Pro, fournisseur,
+  réglage du code d'accès) : après « Annuler » on y retrouve un formulaire complet, pas une page vide. L'écran de
+  verrouillage de l'application n'a pas d'« Annuler » et n'a pas changé.
+
+---
+
 ## 28/10/2026 — Bureau d'échange (CDF ↔ USD) et champ de montant commun
 
 Demande du propriétaire : qu'un client change ses francs en dollars (et l'inverse) dans ScanLinkPay, à des taux fixés par

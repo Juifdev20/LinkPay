@@ -337,6 +337,7 @@ export default function ExchangePage() {
             title="Confirmer l'échange"
             hint={`${formatCurrency(quote.from_cents, quote.from_currency)} → ${formatCurrency(quote.to_cents, quote.to_currency)}`}
             message={error}
+            onCancel={() => { setPin(''); setError(''); setStep('confirm'); }}
           />
         </div>
       </PaymentStep>,
