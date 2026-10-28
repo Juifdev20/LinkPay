@@ -10,7 +10,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { TopBar } from '@/components/TopBar';
 import { NotificationsBell } from '@/components/NotificationsBell';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
-import { UserAvatar } from '@/components/UserAvatar';
+import { SelfAvatar } from '@/components/UserAvatar';
 import { CardChargePrompt } from '@/components/card/CardChargePrompt';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { GlobalSearch } from '@/components/GlobalSearch';
@@ -171,7 +171,7 @@ export default function DashboardLayout() {
             <div className="p-4 border-t border-border">
               {!sidebarCollapsed && (
                 <div className="flex items-center gap-3 mb-3 px-3">
-                  <UserAvatar className="w-9 h-9" />
+                  <SelfAvatar className="w-9 h-9" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold truncate text-foreground">{user?.full_name || user?.email}</p>
                     {/* role 'merchant' here would be misleading — an org
@@ -206,7 +206,7 @@ export default function DashboardLayout() {
               </Button>
               <NotificationsBell />
               <Link to="/dashboard/profile" className="rounded-full" aria-label="Profil">
-                <UserAvatar className="w-9 h-9" />
+                <SelfAvatar className="w-9 h-9" />
               </Link>
             </div>
           </div>

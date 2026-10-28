@@ -28,3 +28,40 @@ describe('profile responses never carry secrets', () => {
     for (const k of PRIVATE) expect(updated).not.toHaveProperty(k);
   });
 });
+
+describe('the face shown in the app (photo or company logo)', () => {
+  const PHOTO = 'https://x.supabase.co/storage/v1/object/public/avatars/users/u1/aaaa.webp';
+  const LOGO = 'https://x.supabase.co/storage/v1/object/public/avatars/orgs/o1/bbbb.webp';
+  const world = (logo: string | null) => createFakeSupabase((q) => (q.target === 'organizations' ? { data: { logo_url: logo } } : { data: { ...ROW, avatar_url: PHOTO } }));
+
+  it('a client or a merchant shows their own photo', async () => {
+    for (const role of ['client', 'merchant']) {
+      const p: any = await new UsersService(world(LOGO).service).getProfile('u1', role);
+      expect(p).toMatchObject({ avatar_url: PHOTO, avatar_kind: 'photo' });
+    }
+  });
+
+  it("the owner of a company shows the company's logo, not a personal photo", async () => {
+    const p: any = await new UsersService(world(LOGO).service).getProfile('u1', 'enterprise');
+    expect(p).toMatchObject({ avatar_url: LOGO, avatar_kind: 'logo' });
+  });
+
+  it('a staff member (cashier, gérant…) and an owner acting as a store show the company logo too', async () => {
+    const staff: any = await new UsersService(world(LOGO).service).getProfile('u1', 'caissier', 'm1', undefined, 'o1');
+    expect(staff).toMatchObject({ avatar_url: LOGO, avatar_kind: 'logo' });
+    const acting: any = await new UsersService(world(LOGO).service).getProfile('u1', 'merchant', 'm1', 'o1');
+    expect(acting).toMatchObject({ avatar_url: LOGO, avatar_kind: 'logo' });
+  });
+
+  it('a company without a logo yet shows none (the silhouette), never the personal photo', async () => {
+    const p: any = await new UsersService(world(null).service).getProfile('u1', 'enterprise');
+    expect(p).toMatchObject({ avatar_url: null, avatar_kind: 'logo' });
+  });
+
+  it('the profile update ignores an address typed by the caller: a photo only comes through the upload', async () => {
+    const fake = createFakeSupabase(() => ({ data: ROW }));
+    await new UsersService(fake.service).updateProfile('u1', { full_name: 'Jean', avatar_url: 'https://evil.example/track.png' });
+    const update = fake.queries.find((q) => q.calls.some((c) => c.method === 'update'))!;
+    expect(JSON.stringify(update.calls.find((c) => c.method === 'update')!.args[0])).not.toContain('evil.example');
+  });
+});

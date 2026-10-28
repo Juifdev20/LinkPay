@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { ROLE_LABELS } from '@/lib/permissions';
 import { PageHeader } from '@/components/PageHeader';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
-import { UserAvatar } from '@/components/UserAvatar';
+import { AvatarEditor } from '@/components/AvatarEditor';
 import { Phone, KeyRound, ArrowLeftRight, ChevronRight, LogOut, Boxes, type LucideIcon } from 'lucide-react';
 
 export default function ProfilePage() {
@@ -50,9 +50,9 @@ export default function ProfilePage() {
       {/* Identity card */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex items-center gap-4">
-            <UserAvatar className="w-16 h-16" />
-            <div className="flex-1 min-w-0">
+          <AvatarEditor className="mb-5" />
+          <div className="flex flex-col items-center text-center">
+            <div className="w-full min-w-0">
               <p className="font-bold text-lg text-foreground truncate">{user?.full_name || 'Utilisateur'}</p>
               <p className="text-sm text-muted-foreground truncate">{user?.email}</p>
               <span className="inline-block mt-1 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">

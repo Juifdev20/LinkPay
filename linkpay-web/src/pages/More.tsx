@@ -10,7 +10,7 @@ import { computeVisibleTabs } from '@/components/BottomNav';
 import { useExchangeState } from '@/hooks/useExchangeState';
 import { LogoutConfirmDialog } from '@/components/LogoutConfirmDialog';
 import { SECTORS } from '@/pages/organization/OnboardingWizard';
-import { UserAvatar } from '@/components/UserAvatar';
+import { SelfAvatar } from '@/components/UserAvatar';
 import { ROLE_LABELS } from '@/lib/permissions';
 
 /**
@@ -74,7 +74,7 @@ export default function MorePage() {
             <span className="text-xl font-bold text-primary">{initial}</span>
           </div>
         ) : (
-          <UserAvatar className="w-14 h-14" />
+          <SelfAvatar className="w-14 h-14" />
         )}
         <div className="min-w-0">
           <p className="font-bold text-foreground truncate">{displayName}</p>

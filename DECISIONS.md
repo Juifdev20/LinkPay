@@ -5,6 +5,30 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 28/10/2026 (nuit, suite) — Photos de profil et logos d'entreprise
+
+Demande du propriétaire : les clients et les marchands mettent leur photo de profil (changeable à volonté) ; pour une entreprise,
+l'image est le logo, changé par les responsables seulement ; la photo doit être légère mais bien visible, partout où l'avatar apparaît.
+- **Qui voit quoi** : client et marchand = leur photo ; le patron **et tout le personnel** (gérant, caissier, vendeur, magasinier,
+  comptable) = le logo de l'entreprise. « Responsables » = le propriétaire et les **gérants** actifs (constante
+  `LOGO_MANAGER_STAFF_ROLES`, une ligne à changer si le propriétaire veut le patron seul). Un employé ne peut pas mettre de photo
+  personnelle (refus clair) ; un caissier voit le logo avec la mention « seul le responsable peut le changer ».
+- **Poids** : l'application réduit l'image avant l'envoi (carré 256 px pour un visage, 512 px sur fond transparent pour un logo, WebP,
+  ≤ 60 Ko, sans métadonnées : `lib/image-compress.ts`), la personne voit l'aperçu et le poids avant d'enregistrer. Le serveur
+  **recommence** (`sharp`, `users/profile-photos.rules.ts`) : JPEG / PNG / WebP seulement (jamais SVG ni GIF), 2 Mo au plus,
+  rotation appliquée, métadonnées (lieu, date, appareil) retirées, sortie WebP de quelques dizaines de Ko. Ce qui est gardé ne
+  dépend donc jamais du client.
+- **Stockage** : bucket public `avatars` (migration **089**, aucune politique de lecture : la liste des fichiers, donc des
+  identifiants, n'est pas énumérable), nom aléatoire à chaque changement (`users/<id>/<hex>.webp`, `orgs/<id>/<hex>.webp`), l'ancien
+  fichier est supprimé, effacé aussi à la suppression du compte. `organizations.logo_url` est créé par la migration.
+- **Sécurité** : `PUT /users/me` n'accepte plus d'adresse d'avatar tapée par l'appelant (seule la photo envoyée compte) ; envoi limité
+  à 10 par minute ; changement / retrait de logo écrit au Journal (`organization_logo_changed` / `_removed`).
+- **Partout** : `SelfAvatar` (barre du haut, menu latéral, Plus, Profil) ; `UserAvatar` sans `src` reste la silhouette (le bénéficiaire
+  d'un envoi). Hors ligne : image en cache d'un mois (service worker), silhouette si absente ; le changement demande Internet (dit).
+- Pas fait : recadrage à la main (la photo est centrée automatiquement), logo sur les reçus et factures (ils utilisent le logo du
+  magasin), photo du destinataire à l'envoi (vie privée).
+**À faire** : migration 089 (Test puis production), redéploiement de l'API (nouvelle dépendance `sharp`) et du site, nouvelle APK.
+
 ## 28/10/2026 (nuit) — Audit du hors ligne : réseau muet, cache de 14 jours
 
 Audit demandé par le propriétaire (« le hors ligne est notre point fort »). Vérifié dans un vrai navigateur sur le site

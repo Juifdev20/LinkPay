@@ -1,7 +1,8 @@
 /// <reference lib="webworker" />
 import { cleanupOutdatedCaches, precacheAndRoute, createHandlerBoundToURL } from 'workbox-precaching';
 import { registerRoute, NavigationRoute } from 'workbox-routing';
-import { NetworkFirst } from 'workbox-strategies';
+import { CacheFirst, NetworkFirst } from 'workbox-strategies';
+import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 import { ExpirationPlugin } from 'workbox-expiration';
 
 declare let self: ServiceWorkerGlobalScope & typeof globalThis & {
@@ -23,6 +24,18 @@ precacheAndRoute(self.__WB_MANIFEST);
 registerRoute(
   new NavigationRoute(createHandlerBoundToURL('index.html'), {
     denylist: [/^\/api\//],
+  }),
+);
+
+// ---- Profile photos and company logos: a new file name at each change, so a copy never goes stale — kept a month, shown offline ----
+registerRoute(
+  ({ url, request }) => request.method === 'GET' && url.hostname.endsWith('.supabase.co') && url.pathname.startsWith('/storage/v1/object/public/avatars/'),
+  new CacheFirst({
+    cacheName: 'avatars',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({ maxEntries: 40, maxAgeSeconds: 30 * 24 * 60 * 60 }),
+    ],
   }),
 );
 

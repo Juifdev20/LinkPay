@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Logo } from '@/components/Logo';
 import { NotificationsBell } from '@/components/NotificationsBell';
-import { UserAvatar } from '@/components/UserAvatar';
+import { SelfAvatar } from '@/components/UserAvatar';
 
 /**
  * Fixed (not just sticky) top bar for mobile — stays perfectly still while
@@ -31,7 +31,7 @@ export function TopBar() {
         <div className="flex items-center gap-2">
           <NotificationsBell />
           <Link to="/dashboard/profile" className="rounded-full transition-transform active:scale-95" aria-label="Profil">
-            <UserAvatar />
+            <SelfAvatar />
           </Link>
         </div>
       </div>

@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, Logger } from '@ne
 import { SupabaseService } from '../supabase/supabase.service';
 import { AuditService } from '../audit/audit.service';
 import { LoginAttemptsService } from '../auth/login-attempts.service';
+import { ProfilePhotosService } from './profile-photos.service';
 
 /** Who may delete their own account: the person who opened it for themselves (migration 082). */
 const SELF_DELETABLE_ROLES = ['client', 'merchant', 'enterprise'];
@@ -28,6 +29,7 @@ export class AccountDeletionService {
     private supabaseService: SupabaseService,
     private auditService: AuditService,
     private loginAttempts: LoginAttemptsService,
+    private photos: ProfilePhotosService,
   ) {}
 
   private get db() {
@@ -147,7 +149,8 @@ export class AccountDeletionService {
     await this.db.from('push_subscriptions').delete().eq('user_id', userId);
     await this.db.from('webauthn_credentials').delete().eq('user_id', userId);
 
-    // 5. The person's own data.
+    // 5. The person's own data (the photo file first, while the profile still says where it is).
+    await this.photos.purgeAvatarOf(userId).catch(() => undefined);
     const { error } = await this.db.from('profiles').update({
       full_name: 'Compte supprimé',
       email: anonymousEmail,

@@ -70,6 +70,7 @@ export default {
   'pages/organization/OnboardingWizard.tsx': online(ACCOUNT),
   'components/OrganizationReviewPanel.tsx': online(ADMIN),
   'components/MerchantInvitations.tsx': online(ACCOUNT),
+  'components/AvatarEditor.tsx': online("Changer la photo de profil ou le logo : l'image est réduite puis enregistrée par le serveur (le bouton le dit sans réseau)."),
   'pages/merchant/Team.tsx': online(SETUP),
 
   // ---- En ligne : paramétrage de l'entreprise

@@ -42,7 +42,7 @@ function setup(w: World = {}) {
   };
   const audit = { log: jest.fn(async () => undefined) };
   const attempts = { reserve: jest.fn(async () => undefined), recordSuccess: jest.fn(async () => undefined) };
-  return { service: new AccountDeletionService(fake.service, audit as any, attempts as any), fake, updateUserById, audit };
+  return { service: new AccountDeletionService(fake.service, audit as any, attempts as any, { purgeAvatarOf: jest.fn(async () => undefined) } as any), fake, updateUserById, audit };
 }
 
 const codes = async (w: World) => (await setup(w).service.blockers('u1')).blockers.map((b) => b.code);

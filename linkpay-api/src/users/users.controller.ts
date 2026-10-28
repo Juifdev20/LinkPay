@@ -22,10 +22,6 @@ class UpdateProfileDto {
   @MaxLength(255)
   full_name?: string;
 
-  @ApiPropertyOptional({ example: 'https://...' })
-  @IsOptional()
-  @IsString()
-  avatar_url?: string;
 }
 
 class DeleteAccountDto {

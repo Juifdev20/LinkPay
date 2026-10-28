@@ -61,8 +61,19 @@ export class UsersService {
       station = ((staffRow as any)?.merchant as { id: string; name: string } | null) || null;
     }
 
+    // The face shown in the app: a personal photo (clients, merchants) or, for everyone who works in a company
+    // (owner and staff), the company logo, which only its managers change.
+    const companyId = actingAsOrgId || organizationId || null;
+    let face: { avatar_url: string | null; avatar_kind: 'photo' | 'logo' } = { avatar_url: data.avatar_url ?? null, avatar_kind: 'photo' };
+    if (companyId || role === 'enterprise') {
+      const query = this.supabaseService.getClient().from('organizations').select('logo_url');
+      const { data: org } = await (companyId ? query.eq('id', companyId) : query.eq('owner_id', userId).limit(1)).maybeSingle();
+      face = { avatar_url: (org as any)?.logo_url ?? null, avatar_kind: 'logo' };
+    }
+
     return {
       ...toPublicProfile(data),
+      ...face,
       // Whether the access code was chosen (the hash itself never leaves the server).
       has_app_code: !!data.app_code_hash,
       role,
@@ -75,7 +86,9 @@ export class UsersService {
   }
 
   async updateProfile(userId: string, updates: Record<string, any>) {
-    const allowedFields = ['phone', 'full_name', 'avatar_url'];
+    // The profile photo is NOT here: it only comes from PUT /users/me/avatar (a picture the API shrank and stored itself),
+    // never from a link the caller typed.
+    const allowedFields = ['phone', 'full_name'];
     const filtered: Record<string, any> = {};
 
     for (const key of allowedFields) {

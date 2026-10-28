@@ -54,6 +54,9 @@ interface User {
   admin_2fa_paused_until?: string | null;
   /** Whether the user has chosen their 6-digit access code (from /users/me). */
   has_app_code?: boolean;
+  /** The face shown in the app (from /users/me): the personal photo, or the company logo for everyone who works in a company. */
+  avatar_url?: string | null;
+  avatar_kind?: 'photo' | 'logo';
 }
 
 interface SupabaseSession {
