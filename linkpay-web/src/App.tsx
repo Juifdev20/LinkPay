@@ -11,6 +11,7 @@ import { FEATURES } from '@/lib/features';
 import { useOutboxRunner } from '@/hooks/useOutboxRunner';
 import { RequireOnline } from '@/components/RequireOnline';
 import { NeedsNetworkNotice } from '@/components/NeedsNetworkNotice';
+import { useStableViewportHeight } from '@/hooks/useStableViewportHeight';
 import { useEffect, Suspense } from 'react';
 import { lazyPage, prefetchPages, PageFallback } from '@/lib/lazy-page';
 import { startScreenProtection } from '@/lib/screen-protection';
@@ -191,6 +192,9 @@ export default function App() {
 
   // What was done offline goes to the server as soon as it can (lib/outbox.ts).
   useOutboxRunner();
+
+  // The bottom bar stays at the bottom when a keyboard opens: the keyboard covers it (hooks/useStableViewportHeight.ts).
+  useStableViewportHeight();
 
   // Android app: verify the phone (Play Integrity + root checks) when the app opens with a session — at most every 6 hours.
   useEffect(() => {

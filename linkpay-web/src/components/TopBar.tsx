@@ -23,7 +23,7 @@ export function TopBar() {
     // phones, extra space above the notch/status bar otherwise), the inner
     // div carries the actual visual padding so the bar never looks cramped
     // on ordinary devices.
-    <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-b border-border safe-area-top">
+    <div style={{ translate: '0 var(--vv-top, 0px)' }} className="md:hidden fixed top-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-b border-border safe-area-top">
       <div className="flex items-center justify-between px-5 py-3">
         <div className="flex items-center gap-2">
           <Logo size="sm" />

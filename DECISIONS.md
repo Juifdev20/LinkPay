@@ -5,6 +5,19 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 29/10/2026 — La barre du bas ne bouge plus quand un clavier s'ouvre
+
+Constat du propriétaire (iPhone, tous les claviers) : la barre de navigation du bas remontait au-dessus du clavier. Règle : elle reste
+figée en bas et le clavier la **couvre**, comme la barre du haut ne bouge pas.
+- `BottomNav` n'est plus ancrée au bord bas (`bottom-0`, que le navigateur remonte au-dessus du clavier) mais depuis le **haut** de
+  l'écran : `top = --app-h - sa hauteur`. `--app-h` (`hooks/useStableViewportHeight.ts`) est la hauteur de l'écran **sans clavier** :
+  elle n'est remesurée que si personne ne tape (champ qui ouvre un clavier = focus), à la rotation et à la fermeture du clavier.
+- Si le navigateur ne réduit pas la fenêtre mais **fait glisser la page** (viewport visuel), `--vv-top` ramène les deux barres (haut et
+  bas) du même décalage : elles restent au même endroit à l'écran.
+- `interactive-widget=resizes-visual` ajouté à la balise viewport (Chrome Android ne réduit plus la mise en page).
+- Vérifié dans Chromium (fenêtre réduite de 340 px à l'ouverture d'un champ : la barre reste sous le clavier, revient pile en bas à
+  la fermeture ; rotation ; décalage simulé de 300 px). **Pas vérifié sur un iPhone réel** (aucun moyen ici d'y ouvrir un clavier).
+
 ## 28/10/2026 (nuit, suite) — Photos de profil et logos d'entreprise
 
 Demande du propriétaire : les clients et les marchands mettent leur photo de profil (changeable à volonté) ; pour une entreprise,

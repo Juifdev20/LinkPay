@@ -163,8 +163,12 @@ export function BottomNav() {
 
   return (
     <nav
+      // Anchored from the TOP of the screen (its height minus the bar's own: 68 + 1 border + the safe area), never from
+      // the bottom edge: when a keyboard opens, the browser lifts bottom-anchored bars above it. The keyboard must
+      // cover this one, not push it up (hooks/useStableViewportHeight.ts keeps --app-h free of the keyboard).
+      style={{ top: 'calc(var(--app-h, 100dvh) - 69px - env(safe-area-inset-bottom, 0px))', translate: '0 var(--vv-top, 0px)' }}
       className={cn(
-        'md:hidden fixed bottom-0 left-0 right-0 z-[58] bg-card/95 backdrop-blur-md border-t border-border shadow-nav safe-area-bottom transition-transform duration-200',
+        'md:hidden fixed left-0 right-0 z-[58] bg-card/95 backdrop-blur-md border-t border-border shadow-nav safe-area-bottom transition-transform duration-200',
         hidden && 'translate-y-full',
       )}
     >
