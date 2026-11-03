@@ -5,6 +5,18 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 03/11/2026 (soir) — Facture normalisée DGI : rapports X, Z et A (étape 5)
+
+- Les rapports sont **calculés une fois et gardés figés** (`fiscal_reports`, migration 091) : réimprimer redonne exactement le même
+  rapport (DUPLICATA à partir de la deuxième impression), jamais un recalcul. Suppression et modification refusées par la base.
+- **Z = clôture** numérotée (1, 2, 3…) depuis le dernier Z ; seuls le patron et les gérants la font, après confirmation. Le comptable
+  peut faire des X et lire tous les rapports. Les X sont aussi gardés (journal électronique).
+- Une facture entre dans le rapport selon la **date de sa normalisation par la DGI** : un bon provisoire normalisé le lendemain
+  compte dans la clôture suivante ; les bons non normalisés sont listés comme « ventes incomplètes ».
+- Dépôts et retraits d'espèces : ceux des caisses de tous les magasins de l'entreprise, par devise.
+- Le Z n'est pas bloqué par des bons provisoires en attente : il les compte comme ventes incomplètes (à confirmer auprès de la DGI,
+  question ajoutée à suivre lors de l'homologation).
+
 ## 03/11/2026 — Facture normalisée DGI : fondations, moteur de calcul et liaison e-MCF (étapes 1 à 3)
 
 Plan validé avec le client (`docs/FACTURE_NORMALISEE.md`, « Plan proposé ») ; courriers à la DGI : `docs/facture-normalisee/COURRIERS_DGI.md`.

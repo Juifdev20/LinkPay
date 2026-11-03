@@ -14,6 +14,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { FactureNormaliseeSheet } from '@/components/facture-normalisee/FactureNormaliseeSheet';
 import { AvoirSheet } from '@/components/facture-normalisee/AvoirSheet';
 import { messageErreur, STATUTS, TONS } from '@/components/facture-normalisee/shared';
+import { RapportsFiscaux } from '@/components/facture-normalisee/RapportsFiscaux';
 import type { VueFactureNormalisee } from '@/lib/printing/build-facture-normalisee';
 
 /**
@@ -22,7 +23,7 @@ import type { VueFactureNormalisee } from '@/lib/printing/build-facture-normalis
  */
 export default function FactureNormaliseePage() {
   const { data: org, isLoading } = useQuery({ queryKey: ['my-organization'], queryFn: async () => (await api.get('/organizations/me')).data });
-  const [onglet, setOnglet] = useState<'parametres' | 'factures'>('parametres');
+  const [onglet, setOnglet] = useState<'parametres' | 'factures' | 'rapports'>('parametres');
   if (isLoading || !org?.id) {
     return (
       <div className="p-6 flex justify-center">
@@ -34,18 +35,18 @@ export default function FactureNormaliseePage() {
     <RequireOnline what="La facture normalisée" why="elle parle au serveur de la DGI (e-MCF), qui est en ligne">
       <div className="p-6 space-y-6 w-full max-w-4xl mx-auto">
         <PageHeader title="Facture normalisée (DGI)" />
-        <div className="flex gap-2">
-          {(['parametres', 'factures'] as const).map((o) => (
+        <div className="flex flex-wrap gap-2">
+          {(['parametres', 'factures', 'rapports'] as const).map((o) => (
             <button
               key={o}
               onClick={() => setOnglet(o)}
               className={`px-4 py-2 rounded-full text-sm font-semibold ${onglet === o ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'}`}
             >
-              {o === 'parametres' ? 'Paramètres' : 'Factures'}
+              {o === 'parametres' ? 'Paramètres' : o === 'factures' ? 'Factures' : 'Rapports X / Z / A'}
             </button>
           ))}
         </div>
-        {onglet === 'parametres' ? <Parametres orgId={org.id} /> : <Journal orgId={org.id} />}
+        {onglet === 'parametres' ? <Parametres orgId={org.id} /> : onglet === 'factures' ? <Journal orgId={org.id} /> : <Rapports orgId={org.id} />}
       </div>
     </RequireOnline>
   );
@@ -234,6 +235,11 @@ function Parametres({ orgId }: { orgId: string }) {
       {message && <p className={`text-sm text-center ${message.ok ? 'text-success' : 'text-destructive'}`}>{message.texte}</p>}
     </div>
   );
+}
+
+function Rapports({ orgId }: { orgId: string }) {
+  const { data: profil } = useQuery({ queryKey: ['fiscal-profil', orgId], queryFn: async () => (await api.get(`/organizations/${orgId}/facture-normalisee/profil`)).data });
+  return <RapportsFiscaux orgId={orgId} gestion={profil?.droits === 'gestion'} />;
 }
 
 function Journal({ orgId }: { orgId: string }) {

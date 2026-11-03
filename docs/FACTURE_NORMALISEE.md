@@ -90,6 +90,19 @@ La règle 1.1.5 interdit de finaliser une facture sans les éléments de sécuri
   Aperçu : `docs/facture-normalisee/apercu-factures.png`.
 - **Filet de sécurité** : chaque minute, toute vente payée d'une entreprise active restée sans facture depuis 2 minutes est normalisée
   automatiquement (client « Personne physique »), y compris les ventes faites sans réseau puis synchronisées.
+- **Étape 5** (rapports X, Z et A, note de service 1.3 et 1.4) : migration `091_rapports_fiscaux.sql` (`fiscal_reports`, figés,
+  numérotés par type, jamais supprimés), `rapports.ts` (calcul pur), `rapports-fiscaux.service.ts` / `.controller.ts`
+  (`/organizations/:orgId/facture-normalisee/rapports` : liste, `x`, `xp`, `z`, `a`, `:id`, `:id/impression`).
+  - **X** : depuis le dernier Z, ne ferme rien ; **XP** : période choisie (un an au plus) ; patron, gérants et comptable.
+  - **Z** : clôture numérotée depuis le dernier Z (le premier part de l'activation) ; **A** : articles depuis le dernier A ;
+    patron et gérants. Deux clôtures simultanées : la seconde est refusée (numéro unique).
+  - Contenu : par type de facture (FV, FT, EV, ET, FA, EA) puis par groupe, total, montant taxable et taxe ; nombre de factures ;
+    paiements par mode (encaissés et remboursés) ; réductions commerciales (prix d'origine − prix) et remises RRR ; ventes
+    incomplètes (bons provisoires, à traiter) ; dépôts et retraits d'espèces des caisses de l'entreprise. Une facture compte à la
+    date de sa **normalisation** (`confirmed_at`) : un bon provisoire normalisé après un Z entre dans le Z suivant.
+  - Rapport A : code, nom, prix, groupe et taux, quantités vendues et retournées, montants, stock du moment.
+  - Web : onglet « Rapports X / Z / A » de la page Facture normalisée (`components/facture-normalisee/RapportsFiscaux.tsx`), impression
+    ticket et système (`lib/printing/build-rapport-fiscal.ts`, DUPLICATA dès la 2ᵉ). Aperçu : `docs/facture-normalisee/apercu-rapports.png`.
 
 ## Sécurité et secrets
 Le jeton e-MCF d'un client est un secret : chiffré en base, jamais renvoyé au navigateur, jamais dans un message ni dans le dépôt (comme `FLEXPAIE_TOKEN`). Les adresses de production et de test vont dans des variables d'environnement.

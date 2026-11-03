@@ -36,6 +36,7 @@ export default {
   'components/facture-normalisee/FactureNormaliseeVente.tsx': online(FISCAL),
   'components/facture-normalisee/FactureNormaliseeSheet.tsx': online(FISCAL),
   'components/facture-normalisee/AvoirSheet.tsx': online(FISCAL),
+  'components/facture-normalisee/RapportsFiscaux.tsx': online("Rapports X, Z et A : calculés par le serveur à partir des factures normalisées et gardés dans le journal fiscal ; une clôture faite hors ligne ne serait pas reconnue."),
   'pages/organization/FactureNormalisee.tsx': online(FISCAL),
 
   // ---- En ligne : argent
