@@ -153,6 +153,11 @@ export class StockService {
       low_stock_threshold?: number;
       supplier_id?: string | null;
       supplier_name?: string | null;
+      tax_group?: string;
+      dgi_item_type?: string;
+      dgi_item_code?: string;
+      specific_tax_cents?: number;
+      unit_of_measure?: string;
     },
   ) {
     const merchant = await this.resolveMerchantAccess(merchantId, callerId, callerRole, callerOrgId);
@@ -169,6 +174,7 @@ export class StockService {
         image_url: data.image_url || null,
         description: data.description || null,
         barcode: data.barcode?.trim() || null,
+        ...champsFiscaux(data),
         brand: data.brand || null,
         model: data.model || null,
         serial_number: data.serial_number || null,
@@ -281,6 +287,7 @@ export class StockService {
     for (const key of allowedFields) {
       if (updates[key] !== undefined) filtered[key] = updates[key];
     }
+    Object.assign(filtered, champsFiscaux(updates));
     // An emptied barcode field means "no code" — stored as NULL, never '',
     // or two code-less products would collide on the (merchant, barcode)
     // unique constraint.
@@ -845,4 +852,18 @@ export class StockService {
 
     return { daily, recent };
   }
+}
+
+/**
+ * Champs de la facture normalisée (migration 090) : seulement ceux qui sont fournis, pour qu'une base sans la
+ * migration continue de fonctionner. Une chaîne vide efface la valeur.
+ */
+export function champsFiscaux(d: Record<string, any>): Record<string, any> {
+  const r: Record<string, any> = {};
+  if (d.tax_group !== undefined) r.tax_group = d.tax_group ? String(d.tax_group).toUpperCase() : null;
+  if (d.dgi_item_type !== undefined && d.dgi_item_type) r.dgi_item_type = d.dgi_item_type;
+  if (d.dgi_item_code !== undefined) r.dgi_item_code = String(d.dgi_item_code ?? '').trim() || null;
+  if (d.specific_tax_cents !== undefined) r.specific_tax_cents = d.specific_tax_cents === null ? null : Number(d.specific_tax_cents) || null;
+  if (d.unit_of_measure !== undefined) r.unit_of_measure = String(d.unit_of_measure ?? '').trim() || null;
+  return r;
 }

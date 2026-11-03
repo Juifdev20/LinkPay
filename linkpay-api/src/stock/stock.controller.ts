@@ -2,7 +2,7 @@ import { Controller, Get, Post, Put, Delete, Body, Param, Query, Headers, UseInt
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiConsumes, ApiBody } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, IsIn, IsObject, IsBoolean, MaxLength, Min, MinLength, IsUUID } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsIn, IsObject, IsBoolean, MaxLength, Min, MinLength, IsUUID, IsInt, Matches } from 'class-validator';
 import { StockService, STOCK_STAFF_ROLES } from './stock.service';
 import { SuppliersService } from './suppliers.service';
 import { StockPasswordService } from './stock-password.service';
@@ -36,6 +36,35 @@ class CreateStockItemDto {
   @IsString()
   @MaxLength(100)
   barcode?: string;
+
+  // Facture normalisée (DGI) — migration 090. Envoyés seulement s'ils sont remplis.
+  @ApiPropertyOptional({ example: 'B', description: 'Groupe de taxation DGI (A à P)' })
+  @IsOptional()
+  @Matches(/^[A-P]$/, { message: 'Groupe de taxation : une lettre de A à P' })
+  tax_group?: string;
+
+  @ApiPropertyOptional({ enum: ['BIE', 'SER', 'TAX'], description: "Type d'article DGI : bien, service, taxe" })
+  @IsOptional()
+  @IsIn(['BIE', 'SER', 'TAX'])
+  dgi_item_type?: string;
+
+  @ApiPropertyOptional({ example: 'HORS CHAMP', description: "Code d'article envoyé à la DGI (défaut : le code-barres)" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  dgi_item_code?: string;
+
+  @ApiPropertyOptional({ example: 2500, description: 'Taxe spécifique par unité, en centimes' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  specific_tax_cents?: number;
+
+  @ApiPropertyOptional({ example: 'kg' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  unit_of_measure?: string;
 
   @ApiPropertyOptional({ example: 'Smartphone', description: "Sous-type libre à l'intérieur de la catégorie" })
   @IsOptional()

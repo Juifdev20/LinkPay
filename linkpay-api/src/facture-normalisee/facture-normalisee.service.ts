@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
-import { numeroFacture, TotauxFacture } from './calcul';
+import { cdfVersUsd, ModePrix, numeroFacture, tauxDansLaMarge, TotauxFacture } from './calcul';
 import { EmcfClient, EnvironnementEmcf, ErreurEmcf, StatutEmcf } from './emcf.client';
 import { estAvoir, GroupeTaxation, GROUPES_HOMOLOGUES } from './groupes';
 import { JetonFiscalService } from './jeton-fiscal.service';
@@ -36,6 +36,8 @@ export interface DemandeEmission {
   factureOrigineId?: string;
   /** Équivalent en USD affiché sur la facture. */
   devise?: { code: 'USD'; taux: string; date?: Date };
+  /** Mode imposé (une vente ScanLinkPay est toujours en TTC) ; sinon celui du profil. */
+  mode?: ModePrix;
 }
 
 /** Ce que l'API renvoie d'une facture : jamais le jeton, jamais le détail du journal. */
@@ -99,7 +101,8 @@ export class FactureNormaliseeService {
     return (data as ProfilFiscal) ?? null;
   }
 
-  private clientEmcf(profil: ProfilFiscal, factureId: string | null): EmcfClient {
+  /** Client e-MCF de l'entreprise (jeton déchiffré ici seulement), chaque échange journalisé. */
+  clientEmcf(profil: ProfilFiscal, factureId: string | null): EmcfClient {
     if (!profil.emcf_token_encrypted) throw new ErreurEmcf('jeton', "Aucun jeton e-MCF n'est enregistré pour cette entreprise");
     const env = profil.emcf_environment;
     const racine = this.config.get<string>(env === 'production' ? 'EMCF_RACINE_PRODUCTION' : 'EMCF_RACINE_TEST') || undefined;
@@ -170,7 +173,7 @@ export class FactureNormaliseeService {
 
     const facture: FactureAEmettre = {
       ...d.facture,
-      mode: profil.price_mode,
+      mode: d.mode ?? profil.price_mode,
       groupesAutorises: profil.allowed_tax_groups?.length ? profil.allowed_tax_groups : GROUPES_HOMOLOGUES,
     };
 
