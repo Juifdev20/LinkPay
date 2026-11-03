@@ -103,6 +103,18 @@ La règle 1.1.5 interdit de finaliser une facture sans les éléments de sécuri
   - Rapport A : code, nom, prix, groupe et taux, quantités vendues et retournées, montants, stock du moment.
   - Web : onglet « Rapports X / Z / A » de la page Facture normalisée (`components/facture-normalisee/RapportsFiscaux.tsx`), impression
     ticket et système (`lib/printing/build-rapport-fiscal.ts`, DUPLICATA dès la 2ᵉ). Aperçu : `docs/facture-normalisee/apercu-rapports.png`.
+- **Tests DGI** (homologation) : `cas-tests-dgi.ts` (les 29 cas du document « Cas de test SFE » v1.2), `tests-dgi.service.ts` /
+  `.controller.ts` (`/organizations/:orgId/facture-normalisee/tests-dgi` : catalogue, `campagnes/:campagne`, `jouer`).
+  - Une **campagne** = une série complète ; chaque cas, en TTC et en HT, devient une facture de test (source `manual`,
+    `dgi-test:<campagne>:<mode>:<cas>`) : un cas réussi n'est jamais refait, un cas en échec est retenté avec le même numéro.
+  - **22 cas dans le périmètre** (groupes déclarés A, B, C, E, H, K, O) : 1 à 13, 15 à 17, 19, 22, 25, 26, 27, 29. Les cas 14, 18,
+    20, 21, 23, 24, 28 demandent des groupes non déclarés (D, F, G, I, J, L, M, N, P) : « hors périmètre », comme le permet le guide
+    d'homologation (le SFE n'est utilisé que pour les groupes validés).
+  - Les avoirs (10, 11, 12, 16) remboursent la facture de leur cas d'origine (1, 3, 6, 15) dans le même mode, avec le code PIN ;
+    le 13 est une remise RRR. Le 26 porte l'équivalent USD au taux de l'e-MCF. Jamais en production ; patron et gérants.
+  - Web : onglet « Tests DGI » (`components/facture-normalisee/TestsDgi.tsx`) : lancer tous les cas restants, arrêter, rejouer un
+    cas, voir et imprimer chaque facture (photo du dossier), récapitulatif en tableur, lien vers le site de vérification de la DGI.
+    Aperçu : `docs/facture-normalisee/apercu-tests-dgi.png`.
 
 ## Sécurité et secrets
 Le jeton e-MCF d'un client est un secret : chiffré en base, jamais renvoyé au navigateur, jamais dans un message ni dans le dépôt (comme `FLEXPAIE_TOKEN`). Les adresses de production et de test vont dans des variables d'environnement.

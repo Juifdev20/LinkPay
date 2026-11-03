@@ -9,12 +9,14 @@ import { JetonFiscalService } from './jeton-fiscal.service';
 import { RapportsFiscauxController } from './rapports-fiscaux.controller';
 import { RapportsFiscauxService } from './rapports-fiscaux.service';
 import { RepriseFacturesService } from './reprise-factures.service';
+import { TestsDgiController } from './tests-dgi.controller';
+import { TestsDgiService } from './tests-dgi.service';
 
 /** Facture normalisée (DGI, e-MCF). Voir docs/FACTURE_NORMALISEE.md. */
 @Module({
   imports: [SupabaseModule, StockModule, WalletsModule],
-  controllers: [RapportsFiscauxController, FactureNormaliseeController, FactureNormaliseeVenteController],
-  providers: [FactureNormaliseeService, GestionFiscaleService, JetonFiscalService, RepriseFacturesService, RapportsFiscauxService],
+  controllers: [RapportsFiscauxController, TestsDgiController, FactureNormaliseeController, FactureNormaliseeVenteController],
+  providers: [FactureNormaliseeService, GestionFiscaleService, JetonFiscalService, RepriseFacturesService, RapportsFiscauxService, TestsDgiService],
   exports: [FactureNormaliseeService, GestionFiscaleService],
 })
 export class FactureNormaliseeModule {}

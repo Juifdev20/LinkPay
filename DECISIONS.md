@@ -5,6 +5,19 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 03/11/2026 (nuit) — Facture normalisée DGI : écran « Tests DGI » pour l'homologation
+
+- Les 29 cas de test de la DGI sont rejoués **depuis ScanLinkPay**, sur l'e-MCF de test, en TTC puis en HT : chaque cas devient une
+  vraie facture de test à imprimer et à vérifier sur le site de vérification de la DGI. Les rapports R01 à R03 se font dans
+  l'onglet Rapports.
+- **Périmètre** : seuls les cas de nos groupes déclarés (22 cas) se font ; les 7 autres sont marqués « hors périmètre » (guide
+  d'homologation : un SFE n'est pas obligé de couvrir tous les groupes). Si l'entreprise déclare plus tard d'autres groupes, ses
+  cas deviennent jouables d'eux-mêmes.
+- **Clients de test** : par défaut le NIF de l'entreprise (connu de l'e-MCF de test), modifiable à l'écran.
+- Pas de commentaire libre ajouté sur les factures de test : la DGI marque les commentaires B à H « réservés ».
+- Le portail e-DEF de test : demande d'e-MCF « SCANLINKPAY CAISSE TEST 1 » soumise le 03/11/2026 (en attente de la DGI). Chaque
+  point de facturation a son propre e-MCF : en production, il faudra peut-être un e-MCF (et un jeton) par magasin — à confirmer.
+
 ## 03/11/2026 (soir) — Facture normalisée DGI : rapports X, Z et A (étape 5)
 
 - Les rapports sont **calculés une fois et gardés figés** (`fiscal_reports`, migration 091) : réimprimer redonne exactement le même
