@@ -10,6 +10,7 @@ import { Loader2, ScanBarcode, Printer, ChevronDown } from 'lucide-react';
 import { getSectorConfig } from '@/lib/stock-categories';
 import { BarcodeScannerView } from '@/components/BarcodeScannerView';
 import { beepOk, generateInStoreEan13, isInStoreEan13 } from '@/lib/barcode';
+import { ChampsFiscauxProduit, useFactureNormaliseeActive } from '@/components/facture-normalisee/ChampsFiscauxProduit';
 import { ProductLabelSheet, clampLabels, MAX_LABELS } from './ProductLabelSheet';
 import { formatCurrency } from '@/lib/utils';
 import { marginOf, formatPercent } from '@/lib/margin';
@@ -46,6 +47,12 @@ export type StockItemFormValues = {
   supplier_id: string;
   /** Supplier typed by hand (added to the list on save). */
   supplier_name: string;
+  /** Facture normalisée DGI (migration 090) — envoyés seulement si le service est actif. */
+  tax_group: string;
+  dgi_item_type: string;
+  dgi_item_code: string;
+  specific_tax: string;
+  unit_of_measure: string;
 };
 
 export const emptyStockItemForm: StockItemFormValues = {
@@ -68,6 +75,11 @@ export const emptyStockItemForm: StockItemFormValues = {
   low_stock_threshold: '5',
   supplier_id: '',
   supplier_name: '',
+  tax_group: '',
+  dgi_item_type: 'BIE',
+  dgi_item_code: '',
+  specific_tax: '',
+  unit_of_measure: '',
 };
 
 /**
@@ -102,7 +114,7 @@ export function StockItemFormSheet({
 }) {
   const queryClient = useQueryClient();
   const config = getSectorConfig(sector);
-  const [form, setForm] = useState<StockItemFormValues>(initial);
+  const [form, setForm] = useState<StockItemFormValues>({ ...emptyStockItemForm, ...initial });
   const [scanning, setScanning] = useState(false);
   // Label printed right after a successful save (see labelOnSave).
   const [savedLabel, setSavedLabel] = useState<{ product: any; copies: number; stockQuantity: number } | null>(null);
@@ -113,6 +125,7 @@ export function StockItemFormSheet({
 
   const isEditing = !!itemId;
   const effectiveMerchantId = form.merchant_id || (merchants.length === 1 ? merchants[0].id : '');
+  const fiscalActif = useFactureNormaliseeActive(effectiveMerchantId);
   const category = config.categories.find((c) => c.value === form.category);
 
   // Optional fields start folded — opened when editing a product that has any.
@@ -185,6 +198,14 @@ export function StockItemFormSheet({
           : form.supplier_id
             ? { supplier_id: form.supplier_id }
             : isEditing && initial.supplier_id ? { supplier_id: null } : {}),
+        // Facture normalisée DGI : seulement quand le service est actif pour l'entreprise.
+        ...(fiscalActif && {
+          tax_group: form.tax_group,
+          dgi_item_type: form.dgi_item_type || 'BIE',
+          dgi_item_code: form.dgi_item_code.trim(),
+          specific_tax_cents: form.specific_tax ? Math.round(Number(form.specific_tax.replace(',', '.')) * 100) : null,
+          unit_of_measure: form.unit_of_measure.trim(),
+        }),
         // Electronics-only fields — never sent for other sectors.
         ...(technical && {
           item_type: form.item_type || undefined,
@@ -425,6 +446,13 @@ export function StockItemFormSheet({
         </div>
         {isEditing && (
           <p className="text-xs text-muted-foreground -mt-2">Changer la quantité ajuste le stock (enregistré dans l'historique des mouvements).</p>
+        )}
+
+        {fiscalActif && (
+          <ChampsFiscauxProduit
+            valeurs={form}
+            onChange={(champ, v) => setForm((f) => ({ ...f, [champ]: v }))}
+          />
         )}
 
         {/* Optional — folded so the essential sheet stays short */}

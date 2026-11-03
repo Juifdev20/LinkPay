@@ -13,7 +13,9 @@ export type ReceiptLine =
   /** Emphasized amount (bold) — totals, change given. */
   | { type: 'amount'; label: string; value: string; large?: boolean }
   /** Printed as real bars (ESC/POS GS k / SVG), digits underneath — product labels. */
-  | { type: 'barcode'; value: string };
+  | { type: 'barcode'; value: string }
+  /** Code QR (facture normalisée DGI : contenu fourni par l'e-MCF, correction d'erreur M). */
+  | { type: 'qr'; value: string };
 
 /** 58mm rolls print 32 characters per line, 80mm rolls 48. */
 export type PaperColumns = 32 | 48;

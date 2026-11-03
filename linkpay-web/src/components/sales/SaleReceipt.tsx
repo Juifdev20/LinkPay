@@ -5,6 +5,7 @@ import { FormSheet } from '@/components/FormSheet';
 import { buildSaleReceipt } from '@/lib/printing/build-receipt';
 import { PrintFlowStatus, ReceiptPreview, usePrintFlow } from '@/components/printing/ReceiptPrint';
 import type { InvoiceOrg, InvoiceSale } from '@/lib/sale-invoice';
+import { FactureNormaliseeVente } from '@/components/facture-normalisee/FactureNormaliseeVente';
 
 /**
  * The ticket of a Ventes sale — the same thermal ticket and the same printer as the supermarket till
@@ -42,6 +43,15 @@ export function SaleReceipt({
         <ReceiptPreview lines={lines} />
 
         <PrintFlowStatus flow={flow} />
+
+        {paid && (
+          <FactureNormaliseeVente
+            merchantId={(sale as any).merchant_id}
+            sourceType="sale"
+            sourceId={(sale as any).id}
+            horsLigne={!!sale.offline}
+          />
+        )}
 
         <div className="max-w-sm mx-auto space-y-3">
           <div className="flex gap-3">

@@ -1,5 +1,5 @@
 import { isSupermarket } from '@/lib/sectors';
-import { ArrowLeftRight, LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, FileBarChart, Truck, CloudUpload, Landmark, PackageSearch, Handshake, type LucideIcon } from 'lucide-react';
+import { ArrowLeftRight, LayoutDashboard, QrCode, Receipt, Wallet, Users, UserCog, ShieldCheck, Settings, Percent, Building2, UsersRound, RefreshCcw, PiggyBank, Bell, Boxes, ShoppingCart, BarChart3, History, ClipboardList, ScrollText, Store, SlidersHorizontal, ShieldAlert, Sparkles, CreditCard, ScanLine, ArrowUpFromLine, FileBarChart, Truck, CloudUpload, Landmark, PackageSearch, Handshake, FileCheck2, type LucideIcon } from 'lucide-react';
 
 import { FEATURES } from '@/lib/features';
 import { ALL_ROLES, STAFF_ROLES, PERSONAL_ROLES, rolesFor } from '@/lib/permissions';
@@ -92,6 +92,7 @@ export const navItems: NavItem[] = [
   { to: '/dashboard/organization/staff', label: 'Utilisateurs internes', icon: Users, roles: rolesFor('/dashboard/organization/staff'), labelFor: { gerant: 'Mes employés' }, section: 'business' },
   { to: '/dashboard/team', label: 'Équipe', icon: UsersRound, roles: ['merchant'], section: 'business' },
   { to: '/dashboard/organization/stores', label: 'Stations', icon: Store, roles: rolesFor('/dashboard/organization/stores'), section: 'business' },
+  { to: '/dashboard/organization/facture-normalisee', label: 'Facture normalisée DGI', icon: FileCheck2, roles: rolesFor('/dashboard/organization/facture-normalisee'), section: 'business' },
   { to: '/dashboard/organization/profile', label: 'Profil entreprise', icon: Building2, roles: rolesFor('/dashboard/organization/profile'), section: 'business' },
   { to: '/dashboard/organization/subscription', label: 'Abonnement', icon: Sparkles, roles: rolesFor('/dashboard/organization/subscription'), section: 'business' },
 

@@ -17,6 +17,8 @@ const PREFS = "Préférence ou lecture de notification : sans conséquence si el
 const ACCOUNT = "Création ou changement de compte : validé par le serveur.";
 const SYSTEM = "Mécanisme interne (session, notifications push, vérification de l'appareil) : tente seul de se refaire au retour du réseau.";
 
+const FISCAL = "Facture normalisée : seule la DGI (e-MCF, en ligne) donne le code de sécurité et le QR ; sans réseau, la vente garde son bon provisoire, normalisé automatiquement par le serveur au retour du réseau.";
+
 const online = (why) => ({ mode: 'online', why });
 const partial = (offline, why) => ({ mode: 'partial', offline, why });
 
@@ -29,6 +31,12 @@ export default {
   'pages/organization/Inventory.tsx': partial('Quantités comptées', 'Démarrer et valider un inventaire : en ligne.'),
   'pages/organization/Restock.tsx': partial('Écrire une demande d\'achat', 'Changer l\'état d\'une demande (approuver, refuser) : en ligne.'),
   'pages/expense-tracker/ExpenseTracker.tsx': partial('Noter une dépense dans le carnet', 'Ouvrir et clôturer une page du carnet : en ligne.'),
+
+  // ---- En ligne : facture normalisée DGI
+  'components/facture-normalisee/FactureNormaliseeVente.tsx': online(FISCAL),
+  'components/facture-normalisee/FactureNormaliseeSheet.tsx': online(FISCAL),
+  'components/facture-normalisee/AvoirSheet.tsx': online(FISCAL),
+  'pages/organization/FactureNormalisee.tsx': online(FISCAL),
 
   // ---- En ligne : argent
   'pages/wallet/Send.tsx': online(MONEY),

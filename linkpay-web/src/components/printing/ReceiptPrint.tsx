@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReceiptLine } from '@/lib/printing/types';
-import { barcodeSvg } from '@/lib/printing/html';
+import { barcodeSvg, qrSvg } from '@/lib/printing/html';
 import { loadPrinter, printReceipt, savePrinter, type PrinterConfig } from '@/lib/printing/printer';
 import { PrinterPicker } from './PrinterPicker';
 
@@ -48,6 +48,8 @@ export function ReceiptPreview({ lines, className = 'w-[300px]' }: { lines: Rece
             );
           case 'barcode':
             return <BarcodeImage key={i} value={line.value} />;
+          case 'qr':
+            return <div key={i} className="flex justify-center py-1" dangerouslySetInnerHTML={{ __html: qrSvg(line.value, 140) }} />;
         }
       })}
     </div>

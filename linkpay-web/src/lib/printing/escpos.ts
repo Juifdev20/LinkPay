@@ -55,7 +55,7 @@ export const toAscii = (s: string) =>
 // and the plain-text fallback so both print the exact same ticket.
 // ------------------------------------------------------------------
 /** `barcode` set = a barcode row (text holds its digits for text output). */
-export type Row = { text: string; align: 'left' | 'center'; bold?: boolean; tall?: boolean; barcode?: string };
+export type Row = { text: string; align: 'left' | 'center'; bold?: boolean; tall?: boolean; barcode?: string; qr?: string };
 
 const len = (s: string) => normalize(s).length;
 
@@ -112,6 +112,9 @@ export function layout(lines: ReceiptLine[], cols: number): Row[] {
         break;
       case 'barcode':
         rows.push({ text: line.value, align: 'center', barcode: line.value });
+        break;
+      case 'qr':
+        rows.push({ text: line.value, align: 'center', qr: line.value });
         break;
     }
   }
@@ -173,6 +176,24 @@ function escPosBarcode(value: string): number[] {
 }
 
 /**
+ * Native ESC/POS QR code (GS ( k, model 2, error correction M as the DGI asks). Module size 5 keeps the
+ * ~66-character DGI code under ~250 dots, inside a 58 mm head (384 dots).
+ */
+export function escPosQr(value: string): number[] {
+  const data = [...value].map((c) => c.charCodeAt(0) & 0x7f).slice(0, 700);
+  const store = data.length + 3;
+  return [
+    ESC, 0x61, 1,                                    // centered
+    GS, 0x28, 0x6b, 4, 0, 0x31, 0x41, 0x32, 0x00,    // model 2
+    GS, 0x28, 0x6b, 3, 0, 0x31, 0x43, 5,             // module size 5
+    GS, 0x28, 0x6b, 3, 0, 0x31, 0x45, 0x31,          // error correction M
+    GS, 0x28, 0x6b, store & 0xff, store >> 8, 0x31, 0x50, 0x30, ...data, // store
+    GS, 0x28, 0x6b, 3, 0, 0x31, 0x51, 0x30,          // print
+    0x0a, ESC, 0x61, 0,
+  ];
+}
+
+/**
  * Receipt lines → raw ESC/POS bytes, `cols` characters per row.
  * - 'cp850': accents kept (ESC t 2 = PC850, the Epson numbering most
  *   printers follow).
@@ -193,6 +214,10 @@ export function receiptToEscPos(
   for (const row of layout(lines, cols)) {
     if (row.barcode) {
       out.push(...escPosBarcode(row.barcode));
+      continue;
+    }
+    if (row.qr) {
+      out.push(...escPosQr(row.qr));
       continue;
     }
     out.push(ESC, 0x61, row.align === 'center' ? 1 : 0); // ESC a — alignment

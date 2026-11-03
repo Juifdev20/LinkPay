@@ -82,7 +82,14 @@ La règle 1.1.5 interdit de finaliser une facture sans les éléments de sécuri
   jeton chiffré, émission, reprise), `reprise-factures.service.ts` (chaque minute).
 - Tests : `npx jest src/facture-normalisee` — dont un **faux e-MCF** (`src/test-utils/faux-emcf.ts`) qui suit le protocole (réponses
   perdues, refus, doublons, montants faux, jeton invalide).
-- Pas encore de routes ni d'écrans (étape 4).
+- **Étape 4** (routes et écrans) : `facture-normalisee.controller.ts`, `gestion-fiscale.service.ts` (droits, profil, émission depuis une
+  vente, impression, avoir avec PIN, facture manuelle), `sources.ts` (ticket / vente → facture, côté serveur, USD au taux de l'e-MCF).
+  Web : page « Facture normalisée DGI » (`pages/organization/FactureNormalisee.tsx` : paramètres, jeton, activation, journal),
+  bloc sur les reçus de la caisse et des Ventes (`components/facture-normalisee/`), section DGI de la fiche produit (si le service est
+  actif), facture imprimée avec toutes les mentions et le code QR (`lib/printing/build-facture-normalisee.ts`, ligne `qr` ESC/POS + écran).
+  Aperçu : `docs/facture-normalisee/apercu-factures.png`.
+- **Filet de sécurité** : chaque minute, toute vente payée d'une entreprise active restée sans facture depuis 2 minutes est normalisée
+  automatiquement (client « Personne physique »), y compris les ventes faites sans réseau puis synchronisées.
 
 ## Sécurité et secrets
 Le jeton e-MCF d'un client est un secret : chiffré en base, jamais renvoyé au navigateur, jamais dans un message ni dans le dépôt (comme `FLEXPAIE_TOKEN`). Les adresses de production et de test vont dans des variables d'environnement.

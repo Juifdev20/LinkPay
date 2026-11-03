@@ -1,4 +1,5 @@
 import JsBarcode from 'jsbarcode';
+import QRCode from 'qrcode';
 import type { PaperColumns, ReceiptLine } from './types';
 import { barcodeFormat, layout, pad, toAscii } from './escpos';
 
@@ -23,6 +24,17 @@ export function barcodeSvg(value: string, opts: { height?: number; width?: numbe
   return svg.outerHTML;
 }
 
+/** QR code as an SVG string, drawn synchronously from the QR matrix (error correction M). */
+export function qrSvg(value: string, taille = 150): string {
+  const qr = QRCode.create(value, { errorCorrectionLevel: 'M' });
+  const n = qr.modules.size;
+  const marge = 2;
+  let d = '';
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (qr.modules.get(x, y)) d += `M${x + marge} ${y + marge}h1v1h-1z`;
+  const t = n + marge * 2;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${t} ${t}" width="${taille}" height="${taille}" shape-rendering="crispEdges"><rect width="${t}" height="${t}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+}
+
 const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /**
@@ -35,6 +47,8 @@ export function receiptToHtml(lines: ReceiptLine[], cols: PaperColumns = 32): st
     .map((row) =>
       row.barcode
         ? `<div class="bc">${barcodeSvg(row.barcode)}</div>`
+        : row.qr
+        ? `<div class="bc">${qrSvg(row.qr)}</div>`
         : `<pre>${escapeHtml(toAscii(pad(row, cols)))}</pre>`,
     )
     .join('');

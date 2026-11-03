@@ -44,6 +44,8 @@ export const PERSONAL_ROLES = ALL_ROLES.filter((r) => r !== 'enterprise');
 export const ROUTE_ROLES = {
   '/dashboard/organization': ['enterprise'],
   '/dashboard/organization/profile': ['enterprise'],
+  // Facture normalisée DGI : le patron et les gérants paramètrent et font les avoirs, le comptable consulte.
+  '/dashboard/organization/facture-normalisee': ['enterprise', 'gerant', 'comptable'],
   '/dashboard/organization/stores': ['enterprise'],
   '/dashboard/organization/staff': ['enterprise', 'gerant'],
   '/dashboard/organization/subscription': ['enterprise', 'gerant'],

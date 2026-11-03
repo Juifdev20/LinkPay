@@ -4,6 +4,7 @@ import { FormSheet } from '@/components/FormSheet';
 import { CheckCircle, Printer, Loader2 } from 'lucide-react';
 import { buildPosReceipt } from '@/lib/printing/build-receipt';
 import { PrintFlowStatus, ReceiptPreview, usePrintFlow } from '@/components/printing/ReceiptPrint';
+import { FactureNormaliseeVente } from '@/components/facture-normalisee/FactureNormaliseeVente';
 
 /**
  * The sale receipt — shown right after a ticket is settled and re-openable
@@ -25,6 +26,9 @@ export function PosReceipt({ ticket, onClose }: { ticket: any; onClose: () => vo
         <ReceiptPreview lines={lines} />
 
         <PrintFlowStatus flow={flow} />
+
+        {/* Entreprise soumise à la facture normalisée DGI : émettre la facture du ticket payé. */}
+        <FactureNormaliseeVente merchantId={ticket.merchant_id} sourceType="pos_ticket" sourceId={ticket.id} horsLigne={!!ticket.offline} />
 
         <div className="flex gap-3 max-w-sm mx-auto">
           <Button

@@ -221,24 +221,82 @@ export class GestionFiscaleService {
   /** Facture normalisée d'un ticket de caisse ou d'une vente payés (tout vendeur de la station). */
   async emettreDepuisVente(merchantId: string, u: Appelant, source: { type: 'pos_ticket' | 'sale'; id: string }, client: ClientFacture) {
     const merchant = await this.stock.resolveMerchantAccess(merchantId, u.id, u.role, u.organization_id, POS_SALE_ROLES);
+    return this.emettreInterne(merchant, source, client, u.id);
+  }
+
+  /** Émission sans contrôle d'accès : appelée après le contrôle, ou par le ramassage automatique. */
+  private async emettreInterne(
+    merchant: { id: string; organization_id: string | null },
+    source: { type: 'pos_ticket' | 'sale'; id: string },
+    client: ClientFacture,
+    userId: string | null,
+  ) {
     if (!merchant.organization_id) throw new BadRequestException("Ce magasin n'appartient à aucune entreprise");
     const profil = await this.factures.profil(merchant.organization_id);
     if (!profil?.enabled) throw new BadRequestException("La facture normalisée n'est pas activée pour cette entreprise");
     const deja = await this.factures.parSource(source);
     if (deja?.status === 'confirmed') return deja;
     const taux = () => this.tauxUsd(profil);
+    const m = { id: merchant.id, organization_id: merchant.organization_id };
     const demande =
       source.type === 'pos_ticket'
-        ? await depuisTicket(this.db, merchant, source.id, client, profil, taux, u.id)
-        : await depuisVente(this.db, merchant, source.id, client, profil, taux, u.id);
-    return this.factures.emettre(demande);
+        ? await depuisTicket(this.db, m, source.id, client, profil, taux, userId ?? '')
+        : await depuisVente(this.db, m, source.id, client, profil, taux, userId ?? '');
+    return this.factures.emettre({ ...demande, userId });
+  }
+
+  /**
+   * Filet de sécurité (chaque minute) : dans une entreprise soumise, TOUTE vente payée devient une facture normalisée,
+   * même si le caissier n'a pas appuyé sur le bouton, ou si la vente a été faite sans réseau puis synchronisée.
+   * Le caissier a 2 minutes pour choisir le type de client ; ensuite c'est « Personne physique ».
+   */
+  async ramasser(limite = 20): Promise<number> {
+    const { data: profils } = await this.db.from('fiscal_profiles').select('organization_id, activated_at').eq('enabled', true);
+    let emises = 0;
+    const avant = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    for (const p of profils ?? []) {
+      if (emises >= limite) break;
+      const { data: magasins } = await this.db.from('merchants').select('id, organization_id').eq('organization_id', p.organization_id);
+      const ids = (magasins ?? []).map((m: any) => m.id);
+      if (!ids.length) continue;
+      const depuis = p.activated_at ?? avant;
+      const [{ data: tickets }, { data: ventes }] = await Promise.all([
+        this.db.from('pos_tickets').select('id, merchant_id').in('merchant_id', ids).eq('status', 'paid').gte('paid_at', depuis).lt('paid_at', avant).limit(limite),
+        this.db.from('sales').select('id, merchant_id').in('merchant_id', ids).eq('status', 'PAID').gte('paid_at', depuis).lt('paid_at', avant).limit(limite),
+      ]);
+      const candidats = [
+        ...(tickets ?? []).map((t: any) => ({ type: 'pos_ticket' as const, id: t.id, merchant_id: t.merchant_id })),
+        ...(ventes ?? []).map((v: any) => ({ type: 'sale' as const, id: v.id, merchant_id: v.merchant_id })),
+      ];
+      if (!candidats.length) continue;
+      const { data: faites } = await this.db
+        .from('normalized_invoices')
+        .select('source_type, source_id')
+        .in('source_id', candidats.map((c) => c.id));
+      const deja = new Set((faites ?? []).map((f: any) => `${f.source_type}:${f.source_id}`));
+      for (const c of candidats) {
+        if (emises >= limite) break;
+        if (deja.has(`${c.type}:${c.id}`)) continue;
+        try {
+          await this.emettreInterne({ id: c.merchant_id, organization_id: p.organization_id }, { type: c.type, id: c.id }, { type: 'PP' }, null);
+          emises += 1;
+        } catch {
+          // Une vente qui ne passe pas (ex. ticket USD sans taux du dollar) est reprise au prochain tour.
+        }
+      }
+    }
+    return emises;
   }
 
   /** La facture normalisée d'une vente, si elle existe (pour afficher son état sur le reçu). */
   async factureDeLaVente(merchantId: string, u: Appelant, source: { type: 'pos_ticket' | 'sale'; id: string }) {
     const merchant = await this.stock.resolveMerchantAccess(merchantId, u.id, u.role, u.organization_id, POS_SALE_ROLES);
     const profil = merchant.organization_id ? await this.factures.profil(merchant.organization_id) : null;
-    return { active: !!profil?.enabled, facture: profil?.enabled ? await this.factures.parSource(source) : null };
+    return {
+      active: !!profil?.enabled,
+      organization_id: merchant.organization_id ?? null,
+      facture: profil?.enabled ? await this.factures.parSource(source) : null,
+    };
   }
 
   // ------------------------------------------------------------------ factures

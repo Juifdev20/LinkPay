@@ -152,6 +152,11 @@ export default function StockPage() {
         supplier_id: item.supplier_id || '',
         // Shown as such in the sheet even when the supplier was taken off the list.
         supplier_name: item.supplier_name || '',
+        tax_group: item.tax_group || '',
+        dgi_item_type: item.dgi_item_type || 'BIE',
+        dgi_item_code: item.dgi_item_code || '',
+        specific_tax: item.specific_tax_cents != null ? String(item.specific_tax_cents / 100) : '',
+        unit_of_measure: item.unit_of_measure || '',
       },
     });
   };

@@ -102,6 +102,7 @@ const SalesPage = lazyPage(() => import('@/pages/organization/Sales'));
 const SalesDashboardPage = lazyPage(() => import('@/pages/organization/SalesDashboard'));
 const SalesHistoryPage = lazyPage(() => import('@/pages/organization/SalesHistory'));
 const CompanyProfilePage = lazyPage(() => import('@/pages/organization/CompanyProfile'));
+const FactureNormaliseePage = lazyPage(() => import('@/pages/organization/FactureNormalisee'));
 const OrganizationTransactionsPage = lazyPage(() => import('@/pages/organization/Transactions'));
 const OrganizationReceivePage = lazyPage(() => import('@/pages/organization/Receive'));
 import StaffHome from '@/pages/staff/StaffHome';
@@ -493,6 +494,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={rolesFor('/dashboard/organization/profile')}>
               <CompanyProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/facture-normalisee"
+          element={
+            <ProtectedRoute roles={rolesFor('/dashboard/organization/facture-normalisee')}>
+              <FactureNormaliseePage />
             </ProtectedRoute>
           }
         />

@@ -34,6 +34,10 @@ Plan validé avec le client (`docs/FACTURE_NORMALISEE.md`, « Plan proposé ») 
 - **Jeton e-MCF** : chiffré AES-256-GCM (`FISCAL_TOKEN_ENCRYPTION_KEY`, à défaut dérivé de `JWT_SECRET`), essayé auprès de la DGI avant
   d'être gardé (refusé s'il appartient à un autre NIF), jamais renvoyé par l'API. RLS sans politique sur toutes les tables fiscales.
 - **HotelSaver** réutilisera le même moteur (`source_type = 'hotel'`).
+- **Toute vente est normalisée** (étape 4) : le caissier choisit le type de client et émet depuis le reçu ; s'il ne le fait pas dans les
+  2 minutes, ou si la vente vient du hors ligne, le serveur l'émet seul en « Personne physique » (`GestionFiscaleService.ramasser`).
+  Une vente ScanLinkPay est toujours facturée en TTC ; le portefeuille et la carte ScanLinkPay sont déclarés `AUTRE` en attendant
+  la réponse de la DGI (question 7 du courrier). La première impression est l'originale, les suivantes portent DUPLICATA.
 - Reste : étape 4 (écrans, routes, impression avec QR et montant en lettres), étape 5 (rapports X/Z/A), puis les 29 cas de test sur l'e-MCF
   de test (dès que le jeton est créé) et le dossier d'homologation.
 
