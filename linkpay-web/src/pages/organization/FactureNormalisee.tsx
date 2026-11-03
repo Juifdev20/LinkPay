@@ -76,9 +76,11 @@ function Parametres({ orgId }: { orgId: string }) {
   });
   const p = data?.profil;
   const gestion = data?.droits === 'gestion';
+  const manque = [!p?.nif && "Enregistrer le NIF de l'entreprise (carte « Identité fiscale », bouton Enregistrer)", !p?.jeton_enregistre && 'Enregistrer le jeton e-MCF de la DGI (carte « Jeton e-MCF », plus bas)'].filter(Boolean) as string[];
   const [form, setForm] = useState({ nif: '', vat_regime: 'non_assujetti', price_mode: 'ttc', default_tax_group: '', trade_name: '', address: '', phone: '', email: '' });
   const [jeton, setJeton] = useState('');
   const [message, setMessage] = useState<{ ok: boolean; texte: string } | null>(null);
+  const [activation, setActivation] = useState<{ ok: boolean; texte: string } | null>(null);
 
   useEffect(() => {
     if (p)
@@ -112,8 +114,12 @@ function Parametres({ orgId }: { orgId: string }) {
   });
   const activer = useMutation({
     mutationFn: async (actif: boolean) => (await api.post(`/organizations/${orgId}/facture-normalisee/activation`, { actif })).data,
-    onSuccess: (r: any) => ok(r?.profil?.enabled ? 'Facture normalisée activée : chaque vente sera normalisée par la DGI.' : 'Facture normalisée désactivée.')(r),
-    onError: ko,
+    onSuccess: (r: any) => {
+      ok('')(r);
+      setMessage(null);
+      setActivation({ ok: true, texte: r?.profil?.enabled ? 'Facture normalisée activée : chaque vente sera normalisée par la DGI.' : 'Facture normalisée désactivée.' });
+    },
+    onError: (e) => setActivation({ ok: false, texte: messageErreur(e, "Activation impossible") }),
   });
 
   if (isLoading) return <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" />;
@@ -136,8 +142,19 @@ function Parametres({ orgId }: { orgId: string }) {
           </p>
           <div className="flex items-center justify-between rounded-xl border border-border p-3">
             <span className="font-medium">Facture normalisée</span>
-            <Switch checked={!!p?.enabled} disabled={!gestion || activer.isPending} onCheckedChange={(v) => activer.mutate(v)} />
+            <Switch checked={!!p?.enabled} disabled={!gestion || activer.isPending || (!p?.enabled && manque.length > 0)} onCheckedChange={(v) => activer.mutate(v)} />
           </div>
+          {!p?.enabled && manque.length > 0 && (
+            <div className="rounded-xl bg-warning/10 text-warning p-3 text-xs space-y-1">
+              <p className="font-semibold">Pour pouvoir l'activer :</p>
+              <ul className="list-disc pl-5">
+                {manque.map((m) => (
+                  <li key={m}>{m}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {activation && <p className={`text-sm ${activation.ok ? 'text-success' : 'text-destructive'}`}>{activation.texte}</p>}
           {p?.emcf_environment !== 'production' && (
             <p className="text-xs text-warning">Mode test DGI : ScanLinkPay est en cours d'homologation. Les factures de test n'ont pas de valeur fiscale.</p>
           )}
