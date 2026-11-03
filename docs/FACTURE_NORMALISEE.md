@@ -70,7 +70,19 @@ La règle 1.1.5 interdit de finaliser une facture sans les éléments de sécuri
 3. **Écrans** : paramètres fiscaux, groupe par produit, type de client, remises, impression avec toutes les mentions + QR + montant en lettres, duplicata, avoirs.
 4. **Rapports X / Z / A**, puis les 29 cas de test en TTC et HT, puis le dossier d'homologation.
 5. **Hors ligne**, selon la réponse de la DGI.
-Rien de tout cela n'est codé à ce jour ; le service reste « désactivé par entreprise » tant que l'homologation n'est pas obtenue.
+**État au 03/11/2026** : étapes 1 à 3 faites (voir ci-dessous) ; le service reste « désactivé par entreprise » tant que l'homologation n'est pas obtenue.
+
+## Ce qui est codé (03/11/2026)
+- Migration `090_facture_normalisee.sql` : `fiscal_profiles`, colonnes fiscales de `stock_items`, numérotation annuelle,
+  `normalized_invoices` / `normalized_invoice_items` (figées une fois normalisées), journal `emcf_exchanges` (ajout seul).
+- `linkpay-api/src/facture-normalisee/` :
+  `groupes.ts` (référentiels et taux 2026), `calcul.ts` (moteur, section 1.5), `montant-en-lettres.ts`, `validation.ts` (règles avant
+  envoi, avoirs), `requete.ts` (format de l'API, comparaison des montants), `emcf.client.ts` (API v1.3, 10 s, journal),
+  `normalisation.ts` (envoi → comparaison → confirmation, reprise sans doublon), `facture-normalisee.service.ts` (base de données,
+  jeton chiffré, émission, reprise), `reprise-factures.service.ts` (chaque minute).
+- Tests : `npx jest src/facture-normalisee` — dont un **faux e-MCF** (`src/test-utils/faux-emcf.ts`) qui suit le protocole (réponses
+  perdues, refus, doublons, montants faux, jeton invalide).
+- Pas encore de routes ni d'écrans (étape 4).
 
 ## Sécurité et secrets
 Le jeton e-MCF d'un client est un secret : chiffré en base, jamais renvoyé au navigateur, jamais dans un message ni dans le dépôt (comme `FLEXPAIE_TOKEN`). Les adresses de production et de test vont dans des variables d'environnement.

@@ -73,6 +73,17 @@ Déjà fixées dans le fichier (pas besoin d'y toucher) : `NODE_ENV=production`,
 
 ---
 
+## Facture normalisée DGI (e-MCF) — service `linkpay-api`
+
+| Variable | Valeur | Rôle |
+|---|---|---|
+| `FISCAL_TOKEN_ENCRYPTION_KEY` | longue chaîne aléatoire (secret) | chiffre les jetons e-MCF des entreprises ; à défaut, dérivée de `JWT_SECRET`. **Ne jamais la changer** sans réenregistrer les jetons. |
+| `FACTURE_NORMALISEE_ACTIVE` | `true` | lance la reprise automatique (chaque minute) des bons provisoires ; seulement après la migration `090`. |
+| `EMCF_ISF` | ex. `ABC-DEF-01` | l'ISF donné par la DGI à l'homologation ; sans lui, aucune facture de **production** n'est envoyée. |
+| `EMCF_RACINE_TEST` / `EMCF_RACINE_PRODUCTION` | (facultatif) | autre adresse que `https://developper.dgirdc.cd/edef` / `https://edef.dgirdc.cd` si la DGI en publie une. |
+
+Les jetons e-MCF eux-mêmes ne vont **pas** dans Render : chaque entreprise enregistre le sien dans ScanLinkPay (chiffré en base).
+
 ## 3. Site — service `linkpay-web`
 
 | Variable | Rôle |

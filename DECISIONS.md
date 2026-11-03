@@ -5,6 +5,40 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 03/11/2026 — Facture normalisée DGI : fondations, moteur de calcul et liaison e-MCF (étapes 1 à 3)
+
+Plan validé avec le client (`docs/FACTURE_NORMALISEE.md`, « Plan proposé ») ; courriers à la DGI : `docs/facture-normalisee/COURRIERS_DGI.md`.
+- **Activation par entreprise** (`fiscal_profiles.enabled`, faux par défaut ; impossible sans NIF ni jeton) : les entreprises non
+  soumises ne voient rien changer. Tant que ScanLinkPay n'est pas homologué, on reste sur l'e-MCF **de test** (pas d'ISF de production :
+  `EMCF_ISF` absent → refus en production).
+- **Groupes déclarés à l'homologation** : A, B, C, E, H, K, O (choix du 03/11 : produits exonérés, taux normal, taux réduits 5 % et 1 %,
+  exportation, consignation des casiers, non-assujettis). Le moteur sait calculer les 16 groupes ; une entreprise n'utilise que ses
+  `allowed_tax_groups`. Types de facture : FV, FA (obligatoires), FT, EV, EA (et ET).
+- **Calcul (section 1.5 de la note 01/022)**, en entiers : TTC → base = plancher(total / (1 + t)), TVA = total − base ; HT → TVA =
+  plafond(base × t) — « en cas d'arrondi, la taxe est arrondie à la valeur supérieure » ; la taxe spécifique entre dans la base ;
+  groupe N = tout en TVA. La lecture exacte de la règle d'arrondi et de la taxe spécifique en TTC sera **confirmée sur l'e-MCF de test** :
+  de toute façon, une facture n'est confirmée que si les montants de la DGI sont **identiques** aux nôtres (sinon CANCEL).
+- **Devises** : la facture DGI est en CDF (cas de test n° 26) ; un prix en USD est converti au taux du jour, l'équivalent USD et le
+  taux figurent sur la facture, taux à 1 % du taux BCC (référence : `/api/info/currencyRates` de l'e-MCF, question posée à la DGI).
+- **Jamais de doublon chez la DGI** : on envoie toujours l'instantané enregistré à l'émission (`request_snapshot`) ; sans réponse au bout
+  de 10 s, on relit les demandes en attente (statut + détails) pour retrouver notre numéro avant tout renvoi ; une confirmation
+  dont la réponse est perdue devient « À VÉRIFIER » et n'est **jamais** renvoyée automatiquement ; après un arrêt du serveur, la
+  confirmation est reprise depuis le journal `emcf_exchanges` (ajout seul, chaque demande et réponse gardée, sans le jeton).
+- **Sans réseau** (en attendant la réponse écrite de la DGI) : la vente donne un **bon provisoire non fiscal** (`status = provisional`),
+  normalisé automatiquement au retour du réseau par `RepriseFacturesService` (chaque minute, verrou de tâche, seulement si
+  `FACTURE_NORMALISEE_ACTIVE=true`).
+- **Numérotation** : série continue par entreprise et par année de gestion (heure de Kinshasa), `2026/000123`, attribuée à l'émission
+  et gardée pour tous les essais de la même facture. Une facture normalisée est figée (déclencheur) : seul le compteur de duplicata bouge.
+- **Avoirs** : patron et gérants seulement (avec code PIN, à l'étape 4) ; même prix et même groupe que la ligne d'origine, quantités
+  cumulées ≤ quantités vendues, l'origine doit être normalisée.
+- **Jeton e-MCF** : chiffré AES-256-GCM (`FISCAL_TOKEN_ENCRYPTION_KEY`, à défaut dérivé de `JWT_SECRET`), essayé auprès de la DGI avant
+  d'être gardé (refusé s'il appartient à un autre NIF), jamais renvoyé par l'API. RLS sans politique sur toutes les tables fiscales.
+- **HotelSaver** réutilisera le même moteur (`source_type = 'hotel'`).
+- Reste : étape 4 (écrans, routes, impression avec QR et montant en lettres), étape 5 (rapports X/Z/A), puis les 29 cas de test sur l'e-MCF
+  de test (dès que le jeton est créé) et le dossier d'homologation.
+
+---
+
 ## 29/10/2026 (nuit) — L'application restée sur le logo qui tourne : réparation automatique du démarrage
 
 Constat (iPhone, après un déploiement) : l'écran du logo avec le rond qui tourne ne partait plus. C'est la page d'attente de

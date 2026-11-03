@@ -43,6 +43,7 @@ import { SalesModule } from './sales/sales.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { CardsModule } from './cards/cards.module';
 import { ExchangeModule } from './exchange/exchange.module';
+import { FactureNormaliseeModule } from './facture-normalisee/facture-normalisee.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { CookieAuthInterceptor } from './auth/cookie-auth.interceptor';
 import { AuthCookiesService } from './auth/auth-cookies';
@@ -105,6 +106,7 @@ import { createThrottlerStorage } from './common/throttler/redis-throttler.stora
     SubscriptionsModule,
     CardsModule,
     ExchangeModule,
+    FactureNormaliseeModule,
   ],
   providers: [
     {
