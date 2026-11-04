@@ -1,7 +1,7 @@
 import { articlesDuCas, CAS_TESTS_DGI, clientDuCas, groupesManquants, sourceDuCas } from './cas-tests-dgi';
 import { calculerTotaux } from './calcul';
 import { GROUPES_HOMOLOGUES, TAUX_2026 } from './groupes';
-import { construireRequete } from './requete';
+import { construireRequete, valeurParUnite } from './requete';
 import { validerFacture } from './validation';
 
 const clients = { nif: 'A2216742Y' };
@@ -59,5 +59,37 @@ describe('Cas de test DGI (document v1.2)', () => {
 
   it('chaque facture de test a une source à elle (pas de doublon dans une campagne)', () => {
     expect(sourceDuCas('20261103-2130', 'ht', 10)).toBe('dgi-test:20261103-2130:ht:10');
+  });
+});
+
+describe('Taxe spécifique : la DGI veut le montant total ET la valeur par unité (code 22)', () => {
+  const facture = (mode: 'ttc' | 'ht') => {
+    const c = CAS_TESTS_DGI[7];
+    const articles = articlesDuCas(c);
+    return {
+      type: c.type,
+      mode,
+      articles,
+      client: clientDuCas(c, clients),
+      paiements: [{ moyen: 'ESPECES' as const, montantCents: calculerTotaux(articles, mode).totalCents }],
+      groupesAutorises: GROUPES_HOMOLOGUES,
+    };
+  };
+
+  it('cas 8 : taxSpecificAmount pour toute la quantité, taxSpecificValue par unité', () => {
+    for (const mode of ['ttc', 'ht'] as const) {
+      const r: any = construireRequete(facture(mode), { nif: 'A2216742Y', rn: '2026/8', isf: 'SLP-SFE-01', operateur: { nom: 'T' } });
+      expect(r.items.map((i: any) => [i.taxSpecificAmount, i.taxSpecificValue])).toEqual([
+        [1500, '500'], // 3 × B : 500 CDF par unité
+        [400, '200'], // 2 × C : 200 CDF par unité
+        [undefined, undefined], // 1 × A : sans taxe spécifique
+      ]);
+    }
+  });
+
+  it('valeur par unité déduite du total quand l’unité n’est pas connue', () => {
+    expect(valeurParUnite(150000, '3')).toBe(50000);
+    expect(valeurParUnite(100000, '3')).toBe(33333);
+    expect(valeurParUnite(125000, '2.5')).toBe(50000);
   });
 });

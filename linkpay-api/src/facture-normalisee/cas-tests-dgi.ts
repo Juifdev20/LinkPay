@@ -196,7 +196,9 @@ export function articlesDuCas(c: CasTestDgi) {
       groupe: x.groupe,
       prixUnitaireCents: prix,
       quantite: x.quantite,
-      ...(x.taxeSpecifiqueParUniteCents ? { taxeSpecifiqueCents: Math.round(x.taxeSpecifiqueParUniteCents * q) } : {}),
+      ...(x.taxeSpecifiqueParUniteCents
+        ? { taxeSpecifiqueCents: Math.round(x.taxeSpecifiqueParUniteCents * q), taxeSpecifiqueUniteCents: x.taxeSpecifiqueParUniteCents }
+        : {}),
       ...(x.remise ? { prixOrigineCents: x.remise.prixOrigineCents, modificationPrix: x.remise.motif } : {}),
     };
   });

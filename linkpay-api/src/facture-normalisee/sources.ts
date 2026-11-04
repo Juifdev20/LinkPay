@@ -63,6 +63,7 @@ export function articlesEtPaiements(
       prixUnitaireCents: enCdf(l.prixUnitaireCents),
       quantite: String(l.quantite),
       taxeSpecifiqueCents: ts || undefined,
+      taxeSpecifiqueUniteCents: ts && p?.specific_tax_cents ? enCdf(p.specific_tax_cents) : undefined,
       uniteMesure: p?.unit_of_measure ?? undefined,
     };
   });

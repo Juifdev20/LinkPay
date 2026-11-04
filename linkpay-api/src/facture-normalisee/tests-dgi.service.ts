@@ -183,8 +183,14 @@ export class TestsDgiService {
     const existante = await this.trouver(organizationId, source);
     if (existante) {
       if (existante.status === 'confirmed' || existante.last_error_code === 'A_VERIFIER') return this.resultat(c, d.mode, existante, false);
-      const v = await this.factures.tenter(existante.id);
-      return this.resultat(c, d.mode, { ...existante, ...v }, false);
+      if (existante.status !== 'failed') {
+        // Bon provisoire ou demande en cours (réseau) : on la renvoie telle quelle.
+        const v = await this.factures.tenter(existante.id);
+        return this.resultat(c, d.mode, { ...existante, ...v }, false);
+      }
+      // Refusée par la DGI : renvoyer la même demande donnerait le même refus. On range l'ancienne (elle reste dans le
+      // journal, « abandonnée ») et on refait la facture avec la version actuelle de ScanLinkPay.
+      await this.db.from('normalized_invoices').update({ status: 'abandoned' }).eq('id', existante.id);
     }
 
     let articles: ArticleFacture[] = articlesDuCas(c);

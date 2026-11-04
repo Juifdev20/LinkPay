@@ -6,7 +6,12 @@ const ORG = '11111111-1111-1111-1111-111111111111';
 const u = { id: 'u1', role: 'enterprise' };
 
 function monter(o: { env?: 'test' | 'production'; droits?: 'gestion' | 'lecture'; factures?: Record<string, any>; lignesOrigine?: any[] } = {}) {
+  const maj: { id: string; status: string }[] = [];
   const { service } = createFakeSupabase((q: RecordedQuery) => {
+    if (q.target === 'normalized_invoices' && has(q, 'update')) {
+      maj.push({ id: q.calls.find((c) => c.method === 'eq')?.args[1], status: q.calls.find((c) => c.method === 'update')?.args[0].status });
+      return { data: null };
+    }
     if (q.target === 'normalized_invoices') {
       const src = q.calls.find((c) => c.method === 'eq' && c.args[0] === 'source_id')?.args[1];
       return { data: src ? (o.factures?.[src] ?? null) : [] };
@@ -23,7 +28,7 @@ function monter(o: { env?: 'test' | 'production'; droits?: 'gestion' | 'lecture'
   } as any;
   const gestion = { droits: jest.fn(async () => o.droits ?? 'gestion'), tauxUsd: jest.fn(async () => '2850') } as any;
   const pins = { verifyPin: jest.fn(async () => undefined) } as any;
-  return { svc: new TestsDgiService(service, factures, gestion, pins), factures, pins, gestion };
+  return { svc: new TestsDgiService(service, factures, gestion, pins), factures, pins, gestion, maj };
 }
 
 const camp = '20261103-2130';
@@ -48,10 +53,17 @@ describe('Tests DGI (service)', () => {
     const ok = monter({ factures: { [`dgi-test:${camp}:ttc:1`]: { id: 'f1', status: 'confirmed' } } });
     expect((await ok.svc.jouer(ORG, u, { campagne: camp, mode: 'ttc', num: 1 })).etat).toBe('reussi');
     expect(ok.factures.emettre).not.toHaveBeenCalled();
+    // Refusée par la DGI : on range l'ancienne facture (abandonnée) et on en refait une avec la version actuelle.
     const ko = monter({ factures: { [`dgi-test:${camp}:ttc:1`]: { id: 'f1', status: 'failed', last_error_code: 'ECART' } } });
     await ko.svc.jouer(ORG, u, { campagne: camp, mode: 'ttc', num: 1 });
-    expect(ko.factures.tenter).toHaveBeenCalledWith('f1');
-    expect(ko.factures.emettre).not.toHaveBeenCalled();
+    expect(ko.factures.tenter).not.toHaveBeenCalled();
+    expect(ko.factures.emettre).toHaveBeenCalledTimes(1);
+    expect(ko.maj).toContainEqual({ id: 'f1', status: 'abandoned' });
+    // Un bon provisoire (réseau) est simplement renvoyé, sans rien abandonner.
+    const prov = monter({ factures: { [`dgi-test:${camp}:ttc:1`]: { id: 'f1', status: 'provisional' } } });
+    await prov.svc.jouer(ORG, u, { campagne: camp, mode: 'ttc', num: 1 });
+    expect(prov.factures.tenter).toHaveBeenCalledWith('f1');
+    expect(prov.maj).toEqual([]);
   });
 
   it('avoir (cas 11) : code PIN, facture d’origine du même mode, lignes et quantités du document', async () => {

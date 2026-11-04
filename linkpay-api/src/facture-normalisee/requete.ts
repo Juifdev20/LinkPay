@@ -10,6 +10,11 @@ import { FactureAEmettre } from './validation';
 
 /** Centimes → montant décimal de l'API (2 décimales). */
 const decimal = (cents: number) => Math.round(cents) / 100;
+/** Taxe spécifique par unité (centimes, arrondie) déduite du total et de la quantité, quand l'unité n'est pas connue. */
+export const valeurParUnite = (totalCents: number, quantite: string | number): number => {
+  const q = quantiteEnMilliemes(quantite);
+  return Number((2n * BigInt(totalCents) * 1000n + q) / (2n * q));
+};
 /** Montant décimal de l'API → centimes. */
 export const enCentimes = (v: unknown): number => {
   const n = typeof v === 'string' ? Number(v.replace(',', '.')) : Number(v ?? 0);
@@ -49,7 +54,11 @@ export function construireRequete(f: FactureAEmettre, ctx: ContexteRequete): Rec
         taxGroup: a.groupe,
       };
       if (a.code?.trim()) item.code = a.code.trim().slice(0, 50);
-      if (a.taxeSpecifiqueCents) item.taxSpecificAmount = decimal(a.taxeSpecifiqueCents);
+      if (a.taxeSpecifiqueCents) {
+        // L'e-MCF veut les DEUX : le montant pour toute la quantité et la valeur par unité (erreur 22 sinon).
+        item.taxSpecificAmount = decimal(a.taxeSpecifiqueCents);
+        item.taxSpecificValue = String(decimal(a.taxeSpecifiqueUniteCents ?? valeurParUnite(a.taxeSpecifiqueCents, a.quantite)));
+      }
       if (a.prixOrigineCents !== undefined) {
         item.originalPrice = decimal(a.prixOrigineCents);
         item.priceModification = (a.modificationPrix ?? '').trim().slice(0, 60);

@@ -33,6 +33,8 @@ export interface ArticleFacture extends LigneACalculer {
   modificationPrix?: string;
   /** Avoir : la ligne de la facture d'origine remboursée. */
   ligneOrigineId?: string;
+  /** Taxe spécifique PAR UNITÉ (centimes) : l'e-MCF l'exige avec le montant total (code 22). Sinon déduite du total. */
+  taxeSpecifiqueUniteCents?: number;
 }
 
 export interface ClientFacture {
