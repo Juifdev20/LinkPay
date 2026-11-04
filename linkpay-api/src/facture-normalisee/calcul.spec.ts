@@ -79,10 +79,36 @@ describe('Facture normalisée — moteur de calcul (note de service 01/022, 1.5)
       expect(t.groupes.map((g) => g.groupe)).toEqual(['B', 'K', 'O']);
     });
 
-    it('cas de test n° 8 : la taxe spécifique entre dans la base de la TVA (1.5.10)', () => {
+    it('cas de test n° 8 : la taxe spécifique entre dans la base de la TVA et la supporte (1.5.10)', () => {
       const t = calculerTotaux([{ prixUnitaireCents: 1160, quantite: 3, groupe: 'B', taxeSpecifiqueCents: 300 }], 'ttc');
-      expect(t.groupes[0]).toMatchObject({ totalCents: 3780, baseCents: 3258, tvaCents: 522 });
+      // prix TTC 3 480 = 3 000 HT + 480 de TVA ; + 300 de taxe spécifique dans la base, taxée à 16 % (48).
+      expect(t.groupes[0]).toMatchObject({ totalCents: 3828, baseCents: 3300, tvaCents: 528 });
       expect(t.taxeSpecifiqueCents).toBe(300);
+    });
+
+    it('cas de test n° 8 : exactement les montants de l’e-MCF de test de la DGI (3 × B, 2 × C, 1 × A, taxe 500 et 200 par unité)', () => {
+      const t = calculerTotaux(
+        [
+          { prixUnitaireCents: 1160000, quantite: 3, groupe: 'B', taxeSpecifiqueCents: 150000 },
+          { prixUnitaireCents: 525000, quantite: 2, groupe: 'C', taxeSpecifiqueCents: 40000 },
+          { prixUnitaireCents: 250000, quantite: 1, groupe: 'A' },
+        ],
+        'ttc',
+      );
+      // Réponse de la DGI : tab 36540 hab 31500 vab 5040 · tac 10920 hac 10400 vac 520 · total 49960 vtotal 5560.
+      expect(t.groupes.map((g) => [g.groupe, g.totalCents, g.baseCents, g.tvaCents])).toEqual([
+        ['A', 250000, 250000, 0],
+        ['B', 3654000, 3150000, 504000],
+        ['C', 1092000, 1040000, 52000],
+      ]);
+      expect(t.totalCents).toBe(4996000);
+      expect(t.tvaCents).toBe(556000);
+    });
+
+    it('TTC et HT donnent la même facture quand les prix sont équivalents (taxe spécifique comprise)', () => {
+      const ttc = calculerTotaux([{ prixUnitaireCents: 11600, quantite: 3, groupe: 'B', taxeSpecifiqueCents: 300 }], 'ttc');
+      const ht = calculerTotaux([{ prixUnitaireCents: 10000, quantite: 3, groupe: 'B', taxeSpecifiqueCents: 300 }], 'ht');
+      expect(ttc.groupes[0]).toEqual(ht.groupes[0]);
     });
 
     it('groupe N : tout le montant est de la TVA (1.5.8)', () => {

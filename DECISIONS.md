@@ -5,6 +5,19 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 04/11/2026 — Facture normalisée DGI : premiers retours de l'e-MCF de test
+
+- Premiers essais réels sur l'e-MCF de test (e-MCF `CD01005533-1`) : les cas 1, 6, 7, 9, 10 passent d'emblée ; ce qui suit vient du cas 8.
+- **Taxe spécifique : deux champs obligatoires** (`taxSpecificAmount` pour toute la quantité **et** `taxSpecificValue` par unité, erreur DGI 22).
+  Valeur par unité envoyée telle que saisie sur le produit, sinon déduite du total.
+- **Taxe spécifique en mode TTC : la DGI l'AJOUTE à la base et la TVA s'applique aussi dessus.** Ex. 3 × B à 11 600 TTC + 500 par
+  unité : prix 34 800 = 30 000 HT + 4 800 TVA ; + 1 500 dans la base ; TVA 16 % sur 31 500 = 5 040 ; total 36 540. Nous la traitions
+  comme déjà comprise dans le prix (36 300) : écart relevé par notre comparaison avant confirmation, donc **aucune facture fausse émise**.
+  TTC et HT donnent désormais la même facture à prix équivalents. Reste à confirmer par le cas 8 en HT.
+- **Rejouer un cas refusé** : l'ancienne facture est rangée « abandonnée » avec sa raison (la base l'exige) et une nouvelle est
+  créée ; son numéro de série reste dans le journal. À signaler à la DGI à l'homologation : des numéros de test abandonnés laissent
+  des trous dans la série.
+
 ## 03/11/2026 (nuit) — Facture normalisée DGI : écran « Tests DGI » pour l'homologation
 
 - Les 29 cas de test de la DGI sont rejoués **depuis ScanLinkPay**, sur l'e-MCF de test, en TTC puis en HT : chaque cas devient une
@@ -41,7 +54,7 @@ Plan validé avec le client (`docs/FACTURE_NORMALISEE.md`, « Plan proposé ») 
   `allowed_tax_groups`. Types de facture : FV, FA (obligatoires), FT, EV, EA (et ET).
 - **Calcul (section 1.5 de la note 01/022)**, en entiers : TTC → base = plancher(total / (1 + t)), TVA = total − base ; HT → TVA =
   plafond(base × t) — « en cas d'arrondi, la taxe est arrondie à la valeur supérieure » ; la taxe spécifique entre dans la base ;
-  groupe N = tout en TVA. La lecture exacte de la règle d'arrondi et de la taxe spécifique en TTC sera **confirmée sur l'e-MCF de test** :
+  groupe N = tout en TVA. La lecture exacte de la règle d'arrondi et de la taxe spécifique en TTC a été **confirmée sur l'e-MCF de test le 04/11/2026** (voir l'entrée « Tests DGI — premiers retours ») :
   de toute façon, une facture n'est confirmée que si les montants de la DGI sont **identiques** aux nôtres (sinon CANCEL).
 - **Devises** : la facture DGI est en CDF (cas de test n° 26) ; un prix en USD est converti au taux du jour, l'équivalent USD et le
   taux figurent sur la facture, taux à 1 % du taux BCC (référence : `/api/info/currencyRates` de l'e-MCF, question posée à la DGI).

@@ -105,11 +105,12 @@ export function calculerTotaux(
     let base: bigint;
     let tva: bigint;
     if (mode === 'ttc') {
-      // Le total du groupe (prix TTC) inclut la taxe spécifique, base de la TVA (1.5.10).
-      const total = g.montant + g.specifique;
-      // base = total / (1 + t), arrondie vers le BAS pour que la taxe, elle, soit arrondie vers le HAUT (1.5.7).
-      base = divPlancher(total * 100n, 100n + t);
-      tva = total - base;
+      // Les PRIX sont TTC ; la taxe spécifique s'ajoute à la base et supporte elle aussi la TVA (1.5.10) — lecture
+      // CONFIRMÉE par l'e-MCF de test de la DGI (cas n° 8 : B 3 × 11 600 + 3 × 500 → total 36 540, base 31 500, TVA 5 040).
+      // base des prix = prix / (1 + t), arrondie vers le BAS pour que la taxe soit arrondie vers le HAUT (1.5.7).
+      const baseLignes = divPlancher(g.montant * 100n, 100n + t);
+      base = baseLignes + g.specifique;
+      tva = g.montant - baseLignes + divPlafond(g.specifique * t, 100n);
     } else {
       base = g.montant + g.specifique;
       tva = divPlafond(base * t, 100n);
