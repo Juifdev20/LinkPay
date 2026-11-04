@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, CircleDashed, Download, ExternalLink, FileText, Loader2, Play, Square, XCircle, AlertTriangle, MinusCircle } from 'lucide-react';
+import { CheckCircle2, CircleDashed, Download, ExternalLink, FileArchive, FileText, Loader2, Play, Square, XCircle, AlertTriangle, MinusCircle } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { formatCurrency } from '@/lib/utils';
+import { genererDossierTestsDgi, telechargerBlob } from '@/lib/dossier-tests-dgi';
 import { FactureNormaliseeSheet } from './FactureNormaliseeSheet';
 import { messageErreur } from './shared';
 
@@ -69,6 +70,7 @@ export function TestsDgi({ orgId }: { orgId: string }) {
   const [message, setMessage] = useState<string | null>(null);
   const [ouverte, setOuverte] = useState<string | null>(null);
   const arret = useRef(false);
+  const [dossier, setDossier] = useState<{ fait: number; total: number } | null>(null);
 
   // La campagne choisie est retenue : en revenant sur l'écran, on retrouve celle qu'on avait. Sans choix retenu, on prend la
   // plus récente — mais seulement une fois la liste À JOUR reçue (sinon une liste ancienne, vide, ferait créer une campagne neuve).
@@ -180,6 +182,28 @@ export function TestsDgi({ orgId }: { orgId: string }) {
     URL.revokeObjectURL(lien.href);
   };
 
+  const faireDossier = async () => {
+    setMessage(null);
+    setDossier({ fait: 0, total: 1 });
+    try {
+      const blob = await genererDossierTestsDgi({
+        orgId,
+        campagne,
+        nif: etat.nif,
+        cas,
+        resultats: res?.resultats ?? [],
+        charger: async (u) => (await api.get(u)).data,
+        onProgress: (fait, total) => setDossier({ fait, total }),
+      });
+      telechargerBlob(blob, `Dossier-preuves-tests-DGI-${campagne}.pdf`);
+      setMessage('Dossier de preuves téléchargé (PDF).');
+    } catch (e) {
+      setMessage(messageErreur(e, 'Le dossier n’a pas pu être généré'));
+    } finally {
+      setDossier(null);
+    }
+  };
+
   if (isLoading) return <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" />;
   if (error) return <p className="text-sm text-destructive text-center">{messageErreur(error, 'Tests DGI indisponibles')}</p>;
 
@@ -286,6 +310,10 @@ export function TestsDgi({ orgId }: { orgId: string }) {
           )}
           <Button variant="outline" onClick={exporter} disabled={!res?.resultats?.some((r) => r.facture)}>
             <Download className="mr-2 w-4 h-4" /> Récapitulatif (tableur)
+          </Button>
+          <Button variant="outline" onClick={faireDossier} disabled={dossier !== null || enCours !== null || !res?.resultats?.some((r) => r.facture)}>
+            {dossier ? <Loader2 className="mr-2 w-4 h-4 animate-spin" /> : <FileArchive className="mr-2 w-4 h-4" />}
+            {dossier ? `Dossier : ${dossier.fait} / ${dossier.total}` : 'Dossier de preuves (PDF)'}
           </Button>
           <a href={VERIFICATION_DGI} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline px-2">
             <ExternalLink className="w-4 h-4" /> Site de vérification DGI

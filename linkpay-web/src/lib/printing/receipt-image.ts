@@ -16,6 +16,11 @@ const TAILLE_QR = 200;
 const POLICE = '"Courier New", Consolas, "Liberation Mono", monospace';
 
 export async function ticketEnImage(lines: ReceiptLine[], colonnes = COLONNES): Promise<Blob> {
+  return (await ticketEnImageDetail(lines, colonnes)).blob;
+}
+
+/** L'image, et les positions (en pixels de l'image) où une ligne finit : pour découper sans couper une ligne en deux. */
+export async function ticketEnImageDetail(lines: ReceiptLine[], colonnes = COLONNES): Promise<{ blob: Blob; bornes: number[] }> {
   const rows = layout(lines, colonnes);
   const mesure = document.createElement('canvas').getContext('2d')!;
   mesure.font = `${TAILLE_POLICE}px ${POLICE}`;
@@ -36,6 +41,7 @@ export async function ticketEnImage(lines: ReceiptLine[], colonnes = COLONNES): 
   ctx.textBaseline = 'alphabetic';
 
   let y = MARGE;
+  const bornes: number[] = [];
   rows.forEach((r, i) => {
     const h = hauteurs[i];
     if (r.qr) {
@@ -64,9 +70,13 @@ export async function ticketEnImage(lines: ReceiptLine[], colonnes = COLONNES): 
       ctx.restore();
     }
     y += h;
+    bornes.push(Math.round(y * ECHELLE));
   });
 
-  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Image impossible à produire'))), 'image/png'));
+  const blob = await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Image impossible à produire'))), 'image/png'),
+  );
+  return { blob, bornes };
 }
 
 /** Enregistre l'image sur l'appareil (téléchargement du navigateur). */
