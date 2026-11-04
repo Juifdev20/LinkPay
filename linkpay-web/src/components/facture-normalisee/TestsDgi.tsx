@@ -56,8 +56,9 @@ const nouvelleCampagne = () => {
 
 export function TestsDgi({ orgId }: { orgId: string }) {
   const qc = useQueryClient();
-  const { data: etat, isLoading, error } = useQuery({
+  const { data: etat, isLoading, isFetching, error } = useQuery({
     queryKey: ['tests-dgi', orgId],
+    refetchOnMount: 'always',
     queryFn: async () => (await api.get(`/organizations/${orgId}/facture-normalisee/tests-dgi`)).data,
   });
   const [campagne, setCampagne] = useState<string>('');
@@ -69,15 +70,36 @@ export function TestsDgi({ orgId }: { orgId: string }) {
   const [ouverte, setOuverte] = useState<string | null>(null);
   const arret = useRef(false);
 
+  // La campagne choisie est retenue : en revenant sur l'écran, on retrouve celle qu'on avait. Sans choix retenu, on prend la
+  // plus récente — mais seulement une fois la liste À JOUR reçue (sinon une liste ancienne, vide, ferait créer une campagne neuve).
+  const cleStockage = `tests-dgi-campagne:${orgId}`;
+  const choisirCampagne = (c: string) => {
+    setCampagne(c);
+    try {
+      localStorage.setItem(cleStockage, c);
+    } catch {
+      /* stockage indisponible : on garde le choix en mémoire seulement */
+    }
+  };
   useEffect(() => {
-    if (etat && !campagne) setCampagne(etat.campagnes?.[0]?.campagne ?? nouvelleCampagne());
-    if (etat?.nif && !clients.nif) setClients((c) => ({ ...c, nif: etat.nif }));
-  }, [etat, campagne, clients.nif]);
+    if (!etat || isFetching) return;
+    if (!campagne) {
+      let retenue: string | null = null;
+      try {
+        retenue = localStorage.getItem(cleStockage);
+      } catch {
+        retenue = null;
+      }
+      setCampagne(retenue || etat.campagnes?.[0]?.campagne || nouvelleCampagne());
+    }
+    if (etat.nif && !clients.nif) setClients((c) => ({ ...c, nif: etat.nif }));
+  }, [etat, isFetching, campagne, clients.nif, cleStockage]);
 
   const cleResultats = ['tests-dgi-resultats', orgId, campagne];
   const { data: res } = useQuery<{ resultats: Resultat[] }>({
     queryKey: cleResultats,
     enabled: !!campagne,
+    refetchOnMount: 'always',
     queryFn: async () => (await api.get(`/organizations/${orgId}/facture-normalisee/tests-dgi/campagnes/${campagne}`)).data,
   });
   const resultats = useMemo(() => new Map((res?.resultats ?? []).filter((r) => r.mode === mode).map((r) => [r.num, r])), [res, mode]);
@@ -183,7 +205,7 @@ export function TestsDgi({ orgId }: { orgId: string }) {
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="campagne">Campagne</Label>
           <div className="flex gap-2">
-            <Select id="campagne" value={campagne} onChange={(e) => setCampagne(e.target.value)} className="flex-1">
+            <Select id="campagne" value={campagne} onChange={(e) => choisirCampagne(e.target.value)} className="flex-1">
               {!etat.campagnes.some((c: any) => c.campagne === campagne) && campagne && <option value={campagne}>{campagne} (nouvelle)</option>}
               {etat.campagnes.map((c: any) => (
                 <option key={c.campagne} value={c.campagne}>
@@ -191,7 +213,7 @@ export function TestsDgi({ orgId }: { orgId: string }) {
                 </option>
               ))}
             </Select>
-            <Button variant="outline" onClick={() => setCampagne(nouvelleCampagne())} disabled={enCours !== null}>
+            <Button variant="outline" onClick={() => choisirCampagne(nouvelleCampagne())} disabled={enCours !== null}>
               Nouvelle
             </Button>
           </div>
