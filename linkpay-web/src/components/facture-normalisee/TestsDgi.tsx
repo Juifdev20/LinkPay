@@ -313,7 +313,7 @@ export function TestsDgi({ orgId }: { orgId: string }) {
                         disabled={!etat.pret || enCours !== null || (c.avoir && !/^\d{4,6}$/.test(pin))}
                         onClick={() => jouer(c)}
                       >
-                        {r ? 'Réessayer' : 'Jouer ce cas'}
+                        {r?.facture ? 'Réessayer' : 'Jouer ce cas'}
                         {c.avoir && !/^\d{4,6}$/.test(pin) && ' (code PIN demandé)'}
                       </button>
                     )}
