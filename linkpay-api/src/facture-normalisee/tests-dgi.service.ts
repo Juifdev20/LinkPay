@@ -190,7 +190,12 @@ export class TestsDgiService {
       }
       // Refusée par la DGI : renvoyer la même demande donnerait le même refus. On range l'ancienne (elle reste dans le
       // journal, « abandonnée ») et on refait la facture avec la version actuelle de ScanLinkPay.
-      await this.db.from('normalized_invoices').update({ status: 'abandoned' }).eq('id', existante.id);
+      // La base exige une raison pour une facture abandonnée (et qu'elle n'ait pas de code DGI).
+      const { error } = await this.db
+        .from('normalized_invoices')
+        .update({ status: 'abandoned', abandoned_reason: `Cas de test DGI n° ${c.num} refusé (${existante.last_error_code ?? 'refus'}) : refait avec la version corrigée` })
+        .eq('id', existante.id);
+      if (error) throw new BadRequestException(`Impossible de ranger l'ancienne facture de test : ${error.message}`);
     }
 
     let articles: ArticleFacture[] = articlesDuCas(c);

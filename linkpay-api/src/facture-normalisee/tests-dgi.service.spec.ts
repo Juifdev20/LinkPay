@@ -9,7 +9,10 @@ function monter(o: { env?: 'test' | 'production'; droits?: 'gestion' | 'lecture'
   const maj: { id: string; status: string }[] = [];
   const { service } = createFakeSupabase((q: RecordedQuery) => {
     if (q.target === 'normalized_invoices' && has(q, 'update')) {
-      maj.push({ id: q.calls.find((c) => c.method === 'eq')?.args[1], status: q.calls.find((c) => c.method === 'update')?.args[0].status });
+      const champs = q.calls.find((c) => c.method === 'update')!.args[0];
+      // Comme la base (CHECK de la migration 090) : « abandonnée » exige une raison.
+      if (champs.status === 'abandoned' && !champs.abandoned_reason) return { error: { message: 'violates check constraint' } };
+      maj.push({ id: q.calls.find((c) => c.method === 'eq')?.args[1], status: champs.status });
       return { data: null };
     }
     if (q.target === 'normalized_invoices') {
