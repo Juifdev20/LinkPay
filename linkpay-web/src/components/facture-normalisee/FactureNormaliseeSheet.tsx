@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Loader2, Printer, RefreshCw, ShieldCheck, Undo2 } from 'lucide-react';
+import { AlertTriangle, ImageDown, Loader2, Printer, RefreshCw, ShieldCheck, Undo2 } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { FormSheet } from '@/components/FormSheet';
 import { PrintFlowStatus, ReceiptPreview, usePrintFlow } from '@/components/printing/ReceiptPrint';
 import { buildFactureNormalisee, type VueFactureNormalisee } from '@/lib/printing/build-facture-normalisee';
+import { telechargerTicket } from '@/lib/printing/receipt-image';
 import { messageErreur } from './shared';
 
 /**
@@ -108,6 +109,12 @@ export function FactureNormaliseeSheet({
               )}
               <Button className="flex-1" onClick={onClose}>Fermer</Button>
             </div>
+            <button
+              onClick={() => telechargerTicket(lines, `Facture-${f.rn.replace('/', '-')}`).catch(() => setMessage('Image impossible à produire'))}
+              className="w-full flex items-center justify-center gap-1.5 text-sm font-medium text-primary hover:underline"
+            >
+              <ImageDown className="w-4 h-4" /> Télécharger en image (sans imprimer)
+            </button>
             {avoirPossible && onAvoir && vue && (
               <button
                 onClick={() => onAvoir(vue)}

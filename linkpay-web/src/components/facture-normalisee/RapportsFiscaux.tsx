@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BarChart3, CalendarRange, Loader2, Lock, Package, Printer } from 'lucide-react';
+import { BarChart3, CalendarRange, ImageDown, Loader2, Lock, Package, Printer } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import { FormSheet } from '@/components/FormSheet';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PrintFlowStatus, ReceiptPreview, usePrintFlow } from '@/components/printing/ReceiptPrint';
 import { buildRapportFiscal, dateRapport, titreRapport, type VueRapportFiscal } from '@/lib/printing/build-rapport-fiscal';
+import { telechargerTicket } from '@/lib/printing/receipt-image';
 import { formatCurrency } from '@/lib/utils';
 import { messageErreur } from './shared';
 
@@ -202,7 +203,15 @@ function RapportSheet({ orgId, rapport, onClose }: { orgId: string; rapport: Vue
         <PrintFlowStatus flow={flow} />
         {message && <p className="text-sm text-center text-muted-foreground">{message}</p>}
         {vue && (
-          <div className="max-w-sm mx-auto flex gap-3">
+          <div className="max-w-sm mx-auto space-y-3">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => telechargerTicket(lines, `${titreRapport(vue)}-${vue.id.slice(0, 8)}`).catch(() => setMessage("Image impossible à produire"))}
+            >
+              <ImageDown className="mr-2 w-4 h-4" /> Télécharger en image (rapport entier)
+            </Button>
+            <div className="flex gap-3">
             <Button variant="outline" className="flex-1" onClick={() => imprimer.mutate()} disabled={imprimer.isPending || flow.printing || flow.picking}>
               {imprimer.isPending || flow.printing ? <Loader2 className="mr-2 w-4 h-4 animate-spin" /> : <Printer className="mr-2 w-4 h-4" />}
               {vue.duplicata || imprime ? 'Imprimer un duplicata' : 'Imprimer'}
@@ -210,6 +219,7 @@ function RapportSheet({ orgId, rapport, onClose }: { orgId: string; rapport: Vue
             <Button className="flex-1" onClick={onClose}>
               Fermer
             </Button>
+            </div>
           </div>
         )}
       </div>
