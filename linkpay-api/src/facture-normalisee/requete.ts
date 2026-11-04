@@ -73,7 +73,9 @@ export function construireRequete(f: FactureAEmettre, ctx: ContexteRequete): Rec
       type: f.client.type,
       typeDesc: LIBELLES_TYPES_CLIENT[f.client.type],
     }),
-    operator: nettoyer({ id: ctx.operateur.id, name: ctx.operateur.nom.trim().slice(0, 100) || 'Caisse' }),
+    // Le NOM seulement : l'identifiant interne (un long UUID) s'afficherait tel quel sur la facture du site de la DGI,
+    // et n'est pas sur notre facture — les deux doivent porter les mêmes données.
+    operator: { name: ctx.operateur.nom.trim().slice(0, 100) || 'Caisse' },
     ...commentaires,
   };
 

@@ -93,3 +93,15 @@ describe('Taxe spécifique : la DGI veut le montant total ET la valeur par unit�
     expect(valeurParUnite(125000, '2.5')).toBe(50000);
   });
 });
+
+describe('Opérateur envoyé à la DGI', () => {
+  it('le nom seulement, sans identifiant interne (UUID)', () => {
+    const c = CAS_TESTS_DGI[0];
+    const articles = articlesDuCas(c);
+    const r: any = construireRequete(
+      { type: c.type, mode: 'ttc', articles, client: clientDuCas(c, clients), paiements: [{ moyen: 'ESPECES', montantCents: calculerTotaux(articles, 'ttc').totalCents }], groupesAutorises: GROUPES_HOMOLOGUES },
+      { nif: 'A2216742Y', rn: '2026/1', isf: 'SLP-SFE-01', operateur: { id: '0517627c-3fa9-4ca0-85c6-5dfae953587a', nom: 'DIEUDONNE MERCI JEAN' } },
+    );
+    expect(r.operator).toEqual({ name: 'DIEUDONNE MERCI JEAN' });
+  });
+});

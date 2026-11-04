@@ -179,7 +179,7 @@ describe('La demande envoyée à la DGI (InvoiceRequestDataDto)', () => {
       curCode: 'USD',
       curDate: '2026-11-03 12:44:55',
       curRate: 2850.5,
-      operator: { id: 'u1', name: 'Jacques' },
+      operator: { name: 'Jacques' },
       client: { type: 'AO', typeDesc: 'Ambassades et organisations internationales', name: 'Ambassade' },
       payment: [{ name: 'ESPECES', amount: 285.05, currencyCode: 'USD', currencyRate: 2850.5 }],
     });
