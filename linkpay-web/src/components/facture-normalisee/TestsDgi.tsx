@@ -249,7 +249,7 @@ export function TestsDgi({ orgId }: { orgId: string }) {
         {pinRequis && (
           <div className="space-y-1.5">
             <Label htmlFor="t-pin">Code PIN (pour les avoirs)</Label>
-            <Input id="t-pin" type="password" inputMode="numeric" maxLength={6} autoComplete="off" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} />
+            <Input id="t-pin" name="tests-dgi-pin" type="password" inputMode="numeric" maxLength={6} autoComplete="new-password" data-lpignore="true" data-1p-ignore value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} />
           </div>
         )}
         <div className="flex flex-wrap gap-2">

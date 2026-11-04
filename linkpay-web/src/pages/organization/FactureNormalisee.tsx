@@ -252,7 +252,7 @@ function Parametres({ orgId }: { orgId: string }) {
           )}
           {gestion && (
             <div className="flex gap-2">
-              <Input type="password" autoComplete="off" placeholder="Coller le jeton e-MCF" value={jeton} onChange={(e) => setJeton(e.target.value)} />
+              <Input name="jeton-emcf" type="password" autoComplete="new-password" data-lpignore="true" data-1p-ignore placeholder="Coller le jeton e-MCF" value={jeton} onChange={(e) => setJeton(e.target.value)} />
               <Button onClick={() => envoyerJeton.mutate()} disabled={jeton.trim().length < 20 || envoyerJeton.isPending}>
                 {envoyerJeton.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enregistrer'}
               </Button>

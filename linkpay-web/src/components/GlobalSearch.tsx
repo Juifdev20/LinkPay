@@ -73,6 +73,8 @@ export function GlobalSearch({ items }: { items: NavItem[] }) {
       <input
         ref={inputRef}
         type="text"
+        name="recherche-page"
+        autoComplete="off"
         role="combobox"
         aria-expanded={open}
         aria-controls="global-search-results"
