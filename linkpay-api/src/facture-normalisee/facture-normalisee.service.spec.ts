@@ -1,7 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { createFakeSupabase, RecordedQuery } from '../test-utils/fake-supabase';
 import { ErreurEmcf } from './emcf.client';
-import { anneeDeGestion, FactureNormaliseeService, miseAJour } from './facture-normalisee.service';
+import { anneeDeGestion, FactureNormaliseeService, miseAJour, nettoyerJeton } from './facture-normalisee.service';
 import { JetonFiscalService } from './jeton-fiscal.service';
 
 const config = (v: Record<string, string> = {}) =>
@@ -135,5 +135,14 @@ describe('Émission : refusée tant que la facture normalisée n’est pas activ
     expect(() => s.isf('production')).toThrow('ISF');
     const s2 = new FactureNormaliseeService(createFakeSupabase(() => undefined).service, config({ EMCF_ISF: 'SLP-ABC-01' }), new JetonFiscalService(config()));
     expect(s2.isf('production')).toBe('SLP-ABC-01');
+  });
+});
+
+describe('Jeton collé depuis le portail', () => {
+  it('retire les retours à la ligne, espaces, guillemets et « Bearer »', () => {
+    expect(nettoyerJeton('  eyJhbGci.abc\n def.ghi \r\n ')).toBe('eyJhbGci.abcdef.ghi');
+    expect(nettoyerJeton('Bearer eyJ.abc.def')).toBe('eyJ.abc.def');
+    expect(nettoyerJeton('"eyJ.abc.def"')).toBe('eyJ.abc.def');
+    expect(nettoyerJeton(undefined)).toBe('');
   });
 });

@@ -63,6 +63,12 @@ const COLONNES_VUE =
 /** Une demande « en attente » sans nouvelles depuis plus longtemps que ça est reprise (l'e-MCF l'expire à 2 min). */
 const ATTENTE_BLOQUEE_MS = 3 * 60 * 1000;
 
+/**
+ * Un jeton (JWT) ne contient jamais d'espace ni de retour à la ligne : le portail l'affiche sur plusieurs lignes, et un
+ * copier-coller peut en laisser passer. On les retire, ainsi que « Bearer » et les guillemets éventuels.
+ */
+export const nettoyerJeton = (jeton: string | null | undefined) => (jeton ?? '').replace(/^\s*bearer\s+/i, '').replace(/["'\s]+/g, '');
+
 /** Année de gestion à Kinshasa (UTC+1). */
 export const anneeDeGestion = (d = new Date()) => new Date(d.getTime() + 60 * 60 * 1000).getUTCFullYear();
 
@@ -127,7 +133,7 @@ export class FactureNormaliseeService {
    * ou lié à un autre NIF, n'est pas gardé.
    */
   async enregistrerJeton(organizationId: string, jeton: string, environnement: EnvironnementEmcf, userId: string) {
-    const propre = (jeton ?? '').trim().replace(/^bearer\s+/i, '');
+    const propre = nettoyerJeton(jeton);
     if (propre.length < 20) throw new BadRequestException('Ce jeton e-MCF paraît incomplet : copiez-le en entier depuis le portail e-DEF');
     const profil = await this.profil(organizationId);
     if (!profil?.nif) throw new BadRequestException("Enregistrez d'abord le NIF de l'entreprise");
