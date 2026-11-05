@@ -43,7 +43,7 @@ export function ChampsFiscauxProduit({ valeurs, onChange }: { valeurs: ValeursFi
       <div className="space-y-1.5">
         <Label htmlFor="dgi_groupe">Groupe de taxation</Label>
         <Select id="dgi_groupe" value={valeurs.tax_group} onChange={(e) => onChange('tax_group', e.target.value)}>
-          <option value="">Groupe par défaut de l'entreprise</option>
+          <option value="">Celui de la catégorie, sinon le groupe par défaut</option>
           {GROUPES_PRODUIT.map((g) => (
             <option key={g.groupe} value={g.groupe}>
               {g.libelle}

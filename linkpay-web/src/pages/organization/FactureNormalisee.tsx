@@ -16,6 +16,7 @@ import { AvoirSheet } from '@/components/facture-normalisee/AvoirSheet';
 import { messageErreur, STATUTS, TONS } from '@/components/facture-normalisee/shared';
 import { RapportsFiscaux } from '@/components/facture-normalisee/RapportsFiscaux';
 import { TestsDgi } from '@/components/facture-normalisee/TestsDgi';
+import { GroupesParCategorie } from '@/components/facture-normalisee/GroupesParCategorie';
 import type { VueFactureNormalisee } from '@/lib/printing/build-facture-normalisee';
 
 /**
@@ -58,7 +59,7 @@ export default function FactureNormaliseePage() {
             </button>
           ))}
         </div>
-        {onglet === 'parametres' && <Parametres orgId={org.id} />}
+        {onglet === 'parametres' && <Parametres orgId={org.id} secteur={org.sector} />}
         {onglet === 'factures' && <Journal orgId={org.id} />}
         {onglet === 'rapports' && <Rapports orgId={org.id} />}
         {onglet === 'tests' && <TestsDgi orgId={org.id} />}
@@ -67,7 +68,7 @@ export default function FactureNormaliseePage() {
   );
 }
 
-function Parametres({ orgId }: { orgId: string }) {
+function Parametres({ orgId, secteur }: { orgId: string; secteur?: string | null }) {
   const qc = useQueryClient();
   const cle = ['fiscal-profil', orgId];
   const { data, isLoading, error } = useQuery({ queryKey: cle, queryFn: async () => (await api.get(`/organizations/${orgId}/facture-normalisee/profil`)).data });
@@ -223,6 +224,8 @@ function Parametres({ orgId }: { orgId: string }) {
           )}
         </CardContent>
       </Card>
+
+      <GroupesParCategorie orgId={orgId} secteur={secteur} gestion={gestion} />
 
       <Card>
         <CardHeader>

@@ -4,7 +4,8 @@ import { calculerTotaux } from './calcul';
 import { FactureNormaliseeService } from './facture-normalisee.service';
 import { GestionFiscaleService } from './gestion-fiscale.service';
 import { JetonFiscalService } from './jeton-fiscal.service';
-import { articlesEtPaiements, groupeParDefaut } from './sources';
+import { articlesEtPaiements, groupeDuProduit, groupeParDefaut } from './sources';
+import { createFakeSupabase as fakeDb, has } from '../test-utils/fake-supabase';
 
 const assujetti = { default_tax_group: null, vat_regime: 'assujetti' as const };
 const nonAssujetti = { default_tax_group: null, vat_regime: 'non_assujetti' as const };
@@ -104,5 +105,82 @@ describe('Qui peut gérer la facture normalisée', () => {
   it('refuse l’activation sans jeton e-MCF', async () => {
     const g = gestion({ organizations: { id: 'o1', owner_id: 'patron' }, fiscal_profiles: { nif: 'A2216742Y', emcf_token_encrypted: null } });
     await expect(g.activer('o1', { id: 'patron' }, true)).rejects.toThrow('jeton e-MCF');
+  });
+});
+
+describe('Le groupe de taxation d’un article : le produit, puis sa catégorie, puis l’entreprise', () => {
+  const produit = (tax_group: any, category: string | null) => ({ tax_group, category, dgi_item_type: null, dgi_item_code: null, barcode: null, specific_tax_cents: null, unit_of_measure: null });
+  const categories = { Boissons: 'B' as const, 'Fruits & légumes': 'A' as const };
+
+  it('le groupe du produit passe avant celui de sa catégorie', () => {
+    expect(groupeDuProduit(produit('C', 'Boissons'), categories, assujetti)).toBe('C');
+  });
+
+  it('sans groupe propre, le produit prend celui de sa catégorie', () => {
+    expect(groupeDuProduit(produit(null, 'Fruits & légumes'), categories, assujetti)).toBe('A');
+    expect(groupeDuProduit(produit(null, 'Boissons'), categories, nonAssujetti)).toBe('B');
+  });
+
+  it('catégorie sans groupe, ou produit libre : le groupe par défaut de l’entreprise', () => {
+    expect(groupeDuProduit(produit(null, 'Bébé'), categories, assujetti)).toBe('B');
+    expect(groupeDuProduit(produit(null, null), categories, nonAssujetti)).toBe('K');
+    expect(groupeDuProduit(null, categories, assujetti)).toBe('B');
+  });
+
+  it('dans une vente : des produits de catégories différentes donnent des groupes différents sur la même facture', () => {
+    const { articles } = articlesEtPaiements(
+      [
+        { nom: 'Jus', quantite: 1, prixUnitaireCents: 11600, produit: produit(null, 'Boissons') },
+        { nom: 'Mangues', quantite: 2, prixUnitaireCents: 2500, produit: produit(null, 'Fruits & légumes') },
+        { nom: 'Savon spécial', quantite: 1, prixUnitaireCents: 5250, produit: produit('C', 'Boissons') },
+      ],
+      [],
+      'CDF',
+      null,
+      assujetti,
+      categories,
+    );
+    expect(articles.map((a) => a.groupe)).toEqual(['B', 'A', 'C']);
+  });
+});
+
+describe('Régler le groupe d’une catégorie', () => {
+  const config = { get: (k: string) => (k === 'JWT_SECRET' ? 'x'.repeat(40) : undefined) } as unknown as ConfigService;
+  const monter = (autorises: string[] = ['A', 'B', 'C', 'E', 'H', 'K', 'O']) => {
+    const ecritures: any[] = [];
+    const { service } = fakeDb((q) => {
+      if (q.target === 'rpc:fiscal_organization_categories') return { data: [{ category: 'Boissons', products: 12 }, { category: 'Alimentation', products: 40 }] };
+      if (q.target === 'fiscal_category_groups') {
+        if (has(q, 'upsert') || has(q, 'delete')) ecritures.push(q.calls.find((c) => c.method === 'upsert' || c.method === 'delete'));
+        return { data: [{ category: 'Boissons', tax_group: 'B' }, { category: 'Ancienne catégorie', tax_group: 'A' }] };
+      }
+      if (q.target === 'fiscal_profiles') return { data: { organization_id: 'o1', enabled: true, nif: 'A2216742Y', vat_regime: 'assujetti', default_tax_group: null, allowed_tax_groups: autorises, emcf_environment: 'test' } };
+      return undefined;
+    });
+    const jetons = new JetonFiscalService(config);
+    return { g: new GestionFiscaleService(service, new FactureNormaliseeService(service, config, jetons), {} as any, {} as any), ecritures };
+  };
+  const admin = { id: 'admin1', role: 'admin' };
+
+  it('liste les catégories utilisées (avec leur nombre de produits) et celles qui ont déjà un groupe', async () => {
+    const { g } = monter();
+    const r = await g.categories('o1', admin);
+    expect(r.categories).toEqual([
+      { category: 'Alimentation', produits: 40, groupe: null },
+      { category: 'Ancienne catégorie', produits: 0, groupe: 'A' },
+      { category: 'Boissons', produits: 12, groupe: 'B' },
+    ]);
+    expect(r.groupe_par_defaut).toBe('B');
+  });
+
+  it('règle un groupe autorisé, l’enlève avec null, refuse un groupe non autorisé ou une catégorie vide', async () => {
+    const { g, ecritures } = monter();
+    await g.majGroupeCategorie('o1', admin, ' Boissons ', 'C');
+    expect(ecritures[0].method).toBe('upsert');
+    expect(ecritures[0].args[0]).toMatchObject({ organization_id: 'o1', category: 'Boissons', tax_group: 'C' });
+    await g.majGroupeCategorie('o1', admin, 'Boissons', null);
+    expect(ecritures[1].method).toBe('delete');
+    await expect(g.majGroupeCategorie('o1', admin, 'Boissons', 'D')).rejects.toThrow('pas autorisé');
+    await expect(g.majGroupeCategorie('o1', admin, '   ', 'B')).rejects.toThrow('Catégorie invalide');
   });
 });

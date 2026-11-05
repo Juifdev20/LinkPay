@@ -80,6 +80,51 @@ export class GestionFiscaleService {
     }
   }
 
+  // ------------------------------------------------------------------ groupe de taxation par catégorie
+
+  /**
+   * Les catégories de produits de l'entreprise et le groupe réglé pour chacune : celles que ses produits utilisent
+   * (avec leur nombre de produits) et celles qui ont déjà un groupe. Les catégories du secteur, pas encore utilisées, sont
+   * ajoutées par l'écran.
+   */
+  async categories(organizationId: string, u: Appelant) {
+    await this.droits(organizationId, u);
+    const [{ data: utilisees }, { data: reglees }, p] = await Promise.all([
+      this.db.rpc('fiscal_organization_categories', { p_org: organizationId }),
+      this.db.from('fiscal_category_groups').select('category, tax_group').eq('organization_id', organizationId),
+      this.factures.profil(organizationId),
+    ]);
+    const groupe = new Map<string, string>((reglees ?? []).map((r: any) => [r.category as string, r.tax_group as string]));
+    const lignes = new Map<string, { category: string; produits: number; groupe: string | null }>();
+    for (const c of (utilisees ?? []) as any[]) lignes.set(c.category, { category: c.category, produits: Number(c.products), groupe: groupe.get(c.category) ?? null });
+    for (const [category, g] of groupe) if (!lignes.has(category)) lignes.set(category, { category, produits: 0, groupe: g });
+    return {
+      categories: [...lignes.values()].sort((a, b) => a.category.localeCompare(b.category, 'fr')),
+      groupes_autorises: p?.allowed_tax_groups?.length ? p.allowed_tax_groups : GROUPES_HOMOLOGUES,
+      groupe_par_defaut: p ? (p.default_tax_group ?? (p.vat_regime === 'assujetti' ? 'B' : 'K')) : null,
+    };
+  }
+
+  /** Règle le groupe d'une catégorie (null = on l'enlève : ses produits reprennent le groupe par défaut de l'entreprise). */
+  async majGroupeCategorie(organizationId: string, u: Appelant, categorie: string, groupe: string | null) {
+    await this.exigerGestion(organizationId, u);
+    const category = (categorie ?? '').trim();
+    if (!category || category.length > 100) throw new BadRequestException('Catégorie invalide');
+    if (groupe === null) {
+      const { error } = await this.db.from('fiscal_category_groups').delete().eq('organization_id', organizationId).eq('category', category);
+      if (error) throw new BadRequestException(error.message);
+    } else {
+      const p = await this.factures.profil(organizationId);
+      const autorises = p?.allowed_tax_groups?.length ? p.allowed_tax_groups : GROUPES_HOMOLOGUES;
+      if (!(autorises as readonly string[]).includes(groupe)) throw new BadRequestException(`Le groupe ${groupe} n'est pas autorisé pour cette entreprise`);
+      const { error } = await this.db
+        .from('fiscal_category_groups')
+        .upsert({ organization_id: organizationId, category, tax_group: groupe, updated_by: u.id, updated_at: new Date().toISOString() }, { onConflict: 'organization_id,category' });
+      if (error) throw new BadRequestException(error.message);
+    }
+    return this.categories(organizationId, u);
+  }
+
   // ------------------------------------------------------------------ profil fiscal
 
   /** Le profil tel que les écrans le voient : jamais le jeton, seulement son indice. */

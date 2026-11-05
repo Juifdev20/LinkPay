@@ -41,6 +41,11 @@ class JetonDto {
   @ApiPropertyOptional({ enum: ['test', 'production'] }) @IsOptional() @IsIn(['test', 'production']) environnement?: 'test' | 'production';
 }
 
+class GroupeCategorieDto {
+  @ApiProperty({ example: 'Boissons', description: 'Catégorie telle qu’enregistrée sur les produits' }) @IsString() @MinLength(1) @MaxLength(100) categorie!: string;
+  @ApiProperty({ example: 'B', nullable: true, description: 'Groupe de taxation ; null pour l’enlever' }) @Matches(/^[A-P]$/) @IsOptional() groupe!: string | null;
+}
+
 class ActivationDto {
   @ApiProperty() @IsBoolean() actif!: boolean;
 }
@@ -159,6 +164,18 @@ export class FactureNormaliseeController {
   @ApiOperation({ summary: 'État en direct de l’e-MCF de l’entreprise' })
   etat(@Param('orgId', ParseUUIDPipe) orgId: string, @CurrentUser() u: any) {
     return this.gestion.etat(orgId, appelant(u));
+  }
+
+  @Get('categories')
+  @ApiOperation({ summary: 'Catégories de produits de l’entreprise et groupe de taxation réglé pour chacune' })
+  categories(@Param('orgId', ParseUUIDPipe) orgId: string, @CurrentUser() u: any) {
+    return this.gestion.categories(orgId, appelant(u));
+  }
+
+  @Put('categories')
+  @ApiOperation({ summary: 'Régler (ou enlever) le groupe de taxation d’une catégorie (patron, gérant)' })
+  majCategorie(@Param('orgId', ParseUUIDPipe) orgId: string, @CurrentUser() u: any, @Body() dto: GroupeCategorieDto) {
+    return this.gestion.majGroupeCategorie(orgId, appelant(u), dto.categorie, dto.groupe ?? null);
   }
 
   @Post('activation')

@@ -15,6 +15,26 @@ import type { DemandeEmission, ProfilFiscal } from './facture-normalisee.service
 export const groupeParDefaut = (p: Pick<ProfilFiscal, 'default_tax_group' | 'vat_regime'>): GroupeTaxation =>
   p.default_tax_group ?? (p.vat_regime === 'assujetti' ? 'B' : 'K');
 
+/** Le groupe de chaque catégorie de produits d'une entreprise (ex. « Boissons » → B), réglé dans les paramètres fiscaux. */
+export type GroupesCategories = Record<string, GroupeTaxation>;
+
+export async function chargerGroupesCategories(db: SupabaseClient, organizationId: string): Promise<GroupesCategories> {
+  const { data } = await db.from('fiscal_category_groups').select('category, tax_group').eq('organization_id', organizationId);
+  return Object.fromEntries((data ?? []).map((r: any) => [r.category as string, r.tax_group as GroupeTaxation]));
+}
+
+/**
+ * Le groupe de taxation d'un produit : le sien d'abord, puis celui de sa catégorie, puis le groupe par défaut de
+ * l'entreprise. Un produit libre (sans fiche) prend le groupe par défaut.
+ */
+export function groupeDuProduit(
+  p: Pick<ProduitFiscal, 'tax_group' | 'category'> | null,
+  groupesCategories: GroupesCategories,
+  profil: Pick<ProfilFiscal, 'default_tax_group' | 'vat_regime'>,
+): GroupeTaxation {
+  return p?.tax_group ?? (p?.category ? groupesCategories[p.category] : undefined) ?? groupeParDefaut(profil);
+}
+
 /** Moyens de paiement ScanLinkPay → types DGI (portefeuille et carte ScanLinkPay : question posée à la DGI). */
 const MOYENS: Record<string, MoyenPaiement> = {
   cash: 'ESPECES',
@@ -26,6 +46,7 @@ const MOYENS: Record<string, MoyenPaiement> = {
 
 interface ProduitFiscal {
   tax_group: GroupeTaxation | null;
+  category?: string | null;
   dgi_item_type: TypeArticle | null;
   dgi_item_code: string | null;
   barcode: string | null;
@@ -33,7 +54,7 @@ interface ProduitFiscal {
   unit_of_measure: string | null;
 }
 
-const COLONNES_PRODUIT = 'tax_group, dgi_item_type, dgi_item_code, barcode, specific_tax_cents, unit_of_measure';
+const COLONNES_PRODUIT = 'tax_group, category, dgi_item_type, dgi_item_code, barcode, specific_tax_cents, unit_of_measure';
 
 interface LigneVente {
   nom: string;
@@ -49,6 +70,7 @@ export function articlesEtPaiements(
   devise: 'CDF' | 'USD',
   tauxUsd: string | null,
   profil: Pick<ProfilFiscal, 'default_tax_group' | 'vat_regime'>,
+  groupesCategories: GroupesCategories = {},
 ): { articles: ArticleFacture[]; paiements: PaiementFacture[] } {
   if (devise === 'USD' && !tauxUsd) throw new BadRequestException("Taux du dollar indisponible : impossible de facturer un ticket en USD");
   const enCdf = (cents: number) => (devise === 'USD' ? usdVersCdf(cents, tauxUsd!) : cents);
@@ -59,7 +81,7 @@ export function articlesEtPaiements(
       nom: l.nom,
       code: (p?.dgi_item_code || p?.barcode || undefined) ?? undefined,
       type: p?.dgi_item_type ?? 'BIE',
-      groupe: p?.tax_group ?? groupeParDefaut(profil),
+      groupe: groupeDuProduit(p, groupesCategories, profil),
       prixUnitaireCents: enCdf(l.prixUnitaireCents),
       quantite: String(l.quantite),
       taxeSpecifiqueCents: ts || undefined,
@@ -132,6 +154,7 @@ export async function depuisTicket(
     devise,
     taux,
     profil,
+    await chargerGroupesCategories(db, merchant.organization_id),
   );
   return {
     organizationId: merchant.organization_id,
@@ -181,6 +204,7 @@ export async function depuisVente(
     devise,
     taux,
     profil,
+    await chargerGroupesCategories(db, merchant.organization_id),
   );
   return {
     organizationId: merchant.organization_id,

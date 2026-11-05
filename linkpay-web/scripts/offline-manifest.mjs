@@ -37,6 +37,7 @@ export default {
   'components/facture-normalisee/FactureNormaliseeSheet.tsx': online(FISCAL),
   'components/facture-normalisee/AvoirSheet.tsx': online(FISCAL),
   'components/facture-normalisee/TestsDgi.tsx': online("Tests DGI : chaque cas est une facture normalisée par l'e-MCF de test, en ligne."),
+  'components/facture-normalisee/GroupesParCategorie.tsx': online("Groupe de taxation par catégorie : enregistré sur le serveur et lu par le serveur à chaque facture."),
   'components/facture-normalisee/RapportsFiscaux.tsx': online("Rapports X, Z et A : calculés par le serveur à partir des factures normalisées et gardés dans le journal fiscal ; une clôture faite hors ligne ne serait pas reconnue."),
   'pages/organization/FactureNormalisee.tsx': online(FISCAL),
 

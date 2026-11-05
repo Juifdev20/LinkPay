@@ -886,3 +886,8 @@ Si le code part avant les migrations : 067 → la page manuelle reste correcte ;
   `stock_alert` / `stock_out` (sonnerie = la voix, `res/raw`).
 - **Messages d'échec Mobile Money** : `explainMobileMoneyRefusal` traduit le refus du fournisseur (solde, PIN, limite, numéro, réseau) en phrase claire avec l'opérateur du numéro ; un message qui parle du solde MARCHAND n'est pas
   attribué au payeur. Après un paiement lancé puis échoué, FlexPaie ne dit jamais POURQUOI : l'écran liste les causes usuelles, la plus probable d'abord (`mobileMoneyFailedAdvice`).
+
+## Facture normalisée — groupe de taxation par catégorie (migration 093)
+- **Ordre de décision du groupe d'un article** : groupe de la fiche produit (`stock_items.tax_group`) → groupe de sa catégorie (`fiscal_category_groups`) → groupe par défaut de l'entreprise (B si assujettie à la TVA, sinon K). Une facture déjà normalisée reste figée : changer une catégorie n'affecte que les prochaines factures.
+- Réglage unique dans Paramètres › « Groupe de taxation par catégorie » : toutes les catégories des secteurs (supermarché, électronique, téléphonie…) plus celles que les produits utilisent déjà. Réservé au droit « gestion ». Seuls les groupes autorisés par le profil fiscal sont proposés.
+- Le bon groupe de chaque produit reste de la responsabilité de l'entreprise (ou de son comptable) ; LinkPay n'en décide pas à sa place.
