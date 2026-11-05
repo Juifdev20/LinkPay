@@ -53,7 +53,7 @@ Avant de concevoir les modifications, nous souhaitons obtenir les précisions su
    taux renvoyé par l'API d'information de l'e-MCF (`/api/info/currencyRates`) ?
 
 9. **Groupes de taxation et types de factures.** Nous prévoyons de déclarer les groupes A, B, C, E, H, K et O et les
-   types de factures FV, FA, FT, EV et EA. Pouvez-vous confirmer qu'un groupe ou un type non déclaré pourra être ajouté
+   types de factures FV, FA, FT, EV, EA et ET. Pouvez-vous confirmer qu'un groupe ou un type non déclaré pourra être ajouté
    plus tard par une re-homologation limitée ?
 
 10. **Format d'impression.** Nos clients impriment sur des imprimantes thermiques de 58 et 80 mm. Ce format est-il
@@ -92,7 +92,7 @@ Veuillez agréer, Madame, Monsieur, l'expression de nos salutations distinguées
 
 ---
 
-## Courrier 3 — Dépôt du dossier d'homologation (plus tard, quand les 29 cas de test seront validés)
+## Courrier 3 — Dépôt du dossier d'homologation (plus tard, avec les autres pièces du dossier : formulaire signé, RCCM, manuels…)
 
 **À :** commissionhomologation@dgirdc.cd — et dépôt physique à la DGI, Kinshasa, avec le formulaire signé
 **Objet :** Demande d'homologation du SFE « ScanLinkPay », version [version]
@@ -108,7 +108,8 @@ Vous trouverez ci-joint :
   et l'Identification Nationale ;
 - le catalogue technique, le manuel d'utilisation, le manuel de contrôle et la brochure du produit ;
 - le tableau de conformité rempli ;
-- les 29 cas de test réalisés avec l'e-MCF de test, en mode TTC et en mode HT, avec leurs photos et les rapports X, Z et A ;
+- les cas de test réalisés avec l'e-MCF de test, en mode TTC et en mode HT (22 cas sur 29 : les 7 autres concernent des groupes de
+  taxation que nous ne déclarons pas), avec les factures, les rapports X, Z et A et le tableau de vérification sur le site de la DGI ;
 - l'accès aux fichiers d'installation (Android, Windows, navigateur).
 
 Nous nous engageons à présenter une démonstration complète devant la commission, à nous mettre en conformité totale dans
@@ -119,3 +120,60 @@ Veuillez agréer, Monsieur le Directeur Général, l'expression de notre haute c
 
 [Nom et fonction du représentant]
 [Dénomination sociale] — [Adresse] — [Téléphone] — [E-mail]
+
+---
+
+## Courrier 4 — Transmission des résultats des cas de test (prêt à envoyer)
+
+**À :** homologationsfe@dgirdc.cd
+**Cc :** assistancesfe@dgirdc.cd
+**Objet :** SFE « ScanLinkPay » — résultats des cas de test sur l'e-MCF de test (NIF A2216742Y, NID CD01005533-1)
+
+**Pièces jointes :**
+1. `Dossier-preuves-tests-DGI-20261105-1327.pdf` (43 pages) : une page par cas du document « Cas de test SFE » v1.2, avec la facture
+   normalisée en mode TTC et en mode HT côte à côte, puis les rapports X, Z et A ;
+2. `verification-DGI-44-factures.csv` : le résultat de la vérification des 44 factures sur le site de vérification de la DGI.
+
+Madame, Monsieur,
+
+La société [Dénomination sociale] (RCCM [RCCM]), fournisseur du système de facturation d'entreprise **ScanLinkPay**, a réalisé les
+cas de test de l'homologation avec l'e-MCF de test de la contribuable CONGO CONSULTING ENTREPRISE (NIF **A2216742Y**, point de
+vente « SCANLINKPAY CAISSE TEST 1 », NID **CD01005533-1**). Nous vous en transmettons les résultats.
+
+**Périmètre.** Nous déclarons les groupes de taxation **A, B, C, E, H, K et O** et les types de factures **FV, FT, FA, EV, ET et EA**.
+Conformément au guide d'homologation (un SFE ne peut être utilisé que pour les groupes et types validés), les 7 cas qui exigent
+d'autres groupes (n° 14, 18, 20, 21, 23, 24 et 28) ne sont pas présentés. Nous avons donc réalisé **22 cas sur 29, chacun en mode TTC
+et en mode HT, soit 44 factures** normalisées (campagne du 05/11/2026, factures n° 2026/000113 à 2026/000156), ainsi que les
+rapports **X, Z (n° 2) et A (n° 4)**.
+
+**Vérification.** Chacune des 44 factures a été retrouvée sur le site de vérification
+(https://developper.dgirdc.cd/sygdef/verification) à partir de son code DEF/DGI et du NID. Nous avons contrôlé la concordance du
+numéro, de la date et de l'heure, du total TTC, de la TVA, du mode de prix (TTC / HT), du type de client, de l'ISF, du NID et du
+code DEF/DGI, et, pour les avoirs, de la nature et de la référence à la facture d'origine (ou « RRR »). Les 44 sont conformes ; le
+détail figure dans le fichier joint.
+
+**Éléments à signaler.**
+- L'ISF utilisé pendant les tests est un identifiant de test (`SLP-SFE-01`) ; nous attendons l'ISF définitif à l'homologation.
+- Lors de nos essais préliminaires, quelques factures ont été refusées par l'e-MCF (par exemple pour la taxe spécifique, que
+  l'e-MCF veut avec sa valeur par unité et qui entre dans la base de la TVA en mode TTC) : nous avons corrigé notre logiciel puis
+  refait les cas. Ces essais ont consommé des numéros de la série.
+- Notre rapport A affiche « 0 (non suivi) » comme quantité en stock pour les articles de test, qui ne sont pas gérés en stock.
+
+**Questions.**
+1. **Numérotation.** Les factures refusées pendant les essais restent dans notre journal (statut « abandonnée »), ce qui laisse des
+   numéros inutilisés dans la série 2026. Est-ce acceptable en test et, en production, faut-il une règle particulière ?
+2. **Un e-MCF par point de vente.** La demande d'e-DEF porte le nom et l'adresse d'un point de vente. Une entreprise qui exploite
+   plusieurs magasins avec ScanLinkPay doit-elle demander un e-MCF (et un jeton) par magasin ?
+3. **Rapport A.** La quantité en stock est-elle attendue pour tous les articles, y compris les services et les articles non suivis
+   en stock ? Notre affichage « 0 (non suivi) » est-il acceptable ?
+4. **Rapports X et Z.** Les ventes non normalisées (bon provisoire, facture en échec) apparaissent comme « ventes incomplètes ».
+   Un Z peut-il être clôturé tant qu'il en reste ?
+5. **Suite de la procédure.** Quelles pièces restent à fournir pour l'homologation transitoire, dans quels délais et avec quels
+   frais, et quelles sont les modalités de la démonstration devant la commission ?
+
+Nous restons à votre disposition pour toute précision ou démonstration.
+
+Veuillez agréer, Madame, Monsieur, l'expression de nos salutations distinguées.
+
+[Nom et fonction du représentant]
+[Dénomination sociale] — [Téléphone] — [E-mail]
