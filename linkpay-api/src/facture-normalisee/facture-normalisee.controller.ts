@@ -178,6 +178,17 @@ export class FactureNormaliseeController {
     return this.gestion.majGroupeCategorie(orgId, appelant(u), dto.categorie, dto.groupe ?? null);
   }
 
+  @Get('historique-groupes')
+  @ApiOperation({ summary: 'Journal des changements de groupe de taxation (produits, catégories, groupe par défaut)' })
+  historiqueGroupes(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @CurrentUser() u: any,
+    @Query('limite') limite?: string,
+    @Query('debut') debut?: string,
+  ) {
+    return this.gestion.historiqueGroupes(orgId, appelant(u), Number(limite) || 100, Number(debut) || 0);
+  }
+
   @Post('activation')
   @ApiOperation({ summary: 'Activer ou désactiver la facture normalisée (patron, gérant)' })
   activer(@Param('orgId', ParseUUIDPipe) orgId: string, @CurrentUser() u: any, @Body() dto: ActivationDto) {

@@ -17,6 +17,7 @@ import { messageErreur, STATUTS, TONS } from '@/components/facture-normalisee/sh
 import { RapportsFiscaux } from '@/components/facture-normalisee/RapportsFiscaux';
 import { TestsDgi } from '@/components/facture-normalisee/TestsDgi';
 import { GroupesParCategorie } from '@/components/facture-normalisee/GroupesParCategorie';
+import { HistoriqueGroupes } from '@/components/facture-normalisee/HistoriqueGroupes';
 import type { VueFactureNormalisee } from '@/lib/printing/build-facture-normalisee';
 
 /**
@@ -226,6 +227,7 @@ function Parametres({ orgId, secteur }: { orgId: string; secteur?: string | null
       </Card>
 
       <GroupesParCategorie orgId={orgId} secteur={secteur} gestion={gestion} />
+      <HistoriqueGroupes orgId={orgId} />
 
       <Card>
         <CardHeader>

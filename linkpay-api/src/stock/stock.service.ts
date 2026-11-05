@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException, HttpException, Logger } from '@nestjs/common';
+import { journaliserGroupe } from '../facture-normalisee/historique-groupes';
 import { randomUUID } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
 import { OrganizationsService } from '../organizations/organizations.service';
@@ -195,6 +196,17 @@ export class StockService {
       this.throwIfDuplicate(error);
       throw new Error(`Failed to create stock item: ${error.message}`);
     }
+    if (merchant.organization_id) {
+      await journaliserGroupe(this.supabaseService.getClient(), {
+        organizationId: merchant.organization_id,
+        scope: 'product',
+        subjectId: item.id,
+        subjectLabel: item.name,
+        ancien: null,
+        nouveau: item.tax_group,
+        par: callerId,
+      });
+    }
     return (await this.withSupplierNames([item]))[0];
   }
 
@@ -322,6 +334,17 @@ export class StockService {
     const changes: Record<string, { from: unknown; to: unknown }> = {};
     for (const key of Object.keys(filtered)) {
       if (JSON.stringify(current[key]) !== JSON.stringify(filtered[key])) changes[key] = { from: current[key], to: filtered[key] };
+    }
+    if (merchant.organization_id && 'tax_group' in filtered) {
+      await journaliserGroupe(this.supabaseService.getClient(), {
+        organizationId: merchant.organization_id,
+        scope: 'product',
+        subjectId: itemId,
+        subjectLabel: data.name ?? current.name,
+        ancien: current.tax_group,
+        nouveau: filtered.tax_group,
+        par: callerId,
+      });
     }
     if (Object.keys(changes).length > 0) {
       await this.auditService.log({

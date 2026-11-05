@@ -18,6 +18,7 @@ import {
   TypeFacture,
 } from './groupes';
 import { montantEnLettres } from './montant-en-lettres';
+import { journaliserGroupe } from './historique-groupes';
 import { depuisTicket, depuisVente } from './sources';
 import { ArticleFacture, ClientFacture, NIF_VALIDE, PaiementFacture } from './validation';
 
@@ -110,6 +111,7 @@ export class GestionFiscaleService {
     await this.exigerGestion(organizationId, u);
     const category = (categorie ?? '').trim();
     if (!category || category.length > 100) throw new BadRequestException('Catégorie invalide');
+    const { data: avant } = await this.db.from('fiscal_category_groups').select('tax_group').eq('organization_id', organizationId).eq('category', category).maybeSingle();
     if (groupe === null) {
       const { error } = await this.db.from('fiscal_category_groups').delete().eq('organization_id', organizationId).eq('category', category);
       if (error) throw new BadRequestException(error.message);
@@ -122,7 +124,40 @@ export class GestionFiscaleService {
         .upsert({ organization_id: organizationId, category, tax_group: groupe, updated_by: u.id, updated_at: new Date().toISOString() }, { onConflict: 'organization_id,category' });
       if (error) throw new BadRequestException(error.message);
     }
+    await journaliserGroupe(this.db, { organizationId, scope: 'category', subjectId: category, subjectLabel: category, ancien: avant?.tax_group, nouveau: groupe, par: u.id });
     return this.categories(organizationId, u);
+  }
+
+  /** Le journal des changements de groupe (les plus récents d'abord), avec le nom de la personne. Patron, gérants et comptable. */
+  async historiqueGroupes(organizationId: string, u: Appelant, limite = 100, debut = 0) {
+    await this.droits(organizationId, u);
+    const n = Math.min(Math.max(Math.trunc(limite) || 100, 1), 200);
+    const de = Math.max(Math.trunc(debut) || 0, 0);
+    const { data, error, count } = await this.db
+      .from('fiscal_group_history')
+      .select('id, scope, subject_id, subject_label, old_group, new_group, changed_by, changed_at', { count: 'exact' })
+      .eq('organization_id', organizationId)
+      .order('changed_at', { ascending: false })
+      .range(de, de + n - 1);
+    if (error) throw new BadRequestException(error.message);
+    const ids = [...new Set((data ?? []).map((l: any) => l.changed_by).filter(Boolean))] as string[];
+    const noms = new Map<string, string>();
+    if (ids.length) {
+      const { data: profils } = await this.db.from('profiles').select('id, full_name').in('id', ids);
+      for (const p of profils ?? []) noms.set(p.id as string, ((p.full_name as string) ?? '').trim());
+    }
+    return {
+      total: count ?? 0,
+      lignes: (data ?? []).map((l: any) => ({
+        id: l.id as string,
+        portee: l.scope as 'product' | 'category' | 'default',
+        sujet: (l.subject_label as string | null) ?? null,
+        ancien: (l.old_group as string | null) ?? null,
+        nouveau: (l.new_group as string | null) ?? null,
+        par: l.changed_by ? noms.get(l.changed_by as string) || 'Utilisateur inconnu' : 'Inconnu',
+        le: l.changed_at as string,
+      })),
+    };
   }
 
   // ------------------------------------------------------------------ profil fiscal
@@ -205,6 +240,15 @@ export class GestionFiscaleService {
       ? await this.db.from('fiscal_profiles').update(champs).eq('organization_id', organizationId)
       : await this.db.from('fiscal_profiles').insert({ organization_id: organizationId, ...champs });
     if (error) throw new BadRequestException(error.message);
+    if (d.default_tax_group !== undefined) {
+      await journaliserGroupe(this.db, {
+        organizationId,
+        scope: 'default',
+        ancien: actuel?.default_tax_group,
+        nouveau: d.default_tax_group || null,
+        par: u.id,
+      });
+    }
     return this.voirProfil(organizationId, u);
   }
 
