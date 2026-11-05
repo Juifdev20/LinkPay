@@ -170,15 +170,21 @@ export async function genererDossierTestsDgi(o: OptionsDossier): Promise<Blob> {
     `e-MCF de test : ${nim || '-'}   Campagne : ${o.campagne}`,
     `Document généré le ${date}`,
   ];
-  infos.forEach((l, i) => doc.text(t(l), MARGE, 32 + i * 6));
+  // Une ligne trop longue (raison sociale complète) passe à la suivante au lieu de sortir de la page.
+  let yInfo = 32;
+  for (const l of infos) {
+    const morceaux = doc.splitTextToSize(t(l), A4.l - MARGE * 2) as string[];
+    doc.text(morceaux, MARGE, yInfo);
+    yInfo += morceaux.length * 5.2 + 1;
+  }
   const reussisTtc = reussies.filter((r) => r.mode === 'ttc').length;
   const reussisHt = reussies.filter((r) => r.mode === 'ht').length;
   const perimetre = o.cas.filter((c) => !c.hors_perimetre).length;
   doc.setFont('helvetica', 'bold');
-  doc.text(t(`Cas du périmètre réussis : TTC ${reussisTtc} / ${perimetre}   -   HT ${reussisHt} / ${perimetre}`), MARGE, 62);
+  doc.text(t(`Cas du périmètre réussis : TTC ${reussisTtc} / ${perimetre}   -   HT ${reussisHt} / ${perimetre}`), MARGE, yInfo + 8);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  let y = 72;
+  let y = yInfo + 18;
   doc.setFont('helvetica', 'bold');
   doc.text('Cas', MARGE, y);
   doc.text('Description', MARGE + 12, y);
