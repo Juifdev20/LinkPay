@@ -17,6 +17,7 @@ function setup(opts: {
   ownerId?: string;
   subError?: boolean;
   orgs?: any[];
+  purchases?: any[];
 } = {}) {
   const writes: RecordedQuery[] = [];
   const prices = opts.prices ?? { CDF: 1_500_000, USD: 1000 };
@@ -42,6 +43,8 @@ function setup(opts: {
         const has = opts.expiresAt !== undefined && opts.expiresAt !== null || opts.trialLastReminder !== undefined;
         return { data: isSingle ? (opts.expiresAt ? row : null) : has || opts.expiresAt ? [row] : [] };
       }
+      case 'subscription_purchases':
+        return { data: opts.purchases ?? [] };
       default: return { data: [] };
     }
   });
@@ -296,5 +299,72 @@ describe('SubscriptionGuard', () => {
     await guard.canActivate(ctx({ role: 'super_admin' }, { id: 'o1' }));
     expect(subscriptions.assertAccess).not.toHaveBeenCalled();
     expect(await make(undefined).guard.canActivate(ctx({ role: 'enterprise' }, { id: 'o1' }))).toBe(true);
+  });
+});
+
+describe('Activation manuelle par le super admin', () => {
+  const ORG = '11111111-1111-1111-1111-111111111111';
+
+  it('active N jours : appelle la fonction atomique, prévient le patron, vide le cache', async () => {
+    const calls: any[] = [];
+    const { service, notifications } = setup({ rpc: (a) => { calls.push(a); return { data: [{ new_expires_at: '2026-07-15T10:00:00Z' }] }; } });
+    await service.getState('org1', NOW); // remplit le cache
+    const r = await service.grant('admin1', 'org1', { amount: 30, unit: 'days', reason: ' test DGI ' });
+    expect(calls[0]).toEqual({ p_org: 'org1', p_admin: 'admin1', p_amount: 30, p_unit: 'days', p_reason: 'test DGI' });
+    expect(r).toMatchObject({ organization_id: 'org1', expires_at: '2026-07-15T10:00:00Z' });
+    expect(notifications.create).toHaveBeenCalledWith(expect.objectContaining({ user_id: 'boss', type: 'subscription', title: 'Abonnement activé' }));
+    expect(notifications.create.mock.calls[0][0].body).toContain('juillet 2026');
+  });
+
+  it('une erreur de la base devient un message clair', async () => {
+    const { service } = setup({ rpc: () => ({ error: { message: 'GRANT_INVALID_AMOUNT' } }) });
+    await expect(service.grant('admin1', 'org1', { amount: 9999, unit: 'days' })).rejects.toThrow('Durée invalide');
+    const b = setup({ rpc: () => ({ error: { message: 'REVOKE_NOTHING_TO_REVOKE' } }) });
+    await expect(b.service.revoke('admin1', 'org1', {})).rejects.toThrow("n'a pas d'abonnement en cours");
+  });
+
+  it('désactiver un abonnement PAYÉ demande une confirmation explicite', async () => {
+    const rpc = jest.fn(() => ({ data: [{ previous_expires_at: '2026-07-01T00:00:00Z', new_expires_at: '2026-06-15T10:00:00Z' }] }));
+    const { service, notifications } = setup({ purchases: [{ id: 'p1' }], rpc });
+    await expect(service.revoke('admin1', 'org1', {})).rejects.toMatchObject({ response: expect.objectContaining({ code: 'ABONNEMENT_PAYE' }) });
+    expect(rpc).not.toHaveBeenCalled();
+    const r = await service.revoke('admin1', 'org1', { confirm_paid: true, reason: 'remboursé' });
+    expect(rpc).toHaveBeenCalledWith({ p_org: 'org1', p_admin: 'admin1', p_reason: 'remboursé' });
+    expect(r.previous_expires_at).toBe('2026-07-01T00:00:00Z');
+    expect(notifications.create).toHaveBeenCalledWith(expect.objectContaining({ title: 'Abonnement désactivé' }));
+  });
+
+  it('un abonnement offert (sans paiement) se désactive sans confirmation', async () => {
+    const rpc = jest.fn(() => ({ data: [{ previous_expires_at: '2026-07-01T00:00:00Z' }] }));
+    const { service } = setup({ purchases: [], rpc });
+    await service.revoke('admin1', 'org1', {});
+    expect(rpc).toHaveBeenCalled();
+  });
+
+  it('la liste donne le statut de chaque entreprise', async () => {
+    const orgs = [
+      { id: 'a', name: 'Alpha', owner_id: 'o1', validated_at: '2026-01-01T00:00:00Z', created_at: '2026-01-01T00:00:00Z' }, // essai fini, jamais payé
+      { id: 'b', name: 'Beta', owner_id: 'o2', validated_at: '2026-01-01T00:00:00Z', created_at: '2026-01-01T00:00:00Z' }, // abonnement en cours
+      { id: 'c', name: 'Gamma', owner_id: 'o3', validated_at: '2026-06-10T00:00:00Z', created_at: '2026-06-10T00:00:00Z' }, // essai en cours
+    ];
+    const fake = createFakeSupabase((q) => {
+      switch (q.target) {
+        case 'organizations': return { data: orgs, count: 3 };
+        case 'subscription_settings': return { data: { trial_days: 30, trial_end_mode: 'read_only', expiry_mode: 'blocked', reminder_days: [7, 3, 1] } };
+        case 'subscription_prices': return { data: [] };
+        case 'organization_subscriptions': return { data: [{ organization_id: 'b', expires_at: '2026-07-01T00:00:00Z' }] };
+        case 'subscription_purchases': return { data: [{ organization_id: 'b', expires_at: '2026-07-01T00:00:00Z' }] };
+        case 'profiles': return { data: [{ id: 'o1', full_name: 'Marie' }] };
+        default: return { data: [] };
+      }
+    });
+    const service = new SubscriptionsService(fake.service, { create: jest.fn() } as any, { log: jest.fn() } as any, {} as any, {} as any);
+    const r = await service.adminOrganizations({ search: '50%_' }, NOW);
+    expect(r.total).toBe(3);
+    expect(r.organizations.map((o) => [o.name, o.status])).toEqual([['Alpha', 'none'], ['Beta', 'active'], ['Gamma', 'trial']]);
+    expect(r.organizations[0].owner_name).toBe('Marie');
+    expect(r.organizations[1]).toMatchObject({ paid_until: '2026-07-01T00:00:00Z' });
+    const filtre = fake.queries.find((x) => x.target === 'organizations')!.calls.find((c) => c.method === 'ilike')!;
+    expect(filtre.args[1]).toBe('%50\\%\\_%'); // % et _ du texte cherché ne sont pas des jokers
   });
 });

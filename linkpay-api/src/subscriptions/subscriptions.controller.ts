@@ -1,6 +1,7 @@
-import { BadRequestException, Body, Controller, Get, Headers, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -89,6 +90,25 @@ export class PricesDto {
   @IsOptional() prices?: Record<string, number | null>;
 }
 
+export class GrantDto {
+  @ApiProperty({ description: 'Nombre de jours (1 à 730) ou de mois (1 à 24)', example: 30 })
+  @Type(() => Number) @IsInt() @Min(1) @Max(730) amount!: number;
+  @ApiProperty({ enum: ['days', 'months'] }) @IsIn(['days', 'months']) unit!: 'days' | 'months';
+  @ApiProperty({ required: false, description: "Motif (test, geste commercial, dépannage…)" }) @IsOptional() @IsString() @MaxLength(200) reason?: string;
+}
+
+export class RevokeDto {
+  @IsOptional() @IsString() @MaxLength(200) reason?: string;
+  @ApiProperty({ required: false, description: "Obligatoire si l'entreprise a payé un abonnement qui court encore" })
+  @IsOptional() @IsBoolean() confirm_paid?: boolean;
+}
+
+export class ListOrganizationsDto {
+  @IsOptional() @IsString() @MaxLength(80) search?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) offset?: number;
+}
+
 const validPrices = (prices?: Record<string, number | null>) => {
   for (const v of Object.values(prices || {})) {
     if (v !== null && (!Number.isInteger(v) || v < 1 || v > 1_000_000_000_000)) {
@@ -129,5 +149,39 @@ export class SubscriptionsAdminController {
     await this.audit.log({ user_id: adminId, action: 'subscription_price_updated', entity_type: 'subscription_prices', entity_id: 'month', changes: result });
     await this.alerts.alert({ severity: 'warning', title: "Prix de l'abonnement modifié", body: `Modifié par ${adminId}.`, data: result as any });
     return result.after;
+  }
+
+  // ------------------------------------------------------------------ activation manuelle (essais, dépannage, gestes commerciaux)
+
+  @Get('organizations')
+  @ApiOperation({ summary: 'Entreprises avec leur abonnement (recherche par nom)' })
+  organizations(@Query() q: ListOrganizationsDto) {
+    return this.subscriptions.adminOrganizations(q);
+  }
+
+  @Get('organizations/:id')
+  @ApiOperation({ summary: "Une entreprise : état, activations manuelles et paiements" })
+  organization(@Param('id', ParseUUIDPipe) id: string) {
+    return this.subscriptions.adminOrganizationDetail(id);
+  }
+
+  @Post('organizations/:id/grant')
+  @RequireOtp()
+  @ApiOperation({ summary: "Active l'abonnement d'une entreprise pour N jours ou N mois, sans paiement" })
+  async grant(@Param('id', ParseUUIDPipe) id: string, @Body() dto: GrantDto, @CurrentUser('id') adminId: string) {
+    const result = await this.subscriptions.grant(adminId, id, dto);
+    await this.audit.log({ user_id: adminId, action: 'subscription_granted', entity_type: 'organization', entity_id: id, changes: { amount: dto.amount, unit: dto.unit, reason: dto.reason ?? null, expires_at: result.expires_at } });
+    await this.alerts.alert({ severity: 'warning', title: 'Abonnement activé à la main', body: `${result.name} : ${dto.amount} ${dto.unit === 'days' ? 'jour(s)' : 'mois'} offerts par ${adminId}.`, data: { organization_id: id, ...dto, expires_at: result.expires_at } as any });
+    return result;
+  }
+
+  @Post('organizations/:id/revoke')
+  @RequireOtp()
+  @ApiOperation({ summary: "Désactive l'abonnement en cours d'une entreprise (elle pourra en acheter un)" })
+  async revoke(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RevokeDto, @CurrentUser('id') adminId: string) {
+    const result = await this.subscriptions.revoke(adminId, id, dto);
+    await this.audit.log({ user_id: adminId, action: 'subscription_revoked', entity_type: 'organization', entity_id: id, changes: { reason: dto.reason ?? null, previous_expires_at: result.previous_expires_at, confirmed_paid: !!dto.confirm_paid } });
+    await this.alerts.alert({ severity: 'warning', title: 'Abonnement désactivé à la main', body: `${result.name} : désactivé par ${adminId}.`, data: { organization_id: id, previous_expires_at: result.previous_expires_at } as any });
+    return result;
   }
 }

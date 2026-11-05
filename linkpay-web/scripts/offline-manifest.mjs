@@ -115,6 +115,7 @@ export default {
   'pages/admin/RiskLogs.tsx': online(ADMIN),
   'pages/admin/Settlements.tsx': online(ADMIN),
   'pages/admin/Subscriptions.tsx': online(ADMIN),
+  'pages/admin/OrganizationAccessCard.tsx': online(ADMIN),
   'pages/admin/SupplierPlanAdmin.tsx': online(ADMIN),
   'pages/admin/Treasury.tsx': online(ADMIN),
   'pages/admin/Users.tsx': online(ADMIN),

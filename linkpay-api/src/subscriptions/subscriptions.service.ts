@@ -139,6 +139,38 @@ export class SubscriptionsService {
     this.cache.delete(orgId);
   }
 
+  /** The state of one business from its data (shared by getState and the super admin list). */
+  private stateOf(
+    orgId: string,
+    org: { validated_at?: string | null; created_at: string },
+    settings: SubscriptionSettings,
+    prices: Record<string, number>,
+    expiresAt: string | null,
+    now: number,
+  ): SubscriptionState {
+    // The trial starts when the business was validated, but never before billing started (see billing_starts_at).
+    const trialStart = Math.max(
+      new Date(org.validated_at || org.created_at).getTime(),
+      settings.billing_starts_at ? new Date(settings.billing_starts_at).getTime() : 0,
+    );
+    const trialEnd = trialStart + settings.trial_days * DAY_MS;
+    const trialActive = now < trialEnd;
+    const expiry = expiresAt ? new Date(expiresAt).getTime() : undefined;
+    const running = expiry !== undefined && expiry > now;
+    const status: SubscriptionStatus = running ? 'active' : trialActive ? 'trial' : expiry !== undefined ? 'expired' : 'none';
+
+    return {
+      organization_id: orgId,
+      status,
+      mode: status === 'expired' ? settings.expiry_mode : settings.trial_end_mode,
+      expires_at: expiry !== undefined ? new Date(expiry).toISOString() : null,
+      days_left: running ? Math.max(1, daysBetween(expiry!, now)) : null,
+      trial: { ends_at: new Date(trialEnd).toISOString(), active: trialActive, days_left: Math.max(0, daysBetween(trialEnd, now)) },
+      settings: { trial_end_mode: settings.trial_end_mode, expiry_mode: settings.expiry_mode },
+      prices,
+    };
+  }
+
   async getState(orgId: string, now = Date.now()): Promise<SubscriptionState> {
     const hit = this.cache.get(orgId);
     if (hit && now - hit.at < CACHE_TTL_MS) return hit.state;
@@ -153,29 +185,7 @@ export class SubscriptionsService {
     // that would cut every existing business off. Throwing lets assertAccess let the request through.
     if (settingsRes.error) throw new Error(`subscription_settings unreadable: ${settingsRes.error.message}`);
     if (subRes.error) throw new Error(`organization_subscriptions unreadable: ${subRes.error.message}`);
-    const settings = this.toSettings(settingsRes.data);
-
-    // The trial starts when the business was validated, but never before billing started (see billing_starts_at).
-    const trialStart = Math.max(
-      new Date(org.validated_at || org.created_at).getTime(),
-      settings.billing_starts_at ? new Date(settings.billing_starts_at).getTime() : 0,
-    );
-    const trialEnd = trialStart + settings.trial_days * DAY_MS;
-    const trialActive = now < trialEnd;
-    const expiry = subRes.data?.expires_at ? new Date(subRes.data.expires_at).getTime() : undefined;
-    const running = expiry !== undefined && expiry > now;
-    const status: SubscriptionStatus = running ? 'active' : trialActive ? 'trial' : expiry !== undefined ? 'expired' : 'none';
-
-    const state: SubscriptionState = {
-      organization_id: orgId,
-      status,
-      mode: status === 'expired' ? settings.expiry_mode : settings.trial_end_mode,
-      expires_at: expiry !== undefined ? new Date(expiry).toISOString() : null,
-      days_left: running ? Math.max(1, daysBetween(expiry!, now)) : null,
-      trial: { ends_at: new Date(trialEnd).toISOString(), active: trialActive, days_left: Math.max(0, daysBetween(trialEnd, now)) },
-      settings: { trial_end_mode: settings.trial_end_mode, expiry_mode: settings.expiry_mode },
-      prices,
-    };
+    const state = this.stateOf(orgId, org, this.toSettings(settingsRes.data), prices, subRes.data?.expires_at ?? null, now);
     remember(this.cache, orgId, { at: now, state });
     return state;
   }
@@ -425,5 +435,139 @@ export class SubscriptionsService {
     }
     this.cache.clear();
     return { before, after: await this.getPrices() };
+  }
+
+  // ------------------------------------------------------------------ super admin : activer / désactiver à la main
+
+  /** Businesses with their subscription state, to find one and activate or deactivate it. */
+  async adminOrganizations(q: { search?: string; limit?: number; offset?: number }, now = Date.now()) {
+    const limit = Math.min(Math.max(Math.trunc(q.limit ?? 30), 1), 100);
+    const offset = Math.max(Math.trunc(q.offset ?? 0), 0);
+    let query = this.db
+      .from('organizations')
+      .select('id, name, owner_id, validated_at, created_at', { count: 'exact' })
+      .order('name')
+      .range(offset, offset + limit - 1);
+    const search = (q.search ?? '').trim().slice(0, 80);
+    if (search) query = query.ilike('name', `%${search.replace(/[%_\\]/g, '\\$&')}%`);
+    const { data: orgs, count, error } = await query;
+    if (error) throw new BadRequestException(error.message);
+    const list = (orgs ?? []) as any[];
+    const ids = list.map((o) => o.id);
+    const ownerIds = [...new Set(list.map((o) => o.owner_id).filter(Boolean))];
+    const nowIso = new Date(now).toISOString();
+
+    const [settings, prices, subs, paid, owners] = await Promise.all([
+      this.getSettings(),
+      this.getPrices(),
+      ids.length ? this.db.from('organization_subscriptions').select('organization_id, expires_at').in('organization_id', ids) : { data: [] as any[] },
+      ids.length ? this.db.from('subscription_purchases').select('organization_id, expires_at').in('organization_id', ids).gt('expires_at', nowIso) : { data: [] as any[] },
+      ownerIds.length ? this.db.from('profiles').select('id, full_name').in('id', ownerIds) : { data: [] as any[] },
+    ]);
+    const expiresOf = new Map<string, string | null>(((subs as any).data ?? []).map((r: any) => [r.organization_id, r.expires_at as string | null]));
+    const paidUntil = new Map<string, string>();
+    for (const r of ((paid as any).data ?? []) as any[]) {
+      if (!paidUntil.has(r.organization_id) || r.expires_at > paidUntil.get(r.organization_id)!) paidUntil.set(r.organization_id, r.expires_at);
+    }
+    const ownerName = new Map<string, string | null>(((owners as any).data ?? []).map((o: any) => [o.id, o.full_name as string | null]));
+
+    return {
+      total: count ?? list.length,
+      organizations: list.map((o) => {
+        const st = this.stateOf(o.id, o, settings, prices, expiresOf.get(o.id) ?? null, now);
+        return {
+          id: o.id,
+          name: o.name,
+          owner_name: ownerName.get(o.owner_id) ?? null,
+          status: st.status,
+          expires_at: st.expires_at,
+          days_left: st.days_left,
+          trial_ends_at: st.trial.ends_at,
+          trial_active: st.trial.active,
+          /** The latest end of a subscription the business PAID for, if it still runs. */
+          paid_until: paidUntil.get(o.id) ?? null,
+        };
+      }),
+    };
+  }
+
+  /** One business: its state, the manual activations / deactivations and its payments. */
+  async adminOrganizationDetail(orgId: string) {
+    await this.loadOrg(orgId);
+    const [state, grants, purchases] = await Promise.all([
+      this.getState(orgId),
+      this.db.from('subscription_grants').select('id, action, amount, unit, previous_expires_at, new_expires_at, reason, created_at, granted_by').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(20),
+      this.db.from('subscription_purchases').select('id, months, currency, amount_cents, starts_at, expires_at, created_at').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(10),
+    ]);
+    return { state, grants: grants.data ?? [], purchases: purchases.data ?? [] };
+  }
+
+  private rpcError(error: { message?: string }): Error {
+    const m = error.message ?? '';
+    if (m.includes('GRANT_ORG_NOT_FOUND')) return new NotFoundException('Entreprise introuvable');
+    if (m.includes('GRANT_INVALID_AMOUNT')) return new BadRequestException('Durée invalide : 1 à 730 jours, ou 1 à 24 mois.');
+    if (m.includes('GRANT_INVALID_UNIT')) return new BadRequestException("L'unité doit être « jours » ou « mois ».");
+    if (m.includes('REVOKE_NOTHING_TO_REVOKE')) return new BadRequestException("Cette entreprise n'a pas d'abonnement en cours à désactiver.");
+    return new BadRequestException(m || 'Opération impossible');
+  }
+
+  private dateFr(iso: string) {
+    return new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'Africa/Kinshasa', day: 'numeric', month: 'long', year: 'numeric' });
+  }
+
+  /** Gives N days (or months) of subscription without payment: adds to the current end, or restarts from now. */
+  async grant(adminId: string, orgId: string, dto: { amount: number; unit: 'days' | 'months'; reason?: string }) {
+    const org = await this.loadOrg(orgId);
+    const before = await this.getState(orgId).catch(() => null);
+    const { data, error } = await this.db.rpc('grant_subscription', {
+      p_org: orgId, p_admin: adminId, p_amount: dto.amount, p_unit: dto.unit, p_reason: (dto.reason ?? '').trim().slice(0, 200),
+    });
+    if (error) throw this.rpcError(error);
+    this.invalidate(orgId);
+    const expiresAt: string | undefined = (Array.isArray(data) ? data[0] : data)?.new_expires_at;
+    if (expiresAt && org.owner_id) {
+      await this.notifications
+        .create({
+          user_id: org.owner_id,
+          type: 'subscription',
+          title: 'Abonnement activé',
+          body: `Votre abonnement est actif jusqu'au ${this.dateFr(expiresAt)}.`,
+          data: { organization_id: orgId, expires_at: expiresAt },
+        })
+        .catch((e: Error) => this.logger.warn(`Notification d'activation non envoyée : ${e.message}`));
+    }
+    return { organization_id: orgId, name: org.name, expires_at: expiresAt ?? null, before: before?.status ?? null, state: await this.getState(orgId) };
+  }
+
+  /**
+   * Ends the running subscription now; the business can then subscribe normally. A subscription the business PAID for
+   * is only ended on explicit confirmation (it loses what it paid).
+   */
+  async revoke(adminId: string, orgId: string, dto: { reason?: string; confirm_paid?: boolean }) {
+    const org = await this.loadOrg(orgId);
+    const { data: paid } = await this.db.from('subscription_purchases').select('id').eq('organization_id', orgId).gt('expires_at', new Date().toISOString()).limit(1);
+    if ((paid?.length ?? 0) > 0 && !dto.confirm_paid) {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'ABONNEMENT_PAYE',
+        message: "Cette entreprise a payé un abonnement qui court encore : le désactiver lui fait perdre ce qu'elle a payé. Confirmez pour continuer.",
+      });
+    }
+    const { data, error } = await this.db.rpc('revoke_subscription', { p_org: orgId, p_admin: adminId, p_reason: (dto.reason ?? '').trim().slice(0, 200) });
+    if (error) throw this.rpcError(error);
+    this.invalidate(orgId);
+    const row = Array.isArray(data) ? data[0] : data;
+    if (org.owner_id) {
+      await this.notifications
+        .create({
+          user_id: org.owner_id,
+          type: 'subscription',
+          title: 'Abonnement désactivé',
+          body: 'Votre abonnement a été désactivé. Vous pouvez en acheter un depuis votre espace pour reprendre.',
+          data: { organization_id: orgId },
+        })
+        .catch((e: Error) => this.logger.warn(`Notification de désactivation non envoyée : ${e.message}`));
+    }
+    return { organization_id: orgId, name: org.name, previous_expires_at: row?.previous_expires_at ?? null, state: await this.getState(orgId) };
   }
 }

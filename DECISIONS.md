@@ -5,6 +5,21 @@ Journal des décisions non triviales, les plus récentes en haut. À lire avant 
 
 ---
 
+## 05/11/2026 — Abonnement : activation et désactivation manuelles par le super admin
+
+- **Pourquoi** : tester (facture normalisée, caisse) une entreprise dont l'essai est fini sans acheter un abonnement. Écran
+  « Abonnements » du super admin → carte « Activer une entreprise à la main » : recherche par nom, **Activer** (N jours ou N mois,
+  sans paiement), **Désactiver**.
+- **Règles** : les jours **s'ajoutent à la fin en cours**, ou repartent de maintenant si l'abonnement est fini (accès immédiat, comme un
+  achat). Désactiver met la fin d'abonnement à **maintenant** : l'entreprise peut ensuite s'abonner normalement. Désactiver un
+  abonnement que l'entreprise a **payé** demande une confirmation explicite (elle perd ce qu'elle a payé).
+- **Traçabilité** : migration 092 (`subscription_grants`, fonctions atomiques `grant_subscription` / `revoke_subscription`) : qui,
+  quand, combien, avant/après, motif. Les accès offerts ne se mélangent pas aux paiements (`subscription_purchases`) : les recettes
+  restent justes. Journal d'audit, alerte de sécurité et **code OTP** à chaque action ; le patron est prévenu par notification.
+- **Essai gratuit** : désactiver ne coupe pas un essai en cours (l'essai dépend de la date de validation et du réglage global).
+- **« Tests DGI » en production** : l'onglet n'apparaît que pour une entreprise sur l'e-MCF de **test** ; le serveur refuse de toute façon
+  de jouer un cas en production. Les onglets Paramètres, Factures et Rapports X / Z / A restent pour tous les clients.
+
 ## 04/11/2026 — Facture normalisée DGI : premiers retours de l'e-MCF de test
 
 - Premiers essais réels sur l'e-MCF de test (e-MCF `CD01005533-1`) : les cas 1, 6, 7, 9, 10 passent d'emblée ; ce qui suit vient du cas 8.

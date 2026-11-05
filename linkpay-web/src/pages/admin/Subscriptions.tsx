@@ -10,6 +10,7 @@ import { Select } from '@/components/ui/select';
 import { PageHeader } from '@/components/PageHeader';
 import { Loader2, Check } from 'lucide-react';
 import { SupplierPlanAdmin } from './SupplierPlanAdmin';
+import { OrganizationAccessCard } from './OrganizationAccessCard';
 
 const CURRENCIES = ['CDF', 'USD'] as const;
 const MODES = [
@@ -119,6 +120,8 @@ export default function AdminSubscriptionsPage() {
   return (
     <div className="p-4 pb-28 md:p-6 md:pb-6 space-y-6 max-w-6xl mx-auto">
       <PageHeader title="Abonnements" />
+
+      <OrganizationAccessCard />
 
       <Card>
         <CardHeader><CardTitle className="text-base font-bold">Recettes des abonnements</CardTitle></CardHeader>

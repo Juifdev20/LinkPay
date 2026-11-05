@@ -33,7 +33,9 @@ export default function FactureNormaliseePage() {
     enabled: !!org?.id,
     queryFn: async () => (await api.get(`/organizations/${org.id}/facture-normalisee/profil`)).data,
   });
-  const onglets: Onglet[] = profil?.droits === 'gestion' ? ['parametres', 'factures', 'rapports', 'tests'] : ['parametres', 'factures', 'rapports'];
+  // « Tests DGI » ne sert qu'à l'homologation, sur l'e-MCF de TEST : les clients en production ne le voient pas.
+  const enTest = (profil?.profil?.emcf_environment ?? 'test') === 'test';
+  const onglets: Onglet[] = profil?.droits === 'gestion' && enTest ? ['parametres', 'factures', 'rapports', 'tests'] : ['parametres', 'factures', 'rapports'];
   if (isLoading || !org?.id) {
     return (
       <div className="p-6 flex justify-center">
