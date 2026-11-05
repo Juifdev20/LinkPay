@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { createFakeSupabase, has, RecordedQuery } from '../test-utils/fake-supabase';
-import { TestsDgiService } from './tests-dgi.service';
+import { DELAI_ORIGINE_MS, TestsDgiService } from './tests-dgi.service';
 
 const ORG = '11111111-1111-1111-1111-111111111111';
 const u = { id: 'u1', role: 'enterprise' };
@@ -102,5 +102,36 @@ describe('Tests DGI (service)', () => {
     expect(e.cas).toHaveLength(29);
     expect(e.cas.find((c) => c.num === 18)!.hors_perimetre).toBe('Groupes F, G non déclarés');
     expect(e.cas.find((c) => c.num === 1)!.hors_perimetre).toBeNull();
+  });
+});
+
+describe('Avoir juste après sa facture d’origine', () => {
+  const ligne = [{ id: 'l1', line_no: 1, name: 'E', code: 'TEST-15-1', item_type: 'BIE', tax_group: 'E', unit_price_cents: 2500000, quantity: '3' }];
+
+  it('attend que la DGI ait eu le temps d’enregistrer l’original (cas 16 après le cas 15)', async () => {
+    jest.useFakeTimers();
+    try {
+      const { svc, factures } = monter({
+        factures: { [`dgi-test:${camp}:ttc:15`]: { id: 'f15', status: 'confirmed', confirmed_at: new Date(Date.now() - 1000).toISOString() } },
+        lignesOrigine: ligne,
+      });
+      const p = svc.jouer(ORG, u, { campagne: camp, mode: 'ttc', num: 16, pin: '1234' });
+      await jest.advanceTimersByTimeAsync(DELAI_ORIGINE_MS - 2000);
+      expect(factures.emettre).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(2500);
+      await p;
+      expect(factures.emettre).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('n’attend pas quand l’original est déjà ancien', async () => {
+    const { svc, factures } = monter({
+      factures: { [`dgi-test:${camp}:ttc:15`]: { id: 'f15', status: 'confirmed', confirmed_at: new Date(Date.now() - 60_000).toISOString() } },
+      lignesOrigine: ligne,
+    });
+    await svc.jouer(ORG, u, { campagne: camp, mode: 'ttc', num: 16, pin: '1234' });
+    expect(factures.emettre).toHaveBeenCalledTimes(1);
   });
 });

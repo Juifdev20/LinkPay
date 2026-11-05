@@ -28,7 +28,14 @@ export interface ResultatCas {
 }
 
 const COLONNES =
-  'id, rn, invoice_type, status, total_cents, vat_cents, code_def_dgi, qr_code, counters, nim, emcf_datetime, last_error_code, last_error_desc, created_at';
+  'id, rn, invoice_type, status, total_cents, vat_cents, code_def_dgi, qr_code, counters, nim, emcf_datetime, last_error_code, last_error_desc, created_at, confirmed_at';
+
+/**
+ * Un avoir cite la facture d'origine : la DGI doit déjà l'avoir enregistrée (son erreur 10 dit « réessayer plus tard »).
+ * Un avoir envoyé la seconde qui suit sa facture peut être refusé (« facture originale introuvable ») : on laisse ce délai.
+ */
+export const DELAI_ORIGINE_MS = 10_000;
+const attendre = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
  * Les cas de test de l'homologation rejoués sur l'e-MCF de TEST (document « Cas de test SFE » v1.2) : un cas à la fois,
@@ -209,6 +216,9 @@ export class TestsDgiService {
           throw new BadRequestException(`Faites d'abord le cas n° ${c.avoir.origine} (sa facture de vente doit être normalisée)`);
         }
         factureOrigineId = origine.id;
+        const confirmee = (origine as any).confirmed_at ? new Date((origine as any).confirmed_at).getTime() : 0;
+        const age = Date.now() - confirmee;
+        if (confirmee && age >= 0 && age < DELAI_ORIGINE_MS) await attendre(DELAI_ORIGINE_MS - age);
         const { data: lignes } = await this.db.from('normalized_invoice_items').select('*').eq('invoice_id', origine.id).order('line_no');
         const choix = c.avoir.lignes ?? (lignes ?? []).map((l: any) => ({ ligne: l.line_no as number, quantite: String(l.quantity) }));
         articles = choix.map((x) => {
