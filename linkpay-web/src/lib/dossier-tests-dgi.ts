@@ -63,6 +63,8 @@ async function tranches(blob: Blob, ratioMax: number, bornes: number[] = []): Pr
       const b = [...bornes].reverse().find((v) => v > y + hTranche * 0.5 && v <= fin);
       if (b) fin = b;
     }
+    // Un petit reste (marge blanche en bas du ticket) ne mérite pas sa propre page : on le garde avec celle-ci.
+    if (img.height - fin < hTranche * 0.1) fin = img.height;
     const h = fin - y;
     const c = document.createElement('canvas');
     c.width = img.width;
@@ -132,8 +134,11 @@ export async function genererDossierTestsDgi(o: OptionsDossier): Promise<Blob> {
     let vue: VueRapportFiscal | null = null;
     let pages: { url: string; l: number; h: number }[] = [];
     try {
-      const liste = await o.charger(`${base}/rapports?type=${type}&limit=1`);
-      const id = liste?.rapports?.[0]?.id;
+      // Le dernier rapport qui MONTRE quelque chose : un X fait juste après un Z, ou un A refait sans nouvelle vente,
+      // est vide et ne prouve rien. Le Z, lui, est toujours le dernier.
+      const liste = await o.charger(`${base}/rapports?type=${type}&limit=30`);
+      const plein = (r: any) => (type === 'X' ? (r?.totaux?.factures ?? 0) > 0 : type === 'A' ? (r?.totaux?.articles ?? 0) > 0 : true);
+      const id = (liste?.rapports ?? []).find(plein)?.id ?? liste?.rapports?.[0]?.id;
       if (id) {
         vue = (await o.charger(`${base}/rapports/${id}`)) as VueRapportFiscal;
         const { blob, bornes } = await ticketEnImageDetail(buildRapportFiscal({ ...vue, duplicata: false }));
