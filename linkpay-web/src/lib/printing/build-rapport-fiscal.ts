@@ -101,7 +101,7 @@ export function buildRapportFiscal(r: VueRapportFiscal): ReceiptLine[] {
       lines.push({ type: 'field', label: '  Prix unitaire', value: cdf(a.prixUnitaireCents) });
       lines.push({ type: 'field', label: '  Vendu', value: `${qte(a.vendu)} · ${cdf(a.montantVenduCents)}` });
       if (Number(a.retourne)) lines.push({ type: 'field', label: '  Retourné', value: `${qte(a.retourne)} · ${cdf(a.montantRetourneCents)}` });
-      lines.push({ type: 'field', label: '  En stock', value: a.enStock === null ? '—' : a.enStock.toLocaleString('fr-FR') });
+      lines.push({ type: 'field', label: '  En stock', value: a.enStock === null ? '0 (non suivi)' : a.enStock.toLocaleString('fr-FR') });
     }
     if (!r.articles?.length) lines.push({ type: 'text', text: 'Aucun article vendu sur la période.', align: 'center', small: true });
     lines.push(
