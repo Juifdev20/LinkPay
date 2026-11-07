@@ -131,6 +131,10 @@ class ManuelleDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(64) facture_origine_id?: string;
   @ApiPropertyOptional({ enum: NATURES_AVOIR }) @IsOptional() @IsIn(NATURES_AVOIR as unknown as string[]) nature_avoir?: (typeof NATURES_AVOIR)[number];
   @ApiPropertyOptional() @IsOptional() @IsString() @Matches(/^\d{4,6}$/) pin?: string;
+  @ApiPropertyOptional({ enum: MOYENS_PAIEMENT, description: 'Un seul moyen pour tout le total (calculé par le serveur)' })
+  @IsOptional()
+  @IsIn(MOYENS_PAIEMENT as unknown as string[])
+  moyen_paiement?: (typeof MOYENS_PAIEMENT)[number];
 }
 
 const appelant = (u: any): Appelant => ({ id: u?.id, role: u?.role, organization_id: u?.organization_id });

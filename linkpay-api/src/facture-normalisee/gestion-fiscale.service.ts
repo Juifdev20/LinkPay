@@ -19,6 +19,7 @@ import {
 } from './groupes';
 import { montantEnLettres } from './montant-en-lettres';
 import { journaliserGroupe } from './historique-groupes';
+import { LOGICIEL } from './logiciel';
 import { depuisTicket, depuisVente } from './sources';
 import { ArticleFacture, ClientFacture, NIF_VALIDE, PaiementFacture } from './validation';
 
@@ -168,6 +169,14 @@ export class GestionFiscaleService {
     const p = await this.factures.profil(organizationId);
     return {
       droits,
+      // « À propos » : ce que la DGI et ses agents peuvent vérifier du logiciel (nom, version, ISF, e-MCF).
+      logiciel: {
+        nom: LOGICIEL.nom,
+        module: LOGICIEL.module,
+        version: LOGICIEL.version,
+        environnement: p?.emcf_environment ?? 'test',
+        isf: this.factures.isfAffiche(p?.emcf_environment ?? 'test'),
+      },
       profil: p
         ? {
             enabled: p.enabled,
@@ -580,12 +589,24 @@ export class GestionFiscaleService {
       facture_origine_id?: string;
       nature_avoir?: NatureAvoir;
       pin?: string;
+      /** Un seul moyen de paiement pour tout le total : le serveur calcule le total (même moteur que l'e-MCF). */
+      moyen_paiement?: PaiementFacture['moyen'];
     },
   ) {
     await this.exigerGestion(organizationId, u);
     if (estAvoir(d.type)) {
       if (!d.pin) throw new BadRequestException('Un avoir demande votre code PIN');
       await this.pins.verifyPin(u.id, d.pin);
+    }
+    let paiements = d.paiements ?? [];
+    if (!paiements.length && d.moyen_paiement) {
+      const profil = await this.factures.profil(organizationId);
+      try {
+        const total = calculerTotaux(d.articles, d.mode ?? profil?.price_mode ?? 'ttc').totalCents;
+        paiements = [{ moyen: d.moyen_paiement, montantCents: total }];
+      } catch {
+        // Articles invalides : la validation de la facture les signalera avec les règles de la DGI.
+      }
     }
     return this.factures.emettre({
       organizationId,
@@ -594,7 +615,7 @@ export class GestionFiscaleService {
         type: d.type,
         articles: d.articles,
         client: d.client,
-        paiements: d.paiements ?? [],
+        paiements,
         commentaires: d.commentaires,
         referenceDerogation: d.reference_derogation,
         avoir: estAvoir(d.type) ? { nature: d.nature_avoir! } : undefined,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, KeyRound, Loader2, ShieldAlert, ShieldCheck, Wifi } from 'lucide-react';
+import { CheckCircle2, FilePlus2, KeyRound, Loader2, ShieldAlert, ShieldCheck, Wifi } from 'lucide-react';
 import api from '@/lib/api';
 import { PageHeader } from '@/components/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +18,8 @@ import { RapportsFiscaux } from '@/components/facture-normalisee/RapportsFiscaux
 import { TestsDgi } from '@/components/facture-normalisee/TestsDgi';
 import { GroupesParCategorie } from '@/components/facture-normalisee/GroupesParCategorie';
 import { HistoriqueGroupes } from '@/components/facture-normalisee/HistoriqueGroupes';
+import { AProposFiscal } from '@/components/facture-normalisee/AProposFiscal';
+import { FactureSpecialeSheet } from '@/components/facture-normalisee/FactureSpecialeSheet';
 import type { VueFactureNormalisee } from '@/lib/printing/build-facture-normalisee';
 
 /**
@@ -228,6 +230,7 @@ function Parametres({ orgId, secteur }: { orgId: string; secteur?: string | null
 
       <GroupesParCategorie orgId={orgId} secteur={secteur} gestion={gestion} />
       <HistoriqueGroupes orgId={orgId} />
+      <AProposFiscal orgId={orgId} />
 
       <Card>
         <CardHeader>
@@ -284,6 +287,7 @@ function Journal({ orgId }: { orgId: string }) {
   const [statut, setStatut] = useState<string>('');
   const [ouverte, setOuverte] = useState<string | null>(null);
   const [avoirSur, setAvoirSur] = useState<VueFactureNormalisee | null>(null);
+  const [speciale, setSpeciale] = useState(false);
   const { data: profil } = useQuery({ queryKey: ['fiscal-profil', orgId], queryFn: async () => (await api.get(`/organizations/${orgId}/facture-normalisee/profil`)).data });
   const { data, isLoading } = useQuery({
     queryKey: ['factures-normalisees', orgId, statut],
@@ -300,6 +304,11 @@ function Journal({ orgId }: { orgId: string }) {
           </button>
         ))}
       </div>
+      {gestion && (
+        <Button variant="outline" className="w-full" onClick={() => setSpeciale(true)}>
+          <FilePlus2 className="mr-2 w-4 h-4" /> Facture spéciale (acompte, exportation, remise)
+        </Button>
+      )}
       {isLoading && <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" />}
       {!isLoading && !data?.factures?.length && <p className="text-sm text-muted-foreground text-center py-8">Aucune facture.</p>}
       <div className="space-y-2">
@@ -331,6 +340,19 @@ function Journal({ orgId }: { orgId: string }) {
           factureId={ouverte}
           onClose={() => setOuverte(null)}
           onAvoir={gestion ? (vue) => { setOuverte(null); setAvoirSur(vue); } : undefined}
+        />
+      )}
+      {speciale && (
+        <FactureSpecialeSheet
+          orgId={orgId}
+          groupesAutorises={profil?.profil?.allowed_tax_groups?.length ? profil.profil.allowed_tax_groups : ['A', 'B', 'C', 'E', 'H', 'K', 'O']}
+          modePrix={profil?.profil?.price_mode === 'ht' ? 'ht' : 'ttc'}
+          onClose={() => setSpeciale(false)}
+          onDone={(f: any) => {
+            setSpeciale(false);
+            qc.invalidateQueries({ queryKey: ['factures-normalisees', orgId] });
+            if (f?.id) setOuverte(f.id);
+          }}
         />
       )}
       {avoirSur && (

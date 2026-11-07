@@ -92,6 +92,15 @@ export class FactureNormaliseeService {
   }
 
   /** ISF de ScanLinkPay (donné par la DGI à l'homologation, le même pour tous nos clients). */
+  /** L'ISF à montrer à l'écran « À propos » : jamais d'erreur, `null` tant que l'ISF de production n'est pas attribué. */
+  isfAffiche(environnement: EnvironnementEmcf): string | null {
+    try {
+      return this.isf(environnement);
+    } catch {
+      return null;
+    }
+  }
+
   isf(environnement: EnvironnementEmcf): string {
     const isf = (this.config.get<string>('EMCF_ISF') ?? '').trim();
     if (isf) return isf;
