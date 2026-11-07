@@ -20,7 +20,7 @@ describe('Facture normalisée — moteur de calcul (note de service 01/022, 1.5)
     });
   });
 
-  describe('mode TTC : la base se déduit du total du groupe, la taxe est arrondie vers le haut', () => {
+  describe('mode TTC : la TVA se déduit du total du groupe, arrondie au centime le plus proche ; la base est le reste', () => {
     it('116,00 en B (16 %) → base 100,00, TVA 16,00', () => {
       const t = calculerTotaux([{ prixUnitaireCents: 11600, quantite: 1, groupe: 'B' }], 'ttc');
       expect(t.groupes).toEqual([{ groupe: 'B', taux: 16, totalCents: 11600, baseCents: 10000, tvaCents: 1600 }]);
@@ -28,9 +28,19 @@ describe('Facture normalisée — moteur de calcul (note de service 01/022, 1.5)
       expect(t.tvaCents).toBe(1600);
     });
 
-    it("en cas d'arrondi, c'est la TVA qui monte (10,01 → base 8,62, TVA 1,39)", () => {
+    it("arrondi au centime le plus proche : 10,01 → TVA 1,38 (1,3807), base 8,63 ; base + TVA = total", () => {
       const t = calculerTotaux([{ prixUnitaireCents: 1001, quantite: 1, groupe: 'B' }], 'ttc');
-      expect(t.groupes[0]).toMatchObject({ baseCents: 862, tvaCents: 139, totalCents: 1001 });
+      expect(t.groupes[0]).toMatchObject({ baseCents: 863, tvaCents: 138, totalCents: 1001 });
+    });
+
+    it("EXACTEMENT l'e-MCF de test de la DGI (vente réelle du 07/11/2026) : 2 000,00 en B → base 1 724,14, TVA 275,86", () => {
+      const t = calculerTotaux([{ prixUnitaireCents: 200000, quantite: 1, groupe: 'B' }, { prixUnitaireCents: 300000, quantite: 1, groupe: 'A' }], 'ttc');
+      expect(t.groupes).toEqual([
+        { groupe: 'A', taux: 0, totalCents: 300000, baseCents: 300000, tvaCents: 0 },
+        { groupe: 'B', taux: 16, totalCents: 200000, baseCents: 172414, tvaCents: 27586 },
+      ]);
+      expect(t.tvaCents).toBe(27586);
+      expect(t.totalCents).toBe(500000);
     });
 
     it('cas de test n° 1 : 1 × B et 1 × C — un total par groupe, base + TVA = total', () => {
@@ -130,8 +140,8 @@ describe('Facture normalisée — moteur de calcul (note de service 01/022, 1.5)
     });
   });
 
-  describe('mode HT : le total se déduit de la base, la taxe est arrondie vers le haut', () => {
-    it('8,62 HT en B → TVA 1,38 (1,3792 arrondi vers le haut), total 10,00', () => {
+  describe('mode HT : le total se déduit de la base, la TVA est arrondie au centime le plus proche', () => {
+    it('8,62 HT en B → TVA 1,38 (1,3792), total 10,00', () => {
       const t = calculerTotaux([{ prixUnitaireCents: 862, quantite: 1, groupe: 'B' }], 'ht');
       expect(t.groupes[0]).toEqual({ groupe: 'B', taux: 16, totalCents: 1000, baseCents: 862, tvaCents: 138 });
     });

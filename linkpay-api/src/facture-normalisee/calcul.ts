@@ -6,7 +6,9 @@
  *   1.5.5  les calculs partent du prix unitaire ;
  *   1.5.6  mode TTC : le montant imposable de chaque groupe se calcule depuis le total du groupe ;
  *          mode HT  : le total de chaque groupe se calcule depuis le montant imposable du groupe ;
- *   1.5.7  montant imposable + taxe = total ; en cas d'arrondi, la TAXE est arrondie à la valeur SUPÉRIEURE ;
+ *   1.5.7  montant imposable + taxe = total ; la TVA est arrondie au centime le plus proche (demi vers le haut) et le
+ *          montant imposable est le reste. C'est ce que fait l'e-MCF de la DGI (constaté sur une vente réelle de test :
+ *          2 000,00 en B → base 1 724,14 et TVA 275,86) ; en mode HT, la TVA = base × taux, arrondie de la même façon ;
  *   1.5.8  le montant du groupe N est entièrement de la TVA ;
  *   1.5.10 la taxe spécifique augmente la base taxable de la TVA.
  *
@@ -58,8 +60,6 @@ export function quantiteEnMilliemes(q: string | number): bigint {
 
 /** a / b arrondi à l'entier le plus proche (demi vers le haut), a ≥ 0, b > 0. */
 const divArrondi = (a: bigint, b: bigint) => (2n * a + b) / (2n * b);
-const divPlancher = (a: bigint, b: bigint) => a / b;
-const divPlafond = (a: bigint, b: bigint) => (a + b - 1n) / b;
 
 /** Montant d'une ligne : prix unitaire × quantité, arrondi au centime le plus proche. */
 export function montantLigne(prixUnitaireCents: number, quantite: string | number): number {
@@ -107,13 +107,14 @@ export function calculerTotaux(
     if (mode === 'ttc') {
       // Les PRIX sont TTC ; la taxe spécifique s'ajoute à la base et supporte elle aussi la TVA (1.5.10) — lecture
       // CONFIRMÉE par l'e-MCF de test de la DGI (cas n° 8 : B 3 × 11 600 + 3 × 500 → total 36 540, base 31 500, TVA 5 040).
-      // base des prix = prix / (1 + t), arrondie vers le BAS pour que la taxe soit arrondie vers le HAUT (1.5.7).
-      const baseLignes = divPlancher(g.montant * 100n, 100n + t);
-      base = baseLignes + g.specifique;
-      tva = g.montant - baseLignes + divPlafond(g.specifique * t, 100n);
+      // La TVA des prix est arrondie au centime le plus proche (1.5.2) et la base est le reste : base + TVA = total.
+      // Constaté sur l'e-MCF de test (vente réelle du 07/11/2026) : 2 000,00 en B → base 1 724,14, TVA 275,86 (et non 275,87).
+      const tvaLignes = divArrondi(g.montant * t, 100n + t);
+      base = g.montant - tvaLignes + g.specifique;
+      tva = tvaLignes + divArrondi(g.specifique * t, 100n);
     } else {
       base = g.montant + g.specifique;
-      tva = divPlafond(base * t, 100n);
+      tva = divArrondi(base * t, 100n);
     }
     groupes.push({ groupe, taux: Number(t), totalCents: Number(base + tva), baseCents: Number(base), tvaCents: Number(tva) });
   }

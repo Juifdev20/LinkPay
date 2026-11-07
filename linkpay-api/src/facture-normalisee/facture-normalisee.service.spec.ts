@@ -146,3 +146,56 @@ describe('Jeton collé depuis le portail', () => {
     expect(nettoyerJeton(undefined)).toBe('');
   });
 });
+
+describe('Facture refusée pour « montants différents » : les totaux sont refaits avant le nouvel essai', () => {
+  const lignes = [
+    { unit_price_cents: 200000, quantity: '1', tax_group: 'B', specific_tax_cents: null },
+    { unit_price_cents: 300000, quantity: '1', tax_group: 'A', specific_tax_cents: null },
+  ];
+  const anciens = {
+    groupes: [
+      { groupe: 'A', taux: 0, totalCents: 300000, baseCents: 300000, tvaCents: 0 },
+      { groupe: 'B', taux: 16, totalCents: 200000, baseCents: 172413, tvaCents: 27587 },
+    ],
+    montantsLignes: [200000, 300000],
+    taxeSpecifiqueCents: 0,
+    totalCents: 500000,
+    tvaCents: 27587,
+  };
+
+  it('le nouveau calcul (base 1 724,14 / TVA 275,86, comme l’e-MCF) remplace l’ancien et est enregistré', async () => {
+    const ecritures: any[] = [];
+    const { service } = createFakeSupabase((q) => {
+      if (q.target === 'normalized_invoice_items') return { data: lignes };
+      if (q.target === 'normalized_invoices') {
+        const maj = q.calls.find((c) => c.method === 'update');
+        if (maj) ecritures.push(maj.args[0]);
+      }
+      return undefined;
+    });
+    const s = new FactureNormaliseeService(service, config(), new JetonFiscalService(config())) as any;
+    const f = { id: 'f1', rn: '2026/000157', price_mode: 'ttc', last_error_code: 'ECART', computed_totals: anciens };
+    const r = await s.recalculerSiEcart(f);
+    expect(r.computed_totals.groupes.find((g: any) => g.groupe === 'B')).toMatchObject({ baseCents: 172414, tvaCents: 27586 });
+    expect(r.total_cents).toBe(500000);
+    expect(r.vat_cents).toBe(27586);
+    expect(ecritures).toEqual([{ computed_totals: r.computed_totals, total_cents: 500000, vat_cents: 27586 }]);
+  });
+
+  it('une facture refusée pour une autre raison, ou déjà à jour, n’est pas touchée', async () => {
+    const ecritures: any[] = [];
+    const { service } = createFakeSupabase((q) => {
+      if (q.target === 'normalized_invoice_items') return { data: lignes };
+      if (q.calls.some((c) => c.method === 'update')) ecritures.push(q);
+      return undefined;
+    });
+    const s = new FactureNormaliseeService(service, config(), new JetonFiscalService(config())) as any;
+    const autre = { id: 'f2', price_mode: 'ttc', last_error_code: 'A_VERIFIER', computed_totals: anciens };
+    expect(await s.recalculerSiEcart(autre)).toBe(autre);
+    const f = { id: 'f3', price_mode: 'ttc', last_error_code: 'ECART', computed_totals: anciens };
+    const r1 = await s.recalculerSiEcart(f);
+    const r2 = await s.recalculerSiEcart({ ...f, computed_totals: r1.computed_totals });
+    expect(r2.computed_totals).toEqual(r1.computed_totals);
+    expect(ecritures).toHaveLength(1); // une seule écriture : la seconde fois, rien à changer
+  });
+});

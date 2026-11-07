@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
-import { cdfVersUsd, ModePrix, numeroFacture, tauxDansLaMarge, TotauxFacture } from './calcul';
+import { calculerTotaux, cdfVersUsd, ModePrix, numeroFacture, tauxDansLaMarge, TotauxFacture } from './calcul';
 import { EmcfClient, EnvironnementEmcf, ErreurEmcf, StatutEmcf } from './emcf.client';
 import { estAvoir, GroupeTaxation, GROUPES_HOMOLOGUES } from './groupes';
 import { JetonFiscalService } from './jeton-fiscal.service';
@@ -267,9 +267,12 @@ export class FactureNormaliseeService {
    * l'instantané enregistré à l'émission : un nouvel essai envoie exactement la même facture.
    */
   async tenter(factureId: string): Promise<VueFacture> {
-    const { data: f, error } = await this.db.from('normalized_invoices').select('*').eq('id', factureId).single();
-    if (error || !f) throw new NotFoundException('Facture introuvable');
-    if (f.status === 'confirmed' || f.status === 'abandoned') return vue(f);
+    const { data: lue, error } = await this.db.from('normalized_invoices').select('*').eq('id', factureId).single();
+    if (error || !lue) throw new NotFoundException('Facture introuvable');
+    if (lue.status === 'confirmed' || lue.status === 'abandoned') return vue(lue);
+    // Refusée pour « montants différents » : la DGI n'a rien enregistré. On refait les totaux avec les règles de calcul
+    // actuelles (une correction de l'arrondi, par exemple) avant de réessayer ; la facture envoyée reste la même.
+    const f = await this.recalculerSiEcart(lue);
     // Confirmation envoyée sans réponse sûre : la DGI l'a peut-être normalisée. Renvoyer créerait un doublon ;
     // on attend la vérification (site de vérification de la DGI) — jamais de nouvel envoi automatique.
     if (f.last_error_code === 'A_VERIFIER') return vue(f);
@@ -305,6 +308,25 @@ export class FactureNormaliseeService {
       throw new BadRequestException('Facture normalisée par la DGI mais non enregistrée : contactez le support');
     }
     return apres as VueFacture;
+  }
+
+  /** Refait les totaux d'une facture refusée pour écart avec la DGI, à partir de ses lignes enregistrées. */
+  private async recalculerSiEcart(f: any): Promise<any> {
+    if (f.last_error_code !== 'ECART') return f;
+    const { data: lignes } = await this.db
+      .from('normalized_invoice_items')
+      .select('unit_price_cents, quantity, tax_group, specific_tax_cents')
+      .eq('invoice_id', f.id)
+      .order('line_no');
+    const totaux = totauxDesLignesEnregistrees(lignes ?? [], f.price_mode);
+    if (!totaux || JSON.stringify(totaux) === JSON.stringify(f.computed_totals)) return f;
+    const maj = { computed_totals: totaux, total_cents: totaux.totalCents, vat_cents: totaux.tvaCents };
+    const { error } = await this.db.from('normalized_invoices').update(maj).eq('id', f.id);
+    if (error) {
+      this.logger.warn(`Facture ${f.rn} : totaux non recalculés (${error.message})`);
+      return f;
+    }
+    return { ...f, ...maj };
   }
 
   /**
@@ -443,6 +465,24 @@ function ligneArticle(invoiceId: string, n: number, a: ArticleFacture, montant: 
     price_modification: a.modificationPrix ?? null,
     line_total_cents: montant,
   };
+}
+
+/** Totaux d'une facture recalculés depuis ses lignes enregistrées ; `null` si elles sont inutilisables. */
+export function totauxDesLignesEnregistrees(lignes: any[], mode: ModePrix): TotauxFacture | null {
+  if (!lignes.length) return null;
+  try {
+    return calculerTotaux(
+      lignes.map((l) => ({
+        prixUnitaireCents: Number(l.unit_price_cents),
+        quantite: String(l.quantity),
+        groupe: l.tax_group,
+        taxeSpecifiqueCents: l.specific_tax_cents ? Number(l.specific_tax_cents) : undefined,
+      })),
+      mode,
+    );
+  } catch {
+    return null;
+  }
 }
 
 /** Ce que devient la ligne de la facture selon l'issue de l'e-MCF. */
