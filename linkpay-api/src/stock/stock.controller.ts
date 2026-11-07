@@ -2,7 +2,7 @@ import { Controller, Get, Post, Put, Delete, Body, Param, Query, Headers, UseInt
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiConsumes, ApiBody } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, IsIn, IsObject, IsBoolean, MaxLength, Min, MinLength, IsUUID, IsInt, Matches } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsIn, IsObject, IsBoolean, MaxLength, Min, MinLength, IsUUID, IsInt, Matches, ValidateIf } from 'class-validator';
 import { StockService, STOCK_STAFF_ROLES } from './stock.service';
 import { SuppliersService } from './suppliers.service';
 import { StockPasswordService } from './stock-password.service';
@@ -16,7 +16,8 @@ const MOVEMENT_TYPES = ['in', 'out', 'adjustment'];
 export const STOCK_CATEGORIES = ['telephonie_mobilite', 'ordinateurs', 'composants_informatiques', 'audio_hifi', 'accessoires'];
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
-class CreateStockItemDto {
+/** Exporté pour le test de validation (groupe de taxation vide). */
+export class CreateStockItemDto {
   @ApiProperty({ example: 'Samsung Galaxy A54' })
   @IsString()
   @MaxLength(255)
@@ -39,7 +40,8 @@ class CreateStockItemDto {
 
   // Facture normalisée (DGI) — migration 090. Envoyés seulement s'ils sont remplis.
   @ApiPropertyOptional({ example: 'B', description: 'Groupe de taxation DGI (A à P)' })
-  @IsOptional()
+  // Vide (« Celui de la catégorie, sinon le groupe par défaut ») = pas de groupe propre : le serveur l'enregistre comme null.
+  @ValidateIf((o) => o.tax_group !== undefined && o.tax_group !== null && o.tax_group !== '')
   @Matches(/^[A-P]$/, { message: 'Groupe de taxation : une lettre de A à P' })
   tax_group?: string;
 
